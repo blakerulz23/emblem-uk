@@ -1,5 +1,8 @@
 {
+  "buildCommand": "npm run build",
   "cleanUrls": true,
+  "framework": null,
+  "outputDirectory": "dist",
   "trailingSlash": false,
   "rewrites": [
     {

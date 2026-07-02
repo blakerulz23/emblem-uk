@@ -4,6 +4,7 @@
   "private": true,
   "description": "Emblem UK landing page for junior football and rugby player cards.",
   "scripts": {
+    "build": "node build.js",
     "dev": "node dev-server.js",
     "start": "node dev-server.js"
   }
