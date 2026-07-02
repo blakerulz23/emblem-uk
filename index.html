@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Emblem | Junior Football & Rugby Player Cards</title>
+    <meta
+      name="description"
+      content="Turn your child's football or rugby photo into a premium printed player card with an interactive digital profile."
+    >
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Emblem home">
+        <span class="brand-mark">E</span>
+        <span>Emblem</span>
+      </a>
+      <nav class="nav-links" aria-label="Primary navigation">
+        <a href="#how">How it works</a>
+        <a href="#sports">Sports</a>
+        <a href="#team-orders">Team orders</a>
+        <a href="#start">Start</a>
+      </nav>
+      <a class="header-cta" href="#start">Create a card</a>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Football and rugby cards for UK families and clubs</p>
+          <h1>Turn your child's football photo into an official player card.</h1>
+          <p class="hero-subhead">
+            Premium printed cards with an interactive digital profile featuring season stats, photos,
+            highlights and memories, all in one keepsake.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#start">Create a card</a>
+            <a class="button secondary" href="#team-orders">Build a squad set</a>
+          </div>
+          <div class="trust-row" aria-label="Product highlights">
+            <span>Printed in premium finish</span>
+            <span>Digital profile included</span>
+            <span>Single cards or full teams</span>
+          </div>
+        </div>
+
+        <div class="hero-visual" aria-label="Example Emblem football player card">
+          <div class="card-stack">
+            <img class="sample-card card-one" src="public/hollinwood-card-01.png" alt="Example Emblem junior football card">
+            <img class="sample-card card-two" src="public/hollinwood-card-03.png" alt="">
+            <img class="sample-card card-three" src="public/hollinwood-card-05.png" alt="">
+          </div>
+          <div class="profile-preview" aria-label="Digital profile preview">
+            <div class="phone-bar"></div>
+            <p class="profile-label">Digital profile</p>
+            <h2>Jacob Thompson</h2>
+            <div class="stat-grid">
+              <span><strong>10</strong> Shirt</span>
+              <span><strong>MF</strong> Position</span>
+              <span><strong>18</strong> Apps</span>
+              <span><strong>7</strong> Goals</span>
+            </div>
+            <div class="memory-strip">
+              <span>Season highlights</span>
+              <span>Awards night</span>
+              <span>Match photos</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section sports" id="sports">
+        <div class="section-heading">
+          <p class="eyebrow">Built around grassroots sport</p>
+          <h2>Start with football and rugby.</h2>
+          <p>
+            Emblem is designed for junior clubs, school teams, weekend fixtures and season memories,
+            with stats that make sense for each sport.
+          </p>
+        </div>
+        <div class="sport-grid">
+          <article class="sport-panel football-panel">
+            <div class="sport-icon">F</div>
+            <h3>Football</h3>
+            <p>Positions, shirt numbers, goals, assists, clean sheets, player of the match and club badges.</p>
+          </article>
+          <article class="sport-panel rugby-panel">
+            <div class="sport-icon">R</div>
+            <h3>Rugby</h3>
+            <p>Positions, tries, conversions, tackles, appearances, squad roles and season awards.</p>
+          </article>
+          <article class="sport-panel club-panel">
+            <div class="sport-icon">C</div>
+            <h3>Club Packs</h3>
+            <p>One design across a whole squad, with every player getting their own card and profile.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section split" id="how">
+        <div class="section-heading align-left">
+          <p class="eyebrow">Simple for parents, tidy for teams</p>
+          <h2>Upload one child or the whole squad in the same session.</h2>
+          <p>
+            The order flow should feel like a squad builder: add players, upload photos, apply a design,
+            then approve each card before print.
+          </p>
+        </div>
+        <div class="steps">
+          <article>
+            <span>01</span>
+            <h3>Add players</h3>
+            <p>Create a single child, siblings, friends or a full squad list.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>Upload photos</h3>
+            <p>Add one photo or bulk-upload several player images at once.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>Apply a design</h3>
+            <p>Choose a football or rugby style, then apply it to every ready card.</p>
+          </article>
+          <article>
+            <span>04</span>
+            <h3>Approve and print</h3>
+            <p>Review thumbnails, fix missing details and approve the final set.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section builder" id="team-orders">
+        <div class="builder-copy">
+          <p class="eyebrow">Multi-card session preview</p>
+          <h2>One order can hold every card.</h2>
+          <p>
+            Parents can make sibling cards in one go. Coaches can prepare a team pack, collect missing
+            details, and approve every player from a single dashboard.
+          </p>
+          <ul class="check-list">
+            <li>Bulk upload photos</li>
+            <li>Apply club colours to all cards</li>
+            <li>Track missing details and approvals</li>
+            <li>Choose duplicate prints per player</li>
+          </ul>
+        </div>
+
+        <div class="session-tool" id="start">
+          <div class="tool-header">
+            <div>
+              <p class="eyebrow">Order session</p>
+              <h3>Squad card builder</h3>
+            </div>
+            <span class="status-pill">Draft</span>
+          </div>
+
+          <div class="control-grid">
+            <label>
+              Sport
+              <select id="sportSelect">
+                <option>Football</option>
+                <option>Rugby</option>
+              </select>
+            </label>
+            <label>
+              Design
+              <select id="designSelect">
+                <option>Club orange gloss</option>
+                <option>Matchday black</option>
+                <option>Heritage green</option>
+              </select>
+            </label>
+            <label>
+              Prints each
+              <input id="printCount" type="number" min="1" max="20" value="2">
+            </label>
+          </div>
+
+          <div class="upload-zone">
+            <input id="photoUpload" type="file" accept="image/*" multiple>
+            <div>
+              <strong>Upload player photos</strong>
+              <span>Add one image or select several for a team order.</span>
+            </div>
+          </div>
+
+          <div class="add-player">
+            <input id="playerName" type="text" placeholder="Player name">
+            <input id="playerPosition" type="text" placeholder="Position">
+            <button id="addPlayer" type="button">Add player</button>
+          </div>
+
+          <div class="session-summary">
+            <span><strong id="playerTotal">3</strong> players</span>
+            <span><strong id="readyTotal">2</strong> ready</span>
+            <span><strong id="printTotal">6</strong> prints</span>
+          </div>
+
+          <div class="player-list" id="playerList" aria-live="polite"></div>
+
+          <div class="tool-actions">
+            <button id="applyDesign" type="button">Apply design to all</button>
+            <button id="approveReady" type="button">Approve ready cards</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="section showcase">
+        <div class="showcase-media">
+          <img src="public/emblem-brand.png" alt="Emblem logo with Play Remember Belong tagline">
+        </div>
+        <div class="section-heading align-left">
+          <p class="eyebrow">Play. Remember. Belong.</p>
+          <h2>A keepsake that feels official.</h2>
+          <p>
+            The printed card gives children something to hold onto. The digital profile keeps the whole
+            season alive with stats, highlights, photos and memories families can revisit.
+          </p>
+          <a class="button primary" href="#start">Start an Emblem order</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>Emblem</span>
+      <span>Junior football and rugby cards for UK clubs, families and teams.</span>
+    </footer>
+
+    <script src="script.js"></script>
+  </body>
+</html>

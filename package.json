@@ -1,0 +1,10 @@
+{
+  "name": "emblem-uk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Emblem UK landing page for junior football and rugby player cards.",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  }
+}
