@@ -1,4 +1,16 @@
 const DESIGNS = {
+  emjfl: {
+    name: "EMJFL Orange",
+    short: "EMJFL",
+    desc: "Official grassroots football frame",
+    grad: "#f06a11",
+    panel: "transparent",
+    accent: "#f03717",
+    template: "emjfl",
+    baseImage: "public/templates/emjfl-orange/base.png",
+    overlayImage: "public/templates/emjfl-orange/footer-swoosh.png",
+    defaultPlayer: "public/templates/emjfl-orange/default-player-clean.png",
+  },
   orange: {
     name: "Club Orange",
     short: "Orange",
@@ -25,13 +37,34 @@ const DESIGNS = {
   },
 };
 
-const STORE_KEY = "emblem-session-v3";
+const SPORTS = {
+  football: {
+    label: "Football",
+    positions: ["Goalkeeper", "Defender", "Wing-back", "Midfielder", "Winger", "Forward", "Striker"],
+    stats: [
+      { key: "statA", label: "Appearances", placeholder: "18" },
+      { key: "statB", label: "Goals", placeholder: "12" },
+      { key: "statC", label: "Assists", placeholder: "7" },
+    ],
+  },
+  rugby: {
+    label: "Rugby",
+    positions: ["Prop", "Hooker", "Lock", "Flanker", "Number 8", "Scrum-half", "Fly-half", "Centre", "Wing", "Full-back"],
+    stats: [
+      { key: "statA", label: "Appearances", placeholder: "14" },
+      { key: "statB", label: "Tries", placeholder: "6" },
+      { key: "statC", label: "Tackles", placeholder: "41" },
+    ],
+  },
+};
+
+const STORE_KEY = "emblem-session-v5";
 
 const state = {
   players: [],
   mode: window.location.hash === "#team" ? "team" : "single",
   view: "build",
-  design: "orange",
+  design: "emjfl",
   editingId: null,
   photoTargetId: null,
 };
@@ -79,6 +112,7 @@ const el = {
   totalPrints: document.querySelector("#totalPrints"),
   tierLabel: document.querySelector("#tierLabel"),
   totalPrice: document.querySelector("#totalPrice"),
+  exportOrder: document.querySelector("#exportOrder"),
   primaryAction: document.querySelector("#primaryAction"),
   singlePhotoInput: document.querySelector("#singlePhotoInput"),
 };
@@ -89,7 +123,7 @@ function blank(seed) {
     name: "",
     club: seed?.club || "",
     ageGroup: seed?.ageGroup || "",
-    sport: seed?.sport || "Football",
+    sport: seed?.sport || "football",
     position: "",
     shirt: "",
     statA: "",
@@ -107,6 +141,7 @@ function load() {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
     if (saved && Array.isArray(saved.players)) {
       state.players = saved.players;
+      state.players = state.players.map(normalisePlayer);
       state.mode = window.location.hash === "#team" ? "team" : saved.mode || state.mode;
       state.design = saved.design || state.design;
       uid = Math.max(100, ...state.players.map((player) => Number(player.id) + 1));
@@ -116,6 +151,16 @@ function load() {
   }
 
   if (!state.players.length) state.players = state.mode === "team" ? [] : [blank(null)];
+}
+
+function normalisePlayer(player) {
+  const sport = String(player.sport || "football").toLowerCase();
+  return {
+    ...player,
+    sport: SPORTS[sport] ? sport : sport === "soccer" ? "football" : "football",
+    prints: Math.max(1, Number(player.prints || 1)),
+    approved: Boolean(player.approved),
+  };
 }
 
 function save() {
@@ -155,7 +200,8 @@ function counts() {
 }
 
 function playerMeta(player) {
-  const bits = [player.ageGroup, player.position, player.shirt ? `No. ${player.shirt}` : ""].filter(Boolean);
+  const sport = SPORTS[player.sport]?.label || "Football";
+  const bits = [sport, player.ageGroup, player.position, player.shirt ? `No. ${player.shirt}` : ""].filter(Boolean);
   return `${player.club ? `${player.club} - ` : ""}${bits.join(" - ") || "Add details"}`;
 }
 
@@ -179,11 +225,34 @@ function setPlayer(id, patch) {
   state.players = state.players.map((player) => {
     if (player.id !== id) return player;
     const next = { ...player, ...patch };
+    if ("sport" in patch) {
+      next.position = "";
+      next.statA = "";
+      next.statB = "";
+      next.statC = "";
+    }
     if (!("prints" in patch) && !("approved" in patch)) next.approved = false;
     return next;
   });
   save();
   render();
+}
+
+function makeSelect(player, key, label, options, className = "") {
+  return `
+    <label class="field ${className}">
+      ${label}
+      <select data-field="${key}" data-player="${player.id}">
+        ${options
+          .map((option) => {
+            const value = typeof option === "string" ? option : option.value;
+            const text = typeof option === "string" ? option : option.label;
+            return `<option value="${escapeHtml(value)}" ${player[key] === value ? "selected" : ""}>${escapeHtml(text)}</option>`;
+          })
+          .join("")}
+      </select>
+    </label>
+  `;
 }
 
 function makeField(player, key, label, placeholder, className = "") {
@@ -196,20 +265,21 @@ function makeField(player, key, label, placeholder, className = "") {
 }
 
 function makeStats(player) {
-  return `
-    ${makeField(player, "statA", "Appearances", "", "")}
-    ${makeField(player, "statB", player.sport === "Rugby" ? "Tries" : "Goals", "", "")}
-    ${makeField(player, "statC", player.sport === "Rugby" ? "Tackles" : "Assists", "", "")}
-  `;
+  const sport = SPORTS[player.sport] || SPORTS.football;
+  return sport.stats
+    .map((stat) => makeField(player, stat.key, stat.label, stat.placeholder, ""))
+    .join("");
 }
 
 function makeFields(player) {
+  const sport = SPORTS[player.sport] || SPORTS.football;
   return `
     ${makeField(player, "name", "Player name", "e.g. Jacob Thompson", "full")}
     ${makeField(player, "club", "Team / club", "e.g. AFC Oldham", "full")}
+    ${makeSelect(player, "sport", "Sport", Object.entries(SPORTS).map(([value, config]) => ({ value, label: config.label })))}
     ${makeField(player, "ageGroup", "Age group", "e.g. U12")}
-    ${makeField(player, "position", "Position", "e.g. Midfielder")}
-    ${makeField(player, "shirt", "Shirt number", "e.g. 10", "full")}
+    ${makeSelect(player, "position", "Position", ["", ...sport.positions])}
+    ${makeField(player, "shirt", "Shirt number", "e.g. 10")}
   `;
 }
 
@@ -245,10 +315,23 @@ function bindDesignChips(scope) {
 
 function renderCard(container, player) {
   const design = designFor(player);
+  container.classList.toggle("real-template", design.template === "emjfl");
   container.style.background = design.grad;
+  container.style.backgroundImage = "";
+  container.style.backgroundPosition = "";
+  container.style.backgroundRepeat = "";
+  container.style.backgroundSize = "";
+  if (design.template === "emjfl") {
+    container.style.setProperty("--template-overlay", `url("${design.overlayImage}")`);
+    container.style.backgroundImage = `url("${design.baseImage}")`;
+    container.style.backgroundPosition = "center";
+    container.style.backgroundRepeat = "no-repeat";
+    container.style.backgroundSize = "cover";
+  }
   const photo = container.querySelector(".card-photo");
-  photo.style.backgroundImage = player.photo ? `url("${player.photo}")` : "";
-  photo.querySelector("span").style.display = player.photo ? "none" : "block";
+  const previewPhoto = player.photo || (design.template === "emjfl" ? design.defaultPlayer : "");
+  photo.style.backgroundImage = previewPhoto ? `url("${previewPhoto}")` : "";
+  photo.querySelector("span").style.display = previewPhoto ? "none" : "block";
   container.querySelector(".card-footer").style.background = design.panel;
   container.querySelector(".card-footer h2").textContent = player.name || "Unnamed player";
   container.querySelector(".card-footer p").textContent = cardLine(player);
@@ -335,11 +418,16 @@ function reviewCard(player) {
   const st = status(player);
   const design = designFor(player);
   const disabled = st === "needs-photo" || st === "needs-details";
+  const isRealTemplate = design.template === "emjfl";
+  const previewPhoto = player.photo || (isRealTemplate ? design.defaultPlayer : "");
+  const backgroundStyle = isRealTemplate
+    ? `--template-overlay:url('${design.overlayImage}');background:${design.grad};background-image:url('${design.baseImage}');background-position:center;background-repeat:no-repeat;background-size:cover;`
+    : `background:${design.grad}`;
   return `
     <article class="review-card">
-      <div class="builder-card-preview" style="background:${design.grad}">
-        <div class="card-photo" style="${player.photo ? `background-image:url('${player.photo}')` : ""}">
-          <span style="display:${player.photo ? "none" : "block"}">No photo</span>
+      <div class="builder-card-preview ${isRealTemplate ? "real-template" : ""}" style="${backgroundStyle}">
+        <div class="card-photo" style="${previewPhoto ? `background-image:url('${previewPhoto}')` : ""}">
+          <span style="display:${previewPhoto ? "none" : "block"}">No photo</span>
         </div>
         <div class="card-footer" style="background:${design.panel}">
           <h2>${escapeHtml(player.name || "Unnamed player")}</h2>
@@ -404,14 +492,75 @@ function renderSummary() {
   el.totalPrints.textContent = totalPrints;
   el.tierLabel.textContent = tier.label;
   el.totalPrice.textContent = `\u00a3${totalPrints * tier.per}`;
+  el.exportOrder.hidden = c.approved === 0;
 
   if (state.mode === "single") {
-    el.primaryAction.textContent = singleReady ? "Continue to checkout" : "Add photo and details";
+    el.primaryAction.textContent = singleReady ? "Export approved order" : "Add photo and details";
   } else if (state.view === "build") {
     el.primaryAction.textContent = "Review and approve";
   } else {
-    el.primaryAction.textContent = c.approved > 0 ? "Continue to checkout" : "Approve cards to continue";
+    el.primaryAction.textContent = c.approved > 0 ? "Export approved order" : "Approve cards to continue";
   }
+}
+
+function orderManifest() {
+  const approvedPlayers = state.players.filter((player) => status(player) === "approved");
+  const totalPrints = approvedPlayers.reduce((sum, player) => sum + Number(player.prints || 1), 0);
+  const tier = priceTier(state.players.length);
+  return {
+    source: "emblem-uk-static-builder",
+    version: 1,
+    createdAt: new Date().toISOString(),
+    session: {
+      mode: state.mode,
+      sportFocus: "uk-football-rugby",
+      selectedDesign: state.design,
+      approvedCards: approvedPlayers.length,
+      totalPrints,
+      currency: "GBP",
+      estimatedTotal: totalPrints * tier.per,
+      pricingLabel: tier.label,
+    },
+    productionNotes: [
+      "Each approved player should become one CardArt render payload.",
+      "The photo field is a browser data URL in this prototype; production should upload photos and store stable asset URLs.",
+      "Print generation should use the youthcards CardArt plus render-print/PDF pipeline.",
+    ],
+    players: approvedPlayers.map((player, index) => {
+      const sport = SPORTS[player.sport] || SPORTS.football;
+      return {
+        orderIndex: index + 1,
+        playerId: player.id,
+        name: player.name,
+        club: player.club,
+        ageGroup: player.ageGroup,
+        sport: player.sport,
+        sportLabel: sport.label,
+        position: player.position,
+        shirtNumber: player.shirt,
+        stats: Object.fromEntries(sport.stats.map((stat) => [stat.key, { label: stat.label, value: player[stat.key] || "" }])),
+        design: player.design,
+        prints: Number(player.prints || 1),
+        approved: true,
+        photoDataUrl: player.photo,
+      };
+    }),
+  };
+}
+
+function exportApprovedOrder() {
+  const manifest = orderManifest();
+  if (!manifest.players.length) return;
+  const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `emblem-uk-order-${stamp}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function render() {
@@ -540,6 +689,8 @@ function bindEvents() {
     render();
   });
 
+  el.exportOrder.addEventListener("click", exportApprovedOrder);
+
   el.drawerPickPhoto.addEventListener("click", () => pickPhotoFor(state.editingId));
   el.closeDrawer.addEventListener("click", closeEditor);
   el.closeDrawerBackdrop.addEventListener("click", closeEditor);
@@ -562,6 +713,24 @@ function bindEvents() {
     if (state.mode === "team" && state.view === "build") {
       state.view = "review";
       render();
+      return;
+    }
+
+    if (state.mode === "single") {
+      const player = state.players[0];
+      if (player && status(player) === "ready") {
+        setPlayer(player.id, { approved: true });
+        exportApprovedOrder();
+      } else if (player && status(player) === "approved") {
+        exportApprovedOrder();
+      } else {
+        pickPhotoFor(player?.id);
+      }
+      return;
+    }
+
+    if (state.mode === "team" && state.view === "review" && counts().approved > 0) {
+      exportApprovedOrder();
     }
   });
 }

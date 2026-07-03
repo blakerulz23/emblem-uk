@@ -70,7 +70,7 @@ h3,
   top: 0;
   z-index: 50;
   display: flex;
-  min-height: 68px;
+  min-height: 336px;
   align-items: center;
   gap: 24px;
   padding: 0 clamp(18px, 4vw, 48px);
@@ -86,7 +86,9 @@ h3,
 
 .brand-lockup img {
   width: auto;
-  height: 34px;
+  height: 299px;
+  border-radius: 10px;
+  object-fit: cover;
 }
 
 .site-nav {
@@ -814,7 +816,7 @@ h3,
 }
 
 .final-cta img {
-  height: 56px;
+  height: 258px;
   margin: 0 auto 26px;
 }
 
@@ -930,6 +932,7 @@ h3,
 }
 
 .builder-card-preview {
+  container-type: inline-size;
   position: relative;
   display: flex;
   aspect-ratio: 63 / 88;
@@ -947,6 +950,43 @@ h3,
   inset: 9px;
   border-radius: 11px;
   background: #191009;
+}
+
+.builder-card-preview.real-template {
+  border-radius: 12px;
+  padding: 0;
+  background-color: #f06a11;
+  box-shadow: 0 22px 48px rgba(22, 24, 27, 0.28);
+}
+
+.builder-card-preview.real-template::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: block;
+  border-radius: 0;
+  background-image: var(--template-overlay);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  pointer-events: none;
+}
+
+.builder-card-preview.real-template::after {
+  content: "EMJFL\A OFFICIAL\A PLAYER CARD";
+  position: absolute;
+  right: 8.8%;
+  bottom: 7.1%;
+  z-index: 4;
+  color: #fff;
+  font-family: "Archivo", Arial, sans-serif;
+  font-size: clamp(11px, 5.4cqw, 28px);
+  font-weight: 900;
+  line-height: 0.98;
+  text-align: center;
+  text-shadow: 0 2px 10px rgba(120, 0, 0, 0.36);
+  white-space: pre;
 }
 
 .card-photo,
@@ -968,6 +1008,17 @@ h3,
   background-size: cover;
 }
 
+.real-template .card-photo {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 0;
+  background-color: transparent;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
 .card-photo span {
   color: rgba(255, 255, 255, 0.4);
   font-size: 12px;
@@ -983,6 +1034,15 @@ h3,
   background: #191009;
 }
 
+.real-template .card-footer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  padding: 0;
+  background: transparent !important;
+  color: #fff;
+}
+
 .card-footer h2 {
   margin: 0;
   overflow: hidden;
@@ -990,6 +1050,23 @@ h3,
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.real-template .card-footer h2 {
+  position: absolute;
+  left: 10%;
+  top: 36.92%;
+  width: 5.9%;
+  height: 29.91%;
+  overflow: hidden;
+  font-size: clamp(16px, 8.5cqw, 34px);
+  letter-spacing: 0.02em;
+  line-height: 0.9;
+  text-align: center;
+  text-overflow: clip;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  writing-mode: vertical-rl;
 }
 
 .card-footer p {
@@ -1001,6 +1078,24 @@ h3,
   text-transform: uppercase;
 }
 
+.real-template .card-footer p {
+  position: absolute;
+  left: 18.29%;
+  top: 48.86%;
+  width: 2.95%;
+  height: 18.62%;
+  margin: 0;
+  overflow: hidden;
+  color: #ff2b17 !important;
+  font-size: clamp(9px, 4.7cqw, 18px);
+  line-height: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  writing-mode: vertical-rl;
+}
+
 .shirt-number {
   position: absolute;
   top: 20px;
@@ -1010,6 +1105,19 @@ h3,
   font-size: 26px;
   font-weight: 900;
   text-shadow: 0 1px 5px rgba(0, 0, 0, 0.5);
+}
+
+.real-template .shirt-number {
+  top: 69.29%;
+  right: auto;
+  bottom: auto;
+  left: 8.67%;
+  z-index: 4;
+  color: #fff;
+  font-size: clamp(34px, 19cqw, 78px);
+  font-style: italic;
+  line-height: 0.82;
+  text-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 .status-print-row {
@@ -1576,12 +1684,16 @@ h3,
 @media (max-width: 680px) {
   .site-header,
   .builder-topbar {
-    min-height: 62px;
+    min-height: 265px;
     padding: 0 16px;
   }
 
   .brand-lockup img {
-    height: 28px;
+    height: 240px;
+  }
+
+  .final-cta img {
+    height: 209px;
   }
 
   .header-button {
