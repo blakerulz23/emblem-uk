@@ -2,6 +2,10 @@
 
 Landing page for Emblem, a UK-first junior football and rugby player card product.
 
+Brand positioning: Emblem preserves the grassroots player journey. The card, profile,
+stats, photos and highlights are all ways of helping families, clubs and players
+play the season, remember the journey and belong forever.
+
 ## Local preview
 
 ```bash
