@@ -1804,3 +1804,82 @@ h3,
   flex-wrap: wrap;
   gap: 10px;
 }
+
+.mode-chooser {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(10, 10, 12, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+body.mode-choosing {
+  overflow: hidden;
+}
+
+.mode-chooser-card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--white, #fff);
+  border-radius: 20px;
+  padding: 28px 26px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+}
+
+.mode-chooser-card .mode-kicker {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted, #5a5f63);
+}
+
+.mode-chooser-card h2 {
+  margin: 0 0 6px;
+  font-size: 24px;
+}
+
+.mode-chooser-card .mode-sub {
+  margin: 0 0 20px;
+  font-size: 14px;
+  color: var(--muted, #5a5f63);
+}
+
+.mode-options {
+  display: grid;
+  gap: 12px;
+}
+
+.mode-options button {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 18px 18px;
+  border: 1px solid var(--line, #e3e3e6);
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mode-options button:hover {
+  border-color: #f06a11;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 26px rgba(240, 106, 17, 0.16);
+}
+
+.mode-options button strong {
+  font-size: 16px;
+}
+
+.mode-options button span {
+  font-size: 13px;
+  color: var(--muted, #5a5f63);
+  line-height: 1.4;
+}

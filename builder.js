@@ -775,6 +775,45 @@ function bindEvents() {
   });
 }
 
+function sessionHasProgress() {
+  return state.players.some(
+    (player) => player.photo || player.name || player.club || String(player.shirt).trim() !== ""
+  );
+}
+
+function initModeChooser() {
+  const chooser = document.querySelector("#modeChooser");
+  if (!chooser) return;
+  // Skip the chooser when a mode was already chosen via link or a session is underway.
+  if (window.location.hash === "#team" || sessionHasProgress() || state.mode === "team") return;
+
+  chooser.hidden = false;
+  document.body.classList.add("mode-choosing");
+
+  const close = () => {
+    chooser.hidden = true;
+    document.body.classList.remove("mode-choosing");
+  };
+
+  document.querySelector("#chooseSingle").addEventListener("click", () => {
+    state.mode = "single";
+    save();
+    render();
+    close();
+  });
+
+  document.querySelector("#chooseTeam").addEventListener("click", () => {
+    state.mode = "team";
+    state.view = "build";
+    save();
+    render();
+    close();
+    // Straight into the multi-photo picker for a team pack.
+    el.bulkUpload?.click();
+  });
+}
+
 load();
 bindEvents();
 render();
+initModeChooser();
