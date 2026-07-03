@@ -85,6 +85,7 @@ const el = {
   singleStats: document.querySelector("[data-single-stats]"),
   singleDesigns: document.querySelector("[data-single-designs]"),
   addAndGoTeam: document.querySelector("#addAndGoTeam"),
+  uploadTeamPhotos: document.querySelector("#uploadTeamPhotos"),
   designList: document.querySelector("#designList"),
   applyDesignToAll: document.querySelector("#applyDesignToAll"),
   bulkUpload: document.querySelector("#bulkUpload"),
@@ -603,6 +604,39 @@ function readFiles(files, callback) {
   });
 }
 
+function addPlayersFromPhotos(urls, targetId) {
+  const list = [...urls];
+
+  if (targetId != null && list.length) {
+    const target = state.players.find((player) => player.id === targetId);
+    if (target) {
+      target.photo = list.shift();
+      target.approved = false;
+    }
+  }
+
+  list.forEach((url) => {
+    const empty = state.players.find((player) => !player.photo);
+    if (empty) {
+      empty.photo = url;
+      empty.approved = false;
+    } else {
+      const player = blank(state.players[0]);
+      player.name = `Player ${state.players.length + 1}`;
+      player.photo = url;
+      state.players.push(player);
+    }
+  });
+
+  if (state.players.length > 1) {
+    state.mode = "team";
+    state.view = "build";
+  }
+
+  save();
+  render();
+}
+
 function addPlayer(open = true) {
   const player = blank(state.players[0]);
   state.players.push(player);
@@ -667,22 +701,28 @@ function bindEvents() {
 
   el.bulkUpload.addEventListener("change", (event) => {
     readFiles(event.target.files, (urls) => {
-      urls.forEach((url) => {
-        const empty = state.players.find((player) => !player.photo);
-        if (empty) empty.photo = url;
-        else state.players.push({ ...blank(state.players[0]), photo: url });
-      });
+      addPlayersFromPhotos(urls, null);
       event.target.value = "";
-      render();
     });
   });
 
   el.singlePhotoInput.addEventListener("change", (event) => {
     readFiles(event.target.files, (urls) => {
-      if (state.photoTargetId != null && urls[0]) setPlayer(state.photoTargetId, { photo: urls[0] });
+      if (urls.length > 1) {
+        addPlayersFromPhotos(urls, state.photoTargetId);
+      } else if (state.photoTargetId != null && urls[0]) {
+        setPlayer(state.photoTargetId, { photo: urls[0] });
+      }
       event.target.value = "";
     });
   });
+
+  if (el.uploadTeamPhotos) {
+    el.uploadTeamPhotos.addEventListener("click", () => {
+      state.photoTargetId = state.players[0]?.photo ? null : state.players[0]?.id ?? null;
+      el.singlePhotoInput.click();
+    });
+  }
 
   el.approveAllReady.addEventListener("click", () => {
     state.players = state.players.map((player) => (status(player) === "ready" ? { ...player, approved: true } : player));

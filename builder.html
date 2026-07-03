@@ -38,6 +38,7 @@
             <strong class="shirt-number"></strong>
           </div>
           <button class="button black full" id="singlePickPhoto" type="button">Add photo</button>
+          <p class="multi-photo-hint">Making a team pack? Select several photos at once and we will create a card for every player.</p>
           <div class="status-print-row">
             <span class="status-pill needs-photo" id="singleStatus">Needs photo</span>
             <div class="stepper">
@@ -61,9 +62,12 @@
           <div class="upgrade-banner">
             <div>
               <h3>Adding a sibling, friend or the whole team?</h3>
-              <p>Keep everything in one order. Add more players and apply this design to all of them.</p>
+              <p>Keep everything in one order. Select several photos at once and we will make a card for each player, or add players one by one.</p>
             </div>
-            <button class="button orange" id="addAndGoTeam" type="button">+ Add another player</button>
+            <div class="upgrade-actions">
+              <button class="button black" id="uploadTeamPhotos" type="button">Upload team photos</button>
+              <button class="button orange" id="addAndGoTeam" type="button">+ Add another player</button>
+            </div>
           </div>
         </section>
       </section>
@@ -153,7 +157,7 @@
       </div>
     </div>
 
-    <input id="singlePhotoInput" type="file" accept="image/*" hidden>
+    <input id="singlePhotoInput" type="file" accept="image/*" multiple hidden>
     <script src="builder.js"></script>
   </body>
 </html>

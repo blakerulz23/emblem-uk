@@ -1788,3 +1788,19 @@ h3,
     width: 100%;
   }
 }
+
+.multi-photo-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted, #6b7280);
+  text-align: center;
+}
+
+.upgrade-banner .upgrade-actions {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
