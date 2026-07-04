@@ -845,6 +845,39 @@ a { text-decoration: none; color: inherit; }
   font-weight: 700;
 }
 
+.uk-club-picker-intro {
+  grid-column: 1 / -1;
+  border: 1px solid rgba(225, 112, 54, 0.22);
+  border-radius: 14px;
+  background: rgba(225, 112, 54, 0.07);
+  padding: 12px 14px;
+}
+
+.uk-club-picker-intro strong,
+.uk-club-picker-intro span {
+  display: block;
+}
+
+.uk-club-picker-intro strong {
+  color: var(--wizard-ink);
+  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.uk-club-picker-intro span {
+  margin-top: 3px;
+  color: var(--wizard-soft);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.35;
+  text-transform: none;
+}
+
 .uk-wizard-badge-row {
   grid-column: 1 / -1;
   border: 1px solid var(--wizard-line);

@@ -25,7 +25,7 @@ import {
 
 const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'person' | 'group' }> = [
   { id: 'single', title: 'One player', copy: 'Create one card from one football photo.', icon: 'person' },
-  { id: 'squad', title: 'A team or group', copy: 'Upload several players, then customise and review each card together.', icon: 'group' },
+  { id: 'squad', title: 'A whole team', copy: 'Build sibling sets, friend groups, or the full squad in one session.', icon: 'group' },
 ];
 
 const orderModeLimits: Record<OrderType, { maxPlayers: number; rosterCopy: string }> = {
@@ -34,7 +34,7 @@ const orderModeLimits: Record<OrderType, { maxPlayers: number; rosterCopy: strin
   squad: { maxPlayers: 40, rosterCopy: 'Squad orders support bulk photo upload and team-level approval.' },
 };
 
-const steps = ['Start', 'Upload', 'Style', 'Details', 'Review', 'Handoff'];
+const steps = ['Start', 'Upload', 'Style', 'Details', 'Review', 'Summary'];
 type CardSide = 'front' | 'back';
 
 function money(value: number) {
@@ -65,6 +65,9 @@ export default function ProductionBuilder() {
   const [order, setOrder] = useState<OrderDraft>(() => {
     const draft = defaultOrder();
     const mode = searchParams.get('mode');
+    if (mode === 'set' || mode === 'friend-set' || mode === 'siblings') {
+      return { ...draft, type: 'set' };
+    }
     if (mode === 'squad' || mode === 'team' || mode === 'group') {
       return { ...draft, type: 'squad' };
     }
@@ -79,6 +82,7 @@ export default function ProductionBuilder() {
   const summary = useMemo(() => summarizeOrder(order), [order]);
   const stats = sportConfig[order.sport].stats;
   const orderMode = orderModeLimits[order.type];
+  const visibleOrderType = order.type === 'single' ? 'single' : 'squad';
   const addDisabled = !canAddPlayer(order);
   const hasAnyPhoto = order.players.some((player) => Boolean(player.photo?.srcUrl));
   const selectedHasPhoto = Boolean(selectedPlayer?.photo?.srcUrl);
@@ -231,7 +235,7 @@ export default function ProductionBuilder() {
       }
 
       setSelectedId(players[players.length - 1]?.id || selectedId);
-      setActiveStep(current.type === 'squad' ? 1 : 2);
+      setActiveStep(current.type !== 'single' ? 1 : 2);
       return { ...current, players };
       });
   };
@@ -296,13 +300,13 @@ export default function ProductionBuilder() {
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Emblem UK builder</p>
               <h1>Who are you building for?</h1>
-              <p className="uk-wizard-copy">One card for a young player, or a matching set for the whole team.</p>
+              <p className="uk-wizard-copy">One card for your child, or a matching set for the whole team.</p>
               <div className="uk-wizard-choice-list">
                 {orderTypes.map((type) => (
                   <button
                     key={type.id}
                     type="button"
-                    className={order.type === type.id ? 'active' : ''}
+                    className={visibleOrderType === type.id ? 'active' : ''}
                     onClick={() => patchOrder({ type: type.id })}
                   >
                     <span className="uk-choice-icon" aria-hidden="true">
@@ -336,6 +340,10 @@ export default function ProductionBuilder() {
                   League
                   <input value={order.league || EAST_MANCHESTER_LEAGUE} readOnly />
                 </label>
+                <div className="uk-club-picker-intro">
+                  <strong>Choose your club badge</strong>
+                  <span>We show the East Manchester league crest and your selected club badge on the card.</span>
+                </div>
                 <div className="uk-wizard-badge-row">
                   <img src={emjflClubLogo(order)} alt="" />
                   <select
@@ -345,7 +353,7 @@ export default function ProductionBuilder() {
                     {EMJFL_CLUBS.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
                   </select>
                   <label>
-                    Badge
+                    Upload own badge
                     <input type="file" accept="image/*" hidden onChange={(event) => assignBadge(event.target.files?.[0])} />
                   </label>
                 </div>
@@ -371,9 +379,9 @@ export default function ProductionBuilder() {
           {activeStep === 1 && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Upload</p>
-              <h1>{order.type === 'squad' ? 'Start with photos.' : 'Start with a photo.'}</h1>
+              <h1>{order.type !== 'single' ? 'Start with photos.' : 'Start with a photo.'}</h1>
               <p className="uk-wizard-copy">
-                {order.type === 'squad' ? 'Select every player photo at once, then edit each card.' : 'Pick the football photo you want to turn into a card.'}
+                {order.type !== 'single' ? 'Select the player photos at once, then edit each card.' : 'Pick the football photo you want to turn into a card.'}
               </p>
               {order.type === 'single' && selectedPlayer && !selectedHasPhoto && (
                 <div className="uk-photo-carousel single">
@@ -403,7 +411,7 @@ export default function ProductionBuilder() {
                 </div>
               )}
 
-              {order.type === 'squad' && !hasAnyPhoto && (
+              {order.type !== 'single' && !hasAnyPhoto && (
                 <div className="uk-photo-carousel team">
                   <label className="uk-upload-card active">
                     <span>▧</span>
@@ -419,7 +427,7 @@ export default function ProductionBuilder() {
                 </div>
               )}
 
-              {order.type === 'squad' && hasAnyPhoto && selectedPlayer && (
+              {order.type !== 'single' && hasAnyPhoto && selectedPlayer && (
                 <div className="uk-collapsed-upload-actions">
                   <label>
                     Add photos
@@ -449,7 +457,7 @@ export default function ProductionBuilder() {
                 </label>
               </div>
               )}
-              {order.type === 'squad' ? (
+              {order.type !== 'single' ? (
                 <SquadUploadQueue
                   order={order}
                   selectedId={selectedId}
@@ -466,7 +474,7 @@ export default function ProductionBuilder() {
                 <PlayerStrip order={order} selectedId={selectedId} onSelect={setSelectedId} />
               )}
               <div className="uk-wizard-row-actions">
-                {order.type === 'squad' && <button type="button" onClick={() => addPlayer()} disabled={addDisabled}>Add player</button>}
+                {order.type !== 'single' && <button type="button" onClick={() => addPlayer()} disabled={addDisabled}>Add player</button>}
                 <button type="button" className="uk-wizard-primary compact" onClick={() => setActiveStep(2)}>Choose style</button>
               </div>
             </section>
@@ -504,7 +512,7 @@ export default function ProductionBuilder() {
               <p className="uk-wizard-kicker">Details</p>
               <h1>Make it theirs.</h1>
               <p className="uk-wizard-copy">Edit the details. The preview updates live.</p>
-              {order.type === 'squad' && (
+              {order.type !== 'single' && (
                 <div className="uk-squad-edit-bar">
                   <button type="button" onClick={() => selectAdjacentPlayer(-1)} disabled={selectedIndex <= 0}>Previous</button>
                   <span>{selectedIndex + 1} of {order.players.length}</span>
@@ -586,20 +594,20 @@ export default function ProductionBuilder() {
                 <span>Total</span><b>{money(summary.subtotal)}</b>
               </div>
               <button type="button" onClick={approveAllReady} disabled={summary.counts.ready === 0}>Approve all ready</button>
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(5)}>Production handoff</button>
+              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(5)}>Create order summary</button>
             </section>
           )}
 
           {activeStep === 5 && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Handoff</p>
-              <h1>Ready for print.</h1>
-              <p className="uk-wizard-copy">{summary.checkoutEligible ? 'Export a clean production payload for approved cards.' : 'Approve at least one card to continue.'}</p>
+              <p className="uk-wizard-kicker">Order summary</p>
+              <h1>Ready to send.</h1>
+              <p className="uk-wizard-copy">{summary.checkoutEligible ? 'Export the approved cards so Emblem can create the print order and checkout link.' : 'Approve at least one card to continue.'}</p>
               <div className="uk-handoff-box">
                 <h3>Order</h3>
                 <p>{summary.approvedPlayers.length} approved players · {summary.pricing.label}</p>
-                <button type="button" onClick={exportPayload} disabled={!summary.checkoutEligible}>Export JSON payload</button>
-                <button type="button" onClick={() => setShowPayload((value) => !value)}>{showPayload ? 'Hide payload' : 'Show payload'}</button>
+                <button type="button" onClick={exportPayload} disabled={!summary.checkoutEligible}>Download order summary</button>
+                <button type="button" onClick={() => setShowPayload((value) => !value)}>{showPayload ? 'Hide technical details' : 'Show technical details'}</button>
               </div>
               {showPayload && <pre className="uk-payload">{JSON.stringify(productionPayload(order), null, 2)}</pre>}
             </section>
