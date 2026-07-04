@@ -202,6 +202,128 @@ a { text-decoration: none; color: inherit; }
 }
 
 /* ── Happy Customers marquee ── */
+.emblem-hero-cards {
+  position: relative;
+  min-height: clamp(430px, 44vw, 560px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  isolation: isolate;
+}
+
+.emblem-hero-card {
+  position: absolute;
+  border-radius: 18px;
+  box-shadow: 0 34px 72px rgba(0, 0, 0, 0.58);
+  user-select: none;
+}
+
+.emblem-hero-card-front {
+  position: relative;
+  z-index: 3;
+  width: min(300px, 55vw);
+  animation: home-card-float 7s ease-in-out infinite;
+}
+
+.emblem-hero-card-left {
+  z-index: 1;
+  width: min(252px, 43vw);
+  opacity: 0.9;
+  transform: rotate(-13deg) translate(-136px, 34px);
+}
+
+.emblem-hero-card-right {
+  z-index: 2;
+  width: min(270px, 46vw);
+  opacity: 0.92;
+  transform: rotate(8deg) translate(132px, 18px);
+}
+
+.emblem-profile-chip {
+  position: absolute;
+  right: 0;
+  bottom: 10px;
+  z-index: 4;
+  width: min(258px, 78vw);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  background: rgba(18, 21, 24, 0.94);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.52);
+  color: #fff;
+  padding: 16px 18px;
+  backdrop-filter: blur(8px);
+}
+
+.emblem-profile-chip p {
+  margin: 0 0 6px;
+  color: #f1874f;
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.emblem-profile-chip h2 {
+  margin: 0 0 12px;
+  font-family: var(--font-sora), system-ui;
+  font-size: 21px;
+  line-height: 1.05;
+}
+
+.emblem-profile-chip div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+
+.emblem-profile-chip span {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.emblem-profile-chip strong {
+  display: block;
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+}
+
+@media (max-width: 920px) {
+  .emblem-hero-cards {
+    min-height: 520px;
+    order: -1;
+  }
+}
+
+@media (max-width: 620px) {
+  .emblem-hero-cards {
+    min-height: 455px !important;
+  }
+
+  .emblem-hero-card-front {
+    width: min(265px, 70vw);
+  }
+
+  .emblem-hero-card-left {
+    width: min(205px, 52vw);
+    transform: rotate(-13deg) translate(-74px, 28px);
+  }
+
+  .emblem-hero-card-right {
+    width: min(210px, 54vw);
+    transform: rotate(8deg) translate(78px, 18px);
+  }
+
+  .emblem-profile-chip {
+    right: 50%;
+    bottom: -6px;
+    width: min(238px, 90vw);
+    transform: translateX(50%);
+  }
+}
+
 .cust-section {
   max-width: 1140px;
   margin: 0 auto;

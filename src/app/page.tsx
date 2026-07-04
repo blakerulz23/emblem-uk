@@ -58,10 +58,20 @@ export default function Home() {
             </div>
           </div>
 
-          <div style={{ position: 'relative', minHeight: 520, display: 'grid', placeItems: 'center' }}>
-            <img src="/templates/emjfl/background.png" alt="" style={{ position: 'absolute', width: '76%', maxWidth: 360, transform: 'rotate(-6deg) translate(-38px, 20px)', borderRadius: 18, boxShadow: '0 34px 70px rgba(0,0,0,.5)' }} />
-            <img src="/templates/emjfl/back-background.png" alt="" style={{ position: 'absolute', width: '76%', maxWidth: 360, transform: 'rotate(7deg) translate(38px, -6px)', borderRadius: 18, boxShadow: '0 34px 70px rgba(0,0,0,.42)' }} />
-            <img src="/templates/emjfl/background.png" alt="Official EMJFL-style player card template" style={{ position: 'relative', zIndex: 2, width: '80%', maxWidth: 385, borderRadius: 18, boxShadow: '0 38px 90px rgba(0,0,0,.58)' }} />
+          <div className="emblem-hero-cards" aria-label="Example Emblem player cards">
+            <img className="emblem-hero-card emblem-hero-card-left" src="/hollinwood-card-02.png" alt="" />
+            <img className="emblem-hero-card emblem-hero-card-right" src="/hollinwood-card-05.png" alt="" />
+            <img className="emblem-hero-card emblem-hero-card-front" src="/hollinwood-card-01.png" alt="Example Emblem junior football player card" />
+            <div className="emblem-profile-chip" aria-label="Digital profile preview">
+              <p>Digital profile</p>
+              <h2>Jacob Thompson</h2>
+              <div>
+                <span><strong>10</strong>Shirt</span>
+                <span><strong>MF</strong>Position</span>
+                <span><strong>18</strong>Apps</span>
+                <span><strong>7</strong>Goals</span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
