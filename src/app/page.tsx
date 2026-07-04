@@ -1,8 +1,8 @@
 import Link from 'next/link';
 
 const points = [
-  'Premium printed cards',
-  'Interactive digital profile',
+  'Premium collectible finish',
+  'Living digital profile',
   'Single players to full squads',
 ];
 
@@ -40,10 +40,10 @@ export default function Home() {
               Play. Remember. Belong.
             </span>
             <h1 style={{ margin: 0, fontFamily: 'var(--font-sora), system-ui', fontSize: 'clamp(38px, 6vw, 72px)', lineHeight: 0.98, letterSpacing: 0, maxWidth: 760 }}>
-              Turn your child&apos;s football photo into an official player card.
+              Every season tells a story.
             </h1>
             <p style={{ margin: 0, color: 'rgba(255,255,255,.78)', fontSize: 'clamp(17px, 2vw, 21px)', lineHeight: 1.48, maxWidth: 660 }}>
-              Premium printed cards with an interactive digital profile featuring season stats, photos, highlights and memories, all in one keepsake.
+              Turn your child&apos;s grassroots football journey into a premium printed player card connected to a living digital profile for stats, photos, highlights and memories.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
               <Link href="/builder?mode=single" style={{ height: 54, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 14, padding: '0 22px', background: '#ff5a1f', color: '#fff', fontWeight: 800, boxShadow: '0 14px 34px rgba(255,90,31,.32)' }}>
