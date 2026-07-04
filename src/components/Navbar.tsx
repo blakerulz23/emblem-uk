@@ -4,9 +4,10 @@ import Link from 'next/link';
 import { useState } from 'react';
 
 const links = [
-  { href: '/', label: 'Home' },
-  { href: '/#sports', label: 'Sports' },
-  { href: '/#team-orders', label: 'Team orders' },
+  { href: '/#collection', label: 'The cards' },
+  { href: '/#journey', label: 'How it works' },
+  { href: '/#squad', label: 'Teams' },
+  { href: '/#pricing', label: 'Pricing' },
 ];
 
 export default function Navbar() {
@@ -14,52 +15,44 @@ export default function Navbar() {
 
   return (
     <nav
-      className="fixed top-0 left-0 right-0 z-50 border-b"
+      className="fixed top-0 left-0 right-0 z-50 border-b emh-site-nav"
       style={{
-        background: 'rgba(255,255,255,0.86)',
-        backdropFilter: 'blur(14px)',
-        WebkitBackdropFilter: 'blur(14px)',
-        borderColor: 'var(--line)',
+        background: 'rgba(8,9,10,0.86)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        borderColor: 'rgba(255,255,255,0.07)',
       }}
     >
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-24 items-center justify-between">
+      <div className="mx-auto max-w-[1220px] px-6">
+        <div className="flex h-[92px] items-center justify-between gap-6">
           <Link href="/" className="flex items-center" onClick={() => setMobileOpen(false)}>
-            <img src="/brand-lockup.png" alt="Emblem" style={{ height: 54, width: 'auto', display: 'block' }} />
+            <img src="/embm.png" alt="Emblem" className="emh-nav-logo" />
           </Link>
 
-          <div className="hidden md:flex items-center gap-8">
+          <div className="hidden min-[860px]:flex items-center gap-[30px]">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="text-sm font-medium transition-colors hover:opacity-100"
-                style={{ color: 'var(--ink-soft)', fontFamily: 'var(--font-manrope), system-ui' }}
+                className="emh-nav-link"
               >
                 {link.label}
               </Link>
             ))}
             <Link
               href="/builder?mode=single"
-              className="inline-flex items-center justify-center rounded-2xl px-5 py-2.5 text-sm font-bold transition-transform active:scale-[0.98]"
-              style={{
-                background: 'var(--accent)',
-                color: '#fff',
-                boxShadow: '0 6px 22px var(--accent-glow)',
-                fontFamily: 'var(--font-manrope), system-ui',
-                letterSpacing: 0,
-              }}
+              className="emh-nav-cta"
             >
-              Create a card
+              Build your card
             </Link>
           </div>
 
           <button
             type="button"
             aria-label="Toggle menu"
-            className="md:hidden"
+            className="min-[860px]:hidden"
             onClick={() => setMobileOpen((v) => !v)}
-            style={{ color: 'var(--ink)', padding: 8, marginRight: -8 }}
+            style={{ color: '#fff', padding: 8, marginRight: -8 }}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               {mobileOpen ? (
@@ -81,22 +74,22 @@ export default function Navbar() {
 
       {mobileOpen && (
         <div
-          className="md:hidden border-t"
+          className="min-[860px]:hidden border-t"
           style={{
-            borderColor: 'var(--line)',
-            background: 'rgba(255,255,255,0.96)',
-            backdropFilter: 'blur(14px)',
-            WebkitBackdropFilter: 'blur(14px)',
+            borderColor: 'rgba(255,255,255,0.07)',
+            background: 'rgba(8,9,10,0.96)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
           }}
         >
-          <div className="px-4 py-3 flex flex-col gap-1">
+          <div className="px-6 py-4 flex flex-col gap-1">
             {links.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileOpen(false)}
                 className="rounded-xl px-3 py-3 text-base font-semibold transition-colors"
-                style={{ color: 'var(--ink)', fontFamily: 'var(--font-manrope), system-ui' }}
+                style={{ color: 'rgba(255,255,255,0.82)', fontFamily: 'var(--font-rajdhani), system-ui', textTransform: 'uppercase', letterSpacing: '0.04em' }}
               >
                 {link.label}
               </Link>
@@ -104,16 +97,9 @@ export default function Navbar() {
             <Link
               href="/builder?mode=single"
               onClick={() => setMobileOpen(false)}
-              className="mt-2 inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-bold"
-              style={{
-                background: 'var(--accent)',
-                color: '#fff',
-                boxShadow: '0 6px 22px var(--accent-glow)',
-                fontFamily: 'var(--font-manrope), system-ui',
-                letterSpacing: 0,
-              }}
+              className="emh-nav-cta mt-2 inline-flex items-center justify-center"
             >
-              Create a card
+              Build your card
             </Link>
           </div>
         </div>

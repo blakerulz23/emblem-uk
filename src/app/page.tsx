@@ -1,152 +1,258 @@
 import Link from 'next/link';
 
-const points = [
+const trust = [
+  'Trusted by grassroots clubs',
+  'Interactive player profile',
   'Premium collectible finish',
-  'Living digital profile',
-  'Single players to full squads',
+  'Built for families',
+];
+
+const colourways = [
+  { img: '/hollinwood-card-01.png', name: 'Flame', tint: '#F1874F', alt: 'Orange foil player card' },
+  { img: '/hollinwood-card-03.png', name: 'Royal', tint: '#5B8DEF', alt: 'Blue foil player card' },
+  { img: '/hollinwood-card-05.png', name: 'Pitch', tint: '#3CC87E', alt: 'Green foil player card' },
+  { img: '/hollinwood-card-07.png', name: 'Crimson', tint: '#F0555A', alt: 'Red foil player card' },
+  { img: '/hollinwood-card-09.png', name: 'Gold', tint: '#E9B23C', alt: 'Gold foil player card' },
 ];
 
 const steps = [
-  ['01', 'Upload photos', 'Start with one child, siblings, friends, or a full squad in one session.'],
-  ['02', 'Choose a card design', 'Use the official EMJFL-style template or keep building new football and rugby looks.'],
-  ['03', 'Add the details', 'Name, club, age group, position, shirt number, stats, photos, highlights, and memories.'],
-  ['04', 'Approve and print', 'Review every card, approve the order, then create a keepsake that keeps growing.'],
+  ['STEP 01', 'Add your player', 'One child, siblings, friends, or the full squad list in a single session.'],
+  ['STEP 02', 'Upload the photo', 'One photo or a whole squad. We lift each player cleanly off the background.'],
+  ['STEP 03', 'Details & season stats', 'Club, age group, position, shirt number and stats. Pick a design and apply it to every card.'],
+  ['STEP 04', 'Approve & print', 'Review every card, fix anything missing, approve the order, and we print and ship.'],
 ];
 
-const audiences = [
-  ['Parents', 'Preserve the goals, muddy boots, awards nights, and small moments that should not disappear.'],
-  ['Clubs', 'Create a consistent keepsake for a team, age group, tournament, or end-of-season presentation.'],
-  ['Leagues', 'Build a collectible player journey that can return every season.'],
+const profileItems = [
+  'Season stats, updated match by match',
+  'Match photos and video highlights',
+  'Awards, Player of the Match and milestones',
+  'A new chapter added every season',
+];
+
+const squadPoints = [
+  'Bulk-upload photos and assign them to players',
+  'Apply one design to all cards and edit any individually',
+  'Track who still needs a photo or details',
+  'Set prints per player and approve all ready cards',
+];
+
+const rosterPreview = [
+  { shirt: '10', name: 'Jacob Thompson', meta: 'Midfielder · 2 prints', swatch: '#F1601D', status: 'Approved', statusClass: 'ready' },
+  { shirt: '7', name: 'Leo Barnes', meta: 'Winger · 2 prints', swatch: '#2F6BD6', status: 'Ready', statusClass: 'ready' },
+  { shirt: '1', name: 'Alfie Whitworth', meta: 'Goalkeeper · 3 prints', swatch: '#3A3F45', status: 'Ready', statusClass: 'ready' },
+  { shirt: '4', name: 'Musa Adeyemi', meta: 'Defender', swatch: '#1E8A55', status: 'Needs photo', statusClass: 'muted' },
+];
+
+const pillars = [
+  ['Play', 'Celebrate every season. Every child gets their own official card and feels like a professional.'],
+  ['Remember', 'Preserve the memories for life. Every season becomes permanent: a keepsake, not a camera roll.'],
+  ['Belong', 'Strengthen the connection between player, family and club, season after season.'],
+];
+
+const tiers = [
+  {
+    name: 'Single card',
+    who: 'One player, one keepsake',
+    price: '£24',
+    per: 'per card',
+    points: ['Premium printed card', 'Interactive digital profile', 'Season stats, photos & highlights'],
+    cta: 'Create a card',
+    href: '/builder?mode=single',
+  },
+  {
+    name: 'Sibling & friend set',
+    who: '3-5 cards in one order',
+    price: '£20',
+    per: 'per card',
+    points: ['Everything in Single', 'One design across the set', 'Grandparent & keepsake copies'],
+    cta: 'Build a set',
+    href: '/builder?mode=squad',
+    featured: true,
+  },
+  {
+    name: 'Team pack',
+    who: '10+ players, clubs & squads',
+    price: '£15',
+    per: 'per player',
+    points: ['Club badge & colours on every card', 'Bulk upload and squad approval', 'Duplicate prints per player'],
+    cta: 'Build a team pack',
+    href: '/builder?mode=squad',
+    green: true,
+  },
 ];
 
 export default function Home() {
   return (
-    <div style={{ overflowX: 'clip' }}>
-      <section style={{ background: '#130d09', color: '#fff' }}>
-        <div
-          style={{
-            maxWidth: 1160,
-            margin: '0 auto',
-            padding: 'clamp(54px, 8vw, 104px) 24px clamp(42px, 7vw, 84px)',
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1.02fr) minmax(320px, .98fr)',
-            gap: 42,
-            alignItems: 'center',
-          }}
-          className="emblem-home-hero"
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
-            <span style={{ color: '#ff6a2a', fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase' }}>
-              Play. Remember. Belong.
-            </span>
-            <h1 style={{ margin: 0, fontFamily: 'var(--font-sora), system-ui', fontSize: 'clamp(38px, 6vw, 72px)', lineHeight: 0.98, letterSpacing: 0, maxWidth: 760 }}>
-              Every season tells a story.
-            </h1>
-            <p style={{ margin: 0, color: 'rgba(255,255,255,.78)', fontSize: 'clamp(17px, 2vw, 21px)', lineHeight: 1.48, maxWidth: 660 }}>
-              Turn your child&apos;s grassroots football journey into a premium printed player card connected to a living digital profile for stats, photos, highlights and memories.
+    <main className="emh-page">
+      <section id="top" className="emh-hero-section">
+        <div className="emh-glow" aria-hidden="true" />
+        <div className="emh-hero">
+          <div className="emh-hero-copy">
+            <p className="emh-eyebrow emh-eyebrow-pill">The home of the grassroots player journey</p>
+            <h1>Every season tells a story.</h1>
+            <p className="emh-lede">
+              Preserve your child&apos;s football journey with premium collectible player cards and an interactive digital profile that grows season after season.
             </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-              <Link href="/builder?mode=single" style={{ height: 54, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 14, padding: '0 22px', background: '#ff5a1f', color: '#fff', fontWeight: 800, boxShadow: '0 14px 34px rgba(255,90,31,.32)' }}>
-                Create a card
-              </Link>
-              <Link href="/builder?mode=squad" style={{ height: 54, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 14, padding: '0 22px', background: 'rgba(255,255,255,.08)', color: '#fff', fontWeight: 800, boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.16)' }}>
-                Build a team pack
-              </Link>
+            <div className="emh-actions">
+              <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Create a card</Link>
+              <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, color: 'rgba(255,255,255,.72)', fontFamily: 'var(--font-jbmono), monospace', fontSize: 12 }}>
-              {points.map((point) => <span key={point}>{point}</span>)}
-            </div>
+            <p className="emh-micro">Built in minutes · treasured for years</p>
           </div>
 
-          <div className="emblem-hero-cards" aria-label="Example Emblem player cards">
-            <img className="emblem-hero-card emblem-hero-card-left" src="/hollinwood-card-02.png" alt="" />
-            <img className="emblem-hero-card emblem-hero-card-right" src="/hollinwood-card-05.png" alt="" />
-            <img className="emblem-hero-card emblem-hero-card-front" src="/hollinwood-card-01.png" alt="Example Emblem junior football player card" />
-            <div className="emblem-profile-chip" aria-label="Digital profile preview">
-              <p>Digital profile</p>
-              <h2>Jacob Thompson</h2>
-              <div>
-                <span><strong>10</strong>Shirt</span>
-                <span><strong>MF</strong>Position</span>
-                <span><strong>18</strong>Apps</span>
-                <span><strong>7</strong>Goals</span>
-              </div>
+          <div className="emh-card-fan" aria-label="Example Emblem player cards">
+            <img className="emh-fan-card emh-fan-card-right" src="/hollinwood-card-05.png" alt="" />
+            <img className="emh-fan-card emh-fan-card-left" src="/hollinwood-card-03.png" alt="" />
+            <img className="emh-fan-card emh-fan-card-front" src="/hollinwood-card-01.png" alt="Emblem premium collectible player card for Jacob Thompson" />
+            <div className="emh-profile-chip">
+              <p>Tap the card</p>
+              <span>Profile · Stats · Highlights</span>
             </div>
           </div>
         </div>
-      </section>
 
-      <section id="sports" style={{ maxWidth: 1160, margin: '0 auto', padding: 'clamp(56px, 8vw, 96px) 24px' }}>
-        <div style={{ maxWidth: 720, marginBottom: 28 }}>
-          <p style={{ margin: '0 0 10px', color: '#ff5a1f', fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Grassroots sport</p>
-          <h2 style={{ margin: 0, fontFamily: 'var(--font-sora), system-ui', fontSize: 'clamp(30px, 4vw, 46px)', lineHeight: 1.06 }}>Football first. Rugby next.</h2>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }} className="emblem-home-two">
-          <article style={{ borderRadius: 8, background: '#fff', padding: 28, boxShadow: 'inset 0 0 0 1px var(--line)' }}>
-            <h3 style={{ margin: '0 0 10px', fontSize: 26 }}>Football</h3>
-            <p style={{ margin: 0, color: 'var(--ink-soft)', lineHeight: 1.55 }}>Shirt number, position, club and age group on the card. Apps, goals, assists, clean sheets, Player of the Match and season memories on the profile.</p>
-          </article>
-          <article style={{ borderRadius: 8, background: '#111', color: '#fff', padding: 28 }}>
-            <h3 style={{ margin: '0 0 10px', fontSize: 26 }}>Rugby</h3>
-            <p style={{ margin: 0, color: 'rgba(255,255,255,.72)', lineHeight: 1.55 }}>Junior rugby templates can follow the same flow for tries, tackles, awards, team photos and season highlights.</p>
-          </article>
-        </div>
-      </section>
-
-      <section id="how" style={{ background: '#fff' }}>
-        <div style={{ maxWidth: 1160, margin: '0 auto', padding: 'clamp(56px, 8vw, 96px) 24px' }}>
-          <div style={{ maxWidth: 760, marginBottom: 30 }}>
-            <p style={{ margin: '0 0 10px', color: '#ff5a1f', fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase' }}>How it works</p>
-            <h2 style={{ margin: 0, fontFamily: 'var(--font-sora), system-ui', fontSize: 'clamp(30px, 4vw, 46px)', lineHeight: 1.06 }}>One builder for one player or the whole squad.</h2>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 14 }} className="emblem-home-steps">
-            {steps.map(([num, title, copy]) => (
-              <article key={num} style={{ borderRadius: 8, padding: 22, background: '#f5f5f7', minHeight: 220 }}>
-                <span style={{ color: '#ff5a1f', fontWeight: 900, fontSize: 13 }}>{num}</span>
-                <h3 style={{ margin: '18px 0 8px', fontSize: 20 }}>{title}</h3>
-                <p style={{ margin: 0, color: 'var(--ink-soft)', lineHeight: 1.5, fontSize: 14.5 }}>{copy}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section id="team-orders" style={{ maxWidth: 1160, margin: '0 auto', padding: 'clamp(56px, 8vw, 96px) 24px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 28, alignItems: 'center' }} className="emblem-home-two">
+        <div className="emh-trust-strip">
           <div>
-            <p style={{ margin: '0 0 10px', color: '#ff5a1f', fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, fontWeight: 700, letterSpacing: '0.16em', textTransform: 'uppercase' }}>Team orders</p>
-            <h2 style={{ margin: 0, fontFamily: 'var(--font-sora), system-ui', fontSize: 'clamp(30px, 4vw, 46px)', lineHeight: 1.06 }}>Approve multiple cards in the same session.</h2>
-            <p style={{ margin: '16px 0 0', color: 'var(--ink-soft)', lineHeight: 1.58, fontSize: 17 }}>The proper builder now comes over from Youthcards, including real templates, card preview, edit screens and the EMJFL club badge flow. Next is shaping the squad-order UI around UK football and rugby clubs.</p>
-          </div>
-          <div style={{ borderRadius: 8, background: '#14100d', color: '#fff', padding: 24 }}>
-            {['Upload a batch of player photos', 'Choose or approve one design across the squad', 'Edit any player card individually', 'Track which cards still need details'].map((item) => (
-              <div key={item} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '13px 0', borderBottom: '1px solid rgba(255,255,255,.12)' }}>
-                <span style={{ width: 9, height: 9, borderRadius: 99, background: '#ff5a1f', flex: '0 0 auto' }} />
-                <span>{item}</span>
-              </div>
+            {trust.map((label) => (
+              <span key={label}><i />{label}</span>
             ))}
           </div>
         </div>
       </section>
 
-      <section id="pricing" style={{ background: '#130d09', color: '#fff' }}>
-        <div style={{ maxWidth: 1160, margin: '0 auto', padding: 'clamp(56px, 8vw, 96px) 24px' }}>
-          <h2 style={{ margin: '0 0 24px', fontFamily: 'var(--font-sora), system-ui', fontSize: 'clamp(30px, 4vw, 46px)', lineHeight: 1.06 }}>Built for parents, clubs and leagues.</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 16 }} className="emblem-home-steps">
-            {audiences.map(([title, copy]) => (
-              <article key={title} style={{ borderRadius: 8, background: 'rgba(255,255,255,.08)', padding: 24, boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.12)' }}>
-                <h3 style={{ margin: '0 0 8px', fontSize: 22 }}>{title}</h3>
-                <p style={{ margin: 0, color: 'rgba(255,255,255,.72)', lineHeight: 1.55 }}>{copy}</p>
-              </article>
-            ))}
+      <section id="collection" className="emh-section">
+        <div className="emh-section-head">
+          <div>
+            <p className="emh-eyebrow">The collection</p>
+            <h2>A card in your club&apos;s colours.</h2>
           </div>
-          <div style={{ marginTop: 32 }}>
-            <Link href="/builder?mode=single" style={{ height: 54, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 14, padding: '0 22px', background: '#ff5a1f', color: '#fff', fontWeight: 800 }}>
-              Start the builder
-            </Link>
+          <p>Premium foil finishes, the official league crest and your own club badge, printed to last and built to be kept.</p>
+        </div>
+        <div className="emh-colour-grid">
+          {colourways.map((card) => (
+            <figure key={card.name}>
+              <img src={card.img} alt={card.alt} />
+              <figcaption style={{ color: card.tint }}>{card.name}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </section>
+
+      <section id="journey" className="emh-section emh-journey">
+        <p className="emh-eyebrow">Start your player&apos;s journey</p>
+        <h2>Four steps from photo to keepsake.</h2>
+        <div className="emh-step-grid">
+          {steps.map(([num, title, body]) => (
+            <article key={num}>
+              <span>{num}</span>
+              <h3>{title}</h3>
+              <p>{body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="emh-digital">
+        <div>
+          <div className="emh-digital-copy">
+            <p className="emh-eyebrow">One card, the whole season</p>
+            <h2>Printed to keep. Tap for the journey.</h2>
+            <p>
+              The card is a premium printed keepsake. Tap it with any phone and the player&apos;s digital profile opens instantly, then keeps growing match after match, season after season.
+            </p>
+            <ul>
+              {profileItems.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+            <Link className="emh-btn emh-btn-light" href="/builder?mode=single">Start your card</Link>
+          </div>
+          <div className="emh-digital-cards">
+            <img src="/hollinwood-card-07.png" alt="Player card front" />
+            <img src="/hollinwood-card-08.png" alt="Player card back showing the tap-to-profile design" />
           </div>
         </div>
       </section>
-    </div>
+
+      <section id="squad" className="emh-section emh-squad">
+        <div className="emh-squad-copy">
+          <p className="emh-eyebrow">For clubs & teams</p>
+          <h2>One session. The whole squad.</h2>
+          <p>
+            The builder works like a squad sheet, not a repeated checkout. Add siblings, friends or all sixteen players, bulk-upload photos, apply one design across every card, then approve them together.
+          </p>
+          <ul>
+            {squadPoints.map((point) => <li key={point}>{point}</li>)}
+          </ul>
+          <Link className="emh-btn emh-btn-primary" href="/builder?mode=squad">Build a team pack</Link>
+        </div>
+        <div className="emh-roster-card">
+          <div className="emh-roster-head">
+            <div>
+              <p>Order session</p>
+              <h3>AFC Oldham U12s, end of season</h3>
+            </div>
+            <span>14 / 16 ready</span>
+          </div>
+          <div className="emh-roster-list">
+            {rosterPreview.map((row) => (
+              <div key={row.name} className="emh-roster-row">
+                <span className="emh-shirt" style={{ background: row.swatch }}>{row.shirt}</span>
+                <div>
+                  <strong>{row.name}</strong>
+                  <small>{row.meta}</small>
+                </div>
+                <em className={`emh-status emh-status-${row.statusClass}`}>{row.status}</em>
+              </div>
+            ))}
+            <div className="emh-roster-actions">
+              <span>Apply to all</span>
+              <span>Approve 14 ready</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="emh-section emh-pillars">
+        <h2>Play. <span>Remember.</span> Belong.</h2>
+        <p>Not a card company. The company that preserves the journey of grassroots sport.</p>
+        <div>
+          {pillars.map(([name, body]) => (
+            <article key={name}>
+              <h3>{name}</h3>
+              <p>{body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section id="pricing" className="emh-section emh-pricing">
+        <p className="emh-eyebrow">Packages</p>
+        <h2>From one card to a club order.</h2>
+        <p>Every package includes the premium printed card and the interactive digital profile.</p>
+        <div className="emh-tier-grid">
+          {tiers.map((tier) => (
+            <article key={tier.name} className={`${tier.featured ? 'emh-tier-featured' : ''} ${tier.green ? 'emh-tier-green' : ''}`}>
+              {tier.featured && <span className="emh-tier-flag">Most popular</span>}
+              <h3>{tier.name}</h3>
+              <p>{tier.who}</p>
+              <strong>{tier.price} <span>{tier.per}</span></strong>
+              <ul>
+                {tier.points.map((point) => <li key={point}>{point}</li>)}
+              </ul>
+              <Link href={tier.href}>{tier.cta}</Link>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="emh-final-cta">
+        <img src="/embm.png" alt="Emblem" />
+        <h2>Play the season. Remember the journey. Belong forever.</h2>
+        <p>Start with one photo. Add the squad later. Everything stays in one order.</p>
+        <div className="emh-actions">
+          <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Create a card</Link>
+          <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
+        </div>
+      </section>
+    </main>
   );
 }
