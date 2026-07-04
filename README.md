@@ -1,29 +1,47 @@
 # Emblem UK
 
-Landing page for Emblem, a UK-first junior football and rugby player card product.
+Emblem UK is a Next.js app for grassroots football and rugby player cards.
 
-Brand positioning: Emblem preserves the grassroots player journey. The card, profile,
-stats, photos and highlights are all ways of helping families, clubs and players
-play the season, remember the journey and belong forever.
+The homepage positions Emblem around the UK grassroots player journey:
 
-## Local preview
+- football first, rugby next
+- premium printed player cards
+- interactive digital profiles with stats, photos, highlights and memories
+- single-player, sibling/friend and team-order flows
 
-```bash
-npm.cmd run dev
+## Builder
+
+The real builder has been migrated from the local Youthcards app into this project. The app route is:
+
+```text
+/builder?product=cards
 ```
 
-Then open `http://localhost:3000`.
+The migrated builder includes the React/Next flow, template gallery, edit screens, review screens and the real EMJFL template implementation.
 
-## Builder bridge
+The EMJFL template assets live in:
 
-The static builder keeps all work in the browser and can export an approved-order JSON manifest. That manifest is the handoff shape for the future production integration with the `youthcards` card engine: each approved player becomes one `CardArt` render payload, then the production app can generate print PDFs and checkout/order records.
+```text
+public/templates/emjfl/
+```
 
-The current UK-first sport data is football and rugby. Photos in the exported manifest are browser data URLs for the prototype; production should upload them and replace those values with stable asset URLs.
+That includes the front frame, back frame, league badge, corner ribbon and club badge picker assets used by `CardArt.tsx`.
 
-Template 001 is `EMJFL Orange`, built from the previous `emjf footy card` artwork. Its project-owned assets live in `public/templates/emjfl-orange/` so the static builder can preview the real UK football card style before the production `CardArt` migration.
+## Development
 
-The EMJFL template uses `base.png`, `default-player-clean.png`, and `footer-swoosh.png` as active layers. The `name-placement.png`, `position-placement.png`, and `kit-number-placement.png` files are retained as placement references for the dynamic CSS text and number positions.
+```bash
+npm install
+npm run dev
+```
 
-## Deploy
+Open `http://localhost:3000`.
 
-This project is static and can be deployed directly to Vercel from GitHub.
+For this Codex session the dev server was started on `http://localhost:3002` to avoid the older static preview running on port `3001`.
+
+## Build
+
+```bash
+npm run build
+```
+
+Vercel is configured as a Next.js deployment through `vercel.json`.

@@ -1,0 +1,78 @@
+'use client';
+
+import type { CSSProperties } from 'react';
+import type { CardTemplate, Details, ProductId, KeychainShape, CharmShape } from './data';
+import CardArt from './CardArt';
+import PosterArt from './PosterArt';
+import StickerArt from './StickerArt';
+import KeychainArt from './KeychainArt';
+import MagnetArt from './MagnetArt';
+import JewelryArt from './JewelryArt';
+
+type Props = {
+  product: ProductId;
+  template: CardTemplate;
+  photo: string | null;
+  details: Details;
+  size?: number;
+  selected?: boolean;
+  style?: CSSProperties;
+  className?: string;
+  // For products that have multiple physical shape options:
+  keychainShape?: KeychainShape;
+  charmShape?: CharmShape;
+};
+
+export default function ProductArt({
+  product,
+  template,
+  photo,
+  details,
+  size = 200,
+  selected,
+  style,
+  className,
+  keychainShape,
+  charmShape,
+}: Props) {
+  if (product === 'posters') {
+    return (
+      <div style={style} className={className}>
+        <PosterArt template={template} photo={photo} details={details} size={size} selected={selected} />
+      </div>
+    );
+  }
+  if (product === 'stickers') {
+    return (
+      <div style={style} className={className}>
+        <StickerArt template={template} photo={photo} details={details} size={size} />
+      </div>
+    );
+  }
+  if (product === 'keychains') {
+    return (
+      <div style={style} className={className}>
+        <KeychainArt template={template} photo={photo} details={details} size={size} shape={keychainShape} />
+      </div>
+    );
+  }
+  if (product === 'magnets') {
+    return (
+      <div style={style} className={className}>
+        <MagnetArt template={template} photo={photo} details={details} size={size} shape={charmShape} />
+      </div>
+    );
+  }
+  if (product === 'jewelry') {
+    return (
+      <div style={style} className={className}>
+        <JewelryArt template={template} photo={photo} details={details} size={size} />
+      </div>
+    );
+  }
+  return (
+    <div style={style} className={className}>
+      <CardArt template={template} photo={photo} details={details} size={size} selected={selected} />
+    </div>
+  );
+}

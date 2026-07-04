@@ -1,0 +1,272 @@
+{
+  "root": "YC_CHROME_LEGACY_BACK",
+  "template": {
+    "template_key": "yc_chrome_legacy_back",
+    "version": "1.0.0",
+    "canvas": {
+      "width": 1054,
+      "height": 1492,
+      "unit": "px"
+    }
+  },
+  "data_contract": {
+    "required": [
+      "player_name",
+      "athlete_story",
+      "collection_name"
+    ],
+    "optional": [
+      "language_code",
+      "theme_variant",
+      "sport_variant",
+      "unlock_items",
+      "partner_badge",
+      "verification_badge"
+    ],
+    "fields": {
+      "player_name": {
+        "layer": "DATA_PLAYER_NAME",
+        "source": "athletes.display_name",
+        "type": "string",
+        "max_chars": 36
+      },
+      "athlete_story": {
+        "layer": "DATA_ATHLETE_STORY",
+        "source": "athlete_profiles.story_short",
+        "type": "string",
+        "max_chars": 420,
+        "max_lines": 7
+      },
+      "dna": {
+        "type": "array",
+        "length": 5,
+        "item": {
+          "trait_key": "string",
+          "label": "string",
+          "score_value": "integer",
+          "score_percent": "integer"
+        },
+        "source": "athlete_trait_scores + dna_traits"
+      },
+      "nfc": {
+        "type": "object",
+        "source": "cards + nfc_targets + card_unlock_features",
+        "fields": {
+          "enabled": "boolean",
+          "label": "string",
+          "unlock_title": "string",
+          "target_url": "string",
+          "items": "array"
+        }
+      },
+      "collection_name": {
+        "layer": "DATA_COLLECTION_NAME",
+        "source": "card_collections.name",
+        "type": "string",
+        "max_chars": 32
+      }
+    }
+  },
+  "database_schema": {
+    "athletes": [
+      "id",
+      "org_id",
+      "first_name",
+      "last_name",
+      "display_name",
+      "sport",
+      "primary_position",
+      "team_id",
+      "grad_year",
+      "hometown_city",
+      "hometown_state",
+      "verified",
+      "status",
+      "created_at",
+      "updated_at"
+    ],
+    "athlete_profiles": [
+      "id",
+      "athlete_id",
+      "story_short",
+      "story_long",
+      "profile_url",
+      "highlights_url",
+      "socials_url",
+      "latest_updates_url",
+      "exclusive_content_url",
+      "updated_at"
+    ],
+    "dna_traits": [
+      "id",
+      "trait_key",
+      "label",
+      "icon_key",
+      "display_order",
+      "active"
+    ],
+    "athlete_trait_scores": [
+      "id",
+      "athlete_id",
+      "trait_id",
+      "score_value",
+      "score_percent",
+      "updated_at"
+    ],
+    "card_templates": [
+      "id",
+      "template_key",
+      "version",
+      "side",
+      "width_px",
+      "height_px",
+      "metadata",
+      "active"
+    ],
+    "card_collections": [
+      "id",
+      "name",
+      "season",
+      "theme_variant",
+      "active"
+    ],
+    "cards": [
+      "id",
+      "athlete_id",
+      "template_id",
+      "collection_id",
+      "serial_number",
+      "language_code",
+      "nfc_enabled",
+      "nfc_target_id",
+      "render_status",
+      "created_at"
+    ],
+    "nfc_targets": [
+      "id",
+      "athlete_id",
+      "target_type",
+      "target_url",
+      "short_url",
+      "active",
+      "updated_at"
+    ],
+    "card_unlock_features": [
+      "id",
+      "card_id",
+      "feature_key",
+      "label",
+      "icon_key",
+      "display_order",
+      "enabled"
+    ],
+    "render_jobs": [
+      "id",
+      "card_id",
+      "side",
+      "output_format",
+      "dpi",
+      "status",
+      "retry_count",
+      "error_message",
+      "output_asset_url",
+      "requested_at",
+      "completed_at"
+    ]
+  },
+  "example_payload": {
+    "card_id": "95ff37fc-a9d2-465a-93c3-9871477cb63e",
+    "template_key": "yc_chrome_legacy_back",
+    "template_version": "1.0.0",
+    "side": "back",
+    "language_code": "en-US",
+    "theme_variant": "chrome_dark",
+    "sport_variant": "baseball",
+    "player_name": "Jayden Reyes",
+    "athlete_story": "Jayden Reyes is a disciplined competitor whose commitment to growth, leadership, and excellence has made him a standout among his peers.",
+    "dna": [
+      {
+        "trait_key": "leadership",
+        "label": "LEADERSHIP",
+        "score_value": 5,
+        "score_percent": 100
+      },
+      {
+        "trait_key": "work_ethic",
+        "label": "WORK ETHIC",
+        "score_value": 5,
+        "score_percent": 100
+      },
+      {
+        "trait_key": "coachability",
+        "label": "COACHABILITY",
+        "score_value": 4,
+        "score_percent": 80
+      },
+      {
+        "trait_key": "competitive_drive",
+        "label": "COMPETITIVE DRIVE",
+        "score_value": 5,
+        "score_percent": 100
+      },
+      {
+        "trait_key": "team_first",
+        "label": "TEAM FIRST",
+        "score_value": 5,
+        "score_percent": 100
+      }
+    ],
+    "nfc": {
+      "enabled": true,
+      "label": "NFC",
+      "unlock_title": "TAP TO UNLOCK",
+      "target_url": "https://youthcards.com/a/jayden-reyes",
+      "items": [
+        {
+          "icon_key": "play",
+          "label": "FULL ATHLETE PROFILE",
+          "enabled": true
+        },
+        {
+          "icon_key": "link",
+          "label": "SOCIAL LINKS",
+          "enabled": true
+        },
+        {
+          "icon_key": "video",
+          "label": "VIDEO HIGHLIGHTS",
+          "enabled": true
+        },
+        {
+          "icon_key": "lock",
+          "label": "EXCLUSIVE CONTENT",
+          "enabled": true
+        },
+        {
+          "icon_key": "bell",
+          "label": "LATEST UPDATES",
+          "enabled": true
+        }
+      ]
+    },
+    "collection_name": "FOUNDING COLLECTION"
+  },
+  "dna_rendering_recommendation": {
+    "option_a": {
+      "model": "five_discrete_layers_per_trait",
+      "photoshop": "best",
+      "web": "acceptable",
+      "mobile": "acceptable",
+      "scalability": "medium"
+    },
+    "option_b": {
+      "model": "single_progress_component_with_percent_fill",
+      "photoshop": "acceptable",
+      "web": "best",
+      "mobile": "best",
+      "scalability": "best"
+    },
+    "recommended": "hybrid",
+    "strategy": "Store both score_value and score_percent. Use discrete bar toggles for PSD tooling, percentage progress renderers for runtime web/mobile/API outputs."
+  }
+}

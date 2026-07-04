@@ -1,0 +1,26 @@
+{
+  "template": "galaxy-holo",
+  "side": "back",
+  "player": {
+    "name": "Jayden Reyes",
+    "position": "Shortstop",
+    "number": "17",
+    "team": "AthleteCon",
+    "age": "15",
+    "classYear": "2027",
+    "height": "5'10\"",
+    "hometown": "Atlanta, GA",
+    "batsThrows": "R / R"
+  },
+  "story": "A natural leader with elite defensive skills and a competitive edge. Jayden plays the game the right way and makes everyone around him better.",
+  "stats": [
+    { "label": "AVG", "value": ".417" },
+    { "label": "RBI", "value": "24" },
+    { "label": "HR",  "value": "6" }
+  ],
+  "nfc": {
+    "enabled": true,
+    "label": "NFC ENABLED",
+    "subtext": "TAP TO CONNECT • SHARE • STAND OUT"
+  }
+}
