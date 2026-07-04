@@ -40,7 +40,7 @@ export default function Navbar() {
               </Link>
             ))}
             <Link
-              href="/builder?product=cards"
+              href="/builder?mode=single"
               className="inline-flex items-center justify-center rounded-2xl px-5 py-2.5 text-sm font-bold transition-transform active:scale-[0.98]"
               style={{
                 background: 'var(--accent)',
@@ -102,7 +102,7 @@ export default function Navbar() {
               </Link>
             ))}
             <Link
-              href="/builder?product=cards"
+              href="/builder?mode=single"
               onClick={() => setMobileOpen(false)}
               className="mt-2 inline-flex items-center justify-center rounded-2xl px-5 py-3 text-base font-bold"
               style={{

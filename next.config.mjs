@@ -16,6 +16,15 @@ const nextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      {
+        source: '/builder.html',
+        destination: '/builder',
+        permanent: false,
+      },
+    ];
+  },
   webpack: (config, { isServer }) => {
     // @imgly/background-removal ships both web and node ONNX runtimes. On
     // client builds, alias the node-specific files to `false` so webpack

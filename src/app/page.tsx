@@ -46,10 +46,10 @@ export default function Home() {
               Premium printed cards with an interactive digital profile featuring season stats, photos, highlights and memories, all in one keepsake.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-              <Link href="/builder?product=cards" style={{ height: 54, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 14, padding: '0 22px', background: '#ff5a1f', color: '#fff', fontWeight: 800, boxShadow: '0 14px 34px rgba(255,90,31,.32)' }}>
+              <Link href="/builder?mode=single" style={{ height: 54, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 14, padding: '0 22px', background: '#ff5a1f', color: '#fff', fontWeight: 800, boxShadow: '0 14px 34px rgba(255,90,31,.32)' }}>
                 Create a card
               </Link>
-              <Link href="#team-orders" style={{ height: 54, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 14, padding: '0 22px', background: 'rgba(255,255,255,.08)', color: '#fff', fontWeight: 800, boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.16)' }}>
+              <Link href="/builder?mode=squad" style={{ height: 54, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 14, padding: '0 22px', background: 'rgba(255,255,255,.08)', color: '#fff', fontWeight: 800, boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.16)' }}>
                 Build a team pack
               </Link>
             </div>
@@ -131,7 +131,7 @@ export default function Home() {
             ))}
           </div>
           <div style={{ marginTop: 32 }}>
-            <Link href="/builder?product=cards" style={{ height: 54, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 14, padding: '0 22px', background: '#ff5a1f', color: '#fff', fontWeight: 800 }}>
+            <Link href="/builder?mode=single" style={{ height: 54, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 14, padding: '0 22px', background: '#ff5a1f', color: '#fff', fontWeight: 800 }}>
               Start the builder
             </Link>
           </div>

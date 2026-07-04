@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import CardArt from '@/components/builder/emblem/CardArt';
 import { CARD_TEMPLATES } from '@/components/builder/emblem/data';
 import { DEFAULT_EMJFL_CLUB, EAST_MANCHESTER_LEAGUE, EMJFL_CLUBS, getEmjflClub, preferredTemplateForClub } from '@/lib/emjfl-clubs';
@@ -60,7 +61,15 @@ function canAddPlayer(order: OrderDraft) {
 }
 
 export default function ProductionBuilder() {
-  const [order, setOrder] = useState<OrderDraft>(() => defaultOrder());
+  const searchParams = useSearchParams();
+  const [order, setOrder] = useState<OrderDraft>(() => {
+    const draft = defaultOrder();
+    const mode = searchParams.get('mode');
+    if (mode === 'squad' || mode === 'team' || mode === 'group') {
+      return { ...draft, type: 'squad' };
+    }
+    return draft;
+  });
   const [activeStep, setActiveStep] = useState(0);
   const [selectedId, setSelectedId] = useState(order.players[0]?.id || '');
   const [showPayload, setShowPayload] = useState(false);

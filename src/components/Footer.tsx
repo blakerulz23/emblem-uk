@@ -50,7 +50,7 @@ export default function Footer() {
             </h3>
             <ul className="space-y-2.5">
               {[
-                { href: '/builder?product=cards', label: 'Create a card' },
+                { href: '/builder?mode=single', label: 'Create a card' },
                 { href: '/#sports', label: 'Sports' },
                 { href: '/#team-orders', label: 'Team orders' },
                 { href: '/privacy', label: 'Privacy' },
