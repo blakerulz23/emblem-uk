@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { type FormEvent, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import CardArt from '@/components/builder/emblem/CardArt';
 import { CARD_TEMPLATES } from '@/components/builder/emblem/data';
@@ -36,6 +36,7 @@ const orderModeLimits: Record<OrderType, { maxPlayers: number; rosterCopy: strin
 
 const steps = ['Start', 'Upload', 'Style', 'Details', 'Review', 'Summary'];
 type CardSide = 'front' | 'back';
+type EnquiryStatus = 'idle' | 'sending' | 'sent' | 'error';
 
 function money(value: number) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value);
@@ -77,6 +78,15 @@ export default function ProductionBuilder() {
   const [selectedId, setSelectedId] = useState(order.players[0]?.id || '');
   const [showPayload, setShowPayload] = useState(false);
   const [cardSide, setCardSide] = useState<CardSide>('front');
+  const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>('idle');
+  const [enquiryError, setEnquiryError] = useState('');
+  const [enquiry, setEnquiry] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    team: '',
+    notes: '',
+  });
 
   const selectedPlayer = order.players.find((player) => player.id === selectedId) || order.players[0];
   const summary = useMemo(() => summarizeOrder(order), [order]);
@@ -86,6 +96,7 @@ export default function ProductionBuilder() {
   const addDisabled = !canAddPlayer(order);
   const hasAnyPhoto = order.players.some((player) => Boolean(player.photo?.srcUrl));
   const selectedHasPhoto = Boolean(selectedPlayer?.photo?.srcUrl);
+  const canSendEnquiry = summary.checkoutEligible && enquiry.name.trim().length > 1 && /\S+@\S+\.\S+/.test(enquiry.email);
 
   const patchOrder = (patch: Partial<OrderDraft>) => {
     setOrder((current) => ({ ...current, ...patch }));
@@ -241,13 +252,42 @@ export default function ProductionBuilder() {
   };
 
   const exportPayload = () => {
-    const blob = new Blob([JSON.stringify(productionPayload(order), null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ contact: enquiry, ...productionPayload(order) }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = `emblem-production-${order.id.slice(0, 8)}.json`;
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const submitEnquiry = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSendEnquiry) return;
+    setEnquiryStatus('sending');
+    setEnquiryError('');
+
+    try {
+      const response = await fetch('/api/order-enquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contact: enquiry,
+          submittedAt: nowIso(),
+          ...productionPayload(order),
+        }),
+      });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(result?.error || 'Could not send enquiry');
+      }
+
+      setEnquiryStatus('sent');
+    } catch (error) {
+      setEnquiryStatus('error');
+      setEnquiryError(error instanceof Error ? error.message : 'Could not send enquiry');
+    }
   };
 
   const progress = ((activeStep + 1) / steps.length) * 100;
@@ -602,9 +642,87 @@ export default function ProductionBuilder() {
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Order summary</p>
               <h1>Ready to send.</h1>
-              <p className="uk-wizard-copy">{summary.checkoutEligible ? 'Export the approved cards so Emblem can create the print order and checkout link.' : 'Approve at least one card to continue.'}</p>
+              <p className="uk-wizard-copy">{summary.checkoutEligible ? 'Send the approved cards to Emblem and we will come back with the print order and checkout link.' : 'Approve at least one card to continue.'}</p>
+              <div className="uk-order-summary-card">
+                <div>
+                  <span>Approved cards</span>
+                  <strong>{summary.approvedPlayers.length}</strong>
+                </div>
+                <div>
+                  <span>Approved prints</span>
+                  <strong>{summary.approvedPrints}</strong>
+                </div>
+                <div>
+                  <span>Estimated total</span>
+                  <strong>{money(summary.subtotal)}</strong>
+                </div>
+              </div>
+              <form className="uk-enquiry-form" onSubmit={submitEnquiry}>
+                <div className="uk-enquiry-form-head">
+                  <h3>Where should we send the order link?</h3>
+                  <p>We will use this to confirm the cards, print quantity, delivery timing and payment link.</p>
+                </div>
+                <label>
+                  Name
+                  <input
+                    value={enquiry.name}
+                    autoComplete="name"
+                    onChange={(event) => setEnquiry((current) => ({ ...current, name: event.target.value }))}
+                    placeholder="Parent or coach name"
+                    required
+                  />
+                </label>
+                <label>
+                  Email
+                  <input
+                    value={enquiry.email}
+                    type="email"
+                    autoComplete="email"
+                    onChange={(event) => setEnquiry((current) => ({ ...current, email: event.target.value }))}
+                    placeholder="you@example.com"
+                    required
+                  />
+                </label>
+                <label>
+                  Phone <span>optional</span>
+                  <input
+                    value={enquiry.phone}
+                    type="tel"
+                    autoComplete="tel"
+                    onChange={(event) => setEnquiry((current) => ({ ...current, phone: event.target.value }))}
+                    placeholder="Best number for order questions"
+                  />
+                </label>
+                <label>
+                  Club / team
+                  <input
+                    value={enquiry.team}
+                    onChange={(event) => setEnquiry((current) => ({ ...current, team: event.target.value }))}
+                    placeholder={order.club || getEmjflClub(order.emjflClubId).name}
+                  />
+                </label>
+                <label className="wide">
+                  Notes <span>optional</span>
+                  <textarea
+                    value={enquiry.notes}
+                    onChange={(event) => setEnquiry((current) => ({ ...current, notes: event.target.value }))}
+                    placeholder="Deadline, delivery notes, extra prints, or anything the Emblem team should know."
+                    rows={4}
+                  />
+                </label>
+                {enquiryStatus === 'sent' && (
+                  <div className="uk-enquiry-success">
+                    <strong>Enquiry sent.</strong>
+                    <span>We have captured the order summary. Download a copy below for your records.</span>
+                  </div>
+                )}
+                {enquiryStatus === 'error' && <p className="uk-enquiry-error">{enquiryError}</p>}
+                <button type="submit" className="uk-wizard-primary" disabled={!canSendEnquiry || enquiryStatus === 'sending'}>
+                  {enquiryStatus === 'sending' ? 'Sending...' : 'Send order enquiry'}
+                </button>
+              </form>
               <div className="uk-handoff-box">
-                <h3>Order</h3>
+                <h3>Keep a copy</h3>
                 <p>{summary.approvedPlayers.length} approved players · {summary.pricing.label}</p>
                 <button type="button" onClick={exportPayload} disabled={!summary.checkoutEligible}>Download order summary</button>
                 <button type="button" onClick={() => setShowPayload((value) => !value)}>{showPayload ? 'Hide technical details' : 'Show technical details'}</button>
