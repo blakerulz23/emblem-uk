@@ -167,6 +167,7 @@ export default function ProductionBuilder() {
     : summary.counts.ready > 0
       ? 'Approve ready cards to unlock the order summary.'
       : 'Complete at least one card before continuing.';
+  const canEditOrder = enquiryStatus !== 'sent';
 
   const patchOrder = (patch: Partial<OrderDraft>) => {
     setOrder((current) => ({ ...current, ...patch }));
@@ -828,22 +829,67 @@ export default function ProductionBuilder() {
           {activeStep === 4 && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Review order</p>
-              <h1>Submit enquiry.</h1>
-              <p className="uk-wizard-copy">{summary.checkoutEligible ? 'Send the approved cards to Emblem and we will come back with the print order and checkout link.' : 'Approve at least one card to continue.'}</p>
+              <h1>{enquiryStatus === 'sent' ? 'Order received.' : 'Review your order.'}</h1>
+              <p className="uk-wizard-copy">
+                {enquiryStatus === 'sent'
+                  ? 'We have your production request and will email you within one business day.'
+                  : summary.checkoutEligible
+                    ? 'Your cards are ready. We will review your order, confirm print quantity, delivery cost and send you a secure payment link.'
+                    : 'Approve at least one card to continue.'}
+              </p>
+              <div className="uk-production-snapshot">
+                <div>
+                  <span>Clubs</span>
+                  <strong>{approvedGroups.length}</strong>
+                </div>
+                <div>
+                  <span>Players</span>
+                  <strong>{summary.approvedPlayers.length}</strong>
+                </div>
+                <div>
+                  <span>Prints</span>
+                  <strong>{summary.approvedPrints}</strong>
+                </div>
+                <div>
+                  <span>Estimated</span>
+                  <strong>{money(summary.subtotal)}</strong>
+                </div>
+              </div>
               <div className="uk-order-club-list">
                 <h3>Your order</h3>
                 {approvedGroups.length > 0 ? (
                   approvedGroups.map((group) => {
                     const prints = group.players.reduce((total, player) => total + player.prints, 0);
                     return (
-                      <article key={group.id}>
-                        <img src={group.badge} alt="" />
-                        <div>
-                          <strong>{group.name}</strong>
-                          <span>{group.players.length} player{group.players.length === 1 ? '' : 's'} &middot; {prints} print{prints === 1 ? '' : 's'}</span>
+                      <details key={group.id} className="uk-order-club-row">
+                        <summary>
+                          <img src={group.badge} alt="" />
+                          <span>
+                            <strong>{group.name}</strong>
+                            <small>{group.players.length} player{group.players.length === 1 ? '' : 's'} &middot; {prints} print{prints === 1 ? '' : 's'}</small>
+                          </span>
+                          <b>{money(prints * summary.pricing.perCard)}</b>
+                        </summary>
+                        <div className="uk-order-player-list">
+                          {group.players.map((player) => (
+                            <button
+                              key={player.id}
+                              type="button"
+                              disabled={!canEditOrder}
+                              onClick={() => {
+                                setSelectedId(player.id);
+                                setActiveStep(2);
+                              }}
+                            >
+                              <span>
+                                <strong>{playerLabel(player)}</strong>
+                                <small>{selectedTemplate(order, player).name} &middot; #{player.kitNo || '--'} &middot; Qty {player.prints}</small>
+                              </span>
+                              <b>{money(player.prints * summary.pricing.perCard)}</b>
+                            </button>
+                          ))}
                         </div>
-                        <b>{money(prints * summary.pricing.perCard)}</b>
-                      </article>
+                      </details>
                     );
                   })
                 ) : (
@@ -901,30 +947,42 @@ export default function ProductionBuilder() {
                   />
                 </label>
                 <label className="wide">
-                  Notes <span>optional</span>
+                  Anything you would like us to know? <span>optional</span>
                   <textarea
                     value={enquiry.notes}
                     onChange={(event) => setEnquiry((current) => ({ ...current, notes: event.target.value }))}
-                    placeholder="Deadline, delivery notes, extra prints, or anything the Emblem team should know."
+                    placeholder="Extra prints, deadline, delivery instructions, or anything the Emblem team should know."
                     rows={4}
                   />
                 </label>
                 {enquiryStatus === 'sent' && (
                   <div className="uk-enquiry-success">
-                    <strong>Enquiry sent.</strong>
-                    <span>We have captured the order summary. Download a copy below for your records.</span>
+                    <strong>Order received.</strong>
+                    <span>We will email you within one business day with the final print total, delivery options and secure payment link.</span>
                   </div>
                 )}
                 {enquiryStatus === 'error' && <p className="uk-enquiry-error">{enquiryError}</p>}
-                <button type="submit" className="uk-wizard-primary" disabled={!canSendEnquiry || enquiryStatus === 'sending'}>
-                  {enquiryStatus === 'sending' ? 'Sending...' : 'Send order enquiry'}
-                </button>
+                {enquiryStatus !== 'sent' ? (
+                  <button type="submit" className="uk-wizard-primary" disabled={!canSendEnquiry || enquiryStatus === 'sending'}>
+                    {enquiryStatus === 'sending' ? 'Sending...' : 'Request production'}
+                  </button>
+                ) : null}
               </form>
+              <div className="uk-next-steps">
+                <h3>What happens next?</h3>
+                <ol>
+                  <li><strong>We review your cards</strong><span>Artwork, badges and print quantities are checked.</span></li>
+                  <li><strong>We email a payment link</strong><span>You confirm delivery and pay securely.</span></li>
+                  <li><strong>Production begins</strong><span>Your approved cards move into print.</span></li>
+                  <li><strong>Cards delivered</strong><span>Your keepsakes arrive ready to share.</span></li>
+                </ol>
+              </div>
               <div className="uk-handoff-box">
-                <h3>Keep a copy</h3>
-                <p>{summary.approvedPlayers.length} approved players &middot; {summary.pricing.label}</p>
-                <button type="button" onClick={exportPayload} disabled={!summary.checkoutEligible}>Download order summary</button>
-                <button type="button" onClick={() => setShowPayload((value) => !value)}>{showPayload ? 'Hide technical details' : 'Show technical details'}</button>
+                <h3>Order summary</h3>
+                <p>{summary.approvedPlayers.length} cards &middot; {summary.approvedPrints} prints &middot; {money(summary.subtotal)}</p>
+                <button type="button" onClick={exportPayload} disabled={!summary.checkoutEligible}>Download summary</button>
+                {canEditOrder ? <button type="button" onClick={() => setActiveStep(3)}>Edit order</button> : null}
+                <button type="button" onClick={() => setShowPayload((value) => !value)}>{showPayload ? 'Hide technical details' : 'Technical details'}</button>
               </div>
               {showPayload && <pre className="uk-payload">{JSON.stringify(productionPayload(order), null, 2)}</pre>}
             </section>

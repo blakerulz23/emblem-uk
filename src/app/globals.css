@@ -2359,25 +2359,84 @@ a { text-decoration: none; color: inherit; }
   font-size: 20px;
 }
 
-.uk-order-club-list article {
+.uk-production-snapshot {
+  margin: 18px 0 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.uk-production-snapshot div {
+  border: 1px solid #eadfce;
+  border-radius: 13px;
+  background: #fffdfa;
+  padding: 11px 9px;
+  display: grid;
+  gap: 5px;
+}
+
+.uk-production-snapshot span {
+  color: var(--wizard-soft);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.uk-production-snapshot strong {
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.uk-order-club-row {
   border: 1px solid var(--wizard-line);
   border-radius: 13px;
   background: #fff;
+  overflow: hidden;
+}
+
+.uk-order-club-row summary {
   padding: 11px;
   display: grid;
   grid-template-columns: 42px 1fr auto;
   gap: 11px;
   align-items: center;
+  cursor: pointer;
+  list-style: none;
 }
 
-.uk-order-club-list img {
+.uk-order-club-row summary::-webkit-details-marker {
+  display: none;
+}
+
+.uk-order-club-row summary::after {
+  content: "View";
+  grid-column: 2 / 4;
+  color: var(--wizard-accent);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.uk-order-club-row[open] summary::after {
+  content: "Hide";
+}
+
+.uk-order-club-list img,
+.uk-order-club-row img {
   width: 42px;
   height: 42px;
   border-radius: 10px;
   object-fit: contain;
 }
 
-.uk-order-club-list strong {
+.uk-order-club-list strong,
+.uk-order-player-list strong {
   display: block;
   color: var(--wizard-ink);
   font-family: var(--font-sora), system-ui, sans-serif;
@@ -2386,7 +2445,9 @@ a { text-decoration: none; color: inherit; }
 }
 
 .uk-order-club-list span,
-.uk-order-club-list p {
+.uk-order-club-list p,
+.uk-order-club-list small,
+.uk-order-player-list small {
   margin: 0;
   color: var(--wizard-soft);
   font-size: 12px;
@@ -2394,11 +2455,39 @@ a { text-decoration: none; color: inherit; }
   line-height: 1.35;
 }
 
-.uk-order-club-list b {
+.uk-order-club-list b,
+.uk-order-player-list b {
   color: var(--wizard-ink);
   font-family: var(--font-sora), system-ui, sans-serif;
   font-size: 16px;
   white-space: nowrap;
+}
+
+.uk-order-player-list {
+  border-top: 1px solid var(--wizard-line);
+  padding: 8px;
+  display: grid;
+  gap: 7px;
+}
+
+.uk-order-player-list button {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: #fffaf3;
+  color: inherit;
+  padding: 10px;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+}
+
+.uk-order-player-list button:disabled {
+  cursor: default;
+  opacity: 0.78;
 }
 
 .uk-order-summary-card div {
@@ -2533,6 +2622,71 @@ a { text-decoration: none; color: inherit; }
 
 .uk-handoff-box h3 {
   margin: 0;
+}
+
+.uk-next-steps {
+  margin-top: 14px;
+  border: 1px solid #eadfce;
+  border-radius: 16px;
+  background: #fffdfa;
+  padding: 16px;
+}
+
+.uk-next-steps h3 {
+  margin: 0 0 12px;
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 20px;
+}
+
+.uk-next-steps ol {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  counter-reset: production-step;
+  list-style: none;
+}
+
+.uk-next-steps li {
+  position: relative;
+  min-height: 42px;
+  padding-left: 46px;
+  counter-increment: production-step;
+}
+
+.uk-next-steps li::before {
+  content: counter(production-step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #fff1e8;
+  color: var(--wizard-accent);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.uk-next-steps strong,
+.uk-next-steps span {
+  display: block;
+}
+
+.uk-next-steps strong {
+  color: var(--wizard-ink);
+  font-weight: 900;
+}
+
+.uk-next-steps span {
+  margin-top: 2px;
+  color: var(--wizard-soft);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .uk-payload {
@@ -3207,12 +3361,21 @@ a { text-decoration: none; color: inherit; }
     grid-column: 1 / -1;
   }
 
-  .uk-order-club-list article {
+  .uk-production-snapshot {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .uk-order-club-row summary {
     grid-template-columns: 38px minmax(0, 1fr);
   }
 
-  .uk-order-club-list b {
+  .uk-order-club-row summary b,
+  .uk-order-club-row summary::after {
     grid-column: 2;
+  }
+
+  .uk-order-player-list button {
+    grid-template-columns: 1fr;
   }
 }
 
