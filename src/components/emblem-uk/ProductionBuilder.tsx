@@ -39,7 +39,7 @@ const collections = [
   {
     id: 'custom',
     title: 'Custom Collection',
-    preview: '/emblem-brand.png',
+    preview: '',
     proof: 'Build Your Own',
     points: ['Upload your own badge', 'Any club or school', 'One-off events'],
   },
@@ -703,8 +703,13 @@ export default function ProductionBuilder() {
                       className={order.collectionType === collection.id ? 'active' : ''}
                       onClick={() => selectCollection(collection.id)}
                     >
-                      <span className={`uk-collection-mark ${collection.id}`} aria-hidden="true">
-                        <img src={collection.preview} alt="" />
+                      <span className={`uk-collection-preview ${collection.id}`} aria-hidden="true">
+                        {collection.preview ? <img src={collection.preview} alt="" /> : (
+                          <>
+                            <i />
+                            <b />
+                          </>
+                        )}
                       </span>
                       <span>
                         <strong>{collection.title}</strong>
