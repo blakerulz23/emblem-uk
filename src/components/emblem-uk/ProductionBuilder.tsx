@@ -49,10 +49,6 @@ function statusClass(status: string) {
 const emjflTemplate = CARD_TEMPLATES.find((template) => template.id === 'emjfl-official') || CARD_TEMPLATES[0];
 const cardArtTemplatesById = new Map(CARD_TEMPLATES.map((template) => [template.id, template]));
 
-function emjflClubLogo(order: OrderDraft) {
-  return order.badgeUrl || getEmjflClub(order.emjflClubId).badgePath;
-}
-
 function cardArtTemplate(templateId: TemplateId) {
   return cardArtTemplatesById.get(templateId) || emjflTemplate;
 }
@@ -86,6 +82,39 @@ function reviewActionCopy(player: PlayerDraft) {
   return 'Continue editing';
 }
 
+function playerClubId(order: OrderDraft, player?: PlayerDraft) {
+  return player?.emjflClubId || order.emjflClubId || DEFAULT_EMJFL_CLUB.id;
+}
+
+function playerClubName(order: OrderDraft, player?: PlayerDraft) {
+  return player?.club || getEmjflClub(playerClubId(order, player)).name || order.club;
+}
+
+function playerBadge(order: OrderDraft, player?: PlayerDraft) {
+  return player?.badgeUrl || (player?.emjflClubId ? getEmjflClub(player.emjflClubId).badgePath : order.badgeUrl) || getEmjflClub(playerClubId(order, player)).badgePath;
+}
+
+function groupPlayersByClub(order: OrderDraft, players: PlayerDraft[]) {
+  const groups = new Map<string, { id: string; name: string; badge: string; players: PlayerDraft[] }>();
+
+  players.forEach((player) => {
+    const id = playerClubId(order, player);
+    const existing = groups.get(id);
+    if (existing) {
+      existing.players.push(player);
+      return;
+    }
+    groups.set(id, {
+      id,
+      name: playerClubName(order, player),
+      badge: playerBadge(order, player),
+      players: [player],
+    });
+  });
+
+  return Array.from(groups.values());
+}
+
 export default function ProductionBuilder() {
   const searchParams = useSearchParams();
   const [order, setOrder] = useState<OrderDraft>(() => {
@@ -109,12 +138,13 @@ export default function ProductionBuilder() {
     name: '',
     email: '',
     phone: '',
-    team: '',
     notes: '',
   });
 
   const selectedPlayer = order.players.find((player) => player.id === selectedId) || order.players[0];
   const summary = useMemo(() => summarizeOrder(order), [order]);
+  const reviewGroups = useMemo(() => groupPlayersByClub(order, order.players), [order]);
+  const approvedGroups = useMemo(() => groupPlayersByClub(order, summary.approvedPlayers), [order, summary.approvedPlayers]);
   const stats = sportConfig[order.sport].stats;
   const orderMode = orderModeLimits[order.type];
   const visibleOrderType = order.type === 'single' ? 'single' : 'squad';
@@ -127,7 +157,7 @@ export default function ProductionBuilder() {
     setOrder((current) => ({ ...current, ...patch }));
   };
 
-  const selectClub = (clubId: string) => {
+  const selectOrderClub = (clubId: string) => {
     const club = getEmjflClub(clubId);
     const preferredTemplate = preferredTemplateForClub(clubId) as TemplateId;
     setOrder((current) => ({
@@ -139,10 +169,23 @@ export default function ProductionBuilder() {
       templateDefault: preferredTemplate,
       players: current.players.map((player) => ({
         ...player,
-        templateId: player.templateId ? preferredTemplate : player.templateId,
+        club: player.clubEdited ? player.club : club.name,
+        emjflClubId: player.clubEdited ? player.emjflClubId : club.id,
+        templateId: player.templateId ? player.templateId : preferredTemplate,
         updatedAt: nowIso(),
       })),
     }));
+  };
+
+  const selectPlayerClub = (playerId: string, clubId: string) => {
+    const club = getEmjflClub(clubId);
+    patchPlayer(playerId, {
+      club: club.name,
+      emjflClubId: club.id,
+      clubEdited: true,
+      badgeUrl: undefined,
+      templateId: preferredTemplateForClub(club.id) as TemplateId,
+    });
   };
 
   const patchPlayer = (id: string, patch: Partial<PlayerDraft>) => {
@@ -163,6 +206,8 @@ export default function ProductionBuilder() {
     const player = createPlayer({
       stats: Object.fromEntries(stats.map((stat) => [stat.key, ''])),
       templateId: order.templateDefault,
+      club: order.club,
+      emjflClubId: order.emjflClubId,
       ...seed,
     });
     setOrder((current) => ({ ...current, players: [...current.players, player] }));
@@ -182,6 +227,10 @@ export default function ProductionBuilder() {
     if (!canAddPlayer(order)) return;
     const copy = createPlayer({
       name: player.name ? `${player.name} copy` : '',
+      club: player.club || order.club,
+      badgeUrl: player.badgeUrl,
+      emjflClubId: player.emjflClubId || order.emjflClubId,
+      clubEdited: player.clubEdited,
       position: player.position,
       kitNo: '',
       stats: player.stats,
@@ -227,9 +276,9 @@ export default function ProductionBuilder() {
     setActiveStep(2);
   };
 
-  const assignBadge = (file?: File) => {
+  const assignPlayerBadge = (id: string, file?: File) => {
     if (!file) return;
-    patchOrder({ badgeUrl: URL.createObjectURL(file) });
+    patchPlayer(id, { badgeUrl: URL.createObjectURL(file), clubEdited: true });
   };
 
   const bulkPhotos = (files: FileList | null) => {
@@ -265,6 +314,8 @@ export default function ProductionBuilder() {
         players.push(createPlayer({
           stats: Object.fromEntries(stats.map((stat) => [stat.key, ''])),
           templateId: current.templateDefault,
+          club: current.club,
+          emjflClubId: current.emjflClubId,
           photo: photoAssets[photoIndex],
         }));
         photoIndex += 1;
@@ -330,13 +381,13 @@ export default function ProductionBuilder() {
     if (selectedPlayer) patchPlayer(selectedPlayer.id, { templateId });
   };
   const orderedTemplates = useMemo(() => {
-    const preferred = preferredTemplateForClub(order.emjflClubId);
+    const preferred = preferredTemplateForClub(playerClubId(order, selectedPlayer));
     return [...templates].sort((a, b) => {
       if (a.id === preferred) return -1;
       if (b.id === preferred) return 1;
       return 0;
     });
-  }, [order.emjflClubId]);
+  }, [order, selectedPlayer]);
 
   return (
     <div className="uk-builder-shell uk-wizard-shell">
@@ -416,12 +467,12 @@ export default function ProductionBuilder() {
                     Club / team
                     <select
                       value={order.emjflClubId || DEFAULT_EMJFL_CLUB.id}
-                      onChange={(event) => selectClub(event.target.value)}
+                      onChange={(event) => selectOrderClub(event.target.value)}
                     >
                       {EMJFL_CLUBS.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
                     </select>
                   </label>
-                  <img src={emjflClubLogo(order)} alt="" />
+                  <img src={playerBadge(order)} alt="" />
                 </div>
               </div>
               <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(1)}>Continue</button>
@@ -550,7 +601,7 @@ export default function ProductionBuilder() {
                     <strong>{selectedTemplate(order, selectedPlayer).name}</strong>
                     <small>Swipe to change style</small>
                   </span>
-                  <em>Best match for {getEmjflClub(order.emjflClubId).name}</em>
+                  <em>Best match for {playerClubName(order, selectedPlayer)}</em>
                 </div>
                 <div className="uk-style-carousel compact">
                   {orderedTemplates.map((template) => (
@@ -566,7 +617,7 @@ export default function ProductionBuilder() {
                         compact
                       />
                       <strong>{template.name}</strong>
-                      {template.id === preferredTemplateForClub(order.emjflClubId) && <small>Best match</small>}
+                      {template.id === preferredTemplateForClub(playerClubId(order, selectedPlayer)) && <small>Best match</small>}
                     </button>
                   ))}
                 </div>
@@ -621,7 +672,7 @@ export default function ProductionBuilder() {
                 <button type="button" className={cardSide === 'front' ? 'active' : ''} onClick={() => setCardSide('front')}>Front</button>
                 <button type="button" className={cardSide === 'back' ? 'active' : ''} onClick={() => setCardSide('back')}>Back</button>
               </div>
-              <PlayerEditor order={order} player={selectedPlayer} onPatch={patchPlayer} onPhoto={assignPhoto} onClub={selectClub} onBadge={assignBadge} />
+              <PlayerEditor order={order} player={selectedPlayer} onPatch={patchPlayer} onPhoto={assignPhoto} onClub={selectPlayerClub} onBadge={assignPlayerBadge} />
               <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(3)}>Approve cards</button>
             </section>
           )}
@@ -631,42 +682,56 @@ export default function ProductionBuilder() {
               <p className="uk-wizard-kicker">Approve cards</p>
               <h1>Ready for production?</h1>
               <p className="uk-wizard-copy">Complete each card, then approve the ones you want printed.</p>
-              <div className="uk-review-list">
-                {order.players.map((player, index) => {
-                  const status = derivePlayerStatus(player);
-                  const missing = missingItems(player);
-                  const score = completionScore(player);
-                  return (
-                    <article key={player.id}>
-                      <PlayerCard order={order} player={player} compact />
+              <div className="uk-review-groups">
+                {reviewGroups.map((group) => (
+                  <section key={group.id} className="uk-review-group">
+                    <header className="uk-review-group-head">
+                      <img src={group.badge} alt="" />
                       <div>
-                        <h3>{playerLabel(player, index)}</h3>
-                        <p>{selectedTemplate(order, player).name} &middot; #{player.kitNo || '--'} &middot; Qty {player.prints}</p>
-                        <span className={statusClass(status)}>{statusCopy[status]}</span>
-                        <div className="uk-completion-meter" aria-label={`${score}% complete`}>
-                          <span style={{ width: `${score}%` }} />
-                        </div>
-                        <small>{score}% complete</small>
-                        {missing.length > 0 && <em>Missing {missing.join(', ')}</em>}
+                        <strong>{group.name}</strong>
+                        <span>{group.players.length} card{group.players.length === 1 ? '' : 's'}</span>
                       </div>
-                      {status === 'ready' ? (
-                        <button type="button" onClick={() => approvePlayer(player.id)}>Approve</button>
-                      ) : status === 'approved' ? (
-                        <button type="button" className="approved" onClick={() => setActiveStep(4)}>Ready</button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedId(player.id);
-                            setActiveStep(2);
-                          }}
-                        >
-                          {reviewActionCopy(player)}
-                        </button>
-                      )}
-                    </article>
-                  );
-                })}
+                    </header>
+                    <div className="uk-review-list">
+                      {group.players.map((player) => {
+                        const index = order.players.findIndex((item) => item.id === player.id);
+                        const status = derivePlayerStatus(player);
+                        const missing = missingItems(player);
+                        const score = completionScore(player);
+                        return (
+                          <article key={player.id}>
+                            <PlayerCard order={order} player={player} compact />
+                            <div>
+                              <h3>{playerLabel(player, index)}</h3>
+                              <p>{selectedTemplate(order, player).name} &middot; {playerClubName(order, player)} &middot; #{player.kitNo || '--'} &middot; Qty {player.prints}</p>
+                              <span className={statusClass(status)}>{statusCopy[status]}</span>
+                              <div className="uk-completion-meter" aria-label={`${score}% complete`}>
+                                <span style={{ width: `${score}%` }} />
+                              </div>
+                              <small>{score}% complete</small>
+                              {missing.length > 0 && <em>Missing {missing.join(', ')}</em>}
+                            </div>
+                            {status === 'ready' ? (
+                              <button type="button" onClick={() => approvePlayer(player.id)}>Approve card</button>
+                            ) : status === 'approved' ? (
+                              <button type="button" className="approved" onClick={() => setActiveStep(4)}>Ready</button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedId(player.id);
+                                  setActiveStep(2);
+                                }}
+                              >
+                                {reviewActionCopy(player)}
+                              </button>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
               </div>
               <div className="uk-review-total">
                 <span>Approved prints</span><b>{summary.approvedPrints}</b>
@@ -682,6 +747,26 @@ export default function ProductionBuilder() {
               <p className="uk-wizard-kicker">Review order</p>
               <h1>Submit enquiry.</h1>
               <p className="uk-wizard-copy">{summary.checkoutEligible ? 'Send the approved cards to Emblem and we will come back with the print order and checkout link.' : 'Approve at least one card to continue.'}</p>
+              <div className="uk-order-club-list">
+                <h3>Your order</h3>
+                {approvedGroups.length > 0 ? (
+                  approvedGroups.map((group) => {
+                    const prints = group.players.reduce((total, player) => total + player.prints, 0);
+                    return (
+                      <article key={group.id}>
+                        <img src={group.badge} alt="" />
+                        <div>
+                          <strong>{group.name}</strong>
+                          <span>{group.players.length} player{group.players.length === 1 ? '' : 's'} &middot; {prints} print{prints === 1 ? '' : 's'}</span>
+                        </div>
+                        <b>{money(prints * summary.pricing.perCard)}</b>
+                      </article>
+                    );
+                  })
+                ) : (
+                  <p>Approved cards will appear here grouped by club.</p>
+                )}
+              </div>
               <div className="uk-order-summary-card">
                 <div>
                   <span>Approved cards</span>
@@ -699,7 +784,7 @@ export default function ProductionBuilder() {
               <form className="uk-enquiry-form" onSubmit={submitEnquiry}>
                 <div className="uk-enquiry-form-head">
                   <h3>Where should we send the order link?</h3>
-                  <p>We will use this to confirm the cards, print quantity, delivery timing and payment link.</p>
+                  <p>We already have the club and badge for each card. Use this to confirm delivery timing and the payment link.</p>
                 </div>
                 <label>
                   Name
@@ -730,14 +815,6 @@ export default function ProductionBuilder() {
                     autoComplete="tel"
                     onChange={(event) => setEnquiry((current) => ({ ...current, phone: event.target.value }))}
                     placeholder="Best number for order questions"
-                  />
-                </label>
-                <label>
-                  Club / team
-                  <input
-                    value={enquiry.team}
-                    onChange={(event) => setEnquiry((current) => ({ ...current, team: event.target.value }))}
-                    placeholder={order.club || getEmjflClub(order.emjflClubId).name}
                   />
                 </label>
                 <label className="wide">
@@ -1014,8 +1091,8 @@ function PlayerEditor({
   player: PlayerDraft;
   onPatch: (id: string, patch: Partial<PlayerDraft>) => void;
   onPhoto: (id: string, file?: File) => void;
-  onClub: (clubId: string) => void;
-  onBadge: (file?: File) => void;
+  onClub: (playerId: string, clubId: string) => void;
+  onBadge: (playerId: string, file?: File) => void;
 }) {
   const status = derivePlayerStatus(player);
   const stats = sportConfig[order.sport].stats;
@@ -1036,18 +1113,18 @@ function PlayerEditor({
             <strong>Club badge</strong>
             <small>Shown with the East Manchester league crest on the card.</small>
           </span>
-          <img src={emjflClubLogo(order)} alt="" />
+          <img src={playerBadge(order, player)} alt="" />
         </div>
         <div className="uk-editor-badge-row">
           <select
-            value={order.emjflClubId || DEFAULT_EMJFL_CLUB.id}
-            onChange={(event) => onClub(event.target.value)}
+            value={playerClubId(order, player)}
+            onChange={(event) => onClub(player.id, event.target.value)}
           >
             {EMJFL_CLUBS.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
           </select>
           <label>
             Upload badge
-            <input type="file" accept="image/*" hidden onChange={(event) => onBadge(event.target.files?.[0])} />
+            <input type="file" accept="image/*" hidden onChange={(event) => onBadge(player.id, event.target.files?.[0])} />
           </label>
         </div>
         <div className="uk-editor-badge-strip" aria-label="Choose club badge while editing">
@@ -1055,8 +1132,8 @@ function PlayerEditor({
             <button
               key={club.id}
               type="button"
-              className={(order.emjflClubId || DEFAULT_EMJFL_CLUB.id) === club.id ? 'active' : ''}
-              onClick={() => onClub(club.id)}
+              className={playerClubId(order, player) === club.id ? 'active' : ''}
+              onClick={() => onClub(player.id, club.id)}
               title={club.name}
             >
               <img src={club.badgePath} alt="" />
@@ -1130,10 +1207,10 @@ function PlayerCard({
           details={{
             name: player.name || 'Player 1',
             number: player.kitNo || '--',
-            team: order.club || getEmjflClub(order.emjflClubId).name || 'Club Name',
+            team: playerClubName(order, player) || 'Club Name',
             position: player.position || 'Position',
           }}
-          logo={template.id === 'emjfl-official' || isHollinwoodTemplateId(template.id) ? emjflClubLogo(order) : null}
+          logo={template.id === 'emjfl-official' || isHollinwoodTemplateId(template.id) ? playerBadge(order, player) : null}
           stats={player.stats}
           sport="soccer"
           side={side}
@@ -1151,10 +1228,10 @@ function PlayerCard({
       <div className={`uk-player-card back ${compact ? 'compact' : ''}`} style={{ background: template.background }}>
         {template.frameAsset && <img className="uk-template-frame" src={template.frameAsset} alt="" />}
         <div className="uk-back-top">
-          <div className="uk-back-logo">{order.badgeUrl ? <img src={order.badgeUrl} alt="" /> : <span>Club<br />logo</span>}</div>
+          <div className="uk-back-logo">{playerBadge(order, player) ? <img src={playerBadge(order, player)} alt="" /> : <span>Club<br />logo</span>}</div>
           <div>
             <small>Emblem UK football card</small>
-            <h3>{order.club || 'Club name'}</h3>
+            <h3>{playerClubName(order, player) || 'Club name'}</h3>
             <p>{order.ageGroup || 'Age group'} / {order.season}</p>
           </div>
         </div>
@@ -1182,14 +1259,14 @@ function PlayerCard({
   return (
     <div className={`uk-player-card front ${compact ? 'compact' : ''}`} style={{ background: template.background }}>
       {template.frameAsset && <img className="uk-template-frame" src={template.frameAsset} alt="" />}
-      <div className="uk-card-logo">{order.badgeUrl ? <img src={order.badgeUrl} alt="" /> : <span>Logo</span>}</div>
+      <div className="uk-card-logo">{playerBadge(order, player) ? <img src={playerBadge(order, player)} alt="" /> : <span>Logo</span>}</div>
       <div className="uk-card-photo">
         {player.photo?.srcUrl ? <img src={player.photo.srcUrl} alt="" /> : <span>Photo</span>}
       </div>
       <div className="uk-card-kit">{player.kitNo || '00'}</div>
       <div className="uk-card-band">
         <h3>{player.name || 'PLAYER 1'}</h3>
-        <p>{order.club || 'Club name'} / {player.position || 'Position'}</p>
+        <p>{playerClubName(order, player) || 'Club name'} / {player.position || 'Position'}</p>
       </div>
       <div className="uk-card-stats">
         {stats.map((stat) => (

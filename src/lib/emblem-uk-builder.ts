@@ -23,6 +23,10 @@ export type PhotoAsset = {
 export type PlayerDraft = {
   id: string;
   name: string;
+  club?: string;
+  badgeUrl?: string;
+  emjflClubId?: string;
+  clubEdited?: boolean;
   position: string;
   kitNo: string;
   stats: Record<string, string>;
@@ -101,6 +105,10 @@ export function createPlayer(seed?: Partial<PlayerDraft>): PlayerDraft {
   return {
     id: seed?.id || crypto.randomUUID(),
     name: seed?.name || '',
+    club: seed?.club,
+    badgeUrl: seed?.badgeUrl,
+    emjflClubId: seed?.emjflClubId,
+    clubEdited: seed?.clubEdited,
     position: seed?.position || '',
     kitNo: seed?.kitNo || '',
     stats: seed?.stats || { apps: '', goals: '', assists: '' },
@@ -126,6 +134,9 @@ export function defaultOrder(): OrderDraft {
     players: [
       createPlayer({
         id: 'emblem-player-1',
+        club: 'Curzon Ashton Juniors',
+        emjflClubId: 'curzon-ashton',
+        clubEdited: false,
         stats: { apps: '', goals: '', assists: '' },
       }),
     ],
@@ -180,6 +191,42 @@ export function selectedTemplate(order: OrderDraft, player?: PlayerDraft) {
 
 export function productionPayload(order: OrderDraft) {
   const summary = summarizeOrder(order);
+  const players = summary.approvedPlayers.map((player) => ({
+    id: player.id,
+    name: player.name,
+    club: player.club || order.club,
+    badgeUrl: player.badgeUrl,
+    badgeSnapshotUrl: player.badgeUrl || clubBadgePath(player.emjflClubId || order.emjflClubId),
+    emjflClubId: player.emjflClubId || order.emjflClubId,
+    position: player.position,
+    kitNo: player.kitNo,
+    stats: player.stats,
+    prints: player.prints,
+    templateId: player.templateId || order.templateDefault,
+    photo: player.photo,
+    approvedAt: player.approvedAt,
+  }));
+  const clubGroups = Array.from(players.reduce((groups, player) => {
+    const key = player.emjflClubId || player.club;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.players.push(player.id);
+      existing.prints += player.prints;
+      existing.subtotal = Number((existing.prints * summary.pricing.perCard).toFixed(2));
+      return groups;
+    }
+    groups.set(key, {
+      id: key,
+      club: player.club,
+      badgeUrl: player.badgeUrl,
+      badgeSnapshotUrl: player.badgeSnapshotUrl,
+      players: [player.id],
+      prints: player.prints,
+      subtotal: Number((player.prints * summary.pricing.perCard).toFixed(2)),
+    });
+    return groups;
+  }, new Map<string, { id: string; club: string; badgeUrl?: string; badgeSnapshotUrl: string; players: string[]; prints: number; subtotal: number }>()).values());
+
   return {
     order: {
       id: order.id,
@@ -200,16 +247,7 @@ export function productionPayload(order: OrderDraft) {
       approvedPrints: summary.approvedPrints,
       subtotal: Number(summary.subtotal.toFixed(2)),
     },
-    players: summary.approvedPlayers.map((player) => ({
-      id: player.id,
-      name: player.name,
-      position: player.position,
-      kitNo: player.kitNo,
-      stats: player.stats,
-      prints: player.prints,
-      templateId: player.templateId || order.templateDefault,
-      photo: player.photo,
-      approvedAt: player.approvedAt,
-    })),
+    clubGroups,
+    players,
   };
 }

@@ -1339,6 +1339,56 @@ a { text-decoration: none; color: inherit; }
   grid-template-columns: 1fr 1fr;
 }
 
+.uk-review-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.uk-review-group {
+  border: 1px solid #eadfce;
+  border-radius: 18px;
+  background: #fffaf3;
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.uk-review-group-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.uk-review-group-head img {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+  background: #fff;
+  object-fit: contain;
+  padding: 5px;
+  box-shadow: 0 8px 20px rgba(12, 10, 8, 0.08);
+}
+
+.uk-review-group-head strong,
+.uk-order-club-list h3 {
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+}
+
+.uk-review-group-head strong {
+  display: block;
+  font-size: 17px;
+  line-height: 1.15;
+}
+
+.uk-review-group-head span {
+  display: block;
+  margin-top: 3px;
+  color: var(--wizard-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .uk-review-list {
   display: grid;
   gap: 12px;
@@ -2180,6 +2230,63 @@ a { text-decoration: none; color: inherit; }
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.uk-order-club-list {
+  margin: 18px 0 12px;
+  border: 1px solid #eadfce;
+  border-radius: 16px;
+  background: #fffaf3;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.uk-order-club-list h3 {
+  margin: 0 0 2px;
+  font-size: 20px;
+}
+
+.uk-order-club-list article {
+  border: 1px solid var(--wizard-line);
+  border-radius: 13px;
+  background: #fff;
+  padding: 11px;
+  display: grid;
+  grid-template-columns: 42px 1fr auto;
+  gap: 11px;
+  align-items: center;
+}
+
+.uk-order-club-list img {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  object-fit: contain;
+}
+
+.uk-order-club-list strong {
+  display: block;
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.uk-order-club-list span,
+.uk-order-club-list p {
+  margin: 0;
+  color: var(--wizard-soft);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.uk-order-club-list b {
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 16px;
+  white-space: nowrap;
 }
 
 .uk-order-summary-card div {
