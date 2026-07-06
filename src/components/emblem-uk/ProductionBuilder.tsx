@@ -412,36 +412,17 @@ export default function ProductionBuilder() {
                   League
                   <input value={order.league || EAST_MANCHESTER_LEAGUE} readOnly />
                 </label>
-                <div className="uk-club-picker-intro">
-                  <strong>Choose your club badge</strong>
-                  <span>We show the East Manchester league crest and your selected club badge on the card.</span>
-                </div>
-                <div className="uk-wizard-badge-row">
-                  <img src={emjflClubLogo(order)} alt="" />
-                  <select
-                    value={order.emjflClubId || DEFAULT_EMJFL_CLUB.id}
-                    onChange={(event) => selectClub(event.target.value)}
-                  >
-                    {EMJFL_CLUBS.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
-                  </select>
+                <div className="uk-wizard-club-row">
                   <label>
-                    Upload own badge
-                    <input type="file" accept="image/*" hidden onChange={(event) => assignBadge(event.target.files?.[0])} />
-                  </label>
-                </div>
-                <div className="uk-club-badge-picker" aria-label="Choose club badge">
-                  {EMJFL_CLUBS.map((club) => (
-                    <button
-                      key={club.id}
-                      type="button"
-                      className={(order.emjflClubId || DEFAULT_EMJFL_CLUB.id) === club.id ? 'active' : ''}
-                      onClick={() => selectClub(club.id)}
-                      title={club.name}
+                    Club / team
+                    <select
+                      value={order.emjflClubId || DEFAULT_EMJFL_CLUB.id}
+                      onChange={(event) => selectClub(event.target.value)}
                     >
-                      <img src={club.badgePath} alt="" />
-                      <span>{club.name}</span>
-                    </button>
-                  ))}
+                      {EMJFL_CLUBS.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
+                    </select>
+                  </label>
+                  <img src={emjflClubLogo(order)} alt="" />
                 </div>
               </div>
               <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(1)}>Continue</button>
@@ -641,7 +622,7 @@ export default function ProductionBuilder() {
                 <button type="button" className={cardSide === 'front' ? 'active' : ''} onClick={() => setCardSide('front')}>Front</button>
                 <button type="button" className={cardSide === 'back' ? 'active' : ''} onClick={() => setCardSide('back')}>Back</button>
               </div>
-              <PlayerEditor order={order} player={selectedPlayer} onPatch={patchPlayer} onPhoto={assignPhoto} />
+              <PlayerEditor order={order} player={selectedPlayer} onPatch={patchPlayer} onPhoto={assignPhoto} onClub={selectClub} onBadge={assignBadge} />
               <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(4)}>Review order</button>
             </section>
           )}
@@ -1027,11 +1008,15 @@ function PlayerEditor({
   player,
   onPatch,
   onPhoto,
+  onClub,
+  onBadge,
 }: {
   order: OrderDraft;
   player: PlayerDraft;
   onPatch: (id: string, patch: Partial<PlayerDraft>) => void;
   onPhoto: (id: string, file?: File) => void;
+  onClub: (clubId: string) => void;
+  onBadge: (file?: File) => void;
 }) {
   const status = derivePlayerStatus(player);
   const stats = sportConfig[order.sport].stats;
@@ -1046,6 +1031,40 @@ function PlayerEditor({
         {player.photo ? 'Replace photo' : 'Upload photo'}
         <input type="file" accept="image/*" hidden onChange={(event) => onPhoto(player.id, event.target.files?.[0])} />
       </label>
+      <div className="uk-editor-badge-picker">
+        <div className="uk-editor-badge-head">
+          <span>
+            <strong>Club badge</strong>
+            <small>Shown with the East Manchester league crest on the card.</small>
+          </span>
+          <img src={emjflClubLogo(order)} alt="" />
+        </div>
+        <div className="uk-editor-badge-row">
+          <select
+            value={order.emjflClubId || DEFAULT_EMJFL_CLUB.id}
+            onChange={(event) => onClub(event.target.value)}
+          >
+            {EMJFL_CLUBS.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
+          </select>
+          <label>
+            Upload badge
+            <input type="file" accept="image/*" hidden onChange={(event) => onBadge(event.target.files?.[0])} />
+          </label>
+        </div>
+        <div className="uk-editor-badge-strip" aria-label="Choose club badge while editing">
+          {EMJFL_CLUBS.map((club) => (
+            <button
+              key={club.id}
+              type="button"
+              className={(order.emjflClubId || DEFAULT_EMJFL_CLUB.id) === club.id ? 'active' : ''}
+              onClick={() => onClub(club.id)}
+              title={club.name}
+            >
+              <img src={club.badgePath} alt="" />
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="uk-field-stack">
         <label>
           Name

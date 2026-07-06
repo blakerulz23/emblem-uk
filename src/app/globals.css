@@ -931,6 +931,36 @@ a { text-decoration: none; color: inherit; }
   cursor: pointer;
 }
 
+.uk-wizard-club-row {
+  grid-column: 1 / -1;
+  border: 1px solid var(--wizard-line);
+  border-radius: 16px;
+  background: var(--wizard-surface);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 54px;
+  gap: 10px;
+  align-items: end;
+}
+
+.uk-wizard-club-row label {
+  min-width: 0;
+}
+
+.uk-wizard-club-row select {
+  margin-top: 7px;
+  background: #fff;
+}
+
+.uk-wizard-club-row img {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  background: #fff;
+  object-fit: contain;
+  padding: 5px;
+}
+
 .uk-club-badge-picker {
   grid-column: 1 / -1;
   display: flex;
@@ -2638,6 +2668,103 @@ a { text-decoration: none; color: inherit; }
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.uk-editor-badge-picker {
+  border: 1px solid #eadfce;
+  border-radius: 14px;
+  background: #fffaf3;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.uk-editor-badge-head,
+.uk-editor-badge-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.uk-editor-badge-head strong,
+.uk-editor-badge-head small {
+  display: block;
+}
+
+.uk-editor-badge-head strong {
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.1;
+}
+
+.uk-editor-badge-head small {
+  margin-top: 4px;
+  color: var(--wizard-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.uk-editor-badge-head img {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #fff;
+  object-fit: contain;
+  padding: 6px;
+}
+
+.uk-editor-badge-row select {
+  width: 100%;
+  min-height: 48px;
+}
+
+.uk-editor-badge-row label {
+  min-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--wizard-accent);
+  color: #fff;
+  padding: 0 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.uk-editor-badge-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.uk-editor-badge-strip button {
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+  padding: 7px;
+}
+
+.uk-editor-badge-strip button.active {
+  border-color: var(--wizard-accent);
+  box-shadow: inset 0 0 0 1px var(--wizard-accent);
+}
+
+.uk-editor-badge-strip img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .uk-field-stack,
