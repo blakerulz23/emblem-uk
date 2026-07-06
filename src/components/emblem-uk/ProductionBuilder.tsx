@@ -34,7 +34,7 @@ const orderModeLimits: Record<OrderType, { maxPlayers: number; rosterCopy: strin
   squad: { maxPlayers: 40, rosterCopy: 'Squad orders support bulk photo upload and team-level approval.' },
 };
 
-const steps = ['Start', 'Upload', 'Style', 'Details', 'Review', 'Summary'];
+const steps = ['Choose club', 'Upload photos', 'Choose design', 'Complete cards', 'Approve cards', 'Request production'];
 type CardSide = 'front' | 'back';
 type EnquiryStatus = 'idle' | 'sending' | 'sent' | 'error';
 
@@ -59,6 +59,31 @@ function cardArtTemplate(templateId: TemplateId) {
 
 function canAddPlayer(order: OrderDraft) {
   return order.players.length < orderModeLimits[order.type].maxPlayers;
+}
+
+function playerLabel(player: PlayerDraft, index?: number) {
+  return player.name.trim() || `Player ${typeof index === 'number' ? index + 1 : 1}`;
+}
+
+function missingItems(player: PlayerDraft) {
+  const missing: string[] = [];
+  if (!player.photo?.srcUrl) missing.push('photo');
+  if (!player.name.trim()) missing.push('name');
+  if (!player.kitNo.trim()) missing.push('kit number');
+  if (!player.position.trim()) missing.push('position');
+  return missing;
+}
+
+function completionScore(player: PlayerDraft) {
+  const fields = [Boolean(player.photo?.srcUrl), Boolean(player.name.trim()), Boolean(player.kitNo.trim()), Boolean(player.position.trim())];
+  return Math.round((fields.filter(Boolean).length / fields.length) * 100);
+}
+
+function reviewActionCopy(player: PlayerDraft) {
+  const missing = missingItems(player);
+  if (missing.includes('photo')) return 'Add photo';
+  if (missing.length > 0) return `Add ${missing[0]}`;
+  return 'Continue editing';
 }
 
 export default function ProductionBuilder() {
@@ -291,7 +316,8 @@ export default function ProductionBuilder() {
   };
 
   const progress = ((activeStep + 1) / steps.length) * 100;
-  const selectedStatus = selectedPlayer ? derivePlayerStatus(selectedPlayer) : 'needs-photo';
+  const completeCount = summary.counts.ready + summary.counts.approved;
+  const progressLabel = summary.checkoutEligible ? 'Order summary' : `${completeCount}/${order.players.length} ready`;
   const goBack = () => setActiveStep((step) => Math.max(0, step - 1));
   const selectedIndex = selectedPlayer ? order.players.findIndex((player) => player.id === selectedPlayer.id) : -1;
   const selectAdjacentPlayer = (direction: -1 | 1) => {
@@ -319,26 +345,32 @@ export default function ProductionBuilder() {
         <header className="uk-wizard-header">
           <div className="uk-wizard-topbar">
             <button type="button" className="uk-icon-button" onClick={goBack} aria-label="Back" disabled={activeStep === 0}>
-              ‹
+              &lsaquo;
             </button>
             <div className="uk-wizard-brand" aria-label="Emblem">
               <span />
               <strong>EMBLEM</strong>
             </div>
-            <button type="button" className="uk-icon-button" aria-label="Cart" onClick={() => setActiveStep(5)}>
-              ♡
+            <button
+              type="button"
+              className="uk-progress-pill"
+              aria-label={progressLabel}
+              onClick={() => setActiveStep(summary.checkoutEligible ? 5 : 4)}
+              disabled={activeStep < 2 && !summary.checkoutEligible}
+            >
+              {progressLabel}
             </button>
           </div>
           <div className="uk-wizard-progress">
             <div><span style={{ width: `${progress}%` }} /></div>
-            <b>{String(activeStep + 1).padStart(2, '0')} / {String(steps.length).padStart(2, '0')} · {steps[activeStep]}</b>
+            <b>{String(activeStep + 1).padStart(2, '0')} / {String(steps.length).padStart(2, '0')} &middot; {steps[activeStep]}</b>
           </div>
         </header>
 
         <main className="uk-wizard-screen">
           {activeStep === 0 && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Emblem UK builder</p>
+              <p className="uk-wizard-kicker">Choose your club</p>
               <h1>Who are you building for?</h1>
               <p className="uk-wizard-copy">One card for your child, or a matching set for the whole team.</p>
               <div className="uk-wizard-choice-list">
@@ -418,10 +450,10 @@ export default function ProductionBuilder() {
 
           {activeStep === 1 && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Upload</p>
-              <h1>{order.type !== 'single' ? 'Start with photos.' : 'Start with a photo.'}</h1>
+              <p className="uk-wizard-kicker">Upload photos</p>
+              <h1>{order.type !== 'single' ? 'Upload your squad.' : 'Start with a photo.'}</h1>
               <p className="uk-wizard-copy">
-                {order.type !== 'single' ? 'Select the player photos at once, then edit each card.' : 'Pick the football photo you want to turn into a card.'}
+                {order.type !== 'single' ? 'Drop in every player photo together, then complete each card in the queue.' : 'Pick the football photo you want to turn into a card.'}
               </p>
               {order.type === 'single' && selectedPlayer && !selectedHasPhoto && (
                 <div className="uk-photo-carousel single">
@@ -441,7 +473,7 @@ export default function ProductionBuilder() {
                   </span>
                   <div>
                     <small>Photo added</small>
-                    <strong>{selectedPlayer.name || 'Unnamed player'}</strong>
+                    <strong>{playerLabel(selectedPlayer)}</strong>
                     <span>{selectedPlayer.photo?.fileName || 'Ready to customise'}</span>
                   </div>
                   <label>
@@ -497,7 +529,7 @@ export default function ProductionBuilder() {
                 </label>
               </div>
               )}
-              {order.type !== 'single' ? (
+              {order.type !== 'single' && (hasAnyPhoto || order.players.length > 1) ? (
                 <SquadUploadQueue
                   order={order}
                   selectedId={selectedId}
@@ -510,19 +542,19 @@ export default function ProductionBuilder() {
                   onDuplicate={duplicatePlayer}
                   onAdd={() => addPlayer()}
                 />
-              ) : (
+              ) : order.type === 'single' ? (
                 <PlayerStrip order={order} selectedId={selectedId} onSelect={setSelectedId} />
-              )}
+              ) : null}
               <div className="uk-wizard-row-actions">
                 {order.type !== 'single' && <button type="button" onClick={() => addPlayer()} disabled={addDisabled}>Add player</button>}
-                <button type="button" className="uk-wizard-primary compact" onClick={() => setActiveStep(2)}>Choose style</button>
+                <button type="button" className="uk-wizard-primary compact" onClick={() => setActiveStep(2)} disabled={!hasAnyPhoto}>Choose style</button>
               </div>
             </section>
           )}
 
           {activeStep === 2 && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Product</p>
+              <p className="uk-wizard-kicker">Choose design</p>
               <h1>Choose your style.</h1>
               <p className="uk-wizard-copy">Real UK football templates. Swipe the cards, then tap one to customise.</p>
               <div className="uk-style-carousel">
@@ -549,7 +581,7 @@ export default function ProductionBuilder() {
 
           {activeStep === 3 && selectedPlayer && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Details</p>
+              <p className="uk-wizard-kicker">Complete cards</p>
               <h1>Make it theirs.</h1>
               <p className="uk-wizard-copy">Edit the details. The preview updates live.</p>
               {order.type !== 'single' && (
@@ -562,41 +594,49 @@ export default function ProductionBuilder() {
               <div className="uk-edit-preview">
                 <PlayerCard order={order} player={selectedPlayer} side={cardSide} />
               </div>
-              <div className="uk-crop-controls">
-                <label>
-                  Zoom <b>{(selectedPlayer.photo?.crop.scale || 1).toFixed(1)}x</b>
-                  <input
-                    type="range"
-                    min={0.7}
-                    max={1.8}
-                    step={0.05}
-                    value={selectedPlayer.photo?.crop.scale || 1}
-                    onChange={(event) => patchPlayer(selectedPlayer.id, { photo: selectedPlayer.photo ? { ...selectedPlayer.photo, crop: { ...selectedPlayer.photo.crop, scale: Number(event.target.value) } } : undefined })}
-                  />
+              {selectedPlayer.photo ? (
+                <div className="uk-crop-controls">
+                  <label>
+                    Zoom <b>{selectedPlayer.photo.crop.scale.toFixed(1)}x</b>
+                    <input
+                      type="range"
+                      min={0.7}
+                      max={1.8}
+                      step={0.05}
+                      value={selectedPlayer.photo.crop.scale}
+                      onChange={(event) => patchPlayer(selectedPlayer.id, { photo: selectedPlayer.photo ? { ...selectedPlayer.photo, crop: { ...selectedPlayer.photo.crop, scale: Number(event.target.value) } } : undefined })}
+                    />
+                  </label>
+                  <label>
+                    Horizontal <b>{selectedPlayer.photo.crop.x}</b>
+                    <input
+                      type="range"
+                      min={-40}
+                      max={40}
+                      step={1}
+                      value={selectedPlayer.photo.crop.x}
+                      onChange={(event) => patchPlayer(selectedPlayer.id, { photo: selectedPlayer.photo ? { ...selectedPlayer.photo, crop: { ...selectedPlayer.photo.crop, x: Number(event.target.value) } } : undefined })}
+                    />
+                  </label>
+                  <label>
+                    Vertical <b>{selectedPlayer.photo.crop.y}</b>
+                    <input
+                      type="range"
+                      min={-40}
+                      max={40}
+                      step={1}
+                      value={selectedPlayer.photo.crop.y}
+                      onChange={(event) => patchPlayer(selectedPlayer.id, { photo: selectedPlayer.photo ? { ...selectedPlayer.photo, crop: { ...selectedPlayer.photo.crop, y: Number(event.target.value) } } : undefined })}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <label className="uk-photo-needed">
+                  <strong>Upload player photo</strong>
+                  <span>Add the photo first, then the positioning tools will appear.</span>
+                  <input type="file" accept="image/*" hidden onChange={(event) => assignPhoto(selectedPlayer.id, event.target.files?.[0])} />
                 </label>
-                <label>
-                  Horizontal <b>{selectedPlayer.photo?.crop.x || 0}</b>
-                  <input
-                    type="range"
-                    min={-40}
-                    max={40}
-                    step={1}
-                    value={selectedPlayer.photo?.crop.x || 0}
-                    onChange={(event) => patchPlayer(selectedPlayer.id, { photo: selectedPlayer.photo ? { ...selectedPlayer.photo, crop: { ...selectedPlayer.photo.crop, x: Number(event.target.value) } } : undefined })}
-                  />
-                </label>
-                <label>
-                  Vertical <b>{selectedPlayer.photo?.crop.y || 0}</b>
-                  <input
-                    type="range"
-                    min={-40}
-                    max={40}
-                    step={1}
-                    value={selectedPlayer.photo?.crop.y || 0}
-                    onChange={(event) => patchPlayer(selectedPlayer.id, { photo: selectedPlayer.photo ? { ...selectedPlayer.photo, crop: { ...selectedPlayer.photo.crop, y: Number(event.target.value) } } : undefined })}
-                  />
-                </label>
-              </div>
+              )}
               <div className="uk-card-side-toggle wide" aria-label="Choose card side">
                 <button type="button" className={cardSide === 'front' ? 'active' : ''} onClick={() => setCardSide('front')}>Front</button>
                 <button type="button" className={cardSide === 'back' ? 'active' : ''} onClick={() => setCardSide('back')}>Back</button>
@@ -608,23 +648,42 @@ export default function ProductionBuilder() {
 
           {activeStep === 4 && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Review</p>
-              <h1>Looks good?</h1>
-              <p className="uk-wizard-copy">Approve ready cards before creating the print handoff.</p>
+              <p className="uk-wizard-kicker">Approve cards</p>
+              <h1>Ready for production?</h1>
+              <p className="uk-wizard-copy">Complete each card, then approve the ones you want printed.</p>
               <div className="uk-review-list">
-                {order.players.map((player) => {
+                {order.players.map((player, index) => {
                   const status = derivePlayerStatus(player);
+                  const missing = missingItems(player);
+                  const score = completionScore(player);
                   return (
                     <article key={player.id}>
                       <PlayerCard order={order} player={player} compact />
                       <div>
-                        <h3>{player.name || 'Unnamed player'}</h3>
-                        <p>{selectedTemplate(order, player).name} · #{player.kitNo || '--'} · Qty {player.prints}</p>
+                        <h3>{playerLabel(player, index)}</h3>
+                        <p>{selectedTemplate(order, player).name} &middot; #{player.kitNo || '--'} &middot; Qty {player.prints}</p>
                         <span className={statusClass(status)}>{statusCopy[status]}</span>
+                        <div className="uk-completion-meter" aria-label={`${score}% complete`}>
+                          <span style={{ width: `${score}%` }} />
+                        </div>
+                        <small>{score}% complete</small>
+                        {missing.length > 0 && <em>Missing {missing.join(', ')}</em>}
                       </div>
-                      <button type="button" onClick={() => approvePlayer(player.id)} disabled={status !== 'ready'}>
-                        {status === 'approved' ? 'Approved' : 'Approve'}
-                      </button>
+                      {status === 'ready' ? (
+                        <button type="button" onClick={() => approvePlayer(player.id)}>Approve</button>
+                      ) : status === 'approved' ? (
+                        <button type="button" className="approved" onClick={() => setActiveStep(5)}>Ready</button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedId(player.id);
+                            setActiveStep(3);
+                          }}
+                        >
+                          {reviewActionCopy(player)}
+                        </button>
+                      )}
                     </article>
                   );
                 })}
@@ -640,7 +699,7 @@ export default function ProductionBuilder() {
 
           {activeStep === 5 && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Order summary</p>
+              <p className="uk-wizard-kicker">Request production</p>
               <h1>Ready to send.</h1>
               <p className="uk-wizard-copy">{summary.checkoutEligible ? 'Send the approved cards to Emblem and we will come back with the print order and checkout link.' : 'Approve at least one card to continue.'}</p>
               <div className="uk-order-summary-card">
@@ -723,7 +782,7 @@ export default function ProductionBuilder() {
               </form>
               <div className="uk-handoff-box">
                 <h3>Keep a copy</h3>
-                <p>{summary.approvedPlayers.length} approved players · {summary.pricing.label}</p>
+                <p>{summary.approvedPlayers.length} approved players &middot; {summary.pricing.label}</p>
                 <button type="button" onClick={exportPayload} disabled={!summary.checkoutEligible}>Download order summary</button>
                 <button type="button" onClick={() => setShowPayload((value) => !value)}>{showPayload ? 'Hide technical details' : 'Show technical details'}</button>
               </div>
@@ -789,7 +848,7 @@ function SquadUploadQueue({
           </span>
           <div>
             <small>Selected player</small>
-            <strong>{selectedPlayer.name || 'Unnamed player'}</strong>
+            <strong>{playerLabel(selectedPlayer)}</strong>
             <span className={statusClass(derivePlayerStatus(selectedPlayer))}>{statusCopy[derivePlayerStatus(selectedPlayer)]}</span>
           </div>
         </div>
@@ -800,7 +859,7 @@ function SquadUploadQueue({
           const status = derivePlayerStatus(player);
           return (
             <article key={player.id} className={selectedId === player.id ? 'active' : ''}>
-              <button type="button" className="uk-squad-roster-photo" onClick={() => onSelect(player.id)} aria-label={`Select ${player.name || `player ${index + 1}`}`}>
+              <button type="button" className="uk-squad-roster-photo" onClick={() => onSelect(player.id)} aria-label={`Select ${playerLabel(player, index)}`}>
                 {player.photo?.srcUrl ? <img src={player.photo.srcUrl} alt="" /> : <span>No photo</span>}
               </button>
               <div className="uk-squad-roster-fields">
@@ -851,7 +910,7 @@ function PlayerStrip({
 }) {
   return (
     <div className="uk-player-strip" aria-label="Choose player to edit">
-      {order.players.map((player) => {
+      {order.players.map((player, index) => {
         const status = derivePlayerStatus(player);
         return (
           <button
@@ -864,7 +923,7 @@ function PlayerStrip({
               {player.photo?.srcUrl ? <img src={player.photo.srcUrl} alt="" /> : <b>No photo</b>}
             </span>
             <span>
-              <strong>{player.name || 'Unnamed player'}</strong>
+              <strong>{playerLabel(player, index)}</strong>
               <small>{statusCopy[status]}</small>
             </span>
           </button>
@@ -981,7 +1040,7 @@ function PlayerEditor({
     <div className="uk-player-editor">
       <div className="uk-editor-head">
         <span className={statusClass(status)}>{statusCopy[status]}</span>
-        <strong>{player.name || 'Unnamed player'}</strong>
+        <strong>{playerLabel(player)}</strong>
       </div>
       <label className="uk-upload-large">
         {player.photo ? 'Replace photo' : 'Upload photo'}
@@ -1051,8 +1110,8 @@ function PlayerCard({
           template={cardArtTemplate(template.id)}
           photo={player.photo?.srcUrl || null}
           details={{
-            name: player.name || 'Player Name',
-            number: player.kitNo || '10',
+            name: player.name || 'Player 1',
+            number: player.kitNo || '--',
             team: order.club || getEmjflClub(order.emjflClubId).name || 'Club Name',
             position: player.position || 'Position',
           }}
@@ -1083,7 +1142,7 @@ function PlayerCard({
         </div>
         <div className="uk-back-player">
           <span>#{player.kitNo || '00'}</span>
-          <h3>{player.name || 'PLAYER NAME'}</h3>
+          <h3>{player.name || 'PLAYER 1'}</h3>
           <p>{player.position || 'Position'} / {order.league || 'Grassroots football'}</p>
         </div>
         <div className="uk-back-stats">
@@ -1111,7 +1170,7 @@ function PlayerCard({
       </div>
       <div className="uk-card-kit">{player.kitNo || '00'}</div>
       <div className="uk-card-band">
-        <h3>{player.name || 'PLAYER NAME'}</h3>
+        <h3>{player.name || 'PLAYER 1'}</h3>
         <p>{order.club || 'Club name'} / {player.position || 'Position'}</p>
       </div>
       <div className="uk-card-stats">

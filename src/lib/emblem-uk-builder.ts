@@ -89,10 +89,10 @@ export const sportConfig = {
 } satisfies Record<Sport, { label: string; disabled: boolean; positions: string[]; stats: Array<{ key: string; label: string }> }>;
 
 export const statusCopy: Record<PlayerStatus, string> = {
-  approved: 'Approved',
+  approved: 'Ready for production',
   'needs-photo': 'Needs photo',
   'needs-details': 'Needs details',
-  ready: 'Ready',
+  ready: 'Needs approval',
 };
 
 export const nowIso = () => new Date().toISOString();
@@ -126,10 +126,7 @@ export function defaultOrder(): OrderDraft {
     players: [
       createPlayer({
         id: 'emblem-player-1',
-        name: 'Jacob Thompson',
-        position: 'CM',
-        kitNo: '10',
-        stats: { apps: '18', goals: '7', assists: '5' },
+        stats: { apps: '', goals: '', assists: '' },
       }),
     ],
   };

@@ -617,7 +617,7 @@ a { text-decoration: none; color: inherit; }
   height: 58px;
   padding: 0 16px;
   display: grid;
-  grid-template-columns: 40px 1fr 40px;
+  grid-template-columns: 58px 1fr 96px;
   align-items: center;
 }
 
@@ -636,6 +636,27 @@ a { text-decoration: none; color: inherit; }
 
 .uk-icon-button:disabled {
   opacity: 0;
+  cursor: default;
+}
+
+.uk-progress-pill {
+  min-height: 32px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 999px;
+  background: #fff8f2;
+  color: var(--wizard-accent);
+  padding: 0 10px;
+  cursor: pointer;
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.uk-progress-pill:disabled {
+  opacity: 0.65;
   cursor: default;
 }
 
@@ -1180,6 +1201,30 @@ a { text-decoration: none; color: inherit; }
   accent-color: var(--wizard-accent);
 }
 
+.uk-photo-needed {
+  margin: 8px 0 14px;
+  border: 1px dashed #e2cdbd;
+  border-radius: 16px;
+  background: #fff8f1;
+  color: var(--wizard-ink);
+  padding: 16px;
+  cursor: pointer;
+  display: grid;
+  gap: 5px;
+  text-align: center;
+}
+
+.uk-photo-needed strong {
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 18px;
+}
+
+.uk-photo-needed span {
+  color: var(--wizard-soft);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .uk-card-side-toggle.wide {
   width: min(240px, 100%);
   margin: 0 auto 16px;
@@ -1214,6 +1259,10 @@ a { text-decoration: none; color: inherit; }
   font-weight: 900;
 }
 
+.uk-review-list article > button.approved {
+  background: #137a52;
+}
+
 .uk-review-list article > button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -1229,6 +1278,35 @@ a { text-decoration: none; color: inherit; }
   color: var(--wizard-soft);
   font-size: 13px;
   line-height: 1.35;
+}
+
+.uk-review-list small,
+.uk-review-list em {
+  display: block;
+  color: var(--wizard-soft);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.uk-review-list em {
+  color: #a34f24;
+}
+
+.uk-completion-meter {
+  height: 6px;
+  margin: 9px 0 5px;
+  border-radius: 999px;
+  background: #e6e1d8;
+  overflow: hidden;
+}
+
+.uk-completion-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--wizard-accent);
 }
 
 .uk-review-list .uk-real-card.compact {
