@@ -253,23 +253,26 @@ export default function ProductionBuilder() {
       return;
     }
 
-    setOrder((current) => ({
-      ...current,
-      collectionType: 'custom',
-      collectionName: 'Custom Collection',
-      league: undefined,
-      emjflClubId: undefined,
-      club: current.club || '',
-      templateDefault: current.templateDefault,
-      players: current.players.map((player) => ({
-        ...player,
-        club: player.club || current.club,
+    setOrder((current) => {
+      const customClub = current.collectionType === 'custom' ? current.club : '';
+      return {
+        ...current,
+        collectionType: 'custom',
+        collectionName: 'Custom Collection',
+        league: undefined,
         emjflClubId: undefined,
-        badgeUrl: player.badgeUrl || current.badgeUrl,
-        clubEdited: true,
-        updatedAt: nowIso(),
-      })),
-    }));
+        club: customClub,
+        templateDefault: current.templateDefault,
+        players: current.players.map((player) => ({
+          ...player,
+          club: current.collectionType === 'custom' ? player.club || customClub : '',
+          emjflClubId: undefined,
+          badgeUrl: player.badgeUrl || current.badgeUrl,
+          clubEdited: true,
+          updatedAt: nowIso(),
+        })),
+      };
+    });
   };
 
   const updateCustomClub = (club: string) => {
@@ -747,7 +750,7 @@ export default function ProductionBuilder() {
                       <input
                         value={order.club}
                         onChange={(event) => updateCustomClub(event.target.value)}
-                        placeholder="e.g. Curzon Ashton Juniors"
+                        placeholder="Enter your club or team name"
                       />
                     </label>
                     <div className="uk-custom-badge-upload">
