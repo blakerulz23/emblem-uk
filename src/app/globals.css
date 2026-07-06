@@ -837,6 +837,64 @@ a { text-decoration: none; color: inherit; }
   text-align: center;
 }
 
+.uk-collection-choice {
+  margin-top: 18px;
+  border: 1px solid rgba(225, 112, 54, 0.18);
+  border-radius: 18px;
+  background: #fffaf3;
+  padding: 14px;
+}
+
+.uk-collection-choice h2 {
+  margin: 0 0 10px;
+  color: var(--wizard-ink);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.uk-collection-choice > div {
+  display: grid;
+  gap: 10px;
+}
+
+.uk-collection-choice button {
+  width: 100%;
+  border: 1px solid var(--wizard-line);
+  border-radius: 14px;
+  background: var(--wizard-surface);
+  color: var(--wizard-ink);
+  padding: 14px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+}
+
+.uk-collection-choice button.active {
+  border-color: var(--wizard-accent);
+  box-shadow: inset 0 0 0 1px var(--wizard-accent), 0 12px 24px var(--wizard-glow);
+}
+
+.uk-collection-choice strong,
+.uk-collection-choice small {
+  display: block;
+}
+
+.uk-collection-choice strong {
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.15;
+}
+
+.uk-collection-choice small {
+  color: var(--wizard-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .uk-wizard-fields {
   margin-top: 18px;
   display: grid;
@@ -870,6 +928,74 @@ a { text-decoration: none; color: inherit; }
   padding: 0 14px;
   font-size: 15px;
   font-weight: 700;
+}
+
+.uk-wizard-custom-card {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+}
+
+.uk-custom-badge-upload {
+  border: 1px solid var(--wizard-line);
+  border-radius: 16px;
+  background: var(--wizard-surface);
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.uk-custom-badge-upload img {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  background: #fff;
+  object-fit: contain;
+  padding: 7px;
+}
+
+.uk-custom-badge-upload span {
+  min-width: 0;
+}
+
+.uk-custom-badge-upload strong,
+.uk-custom-badge-upload small {
+  display: block;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.uk-custom-badge-upload strong {
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 15px;
+}
+
+.uk-custom-badge-upload small {
+  color: var(--wizard-soft);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.uk-custom-badge-upload label {
+  min-height: 46px;
+  border-radius: 12px;
+  background: var(--wizard-accent);
+  color: #fff;
+  padding: 0 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .uk-club-picker-intro {
@@ -3193,6 +3319,14 @@ a { text-decoration: none; color: inherit; }
   text-transform: uppercase;
 }
 
+.uk-editor-badge-row.single {
+  grid-template-columns: 1fr;
+}
+
+.uk-editor-badge-row.single label {
+  width: 100%;
+}
+
 .uk-editor-badge-strip {
   display: flex;
   gap: 8px;
@@ -3333,6 +3467,15 @@ a { text-decoration: none; color: inherit; }
 
   .uk-wizard-panel {
     padding-inline: 14px;
+  }
+
+  .uk-custom-badge-upload {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .uk-custom-badge-upload label {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .uk-crop-controls label {

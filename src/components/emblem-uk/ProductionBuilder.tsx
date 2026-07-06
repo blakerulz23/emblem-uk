@@ -28,6 +28,11 @@ const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'per
   { id: 'squad', title: 'A whole team', copy: 'Build sibling sets, friend groups, or the full squad in one session.', icon: 'group' },
 ];
 
+const collections = [
+  { id: 'official', title: 'Official League Collection', copy: 'Licensed league templates, badges and official collection branding.' },
+  { id: 'custom', title: 'Custom Club Card', copy: 'Use your own team name and badge for any club, school or squad.' },
+] as const;
+
 const orderModeLimits: Record<OrderType, { maxPlayers: number; rosterCopy: string }> = {
   single: { maxPlayers: 1, rosterCopy: 'Single orders are capped at one approved card.' },
   set: { maxPlayers: 6, rosterCopy: 'Sets are built for two to six cards in one session.' },
@@ -95,6 +100,7 @@ function reviewActionCopy(player: PlayerDraft) {
 }
 
 function playerClubId(order: OrderDraft, player?: PlayerDraft) {
+  if (order.collectionType === 'custom') return 'custom-club';
   return player?.emjflClubId || order.emjflClubId || DEFAULT_EMJFL_CLUB.id;
 }
 
@@ -103,6 +109,7 @@ function playerClubName(order: OrderDraft, player?: PlayerDraft) {
 }
 
 function playerBadge(order: OrderDraft, player?: PlayerDraft) {
+  if (order.collectionType === 'custom') return player?.badgeUrl || order.badgeUrl || '/emblem-brand.png';
   return player?.badgeUrl || (player?.emjflClubId ? getEmjflClub(player.emjflClubId).badgePath : order.badgeUrl) || getEmjflClub(playerClubId(order, player)).badgePath;
 }
 
@@ -212,6 +219,8 @@ export default function ProductionBuilder() {
     const preferredTemplate = preferredTemplateForClub(clubId) as TemplateId;
     setOrder((current) => ({
       ...current,
+      collectionType: 'official',
+      collectionName: EAST_MANCHESTER_LEAGUE,
       emjflClubId: club.id,
       club: club.name,
       league: EAST_MANCHESTER_LEAGUE,
@@ -222,6 +231,58 @@ export default function ProductionBuilder() {
         club: player.clubEdited ? player.club : club.name,
         emjflClubId: player.clubEdited ? player.emjflClubId : club.id,
         templateId: player.templateId ? player.templateId : preferredTemplate,
+        updatedAt: nowIso(),
+      })),
+    }));
+  };
+
+  const selectCollection = (collectionType: OrderDraft['collectionType']) => {
+    if (collectionType === 'official') {
+      selectOrderClub(order.emjflClubId || DEFAULT_EMJFL_CLUB.id);
+      return;
+    }
+
+    setOrder((current) => ({
+      ...current,
+      collectionType: 'custom',
+      collectionName: 'Custom Club Card',
+      league: undefined,
+      emjflClubId: undefined,
+      club: current.club || '',
+      templateDefault: current.templateDefault,
+      players: current.players.map((player) => ({
+        ...player,
+        club: player.club || current.club,
+        emjflClubId: undefined,
+        badgeUrl: player.badgeUrl || current.badgeUrl,
+        clubEdited: true,
+        updatedAt: nowIso(),
+      })),
+    }));
+  };
+
+  const updateCustomClub = (club: string) => {
+    setOrder((current) => ({
+      ...current,
+      club,
+      players: current.players.map((player) => ({
+        ...player,
+        club: current.collectionType === 'custom' ? club : player.clubEdited ? player.club : club,
+        updatedAt: nowIso(),
+      })),
+    }));
+  };
+
+  const assignOrderBadge = (file?: File) => {
+    if (!file) return;
+    const badgeUrl = URL.createObjectURL(file);
+    setOrder((current) => ({
+      ...current,
+      badgeUrl,
+      players: current.players.map((player) => ({
+        ...player,
+        badgeUrl: current.collectionType === 'custom' ? badgeUrl : player.badgeUrl || badgeUrl,
+        clubEdited: true,
         updatedAt: nowIso(),
       })),
     }));
@@ -276,7 +337,29 @@ export default function ProductionBuilder() {
     }, { step, promoteSingle: true });
   };
 
+  const addPlayerToCurrentTeam = (step = 1) => {
+    if (order.collectionType === 'custom') {
+      addPlayer({
+        club: order.club,
+        badgeUrl: order.badgeUrl,
+        clubEdited: true,
+        templateId: order.templateDefault,
+      }, { step, promoteSingle: true });
+      return;
+    }
+    addPlayerToClub(order.emjflClubId || DEFAULT_EMJFL_CLUB.id, step);
+  };
+
   const addTeam = () => {
+    if (order.collectionType === 'custom') {
+      addPlayer({
+        club: '',
+        badgeUrl: undefined,
+        clubEdited: true,
+        templateId: order.templateDefault,
+      }, { step: 0, promoteSingle: true });
+      return;
+    }
     addPlayerToClub(nextClubId(order), 1);
   };
 
@@ -504,7 +587,7 @@ export default function ProductionBuilder() {
 
   const progress = ((activeStep + 1) / steps.length) * 100;
   const progressLabel = activeStep >= 3
-    ? `${order.players.length} player${order.players.length === 1 ? '' : 's'} · ${summary.counts.approved} approved`
+    ? `${order.players.length} player${order.players.length === 1 ? '' : 's'} - ${summary.counts.approved} approved`
     : steps[activeStep];
   const goBack = () => setActiveStep((step) => Math.max(0, step - 1));
   const selectedIndex = selectedPlayer ? order.players.findIndex((player) => player.id === selectedPlayer.id) : -1;
@@ -557,9 +640,9 @@ export default function ProductionBuilder() {
         <main className="uk-wizard-screen">
           {activeStep === 0 && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Choose your club</p>
-              <h1>Who are you building for?</h1>
-              <p className="uk-wizard-copy">One card for your child, or a matching set for the whole team.</p>
+              <p className="uk-wizard-kicker">Start order</p>
+              <h1>What are you creating today?</h1>
+              <p className="uk-wizard-copy">Choose how many cards you need, then pick an official collection or create a custom club card.</p>
               <div className="uk-wizard-choice-list">
                 {orderTypes.map((type) => (
                   <button
@@ -590,27 +673,69 @@ export default function ProductionBuilder() {
                   </button>
                 ))}
               </div>
+              <div className="uk-collection-choice">
+                <h2>Choose collection</h2>
+                <div>
+                  {collections.map((collection) => (
+                    <button
+                      key={collection.id}
+                      type="button"
+                      className={order.collectionType === collection.id ? 'active' : ''}
+                      onClick={() => selectCollection(collection.id)}
+                    >
+                      <strong>{collection.title}</strong>
+                      <small>{collection.copy}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="uk-wizard-fields">
                 <label>
                   Season
                   <input value={order.season} onChange={(event) => patchOrder({ season: event.target.value })} />
                 </label>
-                <label>
-                  League
-                  <input value={order.league || EAST_MANCHESTER_LEAGUE} readOnly />
-                </label>
-                <div className="uk-wizard-club-row">
-                  <label>
-                    Club / team
-                    <select
-                      value={order.emjflClubId || DEFAULT_EMJFL_CLUB.id}
-                      onChange={(event) => selectOrderClub(event.target.value)}
-                    >
-                      {EMJFL_CLUBS.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
-                    </select>
-                  </label>
-                  <img src={playerBadge(order)} alt="" />
-                </div>
+                {order.collectionType === 'official' ? (
+                  <>
+                    <label>
+                      Collection / league
+                      <input value={order.league || EAST_MANCHESTER_LEAGUE} readOnly />
+                    </label>
+                    <div className="uk-wizard-club-row">
+                      <label>
+                        Club
+                        <select
+                          value={order.emjflClubId || DEFAULT_EMJFL_CLUB.id}
+                          onChange={(event) => selectOrderClub(event.target.value)}
+                        >
+                          {EMJFL_CLUBS.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
+                        </select>
+                      </label>
+                      <img src={playerBadge(order)} alt="" />
+                    </div>
+                  </>
+                ) : (
+                  <div className="uk-wizard-custom-card">
+                    <label>
+                      Club / team name
+                      <input
+                        value={order.club}
+                        onChange={(event) => updateCustomClub(event.target.value)}
+                        placeholder="e.g. Hollinwood FC U12s"
+                      />
+                    </label>
+                    <div className="uk-custom-badge-upload">
+                      <img src={order.badgeUrl || '/emblem-brand.png'} alt="" />
+                      <span>
+                        <strong>Club badge</strong>
+                        <small>Optional. Use your own badge for custom club cards.</small>
+                      </span>
+                      <label>
+                        Upload badge
+                        <input type="file" accept="image/*" hidden onChange={(event) => assignOrderBadge(event.target.files?.[0])} />
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
               <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(1)}>Continue</button>
             </section>
@@ -626,7 +751,7 @@ export default function ProductionBuilder() {
               {order.type === 'single' && selectedPlayer && !selectedHasPhoto && (
                 <div className="uk-photo-carousel single">
                   <label className="uk-upload-card active">
-                    <span>▧</span>
+                    <span>â–§</span>
                     <strong>Upload photo</strong>
                     <small>Pick one football photo from your files.</small>
                     <input type="file" accept="image/*" hidden onChange={(event) => assignPhoto(selectedPlayer.id, event.target.files?.[0])} />
@@ -654,13 +779,13 @@ export default function ProductionBuilder() {
               {order.type !== 'single' && !hasAnyPhoto && (
                 <div className="uk-photo-carousel team">
                   <label className="uk-upload-card active">
-                    <span>▧</span>
+                    <span>â–§</span>
                     <strong>Upload player photos</strong>
                     <small>Select one photo, or choose several at once.</small>
                     <input type="file" accept="image/*" multiple hidden onChange={(event) => bulkPhotos(event.target.files)} />
                   </label>
                   <button type="button" className="uk-upload-card" onClick={() => addPlayer()} disabled={addDisabled}>
-                    <span>＋</span>
+                    <span>ï¼‹</span>
                     <strong>Add manually</strong>
                     <small>Create a player row before adding their photo.</small>
                   </button>
@@ -683,14 +808,14 @@ export default function ProductionBuilder() {
               <div className="uk-photo-carousel">
                 {selectedPlayer && (
                   <label className="uk-upload-card active">
-                    <span>▧</span>
+                    <span>â–§</span>
                     <strong>{selectedPlayer.photo ? 'Replace photo' : 'Upload a photo'}</strong>
                     <small>{selectedPlayer.photo?.fileName || 'Pick one from your files.'}</small>
                     <input type="file" accept="image/*" hidden onChange={(event) => assignPhoto(selectedPlayer.id, event.target.files?.[0])} />
                   </label>
                 )}
                 <label className="uk-upload-card">
-                  <span>＋</span>
+                  <span>ï¼‹</span>
                   <strong>{order.type === 'single' ? 'Use another photo' : 'Bulk upload'}</strong>
                   <small>{order.type === 'single' ? 'Replace the selected player photo.' : 'Create cards from several player photos.'}</small>
                   <input type="file" accept="image/*" multiple hidden onChange={(event) => bulkPhotos(event.target.files)} />
@@ -821,7 +946,7 @@ export default function ProductionBuilder() {
               <p className="uk-wizard-copy">Complete each card, then approve the ones you want printed.</p>
               {canManageAsTeam ? (
                 <div className="uk-review-toolbar">
-                  <button type="button" onClick={() => addPlayerToClub(order.emjflClubId || DEFAULT_EMJFL_CLUB.id)} disabled={!canAddPlayer({ ...order, type: order.type === 'single' ? 'set' : order.type })}>
+                  <button type="button" onClick={() => addPlayerToCurrentTeam()} disabled={!canAddPlayer({ ...order, type: order.type === 'single' ? 'set' : order.type })}>
                     Add player
                   </button>
                   <button type="button" onClick={addTeam} disabled={!canAddPlayer({ ...order, type: order.type === 'single' ? 'set' : order.type })}>
@@ -839,7 +964,7 @@ export default function ProductionBuilder() {
                         <span>{group.players.length} card{group.players.length === 1 ? '' : 's'}</span>
                       </div>
                       {canManageAsTeam ? (
-                        <button type="button" onClick={() => addPlayerToClub(group.id)} disabled={addDisabled}>
+                        <button type="button" onClick={() => order.collectionType === 'custom' ? addPlayerToCurrentTeam() : addPlayerToClub(group.id)} disabled={addDisabled}>
                           Add player
                         </button>
                       ) : null}
@@ -907,7 +1032,7 @@ export default function ProductionBuilder() {
                     <strong>Need another card?</strong>
                     <small>Add another player to this order without starting again.</small>
                   </span>
-                  <button type="button" onClick={() => addPlayerToClub(playerClubId(order, selectedPlayer))}>
+                  <button type="button" onClick={() => addPlayerToCurrentTeam()}>
                     Add another player
                   </button>
                 </div>
@@ -1334,6 +1459,7 @@ function PlayerEditor({
 }) {
   const status = derivePlayerStatus(player);
   const stats = sportConfig[order.sport].stats;
+  const isCustomCollection = order.collectionType === 'custom';
 
   return (
     <div className="uk-player-editor">
@@ -1349,35 +1475,50 @@ function PlayerEditor({
         <div className="uk-editor-badge-head">
           <span>
             <strong>Club badge</strong>
-            <small>Shown with the East Manchester league crest on the card.</small>
+            <small>
+              {isCustomCollection
+                ? 'Shown as the club badge for this custom card.'
+                : 'Shown with the East Manchester league crest on the card.'}
+            </small>
           </span>
           <img src={playerBadge(order, player)} alt="" />
         </div>
-        <div className="uk-editor-badge-row">
-          <select
-            value={playerClubId(order, player)}
-            onChange={(event) => onClub(player.id, event.target.value)}
-          >
-            {EMJFL_CLUBS.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
-          </select>
-          <label>
-            Upload badge
-            <input type="file" accept="image/*" hidden onChange={(event) => onBadge(player.id, event.target.files?.[0])} />
-          </label>
-        </div>
-        <div className="uk-editor-badge-strip" aria-label="Choose club badge while editing">
-          {EMJFL_CLUBS.map((club) => (
-            <button
-              key={club.id}
-              type="button"
-              className={playerClubId(order, player) === club.id ? 'active' : ''}
-              onClick={() => onClub(player.id, club.id)}
-              title={club.name}
-            >
-              <img src={club.badgePath} alt="" />
-            </button>
-          ))}
-        </div>
+        {isCustomCollection ? (
+          <div className="uk-editor-badge-row single">
+            <label>
+              Upload custom badge
+              <input type="file" accept="image/*" hidden onChange={(event) => onBadge(player.id, event.target.files?.[0])} />
+            </label>
+          </div>
+        ) : (
+          <>
+            <div className="uk-editor-badge-row">
+              <select
+                value={playerClubId(order, player)}
+                onChange={(event) => onClub(player.id, event.target.value)}
+              >
+                {EMJFL_CLUBS.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
+              </select>
+              <label>
+                Upload badge
+                <input type="file" accept="image/*" hidden onChange={(event) => onBadge(player.id, event.target.files?.[0])} />
+              </label>
+            </div>
+            <div className="uk-editor-badge-strip" aria-label="Choose club badge while editing">
+              {EMJFL_CLUBS.map((club) => (
+                <button
+                  key={club.id}
+                  type="button"
+                  className={playerClubId(order, player) === club.id ? 'active' : ''}
+                  onClick={() => onClub(player.id, club.id)}
+                  title={club.name}
+                >
+                  <img src={club.badgePath} alt="" />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
       <div className="uk-field-stack">
         <label>
@@ -1435,8 +1576,9 @@ function PlayerCard({
 }) {
   const template = selectedTemplate(order, player);
   const stats = sportConfig[order.sport].stats;
+  const useOfficialArt = order.collectionType === 'official' && (template.id === 'emjfl-official' || isHollinwoodTemplateId(template.id));
 
-  if (template.id === 'emjfl-official' || isHollinwoodTemplateId(template.id)) {
+  if (useOfficialArt) {
     return (
       <div className={`uk-real-card ${compact ? 'compact' : ''}`}>
         <CardArt
@@ -1448,7 +1590,7 @@ function PlayerCard({
             team: playerClubName(order, player) || 'Club Name',
             position: player.position || 'Position',
           }}
-          logo={template.id === 'emjfl-official' || isHollinwoodTemplateId(template.id) ? playerBadge(order, player) : null}
+          logo={playerBadge(order, player)}
           stats={player.stats}
           sport="soccer"
           side={side}
@@ -1464,7 +1606,7 @@ function PlayerCard({
   if (side === 'back') {
     return (
       <div className={`uk-player-card back ${compact ? 'compact' : ''}`} style={{ background: template.background }}>
-        {template.frameAsset && <img className="uk-template-frame" src={template.frameAsset} alt="" />}
+        {order.collectionType === 'official' && template.frameAsset && <img className="uk-template-frame" src={template.frameAsset} alt="" />}
         <div className="uk-back-top">
           <div className="uk-back-logo">{playerBadge(order, player) ? <img src={playerBadge(order, player)} alt="" /> : <span>Club<br />logo</span>}</div>
           <div>
@@ -1496,7 +1638,7 @@ function PlayerCard({
 
   return (
     <div className={`uk-player-card front ${compact ? 'compact' : ''}`} style={{ background: template.background }}>
-      {template.frameAsset && <img className="uk-template-frame" src={template.frameAsset} alt="" />}
+      {order.collectionType === 'official' && template.frameAsset && <img className="uk-template-frame" src={template.frameAsset} alt="" />}
       <div className="uk-card-logo">{playerBadge(order, player) ? <img src={playerBadge(order, player)} alt="" /> : <span>Logo</span>}</div>
       <div className="uk-card-photo">
         {player.photo?.srcUrl ? <img src={player.photo.srcUrl} alt="" /> : <span>Photo</span>}

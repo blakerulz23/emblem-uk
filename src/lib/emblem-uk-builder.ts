@@ -2,6 +2,7 @@ import { clubBadgePath, EAST_MANCHESTER_LEAGUE, preferredTemplateForClub } from 
 import { HOLLINWOOD_VARIANTS, type HollinwoodTemplateId } from '@/lib/hollinwood-manifest';
 
 export type OrderType = 'single' | 'set' | 'squad';
+export type CollectionType = 'official' | 'custom';
 export type Sport = 'football';
 export type PlayerStatus = 'approved' | 'needs-photo' | 'needs-details' | 'ready';
 export type TemplateId = 'emjfl-official' | HollinwoodTemplateId;
@@ -45,6 +46,8 @@ export type PlayerDraft = {
 export type OrderDraft = {
   id: string;
   type: OrderType;
+  collectionType: CollectionType;
+  collectionName?: string;
   sport: Sport;
   club: string;
   ageGroup: string;
@@ -130,6 +133,8 @@ export function defaultOrder(): OrderDraft {
   return {
     id: 'emblem-local-order',
     type: 'single',
+    collectionType: 'official',
+    collectionName: EAST_MANCHESTER_LEAGUE,
     sport: 'football',
     club: 'Curzon Ashton Juniors',
     ageGroup: '',
@@ -203,7 +208,7 @@ export function productionPayload(order: OrderDraft) {
     club: player.club || order.club,
     badgeUrl: player.badgeUrl,
     badgeStorageKey: player.badgeStorageKey,
-    badgeSnapshotUrl: player.badgeUrl || clubBadgePath(player.emjflClubId || order.emjflClubId),
+    badgeSnapshotUrl: player.badgeUrl || (order.collectionType === 'official' ? clubBadgePath(player.emjflClubId || order.emjflClubId) : order.badgeUrl),
     emjflClubId: player.emjflClubId || order.emjflClubId,
     position: player.position,
     kitNo: player.kitNo,
@@ -233,19 +238,21 @@ export function productionPayload(order: OrderDraft) {
       subtotal: Number((player.prints * summary.pricing.perCard).toFixed(2)),
     });
     return groups;
-  }, new Map<string, { id: string; club: string; badgeUrl?: string; badgeStorageKey?: string; badgeSnapshotUrl: string; players: string[]; prints: number; subtotal: number }>()).values());
+  }, new Map<string, { id: string; club: string; badgeUrl?: string; badgeStorageKey?: string; badgeSnapshotUrl?: string; players: string[]; prints: number; subtotal: number }>()).values());
 
   return {
     order: {
       id: order.id,
       type: order.type,
+      collectionType: order.collectionType,
+      collectionName: order.collectionName,
       sport: order.sport,
       club: order.club,
       ageGroup: order.ageGroup,
       season: order.season,
       league: order.league,
       badgeUrl: order.badgeUrl,
-      badgeSnapshotUrl: order.badgeUrl || clubBadgePath(order.emjflClubId),
+      badgeSnapshotUrl: order.badgeUrl || (order.collectionType === 'official' ? clubBadgePath(order.emjflClubId) : undefined),
       emjflClubId: order.emjflClubId,
       templateDefault: order.templateDefault,
     },
