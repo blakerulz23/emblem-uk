@@ -592,16 +592,20 @@ a { text-decoration: none; color: inherit; }
   padding: 0;
   display: grid;
   justify-items: center;
+  overflow-x: hidden;
 }
 
 .uk-wizard-phone {
-  width: min(100%, 440px);
+  width: 100%;
+  max-width: 440px;
+  min-width: 0;
   min-height: 100dvh;
   background: #fff;
   color: var(--wizard-ink);
   box-shadow: 0 0 0 1px rgba(16,16,21,0.07), 0 24px 80px rgba(16,16,21,0.12);
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 .uk-wizard-header {
@@ -715,6 +719,7 @@ a { text-decoration: none; color: inherit; }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .uk-wizard-panel {
@@ -722,6 +727,7 @@ a { text-decoration: none; color: inherit; }
   padding: 24px 16px 30px;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .uk-wizard-kicker {
@@ -1279,10 +1285,13 @@ a { text-decoration: none; color: inherit; }
   display: grid;
   justify-items: center;
   margin: 10px 0 16px;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .uk-edit-preview .uk-real-card {
-  max-width: 340px;
+  width: min(340px, 100%);
+  max-width: 100%;
 }
 
 .uk-crop-controls {
@@ -1292,8 +1301,9 @@ a { text-decoration: none; color: inherit; }
 }
 
 .uk-crop-controls label {
-  grid-template-columns: 90px 34px 1fr;
+  grid-template-columns: 88px 38px minmax(0, 1fr);
   align-items: center;
+  min-width: 0;
 }
 
 .uk-crop-controls b {
@@ -2861,6 +2871,8 @@ a { text-decoration: none; color: inherit; }
   padding: 12px;
   display: grid;
   gap: 10px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .uk-editor-badge-head,
@@ -2869,6 +2881,7 @@ a { text-decoration: none; color: inherit; }
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
+  min-width: 0;
 }
 
 .uk-editor-badge-head strong,
@@ -2901,10 +2914,12 @@ a { text-decoration: none; color: inherit; }
 
 .uk-editor-badge-row select {
   width: 100%;
+  min-width: 0;
   min-height: 48px;
 }
 
 .uk-editor-badge-row label {
+  max-width: 100%;
   min-height: 48px;
   border: 0;
   border-radius: 12px;
@@ -2927,6 +2942,12 @@ a { text-decoration: none; color: inherit; }
   gap: 8px;
   overflow-x: auto;
   padding-bottom: 2px;
+  max-width: 100%;
+  scrollbar-width: none;
+}
+
+.uk-editor-badge-strip::-webkit-scrollbar {
+  display: none;
 }
 
 .uk-editor-badge-strip button {
@@ -3017,6 +3038,66 @@ a { text-decoration: none; color: inherit; }
 
   .uk-roster-table article > * {
     min-width: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .uk-wizard-shell.uk-builder-shell {
+    width: 100%;
+    max-width: 100vw;
+    min-height: 100dvh;
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  .uk-wizard-phone {
+    max-width: none;
+    width: 100%;
+    box-shadow: none;
+  }
+
+  .uk-wizard-topbar {
+    grid-template-columns: 44px minmax(0, 1fr) 76px;
+    padding: 0 12px;
+  }
+
+  .uk-progress-pill {
+    padding: 0 8px;
+    font-size: 8px;
+  }
+
+  .uk-wizard-brand {
+    gap: 8px;
+    font-size: 17px;
+  }
+
+  .uk-wizard-progress {
+    padding-inline: 12px;
+  }
+
+  .uk-wizard-panel {
+    padding-inline: 14px;
+  }
+
+  .uk-crop-controls label {
+    grid-template-columns: 78px 34px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .uk-editor-badge-row {
+    grid-template-columns: 1fr;
+  }
+
+  .uk-editor-badge-row label {
+    width: 100%;
+  }
+
+  .uk-order-club-list article {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .uk-order-club-list b {
+    grid-column: 2;
   }
 }
 
