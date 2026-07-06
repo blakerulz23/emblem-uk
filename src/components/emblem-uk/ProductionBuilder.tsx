@@ -32,14 +32,12 @@ const collections = [
   {
     id: 'official',
     title: 'Official Collection',
-    preview: '/templates/emjfl-orange/base.png',
     proof: 'Official Partner',
     points: ['Licensed badges', 'Official templates', 'League approved'],
   },
   {
     id: 'custom',
     title: 'Custom Collection',
-    preview: '',
     proof: 'Build Your Own',
     points: ['Upload your own badge', 'Any club or school', 'One-off events'],
   },
@@ -703,14 +701,6 @@ export default function ProductionBuilder() {
                       className={order.collectionType === collection.id ? 'active' : ''}
                       onClick={() => selectCollection(collection.id)}
                     >
-                      <span className={`uk-collection-preview ${collection.id}`} aria-hidden="true">
-                        {collection.preview ? <img src={collection.preview} alt="" /> : (
-                          <>
-                            <i />
-                            <b />
-                          </>
-                        )}
-                      </span>
                       <span>
                         <strong>{collection.title}</strong>
                         <em>{collection.proof}</em>
