@@ -839,10 +839,8 @@ a { text-decoration: none; color: inherit; }
 
 .uk-collection-choice {
   margin-top: 18px;
-  border: 1px solid rgba(225, 112, 54, 0.18);
-  border-radius: 18px;
-  background: #fffaf3;
-  padding: 14px;
+  padding-top: 18px;
+  border-top: 1px solid var(--wizard-line);
 }
 
 .uk-collection-choice h2 {
@@ -863,13 +861,15 @@ a { text-decoration: none; color: inherit; }
 .uk-collection-choice button {
   width: 100%;
   border: 1px solid var(--wizard-line);
-  border-radius: 14px;
+  border-radius: 18px;
   background: var(--wizard-surface);
   color: var(--wizard-ink);
   padding: 14px;
   cursor: pointer;
   display: grid;
-  gap: 4px;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 10px 14px;
+  align-items: center;
   text-align: left;
 }
 
@@ -879,20 +879,78 @@ a { text-decoration: none; color: inherit; }
 }
 
 .uk-collection-choice strong,
-.uk-collection-choice small {
+.uk-collection-choice small,
+.uk-collection-choice em {
   display: block;
+}
+
+.uk-collection-mark {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: #fff0eb;
+  color: var(--wizard-accent);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .uk-collection-choice strong {
   font-family: var(--font-sora), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: 17px;
   line-height: 1.15;
 }
 
 .uk-collection-choice small {
+  margin-top: 4px;
   color: var(--wizard-soft);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.uk-collection-choice em {
+  grid-column: 2;
+  width: max-content;
+  max-width: 100%;
+  border-radius: 999px;
+  background: #fff4df;
+  color: #93611d;
+  padding: 6px 10px;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.uk-collection-choice ul {
+  grid-column: 2;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 5px;
+}
+
+.uk-collection-choice li {
+  color: var(--wizard-soft);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.uk-collection-choice li::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--wizard-accent);
+  display: inline-block;
+  vertical-align: 1px;
 }
 
 .uk-wizard-fields {
@@ -971,6 +1029,13 @@ a { text-decoration: none; color: inherit; }
   color: var(--wizard-ink);
   font-family: var(--font-sora), system-ui, sans-serif;
   font-size: 15px;
+}
+
+.uk-custom-badge-upload strong em {
+  color: var(--wizard-soft);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
 }
 
 .uk-custom-badge-upload small {

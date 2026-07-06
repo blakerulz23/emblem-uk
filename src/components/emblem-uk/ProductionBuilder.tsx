@@ -29,8 +29,22 @@ const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'per
 ];
 
 const collections = [
-  { id: 'official', title: 'Official League Collection', copy: 'Licensed league templates, badges and official collection branding.' },
-  { id: 'custom', title: 'Custom Club Card', copy: 'Use your own team name and badge for any club, school or squad.' },
+  {
+    id: 'official',
+    title: 'Official Collection',
+    badge: 'Official',
+    copy: 'Licensed clubs, official badges and league branding.',
+    proof: 'Licensed Collection',
+    points: ['Official club badges', 'Official templates', 'League approved'],
+  },
+  {
+    id: 'custom',
+    title: 'Build Your Own',
+    badge: 'Custom',
+    copy: 'Create cards for any school, academy, team or one-off event.',
+    proof: 'Unlimited creativity',
+    points: ['Use any team', 'Upload your own badge', 'Create one-off designs'],
+  },
 ] as const;
 
 const orderModeLimits: Record<OrderType, { maxPlayers: number; rosterCopy: string }> = {
@@ -245,7 +259,7 @@ export default function ProductionBuilder() {
     setOrder((current) => ({
       ...current,
       collectionType: 'custom',
-      collectionName: 'Custom Club Card',
+      collectionName: 'Build Your Own',
       league: undefined,
       emjflClubId: undefined,
       club: current.club || '',
@@ -641,8 +655,8 @@ export default function ProductionBuilder() {
           {activeStep === 0 && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Start order</p>
-              <h1>What are you creating today?</h1>
-              <p className="uk-wizard-copy">Choose how many cards you need, then pick an official collection or create a custom club card.</p>
+              <h1>Who are you building for?</h1>
+              <p className="uk-wizard-copy">Choose the order size first, then pick an official collection or build your own.</p>
               <div className="uk-wizard-choice-list">
                 {orderTypes.map((type) => (
                   <button
@@ -674,7 +688,7 @@ export default function ProductionBuilder() {
                 ))}
               </div>
               <div className="uk-collection-choice">
-                <h2>Choose collection</h2>
+                <h2>Which collection?</h2>
                 <div>
                   {collections.map((collection) => (
                     <button
@@ -683,21 +697,28 @@ export default function ProductionBuilder() {
                       className={order.collectionType === collection.id ? 'active' : ''}
                       onClick={() => selectCollection(collection.id)}
                     >
-                      <strong>{collection.title}</strong>
-                      <small>{collection.copy}</small>
+                      <span className="uk-collection-mark" aria-hidden="true">{collection.badge}</span>
+                      <span>
+                        <strong>{collection.title}</strong>
+                        <small>{collection.copy}</small>
+                      </span>
+                      <em>{collection.proof}</em>
+                      <ul>
+                        {collection.points.map((point) => <li key={point}>{point}</li>)}
+                      </ul>
                     </button>
                   ))}
                 </div>
               </div>
               <div className="uk-wizard-fields">
-                <label>
-                  Season
-                  <input value={order.season} onChange={(event) => patchOrder({ season: event.target.value })} />
-                </label>
                 {order.collectionType === 'official' ? (
                   <>
                     <label>
-                      Collection / league
+                      Season
+                      <input value={order.season} onChange={(event) => patchOrder({ season: event.target.value })} />
+                    </label>
+                    <label>
+                      Collection
                       <input value={order.league || EAST_MANCHESTER_LEAGUE} readOnly />
                     </label>
                     <div className="uk-wizard-club-row">
@@ -716,18 +737,18 @@ export default function ProductionBuilder() {
                 ) : (
                   <div className="uk-wizard-custom-card">
                     <label>
-                      Club / team name
+                      Team or collection name
                       <input
                         value={order.club}
                         onChange={(event) => updateCustomClub(event.target.value)}
-                        placeholder="e.g. Hollinwood FC U12s"
+                        placeholder="e.g. Hollinwood FC U12s, St Mary's School"
                       />
                     </label>
                     <div className="uk-custom-badge-upload">
                       <img src={order.badgeUrl || '/emblem-brand.png'} alt="" />
                       <span>
-                        <strong>Club badge</strong>
-                        <small>Optional. Use your own badge for custom club cards.</small>
+                        <strong>Club badge <em>optional</em></strong>
+                        <small>Upload your badge or we'll create a clean placeholder.</small>
                       </span>
                       <label>
                         Upload badge
@@ -1477,7 +1498,7 @@ function PlayerEditor({
             <strong>Club badge</strong>
             <small>
               {isCustomCollection
-                ? 'Shown as the club badge for this custom card.'
+                ? 'Shown as the badge for this custom collection.'
                 : 'Shown with the East Manchester league crest on the card.'}
             </small>
           </span>
