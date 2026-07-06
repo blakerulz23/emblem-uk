@@ -92,7 +92,7 @@ export const statusCopy: Record<PlayerStatus, string> = {
   approved: 'Ready for production',
   'needs-photo': 'Needs photo',
   'needs-details': 'Needs details',
-  ready: 'Needs approval',
+  ready: 'Ready',
 };
 
 export const nowIso = () => new Date().toISOString();

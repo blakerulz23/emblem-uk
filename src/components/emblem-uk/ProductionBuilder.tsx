@@ -34,7 +34,7 @@ const orderModeLimits: Record<OrderType, { maxPlayers: number; rosterCopy: strin
   squad: { maxPlayers: 40, rosterCopy: 'Squad orders support bulk photo upload and team-level approval.' },
 };
 
-const steps = ['Choose club', 'Upload photos', 'Choose design', 'Complete cards', 'Approve cards', 'Request production'];
+const steps = ['Choose club', 'Upload photos', 'Personalise cards', 'Approve cards', 'Review order'];
 type CardSide = 'front' | 'back';
 type EnquiryStatus = 'idle' | 'sending' | 'sent' | 'error';
 
@@ -317,7 +317,7 @@ export default function ProductionBuilder() {
 
   const progress = ((activeStep + 1) / steps.length) * 100;
   const completeCount = summary.counts.ready + summary.counts.approved;
-  const progressLabel = summary.checkoutEligible ? 'Order summary' : `${completeCount}/${order.players.length} ready`;
+  const progressLabel = summary.checkoutEligible ? 'Review order' : `${completeCount}/${order.players.length} ready`;
   const goBack = () => setActiveStep((step) => Math.max(0, step - 1));
   const selectedIndex = selectedPlayer ? order.players.findIndex((player) => player.id === selectedPlayer.id) : -1;
   const selectAdjacentPlayer = (direction: -1 | 1) => {
@@ -328,7 +328,6 @@ export default function ProductionBuilder() {
   const chooseTemplate = (templateId: TemplateId) => {
     patchOrder({ templateDefault: templateId });
     if (selectedPlayer) patchPlayer(selectedPlayer.id, { templateId });
-    setActiveStep(3);
   };
   const orderedTemplates = useMemo(() => {
     const preferred = preferredTemplateForClub(order.emjflClubId);
@@ -355,7 +354,7 @@ export default function ProductionBuilder() {
               type="button"
               className="uk-progress-pill"
               aria-label={progressLabel}
-              onClick={() => setActiveStep(summary.checkoutEligible ? 5 : 4)}
+              onClick={() => setActiveStep(summary.checkoutEligible ? 4 : 3)}
               disabled={activeStep < 2 && !summary.checkoutEligible}
             >
               {progressLabel}
@@ -528,43 +527,16 @@ export default function ProductionBuilder() {
               ) : null}
               <div className="uk-wizard-row-actions">
                 {order.type !== 'single' && <button type="button" onClick={() => addPlayer()} disabled={addDisabled}>Add player</button>}
-                <button type="button" className="uk-wizard-primary compact" onClick={() => setActiveStep(2)} disabled={!hasAnyPhoto}>Choose style</button>
+                <button type="button" className="uk-wizard-primary compact" onClick={() => setActiveStep(2)} disabled={!hasAnyPhoto}>Personalise cards</button>
               </div>
             </section>
           )}
 
           {activeStep === 2 && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Choose design</p>
-              <h1>Choose your style.</h1>
-              <p className="uk-wizard-copy">Real UK football templates. Swipe the cards, then tap one to customise.</p>
-              <div className="uk-style-carousel">
-                {orderedTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    type="button"
-                    className={selectedTemplate(order, selectedPlayer).id === template.id ? 'active' : ''}
-                    onClick={() => chooseTemplate(template.id)}
-                  >
-                    <PlayerCard
-                      order={{ ...order, templateDefault: template.id }}
-                      player={selectedPlayer ? { ...selectedPlayer, templateId: template.id } : createPlayer({ templateId: template.id })}
-                      compact
-                    />
-                    <strong>{template.name}</strong>
-                    {template.id === preferredTemplateForClub(order.emjflClubId) && <small>Recommended for {getEmjflClub(order.emjflClubId).name}</small>}
-                  </button>
-                ))}
-              </div>
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(3)}>Customise this design</button>
-            </section>
-          )}
-
-          {activeStep === 3 && selectedPlayer && (
-            <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Complete cards</p>
-              <h1>Make it theirs.</h1>
-              <p className="uk-wizard-copy">Edit the details. The preview updates live.</p>
+              <p className="uk-wizard-kicker">Personalise cards</p>
+              <h1>Make it yours.</h1>
+              <p className="uk-wizard-copy">Choose the look, edit the details and approve each card when it is ready.</p>
               {order.type !== 'single' && (
                 <div className="uk-squad-edit-bar">
                   <button type="button" onClick={() => selectAdjacentPlayer(-1)} disabled={selectedIndex <= 0}>Previous</button>
@@ -572,6 +544,33 @@ export default function ProductionBuilder() {
                   <button type="button" onClick={() => selectAdjacentPlayer(1)} disabled={selectedIndex >= order.players.length - 1}>Next</button>
                 </div>
               )}
+              <div className="uk-personalise-style">
+                <div className="uk-personalise-style-head">
+                  <span>
+                    <strong>{selectedTemplate(order, selectedPlayer).name}</strong>
+                    <small>Swipe to change style</small>
+                  </span>
+                  <em>Best match for {getEmjflClub(order.emjflClubId).name}</em>
+                </div>
+                <div className="uk-style-carousel compact">
+                  {orderedTemplates.map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      className={selectedTemplate(order, selectedPlayer).id === template.id ? 'active' : ''}
+                      onClick={() => chooseTemplate(template.id)}
+                    >
+                      <PlayerCard
+                        order={{ ...order, templateDefault: template.id }}
+                        player={selectedPlayer ? { ...selectedPlayer, templateId: template.id } : createPlayer({ templateId: template.id })}
+                        compact
+                      />
+                      <strong>{template.name}</strong>
+                      {template.id === preferredTemplateForClub(order.emjflClubId) && <small>Best match</small>}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="uk-edit-preview">
                 <PlayerCard order={order} player={selectedPlayer} side={cardSide} />
               </div>
@@ -623,11 +622,11 @@ export default function ProductionBuilder() {
                 <button type="button" className={cardSide === 'back' ? 'active' : ''} onClick={() => setCardSide('back')}>Back</button>
               </div>
               <PlayerEditor order={order} player={selectedPlayer} onPatch={patchPlayer} onPhoto={assignPhoto} onClub={selectClub} onBadge={assignBadge} />
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(4)}>Review order</button>
+              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(3)}>Approve cards</button>
             </section>
           )}
 
-          {activeStep === 4 && (
+          {activeStep === 3 && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Approve cards</p>
               <h1>Ready for production?</h1>
@@ -653,13 +652,13 @@ export default function ProductionBuilder() {
                       {status === 'ready' ? (
                         <button type="button" onClick={() => approvePlayer(player.id)}>Approve</button>
                       ) : status === 'approved' ? (
-                        <button type="button" className="approved" onClick={() => setActiveStep(5)}>Ready</button>
+                        <button type="button" className="approved" onClick={() => setActiveStep(4)}>Ready</button>
                       ) : (
                         <button
                           type="button"
                           onClick={() => {
                             setSelectedId(player.id);
-                            setActiveStep(3);
+                            setActiveStep(2);
                           }}
                         >
                           {reviewActionCopy(player)}
@@ -674,14 +673,14 @@ export default function ProductionBuilder() {
                 <span>Total</span><b>{money(summary.subtotal)}</b>
               </div>
               <button type="button" onClick={approveAllReady} disabled={summary.counts.ready === 0}>Approve all ready</button>
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(5)}>Create order summary</button>
+              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(4)}>Review order</button>
             </section>
           )}
 
-          {activeStep === 5 && (
+          {activeStep === 4 && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Request production</p>
-              <h1>Ready to send.</h1>
+              <p className="uk-wizard-kicker">Review order</p>
+              <h1>Submit enquiry.</h1>
               <p className="uk-wizard-copy">{summary.checkoutEligible ? 'Send the approved cards to Emblem and we will come back with the print order and checkout link.' : 'Approve at least one card to continue.'}</p>
               <div className="uk-order-summary-card">
                 <div>
