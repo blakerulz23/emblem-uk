@@ -992,6 +992,12 @@ a { text-decoration: none; color: inherit; }
   text-transform: uppercase;
 }
 
+.uk-wizard-fields label > em {
+  color: var(--wizard-soft);
+  font-style: normal;
+  font-weight: 800;
+}
+
 .uk-wizard-fields input,
 .uk-wizard-fields select,
 .uk-player-editor input,

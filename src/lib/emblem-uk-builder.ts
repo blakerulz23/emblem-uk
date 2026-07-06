@@ -202,10 +202,11 @@ export function selectedTemplate(order: OrderDraft, player?: PlayerDraft) {
 
 export function productionPayload(order: OrderDraft) {
   const summary = summarizeOrder(order);
+  const fallbackClub = order.collectionType === 'custom' ? 'Custom Collection' : order.club;
   const players = summary.approvedPlayers.map((player) => ({
     id: player.id,
     name: player.name,
-    club: player.club || order.club,
+    club: player.club || order.club || fallbackClub,
     badgeUrl: player.badgeUrl,
     badgeStorageKey: player.badgeStorageKey,
     badgeSnapshotUrl: player.badgeUrl || (order.collectionType === 'official' ? clubBadgePath(player.emjflClubId || order.emjflClubId) : order.badgeUrl),
@@ -247,7 +248,7 @@ export function productionPayload(order: OrderDraft) {
       collectionType: order.collectionType,
       collectionName: order.collectionName,
       sport: order.sport,
-      club: order.club,
+      club: order.club || fallbackClub,
       ageGroup: order.ageGroup,
       season: order.season,
       league: order.league,

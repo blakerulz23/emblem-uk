@@ -38,10 +38,10 @@ const collections = [
   },
   {
     id: 'custom',
-    title: 'Build Your Own',
+    title: 'Custom Collection',
     preview: '/emblem-brand.png',
-    proof: 'Custom Collection',
-    points: ['Upload your badge', 'Any club or school', 'One-off events'],
+    proof: 'Build Your Own',
+    points: ['Upload your own badge', 'Any club or school', 'One-off events'],
   },
 ] as const;
 
@@ -117,6 +117,7 @@ function playerClubId(order: OrderDraft, player?: PlayerDraft) {
 }
 
 function playerClubName(order: OrderDraft, player?: PlayerDraft) {
+  if (order.collectionType === 'custom') return player?.club || order.club || 'Custom Collection';
   return player?.club || getEmjflClub(playerClubId(order, player)).name || order.club;
 }
 
@@ -257,7 +258,7 @@ export default function ProductionBuilder() {
     setOrder((current) => ({
       ...current,
       collectionType: 'custom',
-      collectionName: 'Build Your Own',
+      collectionName: 'Custom Collection',
       league: undefined,
       emjflClubId: undefined,
       club: current.club || '',
@@ -747,27 +748,23 @@ export default function ProductionBuilder() {
                 ) : (
                   <div className="uk-wizard-custom-card">
                     <label>
-                      Club / team name
+                      Club / team name <em>optional</em>
                       <input
                         value={order.club}
                         onChange={(event) => updateCustomClub(event.target.value)}
-                        placeholder="e.g. Hollinwood FC U12s, St Mary's School"
+                        placeholder="e.g. Curzon Ashton Juniors"
                       />
                     </label>
                     <div className="uk-custom-badge-upload">
                       <img src={order.badgeUrl || '/emblem-brand.png'} alt="" />
                       <span>
                         <strong>Club badge <em>optional</em></strong>
-                        <small>Don't have a badge? We'll generate a clean placeholder for you.</small>
+                        <small>Don't have a badge? We'll automatically create a clean Emblem badge.</small>
                       </span>
                       <label>
                         Upload badge
                         <input type="file" accept="image/*" hidden onChange={(event) => assignOrderBadge(event.target.files?.[0])} />
                       </label>
-                    </div>
-                    <div className="uk-selection-proof">
-                      <strong>Build Your Own</strong>
-                      <small>Perfect for schools, academies, Sunday League, tournaments and one-off events.</small>
                     </div>
                   </div>
                 )}
