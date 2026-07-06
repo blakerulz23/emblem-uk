@@ -16,7 +16,7 @@ export const s3 = new S3Client({
 });
 
 /** Upload a Buffer to S3 and return the S3 key. */
-export async function uploadPdf(key: string, buffer: Buffer, contentType = 'application/pdf'): Promise<string> {
+export async function uploadObject(key: string, buffer: Buffer, contentType = 'application/octet-stream'): Promise<string> {
   if (!bucket) throw new Error('AWS_S3_BUCKET is not set');
   await s3.send(
     new PutObjectCommand({
@@ -27,6 +27,11 @@ export async function uploadPdf(key: string, buffer: Buffer, contentType = 'appl
     })
   );
   return key;
+}
+
+/** Upload a PDF Buffer to S3 and return the S3 key. */
+export async function uploadPdf(key: string, buffer: Buffer, contentType = 'application/pdf'): Promise<string> {
+  return uploadObject(key, buffer, contentType);
 }
 
 /** Get a presigned download URL valid for `expiresInSec` seconds (default 7 days). */

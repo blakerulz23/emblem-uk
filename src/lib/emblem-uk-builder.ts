@@ -15,6 +15,10 @@ export type CropTransform = {
 export type PhotoAsset = {
   srcUrl: string;
   hiResUrl?: string;
+  storageKey?: string;
+  storageUrl?: string;
+  contentType?: string;
+  uploadedAt?: string;
   crop: CropTransform;
   bgRemoved: boolean;
   fileName?: string;
@@ -25,6 +29,7 @@ export type PlayerDraft = {
   name: string;
   club?: string;
   badgeUrl?: string;
+  badgeStorageKey?: string;
   emjflClubId?: string;
   clubEdited?: boolean;
   position: string;
@@ -107,6 +112,7 @@ export function createPlayer(seed?: Partial<PlayerDraft>): PlayerDraft {
     name: seed?.name || '',
     club: seed?.club,
     badgeUrl: seed?.badgeUrl,
+    badgeStorageKey: seed?.badgeStorageKey,
     emjflClubId: seed?.emjflClubId,
     clubEdited: seed?.clubEdited,
     position: seed?.position || '',
@@ -196,6 +202,7 @@ export function productionPayload(order: OrderDraft) {
     name: player.name,
     club: player.club || order.club,
     badgeUrl: player.badgeUrl,
+    badgeStorageKey: player.badgeStorageKey,
     badgeSnapshotUrl: player.badgeUrl || clubBadgePath(player.emjflClubId || order.emjflClubId),
     emjflClubId: player.emjflClubId || order.emjflClubId,
     position: player.position,
@@ -219,13 +226,14 @@ export function productionPayload(order: OrderDraft) {
       id: key,
       club: player.club,
       badgeUrl: player.badgeUrl,
+      badgeStorageKey: player.badgeStorageKey,
       badgeSnapshotUrl: player.badgeSnapshotUrl,
       players: [player.id],
       prints: player.prints,
       subtotal: Number((player.prints * summary.pricing.perCard).toFixed(2)),
     });
     return groups;
-  }, new Map<string, { id: string; club: string; badgeUrl?: string; badgeSnapshotUrl: string; players: string[]; prints: number; subtotal: number }>()).values());
+  }, new Map<string, { id: string; club: string; badgeUrl?: string; badgeStorageKey?: string; badgeSnapshotUrl: string; players: string[]; prints: number; subtotal: number }>()).values());
 
   return {
     order: {

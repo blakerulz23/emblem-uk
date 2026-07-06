@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid enquiry payload' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid production request payload' }, { status: 400 });
   }
 
   const name = body.contact?.name?.trim();
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
   // This is intentionally a thin handoff point. It can be connected to email,
   // a CRM, Supabase, Airtable, or Shopify draft orders without changing the UI.
-  console.info('Emblem order enquiry received', {
+  console.info('Emblem production request received', {
     orderId: body.order?.id,
     orderType: body.order?.type,
     club: body.order?.club,
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    message: 'Order enquiry received',
-    enquiryId: `emblem-${Date.now()}`,
+    message: 'Production request received',
+    requestId: `emblem-${Date.now()}`,
   });
 }

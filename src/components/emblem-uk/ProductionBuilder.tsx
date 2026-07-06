@@ -37,6 +37,13 @@ const orderModeLimits: Record<OrderType, { maxPlayers: number; rosterCopy: strin
 const steps = ['Choose club', 'Upload photos', 'Personalise cards', 'Approve cards', 'Review order'];
 type CardSide = 'front' | 'back';
 type EnquiryStatus = 'idle' | 'sending' | 'sent' | 'error';
+type UploadedOrderAsset = {
+  key: string;
+  url: string;
+  contentType?: string;
+  fileName?: string;
+  size?: number;
+};
 
 function money(value: number) {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value);
@@ -118,6 +125,33 @@ function groupPlayersByClub(order: OrderDraft, players: PlayerDraft[]) {
   });
 
   return Array.from(groups.values());
+}
+
+function isLocalAssetUrl(url?: string) {
+  return Boolean(url && (url.startsWith('blob:') || url.startsWith('data:')));
+}
+
+async function uploadOrderAsset(sourceUrl: string, meta: { orderId: string; playerId: string; kind: 'photo' | 'badge'; fileName?: string }) {
+  const source = await fetch(sourceUrl);
+  if (!source.ok) throw new Error(`Could not read ${meta.kind} upload`);
+  const blob = await source.blob();
+  const fileName = meta.fileName || `${meta.kind}.${blob.type.split('/')[1] || 'jpg'}`;
+  const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
+  const form = new FormData();
+  form.append('file', file);
+  form.append('orderId', meta.orderId);
+  form.append('playerId', meta.playerId);
+  form.append('kind', meta.kind);
+
+  const response = await fetch('/api/order-assets', {
+    method: 'POST',
+    body: form,
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(result?.error || `Could not upload ${meta.kind}`);
+  }
+  return result as UploadedOrderAsset;
 }
 
 export default function ProductionBuilder() {
@@ -320,6 +354,68 @@ export default function ProductionBuilder() {
     patchPlayer(id, { badgeUrl: URL.createObjectURL(file), clubEdited: true });
   };
 
+  const orderWithUploadedAssets = async () => {
+    const approvedIds = new Set(summary.approvedPlayers.map((player) => player.id));
+    const uploaded = new Map<string, Promise<UploadedOrderAsset>>();
+
+    const uploadOnce = (url: string, meta: { playerId: string; kind: 'photo' | 'badge'; fileName?: string }) => {
+      const cacheKey = `${meta.kind}:${url}`;
+      if (!uploaded.has(cacheKey)) {
+        uploaded.set(cacheKey, uploadOrderAsset(url, {
+          orderId: order.id,
+          playerId: meta.playerId,
+          kind: meta.kind,
+          fileName: meta.fileName,
+        }));
+      }
+      return uploaded.get(cacheKey)!;
+    };
+
+    const players = await Promise.all(order.players.map(async (player) => {
+      if (!approvedIds.has(player.id)) return player;
+
+      let nextPlayer = { ...player };
+      const photoUrl = player.photo?.hiResUrl || player.photo?.srcUrl;
+      if (player.photo && photoUrl && isLocalAssetUrl(photoUrl)) {
+        const asset = await uploadOnce(photoUrl, {
+          playerId: player.id,
+          kind: 'photo',
+          fileName: player.photo.fileName,
+        });
+        nextPlayer = {
+          ...nextPlayer,
+          photo: {
+            ...player.photo,
+            srcUrl: asset.url,
+            hiResUrl: asset.url,
+            storageUrl: asset.url,
+            storageKey: asset.key,
+            contentType: asset.contentType,
+            fileName: asset.fileName || player.photo.fileName,
+            uploadedAt: nowIso(),
+          },
+        };
+      }
+
+      if (player.badgeUrl && isLocalAssetUrl(player.badgeUrl)) {
+        const asset = await uploadOnce(player.badgeUrl, {
+          playerId: player.id,
+          kind: 'badge',
+          fileName: `${playerClubName(order, player)} badge`,
+        });
+        nextPlayer = {
+          ...nextPlayer,
+          badgeUrl: asset.url,
+          badgeStorageKey: asset.key,
+        };
+      }
+
+      return nextPlayer;
+    }));
+
+    return { ...order, players };
+  };
+
   const bulkPhotos = (files: FileList | null) => {
     const emptyPhotoSlots = order.players.filter((player) => !player.photo).length;
     const remainingSlots = orderMode.maxPlayers - order.players.length;
@@ -383,13 +479,14 @@ export default function ProductionBuilder() {
     setEnquiryError('');
 
     try {
+      const productionOrder = await orderWithUploadedAssets();
       const response = await fetch('/api/order-enquiry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contact: enquiry,
           submittedAt: nowIso(),
-          ...productionPayload(order),
+          ...productionPayload(productionOrder),
         }),
       });
 
