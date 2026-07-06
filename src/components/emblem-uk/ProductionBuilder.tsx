@@ -32,18 +32,16 @@ const collections = [
   {
     id: 'official',
     title: 'Official Collection',
-    badge: 'Official',
-    copy: 'Licensed clubs, official badges and league branding.',
-    proof: 'Licensed Collection',
-    points: ['Official club badges', 'Official templates', 'League approved'],
+    preview: '/templates/emjfl-orange/base.png',
+    proof: 'Official Partner',
+    points: ['Licensed badges', 'Official templates', 'League approved'],
   },
   {
     id: 'custom',
     title: 'Build Your Own',
-    badge: 'Custom',
-    copy: 'Create cards for any school, academy, team or one-off event.',
-    proof: 'Unlimited creativity',
-    points: ['Use any team', 'Upload your own badge', 'Create one-off designs'],
+    preview: '/emblem-brand.png',
+    proof: 'Custom Collection',
+    points: ['Upload your badge', 'Any club or school', 'One-off events'],
   },
 ] as const;
 
@@ -656,7 +654,11 @@ export default function ProductionBuilder() {
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Start order</p>
               <h1>Who are you building for?</h1>
-              <p className="uk-wizard-copy">Choose the order size first, then pick an official collection or build your own.</p>
+              <p className="uk-wizard-copy">Two quick choices, then we'll start the card.</p>
+              <div className="uk-choice-step">
+                <span>Step 1</span>
+                <h2>Choose order type</h2>
+              </div>
               <div className="uk-wizard-choice-list">
                 {orderTypes.map((type) => (
                   <button
@@ -688,8 +690,11 @@ export default function ProductionBuilder() {
                 ))}
               </div>
               <div className="uk-collection-choice">
-                <h2>Which collection?</h2>
-                <div>
+                <div className="uk-choice-step">
+                  <span>Step 2</span>
+                  <h2>Choose collection</h2>
+                </div>
+                <div className="uk-collection-options">
                   {collections.map((collection) => (
                     <button
                       key={collection.id}
@@ -697,12 +702,13 @@ export default function ProductionBuilder() {
                       className={order.collectionType === collection.id ? 'active' : ''}
                       onClick={() => selectCollection(collection.id)}
                     >
-                      <span className="uk-collection-mark" aria-hidden="true">{collection.badge}</span>
+                      <span className={`uk-collection-mark ${collection.id}`} aria-hidden="true">
+                        <img src={collection.preview} alt="" />
+                      </span>
                       <span>
                         <strong>{collection.title}</strong>
-                        <small>{collection.copy}</small>
+                        <em>{collection.proof}</em>
                       </span>
-                      <em>{collection.proof}</em>
                       <ul>
                         {collection.points.map((point) => <li key={point}>{point}</li>)}
                       </ul>
@@ -733,11 +739,15 @@ export default function ProductionBuilder() {
                       </label>
                       <img src={playerBadge(order)} alt="" />
                     </div>
+                    <div className="uk-selection-proof">
+                      <strong>Official Partner</strong>
+                      <small>{EAST_MANCHESTER_LEAGUE} approved collection with licensed club badges.</small>
+                    </div>
                   </>
                 ) : (
                   <div className="uk-wizard-custom-card">
                     <label>
-                      Team or collection name
+                      Club / team name
                       <input
                         value={order.club}
                         onChange={(event) => updateCustomClub(event.target.value)}
@@ -748,12 +758,16 @@ export default function ProductionBuilder() {
                       <img src={order.badgeUrl || '/emblem-brand.png'} alt="" />
                       <span>
                         <strong>Club badge <em>optional</em></strong>
-                        <small>Upload your badge or we'll create a clean placeholder.</small>
+                        <small>Don't have a badge? We'll generate a clean placeholder for you.</small>
                       </span>
                       <label>
                         Upload badge
                         <input type="file" accept="image/*" hidden onChange={(event) => assignOrderBadge(event.target.files?.[0])} />
                       </label>
+                    </div>
+                    <div className="uk-selection-proof">
+                      <strong>Build Your Own</strong>
+                      <small>Perfect for schools, academies, Sunday League, tournaments and one-off events.</small>
                     </div>
                   </div>
                 )}
