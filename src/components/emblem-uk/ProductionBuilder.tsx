@@ -57,6 +57,11 @@ function canAddPlayer(order: OrderDraft) {
   return order.players.length < orderModeLimits[order.type].maxPlayers;
 }
 
+function nextClubId(order: OrderDraft) {
+  const used = new Set(order.players.map((player) => player.emjflClubId).filter(Boolean));
+  return EMJFL_CLUBS.find((club) => !used.has(club.id))?.id || DEFAULT_EMJFL_CLUB.id;
+}
+
 function playerLabel(player: PlayerDraft, index?: number) {
   return player.name.trim() || `Player ${typeof index === 'number' ? index + 1 : 1}`;
 }
@@ -152,6 +157,16 @@ export default function ProductionBuilder() {
   const hasAnyPhoto = order.players.some((player) => Boolean(player.photo?.srcUrl));
   const selectedHasPhoto = Boolean(selectedPlayer?.photo?.srcUrl);
   const canSendEnquiry = summary.checkoutEligible && enquiry.name.trim().length > 1 && /\S+@\S+\.\S+/.test(enquiry.email);
+  const canManageAsTeam = order.type !== 'single' || order.players.length > 1;
+  const reviewPrimaryLabel = summary.checkoutEligible ? 'Continue to order' : summary.counts.ready > 0 ? 'Approve ready cards' : 'Continue';
+  const reviewPrimaryDisabled = !summary.checkoutEligible && summary.counts.ready === 0;
+  const reviewHelper = summary.checkoutEligible
+    ? summary.counts.ready > 0 || summary.counts['needs-photo'] > 0 || summary.counts['needs-details'] > 0
+      ? 'You can continue with approved cards now, or finish the remaining cards first.'
+      : 'All approved cards are ready for the order summary.'
+    : summary.counts.ready > 0
+      ? 'Approve ready cards to unlock the order summary.'
+      : 'Complete at least one card before continuing.';
 
   const patchOrder = (patch: Partial<OrderDraft>) => {
     setOrder((current) => ({ ...current, ...patch }));
@@ -201,8 +216,9 @@ export default function ProductionBuilder() {
     }));
   };
 
-  const addPlayer = (seed?: Partial<PlayerDraft>) => {
-    if (!canAddPlayer(order)) return;
+  const addPlayer = (seed?: Partial<PlayerDraft>, options?: { step?: number; promoteSingle?: boolean }) => {
+    const nextType: OrderType = options?.promoteSingle && order.type === 'single' ? 'set' : order.type;
+    if (order.players.length >= orderModeLimits[nextType].maxPlayers) return;
     const player = createPlayer({
       stats: Object.fromEntries(stats.map((stat) => [stat.key, ''])),
       templateId: order.templateDefault,
@@ -210,9 +226,31 @@ export default function ProductionBuilder() {
       emjflClubId: order.emjflClubId,
       ...seed,
     });
-    setOrder((current) => ({ ...current, players: [...current.players, player] }));
+    setOrder((current) => ({ ...current, type: nextType, players: [...current.players, player] }));
     setSelectedId(player.id);
-    setActiveStep(1);
+    setActiveStep(options?.step ?? 1);
+  };
+
+  const addPlayerToClub = (clubId: string, step = 1) => {
+    const club = getEmjflClub(clubId);
+    addPlayer({
+      club: club.name,
+      emjflClubId: club.id,
+      clubEdited: true,
+      templateId: preferredTemplateForClub(club.id) as TemplateId,
+    }, { step, promoteSingle: true });
+  };
+
+  const addTeam = () => {
+    addPlayerToClub(nextClubId(order), 1);
+  };
+
+  const handleReviewPrimary = () => {
+    if (summary.checkoutEligible) {
+      setActiveStep(4);
+      return;
+    }
+    if (summary.counts.ready > 0) approveAllReady();
   };
 
   const removePlayer = (id: string) => {
@@ -367,8 +405,9 @@ export default function ProductionBuilder() {
   };
 
   const progress = ((activeStep + 1) / steps.length) * 100;
-  const completeCount = summary.counts.ready + summary.counts.approved;
-  const progressLabel = summary.checkoutEligible ? 'Review order' : `${completeCount}/${order.players.length} ready`;
+  const progressLabel = activeStep >= 3
+    ? `${order.players.length} player${order.players.length === 1 ? '' : 's'} · ${summary.counts.approved} approved`
+    : steps[activeStep];
   const goBack = () => setActiveStep((step) => Math.max(0, step - 1));
   const selectedIndex = selectedPlayer ? order.players.findIndex((player) => player.id === selectedPlayer.id) : -1;
   const selectAdjacentPlayer = (direction: -1 | 1) => {
@@ -682,6 +721,16 @@ export default function ProductionBuilder() {
               <p className="uk-wizard-kicker">Approve cards</p>
               <h1>Ready for production?</h1>
               <p className="uk-wizard-copy">Complete each card, then approve the ones you want printed.</p>
+              {canManageAsTeam ? (
+                <div className="uk-review-toolbar">
+                  <button type="button" onClick={() => addPlayerToClub(order.emjflClubId || DEFAULT_EMJFL_CLUB.id)} disabled={!canAddPlayer({ ...order, type: order.type === 'single' ? 'set' : order.type })}>
+                    Add player
+                  </button>
+                  <button type="button" onClick={addTeam} disabled={!canAddPlayer({ ...order, type: order.type === 'single' ? 'set' : order.type })}>
+                    Add another team
+                  </button>
+                </div>
+              ) : null}
               <div className="uk-review-groups">
                 {reviewGroups.map((group) => (
                   <section key={group.id} className="uk-review-group">
@@ -691,6 +740,11 @@ export default function ProductionBuilder() {
                         <strong>{group.name}</strong>
                         <span>{group.players.length} card{group.players.length === 1 ? '' : 's'}</span>
                       </div>
+                      {canManageAsTeam ? (
+                        <button type="button" onClick={() => addPlayerToClub(group.id)} disabled={addDisabled}>
+                          Add player
+                        </button>
+                      ) : null}
                     </header>
                     <div className="uk-review-list">
                       {group.players.map((player) => {
@@ -726,6 +780,22 @@ export default function ProductionBuilder() {
                                 {reviewActionCopy(player)}
                               </button>
                             )}
+                            <div className="uk-review-card-actions">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedId(player.id);
+                                  setActiveStep(2);
+                                }}
+                              >
+                                Edit card
+                              </button>
+                              {order.players.length > 1 ? (
+                                <button type="button" onClick={() => removePlayer(player.id)}>
+                                  Remove
+                                </button>
+                              ) : null}
+                            </div>
                           </article>
                         );
                       })}
@@ -733,12 +803,25 @@ export default function ProductionBuilder() {
                   </section>
                 ))}
               </div>
+              {!canManageAsTeam ? (
+                <div className="uk-review-add-card">
+                  <span>
+                    <strong>Need another card?</strong>
+                    <small>Add another player to this order without starting again.</small>
+                  </span>
+                  <button type="button" onClick={() => addPlayerToClub(playerClubId(order, selectedPlayer))}>
+                    Add another player
+                  </button>
+                </div>
+              ) : null}
               <div className="uk-review-total">
                 <span>Approved prints</span><b>{summary.approvedPrints}</b>
                 <span>Total</span><b>{money(summary.subtotal)}</b>
               </div>
-              <button type="button" onClick={approveAllReady} disabled={summary.counts.ready === 0}>Approve all ready</button>
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(4)}>Review order</button>
+              <p className="uk-review-helper">{reviewHelper}</p>
+              <button type="button" className="uk-wizard-primary" onClick={handleReviewPrimary} disabled={reviewPrimaryDisabled}>
+                {reviewPrimaryLabel}
+              </button>
             </section>
           )}
 
