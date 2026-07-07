@@ -82,7 +82,7 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       fontSize: '0.042',
     },
     numberBox: {
-      left: '12%',
+      left: '10.3%',
       top: '69.3%',
     },
     assets: {
