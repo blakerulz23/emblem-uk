@@ -1626,6 +1626,9 @@ function CustomCollectionCardArt({
   const nameWidth = variant.nameBox?.width
     ? H * (Number(variant.nameBox.width.replace('%', '')) / 100)
     : H * 0.298;
+  const positionWidth = variant.positionBox?.width
+    ? H * (Number(variant.positionBox.width.replace('%', '')) / 100)
+    : H * 0.13;
   const customLayerFit: CSSProperties = {
     position: 'absolute',
     inset: 0,
@@ -1725,10 +1728,22 @@ function CustomCollectionCardArt({
 
         <div
           style={{
-            position: 'absolute', left: isComic ? '20.2%' : '18.3%', top: isComic ? '58.9%' : '58.9%', width: H * 0.13, zIndex: 8,
-            transform: 'rotate(-90deg)', transformOrigin: 'left top',
-            color: template.accent, fontFamily: 'var(--font-oswald), system-ui', fontWeight: 800,
-            fontSize: W * 0.028, lineHeight: 1, letterSpacing: '0.1em', textTransform: 'uppercase',
+            position: 'absolute',
+            left: variant.positionBox?.left || (isComic ? '20.2%' : '18.3%'),
+            top: variant.positionBox?.top || '58.9%',
+            width: positionWidth,
+            zIndex: 8,
+            transform: variant.positionBox?.rotate
+              ? `translate(-50%, -50%) rotate(${variant.positionBox.rotate})`
+              : 'rotate(-90deg)',
+            transformOrigin: variant.positionBox?.rotate ? 'center center' : 'left top',
+            color: variant.positionBox?.color || template.accent,
+            fontFamily: variant.positionBox?.fontFamily || 'var(--font-oswald), system-ui',
+            fontWeight: 800,
+            fontSize: W * (variant.positionBox?.fontSize ? Number(variant.positionBox.fontSize) : 0.028),
+            lineHeight: 1,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
             whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,.45)', pointerEvents: 'none',
           }}
         >
@@ -1743,12 +1758,18 @@ function CustomCollectionCardArt({
         <div
           style={{
             position: 'absolute', left: variant.numberBox?.left || (isComic ? '11.1%' : '8.8%'), top: variant.numberBox?.top || (isComic ? '84.5%' : '69.3%'), zIndex: 8,
-            color: isComic ? '#fff' : 'transparent',
-            WebkitTextStroke: isComic ? `${Math.max(1, W * 0.004)}px #111` : `${Math.max(1, W * 0.006)}px #fff`,
-            fontFamily: 'var(--font-oswald), system-ui', fontWeight: 900, fontStyle: 'italic',
+            color: variant.numberBox?.color || (isComic ? '#fff' : 'transparent'),
+            WebkitTextStroke: variant.numberBox?.stroke
+              ? `${Math.max(1, W * 0.004)}px ${variant.numberBox.stroke}`
+              : isComic ? `${Math.max(1, W * 0.004)}px #111` : `${Math.max(1, W * 0.006)}px #fff`,
+            fontFamily: variant.numberBox?.fontFamily || 'var(--font-oswald), system-ui',
+            fontWeight: 900,
+            fontStyle: variant.numberBox?.fontStyle || 'italic',
             fontSize: W * (variant.numberBox?.fontSize ? Number(variant.numberBox.fontSize) : isComic ? 0.145 : 0.122), lineHeight: 1, pointerEvents: 'none',
-            transform: isComic ? 'translate(-50%, -50%) rotate(-8deg)' : undefined,
-            textShadow: isComic ? '0 3px 0 #111' : undefined,
+            transform: variant.numberBox?.rotate
+              ? `translate(-50%, -50%) rotate(${variant.numberBox.rotate})`
+              : isComic ? 'translate(-50%, -50%) rotate(-8deg)' : undefined,
+            textShadow: variant.numberBox?.shadow || (isComic ? '0 3px 0 #111' : undefined),
           }}
         >
           {d.number || '10'}

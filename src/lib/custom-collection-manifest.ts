@@ -15,6 +15,21 @@ export type CustomCollectionVariant = {
     left: string;
     top: string;
     fontSize?: string;
+    fontFamily?: string;
+    rotate?: string;
+    color?: string;
+    stroke?: string;
+    shadow?: string;
+    fontStyle?: string;
+  };
+  positionBox?: {
+    left: string;
+    top: string;
+    width?: string;
+    fontSize?: string;
+    fontFamily?: string;
+    rotate?: string;
+    color?: string;
   };
   nameBox?: {
     left: string;
@@ -102,9 +117,24 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       height: '11.88%',
     },
     numberBox: {
-      left: '16.47%',
-      top: '86.13%',
-      fontSize: '0.145',
+      left: '11.38%',
+      top: '75.77%',
+      fontSize: '0.1295',
+      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+      rotate: '0deg',
+      color: '#fff',
+      stroke: '#111',
+      shadow: '0 3px 0 #111',
+      fontStyle: 'normal',
+    },
+    positionBox: {
+      left: '18.14%',
+      top: '51.13%',
+      width: '12.22%',
+      fontSize: '0.0305',
+      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+      rotate: '-90deg',
+      color: '#ef2222',
     },
     nameBox: {
       left: '12.33%',
