@@ -94,7 +94,7 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       height: '11.88%',
     },
     numberBox: {
-      left: '8.1%',
+      left: '7.15%',
       top: '69.3%',
     },
     assets: {
