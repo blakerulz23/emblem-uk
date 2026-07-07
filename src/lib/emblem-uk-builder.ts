@@ -1,11 +1,12 @@
 import { clubBadgePath, EAST_MANCHESTER_LEAGUE, preferredTemplateForClub } from '@/lib/emjfl-clubs';
+import { CUSTOM_COLLECTION_VARIANTS, type CustomCollectionTemplateId } from '@/lib/custom-collection-manifest';
 import { HOLLINWOOD_VARIANTS, type HollinwoodTemplateId } from '@/lib/hollinwood-manifest';
 
 export type OrderType = 'single' | 'set' | 'squad';
 export type CollectionType = 'official' | 'custom';
 export type Sport = 'football';
 export type PlayerStatus = 'approved' | 'needs-photo' | 'needs-details' | 'ready';
-export type TemplateId = 'emjfl-official' | HollinwoodTemplateId;
+export type TemplateId = 'emjfl-official' | HollinwoodTemplateId | CustomCollectionTemplateId;
 
 export type CropTransform = {
   x: number;
@@ -85,7 +86,17 @@ export const templates: TemplateConfig[] = [
     background: variant.background,
     frameAsset: variant.assets.frontBase,
   })),
+  ...CUSTOM_COLLECTION_VARIANTS.map((variant) => ({
+    id: variant.id,
+    name: variant.name,
+    description: variant.description,
+    accent: variant.accent,
+    background: variant.background,
+    frameAsset: variant.assets.preview,
+  })),
 ];
+
+export const DEFAULT_CUSTOM_TEMPLATE_ID: CustomCollectionTemplateId = CUSTOM_COLLECTION_VARIANTS[0].id;
 
 export const sportConfig = {
   football: {

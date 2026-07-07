@@ -2,6 +2,7 @@
 // and adds an 'ai' option to jewelry/keychain/pin/magnet shape selectors.
 
 import { HOLLINWOOD_VARIANTS } from '@/lib/hollinwood-manifest';
+import { CUSTOM_COLLECTION_VARIANTS } from '@/lib/custom-collection-manifest';
 export { DEFAULT_EMJFL_CLUB, EMJFL_CLUBS, type EmjflClub } from '@/lib/emjfl-clubs';
 
 export type ProductId =
@@ -34,7 +35,7 @@ export type Product = {
   hero?: boolean;
 };
 
-export type Family = 'Prism' | 'Carbon' | 'Aurora' | 'Clean' | 'Spectrum' | 'Mono' | 'Futuristic' | 'Chrome' | 'Galaxy' | 'Vintage' | 'Champions' | 'EMJFL' | 'Hollinwood';
+export type Family = 'Prism' | 'Carbon' | 'Aurora' | 'Clean' | 'Spectrum' | 'Mono' | 'Futuristic' | 'Chrome' | 'Galaxy' | 'Vintage' | 'Champions' | 'EMJFL' | 'Hollinwood' | 'Custom';
 
 export type CardTemplate = {
   id: string;
@@ -330,6 +331,16 @@ const HOLLINWOOD_TEMPLATES: CardTemplate[] = HOLLINWOOD_VARIANTS.map((variant, i
   bgPath: variant.assets.frontBase,
 }));
 
+const CUSTOM_COLLECTION_TEMPLATES: CardTemplate[] = CUSTOM_COLLECTION_VARIANTS.map((variant, index) => ({
+  id: variant.id,
+  family: 'Custom' as Family,
+  name: variant.name,
+  theme: variant.theme,
+  accent: variant.accent,
+  n: index + 1,
+  bgPath: variant.assets.preview,
+}));
+
 export const CARD_TEMPLATES: CardTemplate[] = [
   ...FUTURISTIC_TEMPLATES,
   ...CHROME_TEMPLATES,
@@ -338,10 +349,11 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   ...CHAMPIONS_TEMPLATES,
   ...EMJFL_TEMPLATES,
   ...HOLLINWOOD_TEMPLATES,
+  ...CUSTOM_COLLECTION_TEMPLATES,
   ...PROCEDURAL_TEMPLATES,
 ];
 
-export const REAL_FAMILIES: Family[] = ['Futuristic', 'Chrome', 'Galaxy', 'Vintage', 'Champions', 'EMJFL', 'Hollinwood'];
+export const REAL_FAMILIES: Family[] = ['Futuristic', 'Chrome', 'Galaxy', 'Vintage', 'Champions', 'EMJFL', 'Hollinwood', 'Custom'];
 export const FUTURISTIC_TEMPLATE_IDS = FUTURISTIC_TEMPLATES.map(t => t.id);
 
 export const SIZES: Record<ProductId, string[]> = {

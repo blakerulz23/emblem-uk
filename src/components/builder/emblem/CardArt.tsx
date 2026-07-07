@@ -2,6 +2,7 @@
 // Real PNG templates (Futuristic / Chrome / Galaxy) use CSS layer compositing.
 // Procedural CSS templates (Prism / Carbon / Aurora / Clean / Spectrum / Mono) are kept as fallback.
 import type { CSSProperties } from 'react';
+import { getCustomCollectionVariant } from '@/lib/custom-collection-manifest';
 import { getHollinwoodVariant } from '@/lib/hollinwood-manifest';
 import { SPORT_STATS, type CardTemplate, type Details, type Family, type SportId } from './data';
 import Icon from './Icon';
@@ -1591,6 +1592,173 @@ function HollinwoodCardArt({
   );
 }
 
+function CustomCollectionCardArt({
+  template,
+  photo,
+  details,
+  size = 240,
+  selected,
+  dim,
+  style,
+  logo,
+  photoScale = 1,
+  photoOffsetX = 0,
+  photoOffsetY = 0,
+}: {
+  template: CardTemplate;
+  photo: string | null;
+  details: Details | null;
+  size?: number;
+  selected?: boolean;
+  dim?: boolean;
+  style?: CSSProperties;
+  logo?: string | null;
+  photoScale?: number;
+  photoOffsetX?: number;
+  photoOffsetY?: number;
+}) {
+  const W = size;
+  const d = details || ({} as Partial<Details>);
+  const variant = getCustomCollectionVariant(template.id);
+  const H = Math.round(size * 1.4);
+  const { assets } = variant;
+  const isComic = variant.id === 'custom-comic';
+  const customLayerFit: CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    objectFit: 'fill',
+    objectPosition: 'center center',
+    pointerEvents: 'none',
+  };
+
+  return (
+    <div
+      style={{
+        width: W,
+        height: H,
+        borderRadius: W * 0.045,
+        position: 'relative',
+        flexShrink: 0,
+        overflow: 'hidden',
+        background: variant.background,
+        boxShadow: selected
+          ? `0 0 0 2.5px ${template.accent}, 0 18px 40px rgba(0,0,0,.32)`
+          : '0 10px 30px rgba(0,0,0,.22)',
+        opacity: dim ? 0.5 : 1,
+        transition: 'transform .25s ease, box-shadow .25s ease, opacity .25s ease',
+        ...style,
+      }}
+    >
+      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        {assets.base ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={assets.base} alt="" style={{ ...customLayerFit, zIndex: 0 }} />
+        ) : null}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={assets.background} alt="" style={{ ...customLayerFit, zIndex: 1 }} />
+
+        {photo ? (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 2, clipPath: EMJFL_PHOTO_CLIP }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photo}
+              alt=""
+              style={{
+                position: 'absolute', inset: 0, width: '100%', height: '100%',
+                objectFit: 'cover', objectPosition: 'center 12%',
+                transform: `translate(${photoOffsetX}%, ${photoOffsetY}%) scale(${photoScale})`,
+              }}
+            />
+          </div>
+        ) : null}
+
+        {assets.frameOverlay ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={assets.frameOverlay} alt="" style={{ ...customLayerFit, zIndex: 4 }} />
+        ) : null}
+        {assets.railOverlay ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={assets.railOverlay} alt="" style={{ ...customLayerFit, zIndex: 5 }} />
+        ) : null}
+        {assets.emblemBurst ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={assets.emblemBurst} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 6, pointerEvents: 'none' }} />
+        ) : null}
+
+        {logo ? (
+          <div style={{ position: 'absolute', left: variant.badgeBox?.left || (isComic ? '15.5%' : '16%'), top: variant.badgeBox?.top || (isComic ? '14.5%' : '15%'), width: variant.badgeBox?.width || (isComic ? '16%' : '17.14%'), height: variant.badgeBox?.height || (isComic ? '11.5%' : '12%'), borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', zIndex: 7, boxShadow: '0 4px 14px rgba(0,0,0,.28)', pointerEvents: 'none', overflow: 'hidden' }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={logo} alt="" style={{ width: '82%', height: '82%', objectFit: 'contain' }} />
+          </div>
+        ) : null}
+
+        {assets.emblemLogoPosition ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={assets.emblemLogoPosition} alt="" style={{ ...customLayerFit, zIndex: 8 }} />
+        ) : null}
+
+        <div
+          style={{
+            position: 'absolute', left: isComic ? '10.6%' : '10.1%', top: isComic ? '66.8%' : '66.8%', width: H * 0.298, zIndex: 8,
+            transform: 'rotate(-90deg)', transformOrigin: 'left top',
+            color: '#fff', fontFamily: 'var(--font-oswald), system-ui', fontWeight: 800,
+            fontSize: W * (isComic ? 0.064 : 0.057), lineHeight: 1, letterSpacing: '0.01em', textTransform: 'uppercase',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            textShadow: '0 2px 4px rgba(0,0,0,.45)',
+            pointerEvents: 'none',
+          }}
+        >
+          {d.name || 'Player Name'}
+        </div>
+
+        <div
+          style={{
+            position: 'absolute', left: isComic ? '20.2%' : '18.3%', top: isComic ? '58.9%' : '58.9%', width: H * 0.13, zIndex: 8,
+            transform: 'rotate(-90deg)', transformOrigin: 'left top',
+            color: template.accent, fontFamily: 'var(--font-oswald), system-ui', fontWeight: 800,
+            fontSize: W * 0.028, lineHeight: 1, letterSpacing: '0.1em', textTransform: 'uppercase',
+            whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,.45)', pointerEvents: 'none',
+          }}
+        >
+          {d.position || 'Position'}
+        </div>
+
+        {assets.numberBurst ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={assets.numberBurst} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 7, pointerEvents: 'none' }} />
+        ) : null}
+
+        <div
+          style={{
+            position: 'absolute', left: isComic ? '11.1%' : '8.8%', top: isComic ? '84.5%' : '69.3%', zIndex: 8,
+            color: isComic ? '#fff' : 'transparent',
+            WebkitTextStroke: isComic ? `${Math.max(1, W * 0.004)}px #111` : `${Math.max(1, W * 0.006)}px #fff`,
+            fontFamily: 'var(--font-oswald), system-ui', fontWeight: 900, fontStyle: 'italic',
+            fontSize: W * (isComic ? 0.145 : 0.122), lineHeight: 1, pointerEvents: 'none',
+            transform: isComic ? 'translate(-50%, -50%) rotate(-8deg)' : undefined,
+            textShadow: isComic ? '0 3px 0 #111' : undefined,
+          }}
+        >
+          {d.number || '10'}
+        </div>
+
+        {assets.cornerOverlay ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={assets.cornerOverlay} alt="" style={{ ...customLayerFit, zIndex: 9 }} />
+        ) : null}
+        {isComic && !assets.cornerOverlay ? (
+          <div style={{ position: 'absolute', left: '82%', top: '88.5%', zIndex: 10, transform: 'translate(-50%, -50%) rotate(-3deg)', color: '#fff', fontFamily: 'var(--font-oswald), system-ui', textAlign: 'center', textTransform: 'uppercase', lineHeight: 0.9, WebkitTextStroke: `${Math.max(1, W * 0.004)}px #111`, textShadow: '0 2px 0 #111', pointerEvents: 'none' }}>
+            <strong style={{ display: 'block', fontSize: W * 0.06 }}>Emblem</strong>
+            <span style={{ display: 'block', fontSize: W * 0.035, color: template.accent }}>Custom</span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function EmjflCardBack({
   size = 240,
   selected,
@@ -1679,6 +1847,74 @@ function HollinwoodCardBack({
   );
 }
 
+function CustomCollectionCardBack({
+  template,
+  details,
+  logo,
+  size = 240,
+  selected,
+  dim,
+  style,
+}: {
+  template: CardTemplate;
+  details: Details | null;
+  logo?: string | null;
+  size?: number;
+  selected?: boolean;
+  dim?: boolean;
+  style?: CSSProperties;
+}) {
+  const W = size;
+  const d = details || ({} as Partial<Details>);
+  const variant = getCustomCollectionVariant(template.id);
+  const H = Math.round(size * 1.4);
+  const backPath = variant.assets.backBase || variant.assets.preview;
+
+  return (
+    <div
+      style={{
+        width: W,
+        height: H,
+        borderRadius: W * 0.045,
+        position: 'relative',
+        flexShrink: 0,
+        overflow: 'hidden',
+        background: variant.background,
+        boxShadow: selected
+          ? `0 0 0 2.5px ${template.accent}, 0 18px 40px rgba(0,0,0,.32)`
+          : '0 10px 30px rgba(0,0,0,.22)',
+        opacity: dim ? 0.5 : 1,
+        transition: 'opacity .25s ease',
+        ...style,
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={backPath} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', objectPosition: 'center center', zIndex: 1, opacity: 0.72 }} />
+      <div style={{ position: 'absolute', inset: W * 0.08, zIndex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', color: '#fff', fontFamily: 'var(--font-sora), system-ui', textShadow: '0 2px 12px rgba(0,0,0,.45)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: W * 0.04 }}>
+          <div style={{ width: W * 0.22, height: W * 0.22, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', overflow: 'hidden', boxShadow: '0 8px 20px rgba(0,0,0,.28)' }}>
+            {logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logo} alt="" style={{ width: '82%', height: '82%', objectFit: 'contain' }} />
+            ) : (
+              <span style={{ color: template.accent, fontWeight: 900, fontSize: W * 0.08 }}>E</span>
+            )}
+          </div>
+          <div>
+            <small style={{ display: 'block', fontSize: W * 0.032, letterSpacing: '0.14em', textTransform: 'uppercase', opacity: 0.8 }}>Custom Collection</small>
+            <strong style={{ display: 'block', marginTop: W * 0.012, fontSize: W * 0.06, lineHeight: 1.05 }}>{d.team || 'Your team'}</strong>
+          </div>
+        </div>
+        <div>
+          <small style={{ display: 'block', fontSize: W * 0.03, letterSpacing: '0.16em', textTransform: 'uppercase', color: template.accent }}>Player identity</small>
+          <strong style={{ display: 'block', marginTop: W * 0.018, fontSize: W * 0.085, lineHeight: 1, textTransform: 'uppercase' }}>{d.name || 'Player Name'}</strong>
+          <p style={{ margin: `${W * 0.025}px 0 0`, fontSize: W * 0.043, fontWeight: 700 }}>#{d.number || '--'} / {d.position || 'Position'}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export { RealCardBack, RealGalaxyBack, RealChromeBack };
 
 // ── Main export — routes to real or procedural renderer ──────────────────────
@@ -1743,11 +1979,17 @@ export default function CardArt({
   if (side === 'back' && template.family === 'Hollinwood') {
     return <HollinwoodCardBack template={template} size={size} selected={selected} dim={dim} style={style} />;
   }
+  if (side === 'back' && template.family === 'Custom') {
+    return <CustomCollectionCardBack template={template} details={details} logo={logo} size={size} selected={selected} dim={dim} style={style} />;
+  }
   if (template.family === 'EMJFL') {
     return <EmjflCardArt photo={photo} details={details} logo={logo} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} />;
   }
   if (template.family === 'Hollinwood') {
     return <HollinwoodCardArt template={template} photo={photo} details={details} logo={logo} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} />;
+  }
+  if (template.family === 'Custom') {
+    return <CustomCollectionCardArt template={template} photo={photo} details={details} logo={logo} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} />;
   }
 
   // Route to real PNG renderer for Futuristic / Chrome / Galaxy templates

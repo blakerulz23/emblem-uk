@@ -4,10 +4,12 @@ import { type FormEvent, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import CardArt from '@/components/builder/emblem/CardArt';
 import { CARD_TEMPLATES } from '@/components/builder/emblem/data';
+import { isCustomCollectionTemplateId } from '@/lib/custom-collection-manifest';
 import { DEFAULT_EMJFL_CLUB, EAST_MANCHESTER_LEAGUE, EMJFL_CLUBS, getEmjflClub, preferredTemplateForClub } from '@/lib/emjfl-clubs';
 import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
 import {
   createPlayer,
+  DEFAULT_CUSTOM_TEMPLATE_ID,
   defaultOrder,
   derivePlayerStatus,
   nowIso,
@@ -239,9 +241,9 @@ export default function ProductionBuilder() {
       templateDefault: preferredTemplate,
       players: current.players.map((player) => ({
         ...player,
-        club: player.clubEdited ? player.club : club.name,
-        emjflClubId: player.clubEdited ? player.emjflClubId : club.id,
-        templateId: player.templateId ? player.templateId : preferredTemplate,
+        club: current.collectionType === 'custom' || !player.clubEdited ? club.name : player.club,
+        emjflClubId: current.collectionType === 'custom' || !player.clubEdited ? club.id : player.emjflClubId,
+        templateId: player.templateId && !isCustomCollectionTemplateId(player.templateId) ? player.templateId : preferredTemplate,
         updatedAt: nowIso(),
       })),
     }));
@@ -255,6 +257,7 @@ export default function ProductionBuilder() {
 
     setOrder((current) => {
       const customClub = current.collectionType === 'custom' ? current.club : '';
+      const customTemplate = isCustomCollectionTemplateId(current.templateDefault) ? current.templateDefault : DEFAULT_CUSTOM_TEMPLATE_ID;
       return {
         ...current,
         collectionType: 'custom',
@@ -262,13 +265,14 @@ export default function ProductionBuilder() {
         league: undefined,
         emjflClubId: undefined,
         club: customClub,
-        templateDefault: current.templateDefault,
+        templateDefault: customTemplate,
         players: current.players.map((player) => ({
           ...player,
           club: current.collectionType === 'custom' ? player.club || customClub : '',
           emjflClubId: undefined,
           badgeUrl: player.badgeUrl || current.badgeUrl,
           clubEdited: true,
+          templateId: player.templateId && isCustomCollectionTemplateId(player.templateId) ? player.templateId : customTemplate,
           updatedAt: nowIso(),
         })),
       };
@@ -615,8 +619,14 @@ export default function ProductionBuilder() {
     if (selectedPlayer) patchPlayer(selectedPlayer.id, { templateId });
   };
   const orderedTemplates = useMemo(() => {
+    const collectionTemplates = templates.filter((template) =>
+      order.collectionType === 'custom'
+        ? isCustomCollectionTemplateId(template.id)
+        : !isCustomCollectionTemplateId(template.id),
+    );
+    if (order.collectionType === 'custom') return collectionTemplates;
     const preferred = preferredTemplateForClub(playerClubId(order, selectedPlayer));
-    return [...templates].sort((a, b) => {
+    return [...collectionTemplates].sort((a, b) => {
       if (a.id === preferred) return -1;
       if (b.id === preferred) return 1;
       return 0;
@@ -893,7 +903,7 @@ export default function ProductionBuilder() {
                     <strong>{selectedTemplate(order, selectedPlayer).name}</strong>
                     <small>Swipe to change style</small>
                   </span>
-                  <em>Best match for {playerClubName(order, selectedPlayer)}</em>
+                  <em>{order.collectionType === 'custom' ? 'Custom collection style' : `Best match for ${playerClubName(order, selectedPlayer)}`}</em>
                 </div>
                 <div className="uk-style-carousel compact">
                   {orderedTemplates.map((template) => (
@@ -909,7 +919,7 @@ export default function ProductionBuilder() {
                         compact
                       />
                       <strong>{template.name}</strong>
-                      {template.id === preferredTemplateForClub(playerClubId(order, selectedPlayer)) && <small>Best match</small>}
+                      {order.collectionType === 'official' && template.id === preferredTemplateForClub(playerClubId(order, selectedPlayer)) && <small>Best match</small>}
                     </button>
                   ))}
                 </div>
@@ -1393,6 +1403,11 @@ function TemplatePicker({
   onPatch: (id: string, patch: Partial<PlayerDraft>) => void;
 }) {
   const activeTemplateId = selectedTemplate(order, player).id;
+  const visibleTemplates = templates.filter((template) =>
+    order.collectionType === 'custom'
+      ? isCustomCollectionTemplateId(template.id)
+      : !isCustomCollectionTemplateId(template.id),
+  );
 
   return (
     <div className="uk-template-picker" aria-label="Card templates">
@@ -1401,7 +1416,7 @@ function TemplatePicker({
         <span>Pick the frame for this player</span>
       </div>
       <div className="uk-template-picker-grid">
-        {templates.map((template) => (
+        {visibleTemplates.map((template) => (
           <button
             key={template.id}
             type="button"
@@ -1606,9 +1621,11 @@ function PlayerCard({
 }) {
   const template = selectedTemplate(order, player);
   const stats = sportConfig[order.sport].stats;
-  const useOfficialArt = order.collectionType === 'official' && (template.id === 'emjfl-official' || isHollinwoodTemplateId(template.id));
+  const useRealBuilderArt =
+    (order.collectionType === 'official' && (template.id === 'emjfl-official' || isHollinwoodTemplateId(template.id))) ||
+    (order.collectionType === 'custom' && isCustomCollectionTemplateId(template.id));
 
-  if (useOfficialArt) {
+  if (useRealBuilderArt) {
     return (
       <div className={`uk-real-card ${compact ? 'compact' : ''}`}>
         <CardArt
