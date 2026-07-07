@@ -98,6 +98,12 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       top: '69.3%',
       fontSize: '0.11244',
     },
+    positionBox: {
+      left: '18.3%',
+      top: '58.9%',
+      width: '13%',
+      fontSize: '0.042',
+    },
     assets: {
       preview: '/templates/custom-collection/galaxy/preview.png',
       base: '/templates/custom-collection/galaxy/base.png',
