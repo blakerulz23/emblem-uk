@@ -1623,6 +1623,9 @@ function CustomCollectionCardArt({
   const H = Math.round(size * 1.4);
   const { assets } = variant;
   const isComic = variant.id === 'custom-comic';
+  const nameWidth = variant.nameBox?.width
+    ? H * (Number(variant.nameBox.width.replace('%', '')) / 100)
+    : H * 0.298;
   const customLayerFit: CSSProperties = {
     position: 'absolute',
     inset: 0,
@@ -1701,10 +1704,17 @@ function CustomCollectionCardArt({
 
         <div
           style={{
-            position: 'absolute', left: isComic ? '10.6%' : '10.1%', top: isComic ? '66.8%' : '66.8%', width: H * 0.298, zIndex: 8,
-            transform: 'rotate(-90deg)', transformOrigin: 'left top',
-            color: '#fff', fontFamily: 'var(--font-oswald), system-ui', fontWeight: 800,
-            fontSize: W * (isComic ? 0.064 : 0.057), lineHeight: 1, letterSpacing: '0.01em', textTransform: 'uppercase',
+            position: 'absolute',
+            left: variant.nameBox?.left || (isComic ? '10.6%' : '10.1%'),
+            top: variant.nameBox?.top || (isComic ? '66.8%' : '66.8%'),
+            width: nameWidth,
+            zIndex: 8,
+            transform: variant.nameBox?.rotate ? `translate(-50%, -50%) rotate(${variant.nameBox.rotate})` : 'rotate(-90deg)',
+            transformOrigin: variant.nameBox?.rotate ? 'center center' : 'left top',
+            color: '#fff',
+            fontFamily: variant.nameBox?.fontFamily || 'var(--font-oswald), system-ui',
+            fontWeight: 800,
+            fontSize: W * (variant.nameBox?.fontSize ? Number(variant.nameBox.fontSize) : isComic ? 0.064 : 0.057), lineHeight: 1, letterSpacing: '0.01em', textTransform: 'uppercase',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             textShadow: '0 2px 4px rgba(0,0,0,.45)',
             pointerEvents: 'none',

@@ -16,6 +16,14 @@ export type CustomCollectionVariant = {
     top: string;
     fontSize?: string;
   };
+  nameBox?: {
+    left: string;
+    top: string;
+    width?: string;
+    fontSize?: string;
+    fontFamily?: string;
+    rotate?: string;
+  };
   assets: {
     preview: string;
     base?: string;
@@ -97,6 +105,14 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       left: '16.47%',
       top: '86.13%',
       fontSize: '0.145',
+    },
+    nameBox: {
+      left: '12.33%',
+      top: '51.5%',
+      width: '31.44%',
+      fontSize: '0.064',
+      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+      rotate: '-90deg',
     },
     assets: {
       preview: '/templates/custom-collection/comic/reference.png',
