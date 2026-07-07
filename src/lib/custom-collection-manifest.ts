@@ -93,6 +93,10 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       width: '17.14%',
       height: '11.88%',
     },
+    numberBox: {
+      left: '14%',
+      top: '69.3%',
+    },
     assets: {
       preview: '/templates/custom-collection/galaxy/preview.png',
       base: '/templates/custom-collection/galaxy/base.png',
