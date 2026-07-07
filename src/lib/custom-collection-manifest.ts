@@ -11,6 +11,11 @@ export type CustomCollectionVariant = {
     width: string;
     height: string;
   };
+  numberBox?: {
+    left: string;
+    top: string;
+    fontSize?: string;
+  };
   assets: {
     preview: string;
     base?: string;
@@ -83,10 +88,15 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
     accent: '#ef2222',
     background: '#140202',
     badgeBox: {
-      left: '3.81%',
-      top: '70.36%',
-      width: '27.33%',
-      height: '27.24%',
+      left: '8.19%',
+      top: '6.07%',
+      width: '17.14%',
+      height: '11.88%',
+    },
+    numberBox: {
+      left: '16.47%',
+      top: '86.13%',
+      fontSize: '0.145',
     },
     assets: {
       preview: '/templates/custom-collection/comic/reference.png',

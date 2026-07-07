@@ -1732,11 +1732,11 @@ function CustomCollectionCardArt({
 
         <div
           style={{
-            position: 'absolute', left: isComic ? '11.1%' : '8.8%', top: isComic ? '84.5%' : '69.3%', zIndex: 8,
+            position: 'absolute', left: variant.numberBox?.left || (isComic ? '11.1%' : '8.8%'), top: variant.numberBox?.top || (isComic ? '84.5%' : '69.3%'), zIndex: 8,
             color: isComic ? '#fff' : 'transparent',
             WebkitTextStroke: isComic ? `${Math.max(1, W * 0.004)}px #111` : `${Math.max(1, W * 0.006)}px #fff`,
             fontFamily: 'var(--font-oswald), system-ui', fontWeight: 900, fontStyle: 'italic',
-            fontSize: W * (isComic ? 0.145 : 0.122), lineHeight: 1, pointerEvents: 'none',
+            fontSize: W * (variant.numberBox?.fontSize ? Number(variant.numberBox.fontSize) : isComic ? 0.145 : 0.122), lineHeight: 1, pointerEvents: 'none',
             transform: isComic ? 'translate(-50%, -50%) rotate(-8deg)' : undefined,
             textShadow: isComic ? '0 3px 0 #111' : undefined,
           }}
