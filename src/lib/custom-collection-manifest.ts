@@ -75,6 +75,12 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       top: '66.8%',
       fontSize: '0.0855',
     },
+    positionBox: {
+      left: '18.3%',
+      top: '58.9%',
+      width: '13%',
+      fontSize: '0.042',
+    },
     assets: {
       preview: '/templates/custom-collection/solar/preview.png',
       background: '/templates/custom-collection/solar/background.png',
