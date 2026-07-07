@@ -81,6 +81,10 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       width: '13%',
       fontSize: '0.042',
     },
+    numberBox: {
+      left: '14%',
+      top: '69.3%',
+    },
     assets: {
       preview: '/templates/custom-collection/solar/preview.png',
       background: '/templates/custom-collection/solar/background.png',
