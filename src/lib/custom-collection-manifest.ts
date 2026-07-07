@@ -104,6 +104,11 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       width: '13%',
       fontSize: '0.042',
     },
+    nameBox: {
+      left: '10.1%',
+      top: '66.8%',
+      fontSize: '0.0855',
+    },
     assets: {
       preview: '/templates/custom-collection/galaxy/preview.png',
       base: '/templates/custom-collection/galaxy/base.png',
