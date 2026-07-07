@@ -70,6 +70,11 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       width: '17.14%',
       height: '11.88%',
     },
+    nameBox: {
+      left: '10.1%',
+      top: '66.8%',
+      fontSize: '0.0855',
+    },
     assets: {
       preview: '/templates/custom-collection/solar/preview.png',
       background: '/templates/custom-collection/solar/background.png',
