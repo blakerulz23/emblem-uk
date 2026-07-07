@@ -117,7 +117,7 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       height: '11.88%',
     },
     numberBox: {
-      left: '11.38%',
+      left: '12.15%',
       top: '75.77%',
       fontSize: '0.1295',
       fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
