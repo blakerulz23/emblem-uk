@@ -96,7 +96,7 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
     numberBox: {
       left: '6.2%',
       top: '69.3%',
-      fontSize: '0.11712',
+      fontSize: '0.11244',
     },
     assets: {
       preview: '/templates/custom-collection/galaxy/preview.png',
