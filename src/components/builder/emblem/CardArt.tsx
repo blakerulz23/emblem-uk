@@ -1694,9 +1694,9 @@ function CustomCollectionCardArt({
         ) : null}
 
         {logo ? (
-          <div style={{ position: 'absolute', left: variant.badgeBox?.left || (isComic ? '15.5%' : '16%'), top: variant.badgeBox?.top || (isComic ? '14.5%' : '15%'), width: variant.badgeBox?.width || (isComic ? '16%' : '17.14%'), height: variant.badgeBox?.height || (isComic ? '11.5%' : '12%'), borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', zIndex: 7, boxShadow: '0 4px 14px rgba(0,0,0,.28)', pointerEvents: 'none', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', left: variant.badgeBox?.left || (isComic ? '15.5%' : '16%'), top: variant.badgeBox?.top || (isComic ? '14.5%' : '15%'), width: variant.badgeBox?.width || (isComic ? '16%' : '17.14%'), height: variant.badgeBox?.height || (isComic ? '11.5%' : '12%'), zIndex: 7, pointerEvents: 'none' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={logo} alt="" style={{ width: '82%', height: '82%', objectFit: 'contain' }} />
+            <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
         ) : null}
 
@@ -1716,7 +1716,7 @@ function CustomCollectionCardArt({
             transformOrigin: variant.nameBox?.rotate ? 'center center' : 'left top',
             color: '#fff',
             fontFamily: variant.nameBox?.fontFamily || 'var(--font-oswald), system-ui',
-            fontWeight: 800,
+            fontWeight: variant.nameBox?.fontWeight || 800,
             fontSize: W * (variant.nameBox?.fontSize ? Number(variant.nameBox.fontSize) : isComic ? 0.064 : 0.057), lineHeight: 1, letterSpacing: '0.01em', textTransform: 'uppercase',
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             textShadow: '0 2px 4px rgba(0,0,0,.45)',
@@ -1739,7 +1739,7 @@ function CustomCollectionCardArt({
             transformOrigin: variant.positionBox?.rotate ? 'center center' : 'left top',
             color: variant.positionBox?.color || template.accent,
             fontFamily: variant.positionBox?.fontFamily || 'var(--font-oswald), system-ui',
-            fontWeight: 800,
+            fontWeight: variant.positionBox?.fontWeight || 800,
             fontSize: W * (variant.positionBox?.fontSize ? Number(variant.positionBox.fontSize) : 0.028),
             lineHeight: 1,
             letterSpacing: '0.1em',
@@ -1763,7 +1763,7 @@ function CustomCollectionCardArt({
               ? `${Math.max(1, W * 0.004)}px ${variant.numberBox.stroke}`
               : isComic ? `${Math.max(1, W * 0.004)}px #111` : `${Math.max(1, W * 0.006)}px #fff`,
             fontFamily: variant.numberBox?.fontFamily || 'var(--font-oswald), system-ui',
-            fontWeight: 900,
+            fontWeight: variant.numberBox?.fontWeight || 900,
             fontStyle: variant.numberBox?.fontStyle || 'italic',
             fontSize: W * (variant.numberBox?.fontSize ? Number(variant.numberBox.fontSize) : isComic ? 0.145 : 0.122), lineHeight: 1, pointerEvents: 'none',
             transform: variant.numberBox?.rotate
@@ -1899,7 +1899,10 @@ function CustomCollectionCardBack({
   const d = details || ({} as Partial<Details>);
   const variant = getCustomCollectionVariant(template.id);
   const H = Math.round(size * 1.4);
-  const backPath = variant.assets.backBase || variant.assets.preview;
+  const back = variant.back;
+  const backPath = back?.base || variant.assets.backBase || variant.assets.preview;
+  const logoBox = back?.logoBox;
+  const nameBox = back?.nameBox;
 
   return (
     <div
@@ -1920,28 +1923,53 @@ function CustomCollectionCardBack({
       }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={backPath} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', objectPosition: 'center center', zIndex: 1, opacity: 0.72 }} />
-      <div style={{ position: 'absolute', inset: W * 0.08, zIndex: 2, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', color: '#fff', fontFamily: 'var(--font-sora), system-ui', textShadow: '0 2px 12px rgba(0,0,0,.45)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: W * 0.04 }}>
-          <div style={{ width: W * 0.22, height: W * 0.22, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', overflow: 'hidden', boxShadow: '0 8px 20px rgba(0,0,0,.28)' }}>
-            {logo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={logo} alt="" style={{ width: '82%', height: '82%', objectFit: 'contain' }} />
-            ) : (
-              <span style={{ color: template.accent, fontWeight: 900, fontSize: W * 0.08 }}>E</span>
-            )}
-          </div>
-          <div>
-            <small style={{ display: 'block', fontSize: W * 0.032, letterSpacing: '0.14em', textTransform: 'uppercase', opacity: 0.8 }}>Custom Collection</small>
-            <strong style={{ display: 'block', marginTop: W * 0.012, fontSize: W * 0.06, lineHeight: 1.05 }}>{d.team || 'Your team'}</strong>
-          </div>
+      <img src={backPath} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', objectPosition: 'center center', zIndex: 1 }} />
+      {logoBox && logo ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: logoBox.left,
+            top: logoBox.top,
+            width: logoBox.width,
+            height: logoBox.height,
+            zIndex: 2,
+            display: 'grid',
+            placeItems: 'center',
+            transform: 'translate(-50%, -50%)',
+            pointerEvents: 'none',
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logo} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         </div>
-        <div>
-          <small style={{ display: 'block', fontSize: W * 0.03, letterSpacing: '0.16em', textTransform: 'uppercase', color: template.accent }}>Player identity</small>
-          <strong style={{ display: 'block', marginTop: W * 0.018, fontSize: W * 0.085, lineHeight: 1, textTransform: 'uppercase' }}>{d.name || 'Player Name'}</strong>
-          <p style={{ margin: `${W * 0.025}px 0 0`, fontSize: W * 0.043, fontWeight: 700 }}>#{d.number || '--'} / {d.position || 'Position'}</p>
+      ) : null}
+      {nameBox ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: nameBox.left,
+            top: nameBox.top,
+            width: nameBox.width,
+            zIndex: 3,
+            transform: 'translate(-50%, -50%)',
+            color: nameBox.color || '#fff',
+            fontFamily: nameBox.fontFamily || 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+            fontWeight: 900,
+            fontSize: W * (nameBox.fontSize ? Number(nameBox.fontSize) : 0.098),
+            lineHeight: 0.9,
+            letterSpacing: '0.02em',
+            textTransform: 'uppercase',
+            textAlign: 'center',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            textShadow: '0 2px 8px rgba(0,0,0,.45)',
+            pointerEvents: 'none',
+          }}
+        >
+          {d.name || 'Player Name'}
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

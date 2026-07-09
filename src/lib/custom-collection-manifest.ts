@@ -21,6 +21,7 @@ export type CustomCollectionVariant = {
     stroke?: string;
     shadow?: string;
     fontStyle?: string;
+    fontWeight?: string;
   };
   positionBox?: {
     left: string;
@@ -28,6 +29,7 @@ export type CustomCollectionVariant = {
     width?: string;
     fontSize?: string;
     fontFamily?: string;
+    fontWeight?: string;
     rotate?: string;
     color?: string;
   };
@@ -37,7 +39,25 @@ export type CustomCollectionVariant = {
     width?: string;
     fontSize?: string;
     fontFamily?: string;
+    fontWeight?: string;
     rotate?: string;
+  };
+  back?: {
+    base: string;
+    logoBox: {
+      left: string;
+      top: string;
+      width: string;
+      height: string;
+    };
+    nameBox: {
+      left: string;
+      top: string;
+      width: string;
+      fontSize?: string;
+      fontFamily?: string;
+      color?: string;
+    };
   };
   assets: {
     preview: string;
@@ -65,25 +85,52 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
     accent: '#8f5cff',
     background: '#070720',
     badgeBox: {
-      left: '8.19%',
-      top: '6.07%',
-      width: '17.14%',
-      height: '11.88%',
+      left: '5.8%',
+      top: '4.8%',
+      width: '21.5%',
+      height: '15.1%',
     },
     nameBox: {
-      left: '10.1%',
-      top: '66.8%',
-      fontSize: '0.0855',
+      left: '12.33%',
+      top: '51.5%',
+      width: '31.44%',
+      fontSize: '0.064',
+      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+      fontWeight: '700',
+      rotate: '-90deg',
     },
     positionBox: {
-      left: '18.3%',
-      top: '58.9%',
-      width: '13%',
-      fontSize: '0.042',
+      left: '18.19%',
+      top: '51.17%',
+      width: '12.22%',
+      fontSize: '0.0305',
+      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+      fontWeight: '700',
+      rotate: '-90deg',
+      color: '#ef2222',
     },
     numberBox: {
       left: '10.3%',
       top: '69.3%',
+      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+      fontWeight: '400',
+    },
+    back: {
+      base: '/templates/custom-collection/solar/back-base.png',
+      logoBox: {
+        left: '50%',
+        top: '10.5%',
+        width: '20%',
+        height: '14%',
+      },
+      nameBox: {
+        left: '50%',
+        top: '25%',
+        width: '48%',
+        fontSize: '0.12',
+        fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+        color: '#fff',
+      },
     },
     assets: {
       preview: '/templates/custom-collection/solar/preview.png',
@@ -103,26 +150,47 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
     accent: '#f16a31',
     background: '#17100b',
     badgeBox: {
-      left: '8.19%',
-      top: '6.07%',
-      width: '17.14%',
-      height: '11.88%',
+      left: '5.8%',
+      top: '4.8%',
+      width: '21.5%',
+      height: '15.1%',
     },
     numberBox: {
       left: '6.2%',
       top: '69.3%',
       fontSize: '0.11244',
+      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+      fontWeight: '400',
     },
     positionBox: {
       left: '18.3%',
       top: '58.9%',
       width: '13%',
       fontSize: '0.042',
+      fontWeight: '700',
     },
     nameBox: {
       left: '10.1%',
       top: '66.8%',
       fontSize: '0.0855',
+      fontWeight: '700',
+    },
+    back: {
+      base: '/templates/custom-collection/galaxy/back-base.png',
+      logoBox: {
+        left: '50%',
+        top: '10.5%',
+        width: '20%',
+        height: '14%',
+      },
+      nameBox: {
+        left: '50%',
+        top: '25%',
+        width: '48%',
+        fontSize: '0.12',
+        fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+        color: '#fff',
+      },
     },
     assets: {
       preview: '/templates/custom-collection/galaxy/preview.png',
@@ -142,10 +210,10 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
     accent: '#ef2222',
     background: '#140202',
     badgeBox: {
-      left: '8.19%',
-      top: '6.07%',
-      width: '17.14%',
-      height: '11.88%',
+      left: '5.8%',
+      top: '4.8%',
+      width: '21.5%',
+      height: '15.1%',
     },
     numberBox: {
       left: '14%',
@@ -157,6 +225,7 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       stroke: '#111',
       shadow: '0 3px 0 #111',
       fontStyle: 'normal',
+      fontWeight: '400',
     },
     positionBox: {
       left: '18.14%',
@@ -164,6 +233,7 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       width: '12.22%',
       fontSize: '0.0305',
       fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+      fontWeight: '700',
       rotate: '-90deg',
       color: '#ef2222',
     },
@@ -173,7 +243,25 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       width: '31.44%',
       fontSize: '0.064',
       fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+      fontWeight: '700',
       rotate: '-90deg',
+    },
+    back: {
+      base: '/templates/custom-collection/comic/back-base.png',
+      logoBox: {
+        left: '50%',
+        top: '10.5%',
+        width: '20%',
+        height: '14%',
+      },
+      nameBox: {
+        left: '50%',
+        top: '25%',
+        width: '48%',
+        fontSize: '0.12',
+        fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+        color: '#fff',
+      },
     },
     assets: {
       preview: '/templates/custom-collection/comic/reference.png',

@@ -122,7 +122,7 @@ function playerClubName(order: OrderDraft, player?: PlayerDraft) {
 }
 
 function playerBadge(order: OrderDraft, player?: PlayerDraft) {
-  if (order.collectionType === 'custom') return player?.badgeUrl || order.badgeUrl || '/emblem-brand.png';
+  if (order.collectionType === 'custom') return player?.badgeUrl || order.badgeUrl || '/templates/custom-collection/custom-logo-placeholder.png';
   return player?.badgeUrl || (player?.emjflClubId ? getEmjflClub(player.emjflClubId).badgePath : order.badgeUrl) || getEmjflClub(playerClubId(order, player)).badgePath;
 }
 
