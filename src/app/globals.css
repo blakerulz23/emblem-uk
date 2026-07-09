@@ -669,20 +669,17 @@ a { text-decoration: none; color: inherit; }
   display: inline-flex;
   justify-content: center;
   align-items: center;
-  gap: 9px;
-  font-family: var(--font-sora), system-ui, sans-serif;
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
 }
 
-.uk-wizard-brand span {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  background: var(--wizard-accent);
-  transform: rotate(45deg);
-  box-shadow: 0 5px 14px var(--wizard-glow);
+.uk-wizard-brand img {
+  display: block;
+  width: auto;
+  height: 72px;
+  max-width: 190px;
+  object-fit: contain;
 }
 
 .uk-wizard-progress {
@@ -3547,8 +3544,12 @@ a { text-decoration: none; color: inherit; }
   }
 
   .uk-wizard-brand {
-    gap: 8px;
-    font-size: 17px;
+    max-width: 150px;
+  }
+
+  .uk-wizard-brand img {
+    height: 66px;
+    max-width: 170px;
   }
 
   .uk-wizard-progress {

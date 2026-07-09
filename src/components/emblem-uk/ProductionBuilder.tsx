@@ -1,6 +1,7 @@
 'use client';
 
 import { type FormEvent, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import CardArt from '@/components/builder/emblem/CardArt';
 import { CARD_TEMPLATES } from '@/components/builder/emblem/data';
@@ -641,10 +642,9 @@ export default function ProductionBuilder() {
             <button type="button" className="uk-icon-button" onClick={goBack} aria-label="Back" disabled={activeStep === 0}>
               &lsaquo;
             </button>
-            <div className="uk-wizard-brand" aria-label="Emblem">
-              <span />
-              <strong>EMBLEM</strong>
-            </div>
+            <Link href="/" className="uk-wizard-brand" aria-label="Emblem home">
+              <img src="/embm.png" alt="Emblem" />
+            </Link>
             <button
               type="button"
               className="uk-progress-pill"
