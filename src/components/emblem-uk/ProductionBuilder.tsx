@@ -643,7 +643,7 @@ export default function ProductionBuilder() {
               &lsaquo;
             </button>
             <Link href="/" className="uk-wizard-brand" aria-label="Emblem home">
-              <img src="/embm.png" alt="Emblem" />
+              <img src="/builder-emblem-logo.png" alt="Emblem" />
             </Link>
             <button
               type="button"
