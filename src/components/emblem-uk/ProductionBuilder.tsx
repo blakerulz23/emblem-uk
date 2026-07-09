@@ -32,16 +32,16 @@ const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'per
 
 const collections = [
   {
+    id: 'custom',
+    title: 'Custom Collection',
+    proof: 'Build Your Own',
+    points: ['Any club or school', 'One-off events', 'Emblem badge included'],
+  },
+  {
     id: 'official',
     title: 'Official Collection',
     proof: 'Official Partner',
     points: ['Licensed badges', 'Official templates', 'League approved'],
-  },
-  {
-    id: 'custom',
-    title: 'Custom Collection',
-    proof: 'Build Your Own',
-    points: ['Upload your own badge', 'Any club or school', 'One-off events'],
   },
 ] as const;
 
@@ -763,17 +763,6 @@ export default function ProductionBuilder() {
                         placeholder="Enter your club or team name"
                       />
                     </label>
-                    <div className="uk-custom-badge-upload">
-                      <img src={order.badgeUrl || '/emblem-brand.png'} alt="" />
-                      <span>
-                        <strong>Club badge <em>optional</em></strong>
-                        <small>Don't have a badge? We'll automatically create a clean Emblem badge.</small>
-                      </span>
-                      <label>
-                        Upload badge
-                        <input type="file" accept="image/*" hidden onChange={(event) => assignOrderBadge(event.target.files?.[0])} />
-                      </label>
-                    </div>
                   </div>
                 )}
               </div>
