@@ -1,10 +1,9 @@
 import Link from 'next/link';
 
 const trust = [
-  'Trusted by grassroots clubs',
-  'Interactive player profile',
-  'Premium collectible finish',
-  'Built for families',
+  '400gsm premium stock',
+  'Real NFC chip built in',
+  'Ships in 5-7 days',
 ];
 
 const colourways = [
@@ -16,11 +15,12 @@ const colourways = [
 ];
 
 const heroStyles = [
-  { name: 'Flame', preview: 'linear-gradient(145deg,#f36b28,#1b1110 58%,#0d302a)' },
-  { name: 'Royal', preview: 'linear-gradient(145deg,#315dff,#101a3d 56%,#05070c)' },
-  { name: 'Pitch', preview: 'linear-gradient(145deg,#39c873,#12482c 58%,#050c08)' },
+  { name: 'Cosmic', preview: 'linear-gradient(145deg,#0b5962,#f36b28)' },
+  { name: 'Violet', preview: 'linear-gradient(145deg,#371bb4,#7d3cff)' },
+  { name: 'Derby', preview: 'linear-gradient(145deg,#7c0d0d,#f0555a)' },
   { name: 'Gold', preview: 'linear-gradient(145deg,#e9b23c,#59400b 58%,#120d04)' },
-  { name: 'Crimson', preview: 'linear-gradient(145deg,#f0555a,#531114 58%,#080607)' },
+  { name: 'Emerald', preview: 'linear-gradient(145deg,#39c873,#12482c 58%,#050c08)' },
+  { name: 'Sapphire', preview: 'linear-gradient(145deg,#315dff,#101a3d 56%,#05070c)' },
 ];
 
 const steps = [
@@ -96,39 +96,42 @@ export default function Home() {
         <div className="emh-glow" aria-hidden="true" />
         <div className="emh-hero">
           <div className="emh-hero-copy">
-            <p className="emh-eyebrow emh-eyebrow-pill">The home of the grassroots player journey</p>
+            <p className="emh-eyebrow emh-eyebrow-pill">UK grassroots football · tap to unlock</p>
             <h1>
-              <span>Premium custom</span>
-              <span>football trading cards</span>
+              Premium custom <span>football</span>{' '}
+              <br />
+              <span>trading cards</span>
             </h1>
             <p className="emh-hero-subline">More than a football card.</p>
             <p className="emh-lede">
-              Turn your child&apos;s football photo into a premium printed player card connected to a living digital profile for stats, photos, highlights and memories.
+              Every player has a first season. Capture it with a premium collectible that unlocks a digital profile for every memory, milestone and match.
             </p>
-            <div className="emh-actions">
-              <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Create a card</Link>
-              <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
-            </div>
+          </div>
+
+          <div className="emh-card-fan" aria-label="Example Emblem player card">
+            <div className="emh-card-orbit emh-card-orbit-one" aria-hidden="true" />
+            <div className="emh-card-orbit emh-card-orbit-two" aria-hidden="true" />
+            <img
+              className="emh-fan-card emh-fan-card-front"
+              src="/templates/custom-collection/galaxy/preview.png"
+              alt="Premium custom football trading card preview"
+            />
             <div className="emh-hero-swatches" aria-label="Available card styles">
+              <span className="emh-edition-label">Edition</span>
               {heroStyles.map((style) => (
                 <span key={style.name}>
                   <i style={{ background: style.preview }} />
-                  {style.name}
+                  <b>{style.name}</b>
                 </span>
               ))}
             </div>
-            <p className="emh-micro">Built in minutes · treasured for years</p>
           </div>
 
-          <div className="emh-card-fan" aria-label="Example Emblem player cards">
-            <img className="emh-fan-card emh-fan-card-right" src="/hollinwood-card-05.png" alt="" />
-            <img className="emh-fan-card emh-fan-card-left" src="/hollinwood-card-03.png" alt="" />
-            <img className="emh-fan-card emh-fan-card-front" src="/hollinwood-card-01.png" alt="Emblem premium collectible player card for Jacob Thompson" />
-            <div className="emh-card-orbit emh-card-orbit-one" aria-hidden="true" />
-            <div className="emh-card-orbit emh-card-orbit-two" aria-hidden="true" />
-            <div className="emh-profile-chip">
-              <p>Tap the card</p>
-              <span>Profile · Stats · Highlights</span>
+          <div className="emh-hero-footer">
+            <p className="emh-micro">Cosmic edition · tap a colour, or hover the card</p>
+            <div className="emh-actions">
+              <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Upload photo</Link>
+              <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
             </div>
           </div>
         </div>
