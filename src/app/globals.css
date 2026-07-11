@@ -3687,35 +3687,61 @@ a { text-decoration: none; color: inherit; }
 .emh-hero-section {
   position: relative;
   overflow: hidden;
-  background: #08090a;
+  border-bottom: 1px solid rgba(20, 17, 15, 0.08);
+  background:
+    linear-gradient(90deg, rgba(20, 17, 15, 0.08) 1px, transparent 1px) calc(50% - 610px) 0 / 1220px 100% no-repeat,
+    linear-gradient(90deg, transparent calc(100% - 1px), rgba(20, 17, 15, 0.08) calc(100% - 1px)) calc(50% - 610px) 0 / 1220px 100% no-repeat,
+    linear-gradient(180deg, #f3f1ed 0%, #e9e7e1 100%);
+  color: #16130f;
 }
 
 .emh-glow {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(1000px 620px at 82% 34%, rgba(241, 96, 29, 0.2), transparent 62%),
-    radial-gradient(760px 520px at 6% 92%, rgba(18, 96, 63, 0.3), transparent 60%);
+    radial-gradient(900px 460px at 78% 20%, rgba(233, 116, 53, 0.22), transparent 62%),
+    radial-gradient(720px 500px at 14% 98%, rgba(18, 96, 63, 0.13), transparent 60%);
   pointer-events: none;
 }
 
 .emh-hero {
   position: relative;
-  max-width: 1220px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 64px 24px 78px;
+  padding: 66px 26px 70px;
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) minmax(340px, 0.96fr);
-  gap: 40px;
+  grid-template-columns: minmax(360px, 0.94fr) minmax(420px, 1.06fr);
+  gap: 34px;
   align-items: center;
 }
 
 .emh-hero-copy h1 {
-  margin: 0 0 20px;
-  max-width: 680px;
-  font-size: clamp(40px, 5.2vw, 68px);
+  margin: 0 0 14px;
+  max-width: 760px;
+  color: #16130f;
+  font-size: clamp(48px, 6.2vw, 86px);
   font-weight: 900;
-  line-height: 0.98;
+  line-height: 0.92;
+  letter-spacing: -0.045em;
+  text-transform: uppercase;
+}
+
+.emh-hero-copy h1 span {
+  display: block;
+}
+
+.emh-hero-copy h1 span:last-child {
+  color: #e97435;
+}
+
+.emh-hero-subline {
+  margin: 0 0 14px;
+  color: #16130f;
+  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-size: clamp(17px, 1.7vw, 22px);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .emh-eyebrow {
@@ -3735,13 +3761,14 @@ a { text-decoration: none; color: inherit; }
   padding: 8px 16px;
   border: 1px solid rgba(241, 96, 29, 0.4);
   border-radius: 999px;
-  color: #f1874f;
+  background: rgba(255, 255, 255, 0.34);
+  color: #d95f22;
 }
 
 .emh-lede {
-  max-width: 530px;
-  margin: 0 0 30px;
-  color: rgba(255, 255, 255, 0.72);
+  max-width: 590px;
+  margin: 0 0 24px;
+  color: #5a5248;
   font-size: 18.5px;
   line-height: 1.6;
 }
@@ -3777,12 +3804,12 @@ a { text-decoration: none; color: inherit; }
 .emh-btn-primary:hover { background: #ff6e28; }
 
 .emh-btn-secondary {
-  border: 1.5px solid rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
+  border: 1.5px solid rgba(20, 17, 15, 0.22);
+  background: rgba(255, 255, 255, 0.38);
+  color: #16130f;
 }
 
-.emh-btn-secondary:hover { border-color: #fff; }
+.emh-btn-secondary:hover { border-color: #16130f; }
 
 .emh-btn-light {
   background: #fff;
@@ -3793,61 +3820,115 @@ a { text-decoration: none; color: inherit; }
 
 .emh-micro {
   margin: 0;
-  color: rgba(255, 255, 255, 0.42);
+  color: rgba(20, 17, 15, 0.52);
   font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
+.emh-hero-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 18px;
+}
+
+.emh-hero-swatches span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 1px solid rgba(20, 17, 15, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  color: #3d352d;
+  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 6px 11px 6px 7px;
+  text-transform: uppercase;
+}
+
+.emh-hero-swatches i {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  border-radius: 999px;
+  box-shadow: 0 8px 18px rgba(20, 17, 15, 0.12);
+}
+
 .emh-card-fan {
   position: relative;
-  min-height: 540px;
+  min-height: 570px;
   display: flex;
   align-items: center;
   justify-content: center;
   isolation: isolate;
+  perspective: 1200px;
 }
 
 .emh-fan-card {
   position: absolute;
   border-radius: 16px;
-  filter: drop-shadow(0 26px 48px rgba(0, 0, 0, 0.6));
+  filter: drop-shadow(0 28px 46px rgba(20, 17, 15, 0.28));
   user-select: none;
 }
 
 .emh-fan-card-right {
-  width: 250px;
+  width: 268px;
   opacity: 0.96;
-  transform: rotate(11deg) translate(128px, 26px);
+  transform: rotate(13deg) translate(146px, 26px);
   z-index: 1;
 }
 
 .emh-fan-card-left {
-  width: 238px;
+  width: 258px;
   opacity: 0.98;
-  transform: rotate(-15deg) translate(-138px, 34px);
+  transform: rotate(-15deg) translate(-144px, 38px);
   z-index: 1;
 }
 
 .emh-fan-card-front {
   position: relative;
-  width: 300px;
+  width: 336px;
   animation: emblemFloat 8s ease-in-out infinite;
-  filter: drop-shadow(0 40px 70px rgba(0, 0, 0, 0.7));
+  filter: drop-shadow(0 40px 72px rgba(20, 17, 15, 0.36));
   z-index: 2;
+}
+
+.emh-card-orbit {
+  position: absolute;
+  border: 1px solid rgba(233, 116, 53, 0.2);
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.emh-card-orbit-one {
+  width: 560px;
+  height: 560px;
+  background: radial-gradient(circle, rgba(233, 116, 53, 0.12), transparent 64%);
+}
+
+.emh-card-orbit-two {
+  width: 410px;
+  height: 410px;
+  border-color: rgba(18, 96, 63, 0.18);
+  transform: rotate(-12deg);
 }
 
 .emh-profile-chip {
   position: absolute;
-  right: -6px;
-  bottom: -2px;
+  right: 18px;
+  bottom: 34px;
   z-index: 3;
   padding: 12px 15px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(20, 17, 15, 0.12);
   border-radius: 14px;
-  background: rgba(14, 16, 18, 0.9);
-  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.5);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 38px rgba(20, 17, 15, 0.18);
   backdrop-filter: blur(6px);
 }
 
@@ -3863,16 +3944,16 @@ a { text-decoration: none; color: inherit; }
 
 .emh-profile-chip span {
   display: block;
-  color: rgba(255, 255, 255, 0.82);
+  color: rgba(20, 17, 15, 0.76);
   font-size: 13px;
   font-weight: 600;
 }
 
 .emh-trust-strip {
   position: relative;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid rgba(20, 17, 15, 0.08);
+  border-bottom: 1px solid rgba(20, 17, 15, 0.08);
+  background: rgba(20, 17, 15, 0.04);
 }
 
 .emh-trust-strip > div {
@@ -3889,7 +3970,7 @@ a { text-decoration: none; color: inherit; }
   display: flex;
   align-items: center;
   gap: 10px;
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(20, 17, 15, 0.66);
   font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.03em;
@@ -4516,13 +4597,14 @@ a { text-decoration: none; color: inherit; }
   }
 
   .emh-hero .emh-actions,
+  .emh-hero-swatches,
   .emh-trust-strip > div {
     justify-content: center;
   }
 
   .emh-card-fan {
-    min-height: 430px;
-    margin-top: 8px;
+    min-height: 500px;
+    margin-top: 0;
     order: -1;
   }
 
@@ -4533,29 +4615,40 @@ a { text-decoration: none; color: inherit; }
 @media (max-width: 700px) {
   .emh-nav-logo { height: 78px; }
 
-  .emh-hero { padding: 40px 20px 56px; }
-
-  .emh-card-fan {
-    min-height: 340px;
-    transform: scale(0.82);
+  .emh-hero {
+    padding: 28px 18px 48px;
+    gap: 10px;
   }
 
-  .emh-fan-card-front { width: 280px; }
+  .emh-hero-copy h1 {
+    font-size: clamp(44px, 16vw, 68px);
+  }
+
+  .emh-hero-subline {
+    font-size: 16px;
+  }
+
+  .emh-card-fan {
+    min-height: 390px;
+    transform: scale(0.78);
+  }
+
+  .emh-fan-card-front { width: 300px; }
 
   .emh-fan-card-left {
-    width: 220px;
+    width: 230px;
     transform: rotate(-14deg) translate(-92px, 28px);
   }
 
   .emh-fan-card-right {
-    width: 226px;
+    width: 236px;
     transform: rotate(10deg) translate(92px, 24px);
   }
 
   .emh-profile-chip {
-    right: 50%;
-    bottom: -12px;
-    transform: translateX(50%);
+    right: 10px;
+    bottom: 22px;
+    transform: scale(0.88);
   }
 
   .emh-actions { width: 100%; }

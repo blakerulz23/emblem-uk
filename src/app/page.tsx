@@ -15,6 +15,14 @@ const colourways = [
   { img: '/hollinwood-card-09.png', name: 'Gold', tint: '#E9B23C', alt: 'Gold foil player card' },
 ];
 
+const heroStyles = [
+  { name: 'Flame', preview: 'linear-gradient(145deg,#f36b28,#1b1110 58%,#0d302a)' },
+  { name: 'Royal', preview: 'linear-gradient(145deg,#315dff,#101a3d 56%,#05070c)' },
+  { name: 'Pitch', preview: 'linear-gradient(145deg,#39c873,#12482c 58%,#050c08)' },
+  { name: 'Gold', preview: 'linear-gradient(145deg,#e9b23c,#59400b 58%,#120d04)' },
+  { name: 'Crimson', preview: 'linear-gradient(145deg,#f0555a,#531114 58%,#080607)' },
+];
+
 const steps = [
   ['STEP 01', 'Add your player', 'One child, siblings, friends, or the full squad list in a single session.'],
   ['STEP 02', 'Upload the photo', 'One photo or a whole squad. We lift each player cleanly off the background.'],
@@ -89,13 +97,25 @@ export default function Home() {
         <div className="emh-hero">
           <div className="emh-hero-copy">
             <p className="emh-eyebrow emh-eyebrow-pill">The home of the grassroots player journey</p>
-            <h1>Every season tells a story.</h1>
+            <h1>
+              <span>Premium custom</span>
+              <span>football trading cards</span>
+            </h1>
+            <p className="emh-hero-subline">More than a football card.</p>
             <p className="emh-lede">
-              Preserve your child&apos;s football journey with premium collectible player cards and an interactive digital profile that grows season after season.
+              Turn your child&apos;s football photo into a premium printed player card connected to a living digital profile for stats, photos, highlights and memories.
             </p>
             <div className="emh-actions">
               <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Create a card</Link>
               <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
+            </div>
+            <div className="emh-hero-swatches" aria-label="Available card styles">
+              {heroStyles.map((style) => (
+                <span key={style.name}>
+                  <i style={{ background: style.preview }} />
+                  {style.name}
+                </span>
+              ))}
             </div>
             <p className="emh-micro">Built in minutes · treasured for years</p>
           </div>
@@ -104,6 +124,8 @@ export default function Home() {
             <img className="emh-fan-card emh-fan-card-right" src="/hollinwood-card-05.png" alt="" />
             <img className="emh-fan-card emh-fan-card-left" src="/hollinwood-card-03.png" alt="" />
             <img className="emh-fan-card emh-fan-card-front" src="/hollinwood-card-01.png" alt="Emblem premium collectible player card for Jacob Thompson" />
+            <div className="emh-card-orbit emh-card-orbit-one" aria-hidden="true" />
+            <div className="emh-card-orbit emh-card-orbit-two" aria-hidden="true" />
             <div className="emh-profile-chip">
               <p>Tap the card</p>
               <span>Profile · Stats · Highlights</span>
