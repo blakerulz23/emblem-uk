@@ -49,11 +49,14 @@ export default function HeroScrollCard({ cards }: HeroScrollCardProps) {
       frameRef.current = null;
       const rect = stage.getBoundingClientRect();
       const viewportHeight = window.innerHeight || 800;
+      const isMobile = window.matchMedia('(max-width: 700px)').matches;
+      const maxRotate = isMobile ? 12 : 26;
+      const minScale = isMobile ? 0.94 : 0.86;
       const centre = rect.top + rect.height / 2;
       let progress = (0.88 - centre / viewportHeight) / (0.88 - 0.42);
       progress = Math.max(0, Math.min(1, progress));
-      scrollRotateRef.current = 26 * (1 - progress);
-      scrollScaleRef.current = 0.86 + 0.14 * progress;
+      scrollRotateRef.current = maxRotate * (1 - progress);
+      scrollScaleRef.current = minScale + (1 - minScale) * progress;
       applyTransform();
     };
 
@@ -75,6 +78,8 @@ export default function HeroScrollCard({ cards }: HeroScrollCardProps) {
   }, []);
 
   const applyPointerTransform = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return;
+
     const card = cardRef.current;
     const glare = glareRef.current;
     if (!card) return;

@@ -4760,16 +4760,85 @@ a { text-decoration: none; color: inherit; }
   .emh-nav-logo { height: 78px; }
 
   .emh-hero {
-    padding: 32px 18px 34px;
+    padding: 18px 16px 28px;
   }
 
   .emh-hero-copy h1 {
-    font-size: clamp(42px, 14.5vw, 64px);
-    line-height: 0.95;
+    margin-bottom: 10px;
+    font-size: clamp(29px, 9vw, 38px);
+    line-height: 0.9;
+    letter-spacing: -0.035em;
+  }
+
+  .emh-eyebrow-pill {
+    max-width: 100%;
+    margin-bottom: 16px;
+    padding: 7px 14px;
+    font-size: 13px;
+    line-height: 1.35;
+    letter-spacing: 0.13em;
+    justify-content: center;
   }
 
   .emh-hero-subline {
-    font-size: 16px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    letter-spacing: 0.16em;
+  }
+
+  .emh-lede {
+    max-width: 318px;
+    font-size: 14.5px;
+    line-height: 1.35;
+  }
+
+  .emh-scroll-card-stage {
+    width: min(330px, 90vw);
+    margin-top: 8px;
+    margin-bottom: 10px;
+  }
+
+  .emh-scroll-card-stage::before {
+    inset: -20px 0 86px;
+    filter: blur(14px);
+  }
+
+  .emh-scroll-card-perspective,
+  .emh-scroll-card {
+    width: min(250px, 72vw);
+  }
+
+  .emh-scroll-card img {
+    box-shadow: 0 34px 70px -30px rgba(20, 17, 15, 0.52);
+  }
+
+  .emh-hero-swatches {
+    gap: 5px;
+    margin-top: -4px;
+    padding: 7px 8px;
+  }
+
+  .emh-hero-swatches .emh-edition-label {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    padding-right: 3px;
+  }
+
+  .emh-hero-swatches i {
+    width: 22px;
+    height: 22px;
+  }
+
+  .emh-hero-edition-note {
+    max-width: 280px;
+    margin-top: 12px;
+    font-size: 9.5px;
+    line-height: 1.35;
+    letter-spacing: 0.16em;
+  }
+
+  .emh-hero-footer .emh-actions {
+    gap: 10px;
   }
 
   .emh-card-fan {
