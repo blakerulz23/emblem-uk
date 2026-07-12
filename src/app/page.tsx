@@ -139,7 +139,6 @@ export default function Home() {
         <div className="emh-glow" aria-hidden="true" />
         <div className="emh-hero">
           <div className="emh-hero-copy">
-            <p className="emh-eyebrow emh-eyebrow-pill">UK grassroots football · tap to unlock</p>
             <h1>
               Premium custom <span>football</span>{' '}
               <br />
