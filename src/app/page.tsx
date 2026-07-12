@@ -1,10 +1,9 @@
 import Link from 'next/link';
-import HeroScrollCard from './HeroScrollCard';
 
 const trust = [
-  '400gsm premium stock',
-  'Real NFC chip built in',
-  'Ships in 5-7 days',
+  '400gsm',
+  'NFC chip',
+  'Ships 5-7 days',
 ];
 
 const colourways = [
@@ -13,57 +12,6 @@ const colourways = [
   { img: '/hollinwood-card-05.png', name: 'Pitch', tint: '#3CC87E', alt: 'Green foil player card' },
   { img: '/hollinwood-card-07.png', name: 'Crimson', tint: '#F0555A', alt: 'Red foil player card' },
   { img: '/hollinwood-card-09.png', name: 'Gold', tint: '#E9B23C', alt: 'Gold foil player card' },
-];
-
-const heroCards = [
-  {
-    key: 'floodlight',
-    label: 'Floodlight',
-    image: '/templates/custom-collection/solar/preview.png',
-    preview: 'linear-gradient(150deg,#e9622f,#0f5563 55%,#0c0b0a)',
-    ring: '#e9843f',
-    glow: '0 0 12px -2px rgba(233,132,63,.75)',
-  },
-  {
-    key: 'cosmic',
-    label: 'Cosmic',
-    image: '/templates/custom-collection/galaxy/preview.png',
-    preview: 'linear-gradient(150deg,#6d3bef,#2a1e6b 55%,#0c0a1e)',
-    ring: '#8b6fe8',
-    glow: '0 0 12px -2px rgba(139,111,232,.7)',
-  },
-  {
-    key: 'derby',
-    label: 'Derby Red',
-    image: '/hollinwood-card-07.png',
-    preview: 'linear-gradient(150deg,#e5242e,#5a0d12 55%,#0c0606)',
-    ring: '#e8434b',
-    glow: '0 0 12px -2px rgba(232,67,75,.7)',
-  },
-  {
-    key: 'gold',
-    label: 'Gold',
-    image: '/hollinwood-card-09.png',
-    preview: 'linear-gradient(150deg,#f2c94c,#a67c11 55%,#3a2a06)',
-    ring: '#f0c64b',
-    glow: '0 0 12px -2px rgba(240,198,75,.75)',
-  },
-  {
-    key: 'emerald',
-    label: 'Emerald',
-    image: '/hollinwood-card-05.png',
-    preview: 'linear-gradient(150deg,#2fbf6a,#146b3a 55%,#04180e)',
-    ring: '#3fc98a',
-    glow: '0 0 12px -2px rgba(63,201,138,.6)',
-  },
-  {
-    key: 'sapphire',
-    label: 'Sapphire',
-    image: '/hollinwood-card-03.png',
-    preview: 'linear-gradient(150deg,#2f6bff,#123a9e 55%,#050a1e)',
-    ring: '#3f73e8',
-    glow: '0 0 12px -2px rgba(63,115,232,.7)',
-  },
 ];
 
 const steps = [
@@ -139,32 +87,34 @@ export default function Home() {
         <div className="emh-glow" aria-hidden="true" />
         <div className="emh-hero">
           <div className="emh-hero-copy">
+            <p className="emh-hero-subline">More than a football card.</p>
             <h1>
               Premium custom <span>football</span>{' '}
               <br />
               <span>trading cards</span>
             </h1>
-            <p className="emh-hero-subline">More than a football card.</p>
             <p className="emh-lede">
-              Every player has a first season. Capture it with a premium collectible that unlocks a digital profile for every memory, milestone and match.
+              Create a personalised football trading card that unlocks a digital profile for every match, photo, goal and milestone so every season is remembered.
             </p>
           </div>
 
-          <HeroScrollCard cards={heroCards} />
+          <img
+            className="emh-hero-slab"
+            src="/assets/card-hero-slab.png"
+            alt="Personalised Emblem football trading card"
+          />
 
           <div className="emh-hero-footer">
             <div className="emh-actions">
-              <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Upload photo</Link>
+              <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Create My Card</Link>
               <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
             </div>
-          </div>
-        </div>
 
-        <div className="emh-trust-strip">
-          <div>
-            {trust.map((label) => (
-              <span key={label}><i />{label}</span>
-            ))}
+            <div className="emh-trust-strip">
+              {trust.map((label) => (
+                <span key={label}><i />{label}</span>
+              ))}
+            </div>
           </div>
         </div>
       </section>

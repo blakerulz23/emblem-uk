@@ -3717,7 +3717,7 @@ a { text-decoration: none; color: inherit; }
   position: relative;
   max-width: 980px;
   margin: 0 auto;
-  padding: 34px 26px 28px;
+  padding: 34px 26px 38px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3745,12 +3745,12 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-hero-subline {
-  margin: 0 0 8px;
+  margin: 0 0 12px;
   color: #16130f;
   font-family: var(--font-rajdhani), system-ui, sans-serif;
   font-size: clamp(17px, 1.7vw, 22px);
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
@@ -3781,6 +3781,16 @@ a { text-decoration: none; color: inherit; }
   color: #5a5248;
   font-size: 18.5px;
   line-height: 1.6;
+}
+
+.emh-hero-slab {
+  position: relative;
+  z-index: 2;
+  display: block;
+  width: min(370px, 78vw);
+  aspect-ratio: 2 / 3;
+  object-fit: contain;
+  margin: 30px auto 22px;
 }
 
 .emh-actions {
@@ -4101,28 +4111,28 @@ a { text-decoration: none; color: inherit; }
 .emh-hero-footer {
   position: relative;
   z-index: 5;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .emh-hero-footer .emh-actions {
   justify-content: center;
-  margin-bottom: 0;
+  margin-bottom: 24px;
 }
 
 .emh-trust-strip {
   position: relative;
-  border-top: 1px solid rgba(20, 17, 15, 0.08);
-  border-bottom: 1px solid rgba(20, 17, 15, 0.08);
-  background: rgba(20, 17, 15, 0.04);
-}
-
-.emh-trust-strip > div {
-  max-width: 1220px;
-  margin: 0 auto;
-  padding: 16px 24px;
   display: flex;
   flex-wrap: wrap;
-  gap: 14px 40px;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
+  gap: 14px 34px;
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 0;
+  background: transparent;
 }
 
 .emh-trust-strip span {
@@ -4130,9 +4140,10 @@ a { text-decoration: none; color: inherit; }
   align-items: center;
   gap: 10px;
   color: rgba(20, 17, 15, 0.66);
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
+  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 
