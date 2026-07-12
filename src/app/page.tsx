@@ -87,17 +87,14 @@ export default function Home() {
         <div className="emh-glow" aria-hidden="true" />
         <div className="emh-hero">
           <div className="emh-hero-copy">
-            <p className="emh-hero-subline">More than a football card.</p>
             <h1>
               Premium custom <span>football</span>{' '}
               <br />
               <span>trading cards</span>
             </h1>
-            <p className="emh-lede">
-              Create a personalised football trading card that unlocks a digital profile for every match, photo, goal and milestone so every season is remembered.
-            </p>
           </div>
 
+          <p className="emh-hero-subline">More than a football card.</p>
           <img
             className="emh-hero-slab"
             src="/assets/card-hero-slab.png"
@@ -105,6 +102,10 @@ export default function Home() {
           />
 
           <div className="emh-hero-footer">
+            <p className="emh-lede">
+              Create a personalised football trading card that unlocks a digital collection of every match, photo, goal and milestone so every season is remembered.
+            </p>
+
             <div className="emh-actions">
               <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Create My Card</Link>
               <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>

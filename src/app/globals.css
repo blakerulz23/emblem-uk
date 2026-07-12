@@ -3745,7 +3745,7 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-hero-subline {
-  margin: 0 0 12px;
+  margin: 8px 0 10px;
   color: #16130f;
   font-family: var(--font-rajdhani), system-ui, sans-serif;
   font-size: clamp(17px, 1.7vw, 22px);
@@ -3777,7 +3777,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-lede {
   max-width: 610px;
-  margin: 0 auto;
+  margin: 0 auto 22px;
   color: #5a5248;
   font-size: 18.5px;
   line-height: 1.6;
@@ -3790,7 +3790,7 @@ a { text-decoration: none; color: inherit; }
   width: min(370px, 78vw);
   aspect-ratio: 2 / 3;
   object-fit: contain;
-  margin: 30px auto 22px;
+  margin: 0 auto 20px;
 }
 
 .emh-actions {
