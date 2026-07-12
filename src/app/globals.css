@@ -17,6 +17,7 @@
   --font-manrope: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
   --font-rajdhani: "Rajdhani", "Arial Narrow", system-ui, sans-serif;
   --font-barlow-condensed: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-cinematografica: "Cinematografica", "Barlow Condensed", "Arial Narrow", Impact, sans-serif;
   --font-jbmono: "Cascadia Mono", Consolas, monospace;
   --font-oswald: "Arial Narrow", Impact, sans-serif;
   --font-caveat: "Segoe Print", "Comic Sans MS", cursive;
@@ -3719,10 +3720,11 @@ a { text-decoration: none; color: inherit; }
   margin: 0 auto 14px;
   max-width: 940px;
   color: #16130f;
-  font-size: clamp(42px, 5vw, 60px);
-  font-weight: 900;
-  line-height: 0.92;
-  letter-spacing: -0.045em;
+  font-family: var(--font-cinematografica);
+  font-size: clamp(46px, 6vw, 76px);
+  font-weight: 800;
+  line-height: 0.86;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -4765,9 +4767,9 @@ a { text-decoration: none; color: inherit; }
 
   .emh-hero-copy h1 {
     margin-bottom: 10px;
-    font-size: clamp(29px, 9vw, 38px);
+    font-size: clamp(37px, 11.5vw, 50px);
     line-height: 0.9;
-    letter-spacing: -0.035em;
+    letter-spacing: 0;
   }
 
   .emh-eyebrow-pill {
