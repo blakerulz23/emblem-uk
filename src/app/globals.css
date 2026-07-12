@@ -3843,7 +3843,8 @@ a { text-decoration: none; color: inherit; }
   box-shadow: 0 18px 36px rgba(20, 17, 15, 0.12);
 }
 
-.emh-hero-swatches span {
+.emh-hero-swatches span,
+.emh-hero-swatches button {
   display: inline-flex;
   align-items: center;
   gap: 0;
@@ -3860,7 +3861,8 @@ a { text-decoration: none; color: inherit; }
   text-transform: uppercase;
 }
 
-.emh-hero-swatches b {
+.emh-hero-swatches b,
+.emh-edition-swatch b {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -3888,6 +3890,120 @@ a { text-decoration: none; color: inherit; }
   border: 2px solid rgba(255, 255, 255, 0.78);
   border-radius: 999px;
   box-shadow: 0 8px 18px rgba(20, 17, 15, 0.12);
+}
+
+.emh-edition-swatch {
+  cursor: pointer;
+  transition: transform 150ms ease, filter 150ms ease;
+}
+
+.emh-edition-swatch i {
+  background: var(--swatch-preview);
+  border-color: var(--swatch-ring);
+  box-shadow: var(--swatch-glow);
+}
+
+.emh-edition-swatch:hover,
+.emh-edition-swatch[aria-pressed="true"] {
+  transform: scale(1.12);
+}
+
+.emh-edition-swatch[aria-pressed="true"] i {
+  outline: 2px solid rgba(20, 17, 15, 0.16);
+  outline-offset: 2px;
+}
+
+.emh-scroll-card-stage {
+  position: relative;
+  width: min(620px, 86vw);
+  margin: 30px auto 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  isolation: isolate;
+}
+
+.emh-scroll-card-stage::before {
+  content: "";
+  position: absolute;
+  inset: -46px 0 80px;
+  background: radial-gradient(54% 56% at 50% 44%, rgba(233, 116, 53, 0.28), transparent 72%);
+  filter: blur(18px);
+  animation: glowPulse 6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.emh-scroll-card-perspective {
+  position: relative;
+  width: min(390px, 78vw);
+  padding: 10px 0;
+  perspective: 1200px;
+  z-index: 2;
+}
+
+.emh-scroll-card-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  width: 62%;
+  height: 40px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, rgba(20, 17, 15, 0.42), rgba(20, 17, 15, 0) 70%);
+  filter: blur(14px);
+  pointer-events: none;
+}
+
+.emh-scroll-card {
+  position: relative;
+  width: min(390px, 78vw);
+  margin: 0 auto;
+  border-radius: 20px;
+  transform: rotateX(26deg) rotateY(0deg) scale(0.86);
+  transform-style: preserve-3d;
+  transition: transform 500ms cubic-bezier(.22,.61,.36,1);
+  will-change: transform;
+}
+
+.emh-scroll-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 16px;
+  box-shadow: 0 55px 100px -30px rgba(20, 17, 15, 0.5);
+}
+
+.emh-scroll-card-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 45%);
+  mix-blend-mode: overlay;
+}
+
+.emh-hero-edition-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+  color: #8b8272;
+  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  z-index: 3;
+}
+
+.emh-hero-edition-note span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #e97435;
 }
 
 .emh-card-fan {

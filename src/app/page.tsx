@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import HeroScrollCard from './HeroScrollCard';
 
 const trust = [
   '400gsm premium stock',
@@ -14,13 +15,55 @@ const colourways = [
   { img: '/hollinwood-card-09.png', name: 'Gold', tint: '#E9B23C', alt: 'Gold foil player card' },
 ];
 
-const heroStyles = [
-  { name: 'Cosmic', preview: 'linear-gradient(145deg,#0b5962,#f36b28)' },
-  { name: 'Violet', preview: 'linear-gradient(145deg,#371bb4,#7d3cff)' },
-  { name: 'Derby', preview: 'linear-gradient(145deg,#7c0d0d,#f0555a)' },
-  { name: 'Gold', preview: 'linear-gradient(145deg,#e9b23c,#59400b 58%,#120d04)' },
-  { name: 'Emerald', preview: 'linear-gradient(145deg,#39c873,#12482c 58%,#050c08)' },
-  { name: 'Sapphire', preview: 'linear-gradient(145deg,#315dff,#101a3d 56%,#05070c)' },
+const heroCards = [
+  {
+    key: 'floodlight',
+    label: 'Floodlight',
+    image: '/templates/custom-collection/solar/preview.png',
+    preview: 'linear-gradient(150deg,#e9622f,#0f5563 55%,#0c0b0a)',
+    ring: '#e9843f',
+    glow: '0 0 12px -2px rgba(233,132,63,.75)',
+  },
+  {
+    key: 'cosmic',
+    label: 'Cosmic',
+    image: '/templates/custom-collection/galaxy/preview.png',
+    preview: 'linear-gradient(150deg,#6d3bef,#2a1e6b 55%,#0c0a1e)',
+    ring: '#8b6fe8',
+    glow: '0 0 12px -2px rgba(139,111,232,.7)',
+  },
+  {
+    key: 'derby',
+    label: 'Derby Red',
+    image: '/hollinwood-card-07.png',
+    preview: 'linear-gradient(150deg,#e5242e,#5a0d12 55%,#0c0606)',
+    ring: '#e8434b',
+    glow: '0 0 12px -2px rgba(232,67,75,.7)',
+  },
+  {
+    key: 'gold',
+    label: 'Gold',
+    image: '/hollinwood-card-09.png',
+    preview: 'linear-gradient(150deg,#f2c94c,#a67c11 55%,#3a2a06)',
+    ring: '#f0c64b',
+    glow: '0 0 12px -2px rgba(240,198,75,.75)',
+  },
+  {
+    key: 'emerald',
+    label: 'Emerald',
+    image: '/hollinwood-card-05.png',
+    preview: 'linear-gradient(150deg,#2fbf6a,#146b3a 55%,#04180e)',
+    ring: '#3fc98a',
+    glow: '0 0 12px -2px rgba(63,201,138,.6)',
+  },
+  {
+    key: 'sapphire',
+    label: 'Sapphire',
+    image: '/hollinwood-card-03.png',
+    preview: 'linear-gradient(150deg,#2f6bff,#123a9e 55%,#050a1e)',
+    ring: '#3f73e8',
+    glow: '0 0 12px -2px rgba(63,115,232,.7)',
+  },
 ];
 
 const steps = [
@@ -108,27 +151,9 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="emh-card-fan" aria-label="Example Emblem player card">
-            <div className="emh-card-orbit emh-card-orbit-one" aria-hidden="true" />
-            <div className="emh-card-orbit emh-card-orbit-two" aria-hidden="true" />
-            <img
-              className="emh-fan-card emh-fan-card-front"
-              src="/templates/custom-collection/galaxy/preview.png"
-              alt="Premium custom football trading card preview"
-            />
-            <div className="emh-hero-swatches" aria-label="Available card styles">
-              <span className="emh-edition-label">Edition</span>
-              {heroStyles.map((style) => (
-                <span key={style.name}>
-                  <i style={{ background: style.preview }} />
-                  <b>{style.name}</b>
-                </span>
-              ))}
-            </div>
-          </div>
+          <HeroScrollCard cards={heroCards} />
 
           <div className="emh-hero-footer">
-            <p className="emh-micro">Cosmic edition · tap a colour, or hover the card</p>
             <div className="emh-actions">
               <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Upload photo</Link>
               <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
