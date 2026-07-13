@@ -9,6 +9,16 @@ type Moment = {
 
 type ProfileItem = [string, string];
 type ProfileFeature = [string, string];
+type DigitalMoment = {
+  key: string;
+  title: string;
+  date: string;
+  meta: string;
+  trust: string;
+  official?: boolean;
+  about: string;
+  stats: [string, string][];
+};
 
 const fanCards = [
   { name: 'Sapphire', src: '/assets/card-fan-2.png' },
@@ -31,6 +41,44 @@ const profileScreens = [
   '/assets/eos-journey.png',
   '/assets/eos-profile.png',
   '/assets/eos-team.png',
+];
+
+const digitalMoments: DigitalMoment[] = [
+  {
+    key: 'first-goal',
+    title: 'First Goal',
+    date: '12 March 2026',
+    meta: 'vs Hyde United',
+    trust: 'Coach verified',
+    about: 'Ollie scores his first goal from a corner. Great awareness, a composed finish and a proud moment for the whole family.',
+    stats: [['Goal', '1'], ['Assists', '0'], ['Minutes Played', '60'], ['Result', 'Won 3-1']],
+  },
+  {
+    key: 'team-photo',
+    title: 'Team Photo',
+    date: '22 April 2026',
+    meta: 'Curzon Ashton U10',
+    trust: 'Coach verified',
+    about: 'The full squad together on presentation day: the team photo that anchors the whole season.',
+    stats: [['Photos', '24'], ['Squad', '14'], ['Season', '2025/26'], ['Occasion', 'Presentation']],
+  },
+  {
+    key: 'tournament',
+    title: 'Tournament Winner',
+    date: '7 June 2026',
+    meta: 'Summer Shield Final',
+    trust: 'Official club',
+    official: true,
+    about: 'A final win, a clean-sheet run and a trophy moment stored against the player card forever.',
+    stats: [['Result', 'Won 3-1'], ['Clean Sheets', '2'], ['Round', 'Final'], ['Trophy', 'Winners']],
+  },
+];
+
+const whyProfileMatters = [
+  ['Every Match Remembered', 'Fixtures, results, goals and assists, all in one place.'],
+  ['Every Memory Saved', 'Photos and videos that turn moments into memories.'],
+  ['Growth You Can See', 'Stats, feedback and progress that show how they are developing.'],
+  ['One Story. Every Team.', 'All clubs, all seasons, one profile that grows with them.'],
 ];
 
 function ProfileIcon({ index }: { index: number }) {
@@ -236,7 +284,9 @@ export function DigitalProfilePreview({
   features: ProfileFeature[];
 }) {
   const [active, setActive] = useState(0);
+  const [momentIndex, setMomentIndex] = useState(0);
   const feature = features[active % features.length];
+  const moment = digitalMoments[momentIndex % digitalMoments.length];
 
   const phoneLabel = useMemo(() => {
     const [title, body] = items[active];
@@ -245,6 +295,25 @@ export function DigitalProfilePreview({
 
   return (
     <div className="emh-profile-explorer">
+      <div className="emh-dp-intro">
+        <div className="emh-dp-intro-copy">
+          <p className="emh-eyebrow">The digital profile</p>
+          <h2>
+            The card is just the
+            <span> beginning.</span>
+          </h2>
+          <p>Every card unlocks a private digital collection that grows with every match, goal, photo and milestone.</p>
+          <a className="emh-btn emh-btn-primary" href="#journey">See everything the card unlocks</a>
+          <small>Private. Secure. Always theirs.</small>
+        </div>
+
+        <div className="emh-dp-reveal" aria-label="Physical card unlocking a phone profile">
+          <img className="emh-dp-reveal-card" src="/assets/card-fan-1.png" alt="Physical Emblem player card" />
+          <span className="emh-dp-nfc" aria-hidden="true"><span /><span /></span>
+          <img className="emh-dp-reveal-phone" src="/assets/eos-home.png" alt="Emblem digital profile on a phone" />
+        </div>
+      </div>
+
       <div className="emh-profile-explorer-title">
         <span />
         <p>Explore their digital collection</p>
@@ -287,6 +356,65 @@ export function DigitalProfilePreview({
 
         <div className="emh-profile-screen-preview" aria-label={`${phoneLabel.title}: ${feature[0]}`}>
           <img src={profileScreens[active % profileScreens.length]} alt="" />
+        </div>
+      </div>
+
+      <div className="emh-dp-moment-panel">
+        <div className="emh-dp-timeline">
+          <p className="emh-dp-panel-label">Season timeline</p>
+          {digitalMoments.map((entry, index) => (
+            <button
+              key={entry.key}
+              type="button"
+              className="emh-dp-moment"
+              aria-pressed={momentIndex === index}
+              onClick={() => setMomentIndex(index)}
+            >
+              <span className="emh-dp-moment-icon"><ProfileIcon index={index + 1} /></span>
+              <span>
+                <strong>{entry.title}</strong>
+                <small>{entry.date}</small>
+                <em className={entry.official ? 'is-official' : ''}>{entry.trust}</em>
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="emh-dp-video-card">
+          <div className="emh-dp-video">
+            <span className={moment.official ? 'is-official' : ''}>{moment.trust}</span>
+            <b />
+          </div>
+          <h3>{moment.title}</h3>
+          <p>{moment.date} · {moment.meta}</p>
+        </div>
+
+        <div className="emh-dp-about">
+          <p className="emh-dp-panel-label">About this moment</p>
+          <p>{moment.about}</p>
+          <div className="emh-dp-stat-list">
+            {moment.stats.map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="emh-dp-why">
+        <p className="emh-dp-panel-label">Why it matters</p>
+        <div className="emh-dp-why-grid">
+          {whyProfileMatters.map(([title, body], index) => (
+            <article key={title}>
+              <span><ProfileIcon index={index + 1} /></span>
+              <div>
+                <h3>{title}</h3>
+                <p>{body}</p>
+              </div>
+            </article>
+          ))}
         </div>
       </div>
     </div>
