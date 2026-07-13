@@ -43,6 +43,7 @@ const profileFeatures: [string, string][] = [
   ['Every Season Together', 'Follow their football journey from the very first match onwards.'],
   ['See How They Are Developing', 'Coach-led feedback and progress indicators show how they are growing beyond goals alone.'],
   ['Every Team Connected', 'See the players, manager, fixtures and league position around every season.'],
+  ['Their Football Identity', 'Bring together their player identity, ambitions and season goals.'],
 ];
 
 const tickerClubs = [
@@ -210,22 +211,6 @@ export default function Home() {
 
       <section id="card" className="emh-profile-section">
         <div className="emh-profile-inner">
-          <div className="emh-profile-lead">
-            <p className="emh-eyebrow">The digital profile</p>
-            <h2>
-              The card is just the
-              <br />
-              <span>beginning.</span>
-            </h2>
-            <p>Every card unlocks a private digital collection that grows with every match, goal, photo and milestone.</p>
-            <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Tap your card to unlock their profile</Link>
-          </div>
-
-          <div className="emh-profile-phone" aria-label="Digital profile preview">
-            <div className="emh-phone-top" />
-            <img src="/hollinwood-card-08.png" alt="Emblem card back linked to a digital profile" />
-          </div>
-
           <DigitalProfilePreview items={profileItems} features={profileFeatures} />
         </div>
       </section>

@@ -33,6 +33,31 @@ const profileScreens = [
   '/assets/eos-team.png',
 ];
 
+function ProfileIcon({ index }: { index: number }) {
+  const common = {
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+
+  const icons = [
+    <><path {...common} d="M7 6h10v12H7z" /><path {...common} d="M10 10h4" /><path {...common} d="M10 14h3" /></>,
+    <><path {...common} d="M6 8h12v10H6z" /><path {...common} d="M9 5v4" /><path {...common} d="M15 5v4" /><path {...common} d="M6 11h12" /></>,
+    <><path {...common} d="M6 7h12v10H6z" /><path {...common} d="m8 15 3-3 2 2 2-3 3 4" /><circle {...common} cx="10" cy="10" r="1" /></>,
+    <><path {...common} d="M6 8h12v9H6z" /><path {...common} d="m11 10 4 2.5-4 2.5z" /></>,
+    <><path {...common} d="M8 7h8" /><path {...common} d="M10 7v3a4 4 0 1 0 4 0V7" /><path {...common} d="M12 14v4" /><path {...common} d="M9 18h6" /></>,
+    <><circle {...common} cx="9" cy="10" r="2.5" /><circle {...common} cx="15" cy="10" r="2.5" /><path {...common} d="M5 18c.7-2.6 2.1-4 4-4" /><path {...common} d="M19 18c-.7-2.6-2.1-4-4-4" /></>,
+  ];
+
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      {icons[index % icons.length]}
+    </svg>
+  );
+}
+
 export function HeroCardShowcase() {
   const [order, setOrder] = useState([0, 1, 2, 3, 4]);
   const [hovered, setHovered] = useState(false);
@@ -220,9 +245,10 @@ export function DigitalProfilePreview({
 
   return (
     <div className="emh-profile-explorer">
-      <p>Explore their digital collection</p>
-      <div className="emh-profile-screen-preview" aria-hidden="true">
-        <img src={profileScreens[active % profileScreens.length]} alt="" />
+      <div className="emh-profile-explorer-title">
+        <span />
+        <p>Explore their digital collection</p>
+        <span />
       </div>
 
       <div className="emh-profile-tabs" role="tablist" aria-label="Digital profile sections">
@@ -235,34 +261,33 @@ export function DigitalProfilePreview({
             aria-selected={active === index}
             onClick={() => setActive(index)}
           >
+            <span className="emh-profile-tab-icon"><ProfileIcon index={index} /></span>
             <h3>{title}</h3>
             <p>{body}</p>
           </button>
         ))}
       </div>
 
-      <div className="emh-profile-live-panel">
-        <div>
-          <span>{phoneLabel.title}</span>
-          <h3>{feature[0]}</h3>
-          <p>{feature[1]}</p>
+      <div className="emh-profile-body">
+        <div className="emh-profile-feature-grid">
+          {features.map(([title, body], index) => (
+            <button
+              key={title}
+              className="emh-profile-feature"
+              type="button"
+              aria-pressed={active % features.length === index}
+              onClick={() => setActive(index)}
+            >
+              <span className="emh-profile-feature-icon"><ProfileIcon index={index} /></span>
+              <h3>{title}</h3>
+              <p>{body}</p>
+            </button>
+          ))}
         </div>
-        <strong>{phoneLabel.body}</strong>
-      </div>
 
-      <div className="emh-profile-feature-grid">
-        {features.map(([title, body], index) => (
-          <button
-            key={title}
-            className="emh-profile-feature"
-            type="button"
-            aria-pressed={active % features.length === index}
-            onClick={() => setActive(index)}
-          >
-            <h3>{title}</h3>
-            <p>{body}</p>
-          </button>
-        ))}
+        <div className="emh-profile-screen-preview" aria-label={`${phoneLabel.title}: ${feature[0]}`}>
+          <img src={profileScreens[active % profileScreens.length]} alt="" />
+        </div>
       </div>
     </div>
   );
