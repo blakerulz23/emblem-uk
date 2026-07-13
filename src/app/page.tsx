@@ -6,12 +6,23 @@ const trust = [
   ['Ships in 5-7 days', 'Fast. Tracked. Reliable.'],
 ];
 
-const colourways = [
-  { img: '/hollinwood-card-01.png', name: 'Flame', tint: '#F1874F', alt: 'Orange foil player card' },
-  { img: '/hollinwood-card-03.png', name: 'Royal', tint: '#5B8DEF', alt: 'Blue foil player card' },
-  { img: '/hollinwood-card-05.png', name: 'Pitch', tint: '#3CC87E', alt: 'Green foil player card' },
-  { img: '/hollinwood-card-07.png', name: 'Crimson', tint: '#F0555A', alt: 'Red foil player card' },
-  { img: '/hollinwood-card-09.png', name: 'Gold', tint: '#E9B23C', alt: 'Gold foil player card' },
+const moments = [
+  {
+    title: 'Every season deserves remembering.',
+    body: 'From the first match to the final whistle, capture every moment that makes their journey unforgettable.',
+  },
+  {
+    title: 'Everything in one place.',
+    body: 'Photos, videos, goals, stats and milestones stay connected to one card and one profile.',
+  },
+  {
+    title: 'It grows with them.',
+    body: 'Add new seasons, new teams and new achievements over time, instead of starting again.',
+  },
+  {
+    title: 'A keepsake for years.',
+    body: 'The printed card becomes the thing they can keep, show and return to long after the season ends.',
+  },
 ];
 
 const steps = [
@@ -95,11 +106,19 @@ export default function Home() {
           </div>
 
           <p className="emh-hero-subline">More than a football card.</p>
-          <img
-            className="emh-hero-slab"
-            src="/assets/card-hero-slab.png"
-            alt="Personalised Emblem football trading card"
-          />
+          <div className="emh-scroll-card-stage" aria-label="Emblem player card preview">
+            <div className="emh-scroll-card-perspective">
+              <div className="emh-scroll-card-shadow" aria-hidden="true" />
+              <div className="emh-scroll-card">
+                <img
+                  className="emh-hero-slab"
+                  src="/assets/card-hero-slab.png"
+                  alt="Personalised Emblem football trading card"
+                />
+                <div className="emh-scroll-card-glare" aria-hidden="true" />
+              </div>
+            </div>
+          </div>
 
           <div className="emh-hero-footer">
             <p className="emh-lede">
@@ -126,21 +145,29 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="collection" className="emh-section">
-        <div className="emh-section-head">
-          <div>
-            <p className="emh-eyebrow">The collection</p>
-            <h2>A card in your club&apos;s colours.</h2>
+      <section id="collection" className="emh-moments-section">
+        <div className="emh-moments-inner">
+          <div className="emh-moments-head">
+            <p className="emh-eyebrow">Why parents love Emblem</p>
+            <h2>
+              Built for the moments
+              <br />
+              <span>you&apos;ll want to look back on.</span>
+            </h2>
+            <p>
+              Emblem turns the season into something families can hold, tap and revisit, from muddy matchdays to the goals everyone still talks about.
+            </p>
           </div>
-          <p>Premium foil finishes, the official league crest and your own club badge, printed to last and built to be kept.</p>
-        </div>
-        <div className="emh-colour-grid">
-          {colourways.map((card) => (
-            <figure key={card.name}>
-              <img src={card.img} alt={card.alt} />
-              <figcaption style={{ color: card.tint }}>{card.name}</figcaption>
-            </figure>
-          ))}
+
+          <div className="emh-moments-grid">
+            {moments.map((moment, index) => (
+              <article key={moment.title}>
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                <h3>{moment.title}</h3>
+                <p>{moment.body}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 

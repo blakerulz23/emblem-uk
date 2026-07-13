@@ -3936,7 +3936,7 @@ a { text-decoration: none; color: inherit; }
 .emh-scroll-card-stage {
   position: relative;
   width: min(620px, 86vw);
-  margin: 30px auto 18px;
+  margin: 18px auto 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3956,7 +3956,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-scroll-card-perspective {
   position: relative;
-  width: min(390px, 78vw);
+  width: min(370px, 78vw);
   padding: 10px 0;
   perspective: 1200px;
   z-index: 2;
@@ -3976,10 +3976,10 @@ a { text-decoration: none; color: inherit; }
 
 .emh-scroll-card {
   position: relative;
-  width: min(390px, 78vw);
+  width: min(370px, 78vw);
   margin: 0 auto;
   border-radius: 20px;
-  transform: rotateX(26deg) rotateY(0deg) scale(0.86);
+  transform: rotateX(7deg) rotateY(-3deg) scale(1);
   transform-style: preserve-3d;
   transition: transform 500ms cubic-bezier(.22,.61,.36,1);
   will-change: transform;
@@ -3990,7 +3990,13 @@ a { text-decoration: none; color: inherit; }
   width: 100%;
   height: auto;
   border-radius: 16px;
-  box-shadow: 0 55px 100px -30px rgba(20, 17, 15, 0.5);
+}
+
+.emh-scroll-card .emh-hero-slab {
+  width: 100%;
+  aspect-ratio: auto;
+  margin: 0;
+  object-fit: contain;
 }
 
 .emh-scroll-card-glare {
@@ -4182,6 +4188,95 @@ a { text-decoration: none; color: inherit; }
   max-width: 1220px;
   margin: 0 auto;
   padding: 88px 24px;
+}
+
+.emh-moments-section {
+  background:
+    radial-gradient(740px 420px at 78% 16%, rgba(233, 116, 53, 0.16), transparent 68%),
+    linear-gradient(180deg, #0b0b0b 0%, #11100e 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  color: #f4f1ec;
+  padding: 96px 24px 104px;
+}
+
+.emh-moments-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.emh-moments-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.72fr);
+  gap: 36px;
+  align-items: end;
+  margin-bottom: 38px;
+}
+
+.emh-moments-head .emh-eyebrow {
+  grid-column: 1 / -1;
+  margin-bottom: -18px;
+}
+
+.emh-moments-head h2 {
+  margin: 0;
+  color: #f4f1ec;
+  font-family: var(--font-cinematografica);
+  font-size: clamp(42px, 6vw, 74px);
+  font-weight: 800;
+  line-height: 0.92;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.emh-moments-head h2 span {
+  color: #e97435;
+}
+
+.emh-moments-head > p {
+  margin: 0;
+  color: rgba(244, 241, 236, 0.68);
+  font-size: 18px;
+  line-height: 1.65;
+}
+
+.emh-moments-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.emh-moments-grid article {
+  min-height: 250px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.035)),
+    rgba(255, 255, 255, 0.03);
+}
+
+.emh-moments-grid article span {
+  display: block;
+  margin-bottom: 42px;
+  color: #e97435;
+  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.emh-moments-grid article h3 {
+  margin: 0 0 14px;
+  color: #fffaf2;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.emh-moments-grid article p {
+  margin: 0;
+  color: rgba(244, 241, 236, 0.62);
+  font-size: 15px;
+  line-height: 1.55;
 }
 
 .emh-section-head {
@@ -4793,6 +4888,19 @@ a { text-decoration: none; color: inherit; }
     justify-content: center;
   }
 
+  .emh-moments-head {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .emh-moments-head .emh-eyebrow {
+    margin-bottom: 0;
+  }
+
+  .emh-moments-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .emh-card-fan {
     margin-top: 38px;
   }
@@ -4853,9 +4961,7 @@ a { text-decoration: none; color: inherit; }
     width: min(250px, 72vw);
   }
 
-  .emh-scroll-card img {
-    box-shadow: 0 34px 70px -30px rgba(20, 17, 15, 0.52);
-  }
+  .emh-scroll-card { transform: rotateX(4deg) rotateY(-2deg); }
 
   .emh-hero-swatches {
     gap: 5px;
@@ -4912,6 +5018,31 @@ a { text-decoration: none; color: inherit; }
   .emh-final-cta {
     padding-left: 20px;
     padding-right: 20px;
+  }
+
+  .emh-moments-section {
+    padding: 70px 20px 76px;
+  }
+
+  .emh-moments-head h2 {
+    font-size: clamp(38px, 12vw, 54px);
+  }
+
+  .emh-moments-head > p {
+    font-size: 16px;
+    line-height: 1.55;
+  }
+
+  .emh-moments-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .emh-moments-grid article {
+    min-height: 0;
+  }
+
+  .emh-moments-grid article span {
+    margin-bottom: 26px;
   }
 
   .emh-colour-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
