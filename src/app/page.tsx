@@ -1,9 +1,9 @@
 import Link from 'next/link';
 
 const trust = [
-  '400gsm',
-  'NFC chip',
-  'Ships 5-7 days',
+  ['400gsm premium stock', 'Built to last'],
+  ['Real NFC chip built in', 'Tap to unlock'],
+  ['Ships in 5-7 days', 'Fast. Tracked. Reliable.'],
 ];
 
 const colourways = [
@@ -107,13 +107,19 @@ export default function Home() {
             </p>
 
             <div className="emh-actions">
-              <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Create My Card</Link>
+              <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Upload Photo</Link>
               <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
             </div>
 
             <div className="emh-trust-strip">
-              {trust.map((label) => (
-                <span key={label}><i />{label}</span>
+              {trust.map(([label, detail]) => (
+                <span key={label}>
+                  <i />
+                  <span className="emh-trust-copy">
+                    <b>{label}</b>
+                    <small>{detail}</small>
+                  </span>
+                </span>
               ))}
             </div>
           </div>

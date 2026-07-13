@@ -4135,23 +4135,47 @@ a { text-decoration: none; color: inherit; }
   background: transparent;
 }
 
-.emh-trust-strip span {
+.emh-trust-strip > span {
   display: flex;
   align-items: center;
+  text-align: left;
   gap: 10px;
   color: rgba(20, 17, 15, 0.66);
   font-family: var(--font-rajdhani), system-ui, sans-serif;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 800;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .emh-trust-strip i {
   width: 8px;
   height: 8px;
+  flex: 0 0 auto;
   border-radius: 999px;
   background: #f1601d;
+}
+
+.emh-trust-copy {
+  display: block;
+}
+
+.emh-trust-strip b,
+.emh-trust-strip small {
+  display: block;
+}
+
+.emh-trust-strip b {
+  color: #16130f;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.emh-trust-strip small {
+  color: rgba(20, 17, 15, 0.55);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .emh-section {
