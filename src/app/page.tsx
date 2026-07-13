@@ -1,4 +1,5 @@
-import Link from 'next/link';
+﻿import Link from 'next/link';
+import { DigitalProfilePreview, HeroCardShowcase, MomentsExplorer } from './HomeEffects';
 
 const trust = [
   ['400gsm premium stock', 'Built to last'],
@@ -32,7 +33,7 @@ const steps = [
   ['4', 'Grow', 'Add every goal, match, milestone and memory throughout the season. The story keeps growing.'],
 ];
 
-const profileItems = [
+const profileItems: [string, string][] = [
   ['Journey', 'Every season connected.'],
   ['Matches', 'Fixtures and progress together.'],
   ['Photos', 'Every team photo in one place.'],
@@ -41,7 +42,7 @@ const profileItems = [
   ['Teams', 'One profile across every club.'],
 ];
 
-const profileFeatures = [
+const profileFeatures: [string, string][] = [
   ['Every Match Remembered', 'Keep fixtures, results and season progress connected in one place.'],
   ['Every Season Together', 'Follow their football journey from the very first match onwards.'],
   ['See How They Are Developing', 'Coach-led feedback and progress indicators show how they are growing beyond goals alone.'],
@@ -124,19 +125,7 @@ export default function Home() {
           </div>
 
           <p className="emh-hero-subline">More than a football card.</p>
-          <div className="emh-scroll-card-stage" aria-label="Emblem player card preview">
-            <div className="emh-scroll-card-perspective">
-              <div className="emh-scroll-card-shadow" aria-hidden="true" />
-              <div className="emh-scroll-card">
-                <img
-                  className="emh-hero-slab"
-                  src="/assets/card-hero-slab.png"
-                  alt="Personalised Emblem football trading card"
-                />
-                <div className="emh-scroll-card-glare" aria-hidden="true" />
-              </div>
-            </div>
-          </div>
+          <HeroCardShowcase />
 
           <div className="emh-hero-footer">
             <p className="emh-lede">
@@ -177,15 +166,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="emh-moments-grid">
-            {moments.map((moment, index) => (
-              <article key={moment.title}>
-                <span>{String(index + 1).padStart(2, '0')}</span>
-                <h3>{moment.title}</h3>
-                <p>{moment.body}</p>
-              </article>
-            ))}
-          </div>
+          <MomentsExplorer moments={moments} />
         </div>
       </section>
 
@@ -249,25 +230,7 @@ export default function Home() {
             <img src="/hollinwood-card-08.png" alt="Emblem card back linked to a digital profile" />
           </div>
 
-          <div className="emh-profile-explorer">
-            <p>Explore their digital collection</p>
-            <div className="emh-profile-tabs">
-              {profileItems.map(([title, body]) => (
-                <article key={title}>
-                  <h3>{title}</h3>
-                  <p>{body}</p>
-                </article>
-              ))}
-            </div>
-            <div className="emh-profile-feature-grid">
-              {profileFeatures.map(([title, body]) => (
-                <article key={title}>
-                  <h3>{title}</h3>
-                  <p>{body}</p>
-                </article>
-              ))}
-            </div>
-          </div>
+          <DigitalProfilePreview items={profileItems} features={profileFeatures} />
         </div>
       </section>
 
