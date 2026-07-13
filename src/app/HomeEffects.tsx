@@ -1,6 +1,6 @@
 'use client';
 
-import { MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { MouseEvent, useEffect, useRef, useState } from 'react';
 
 type Moment = {
   title: string;
@@ -237,7 +237,6 @@ export function HeroCardShowcase() {
 export function MomentsExplorer({ moments }: { moments: Moment[] }) {
   const [active, setActive] = useState(0);
   const railRef = useRef<HTMLDivElement | null>(null);
-  const activeMoment = moments[active];
 
   function scrollRail(direction: -1 | 1) {
     railRef.current?.scrollBy({ left: direction * 360, behavior: 'smooth' });
@@ -267,31 +266,19 @@ export function MomentsExplorer({ moments }: { moments: Moment[] }) {
         ))}
       </div>
 
-      <article className="emh-moment-expanded">
-        <span>{String(active + 1).padStart(2, '0')}</span>
-        <h3>{activeMoment.title}</h3>
-        <p>{activeMoment.body}</p>
-      </article>
     </div>
   );
 }
 
 export function DigitalProfilePreview({
-  items,
-  features,
+  items: _items,
+  features: _features,
 }: {
   items: ProfileItem[];
   features: ProfileFeature[];
 }) {
-  const [active, setActive] = useState(0);
   const [momentIndex, setMomentIndex] = useState(0);
-  const feature = features[active % features.length];
   const moment = digitalMoments[momentIndex % digitalMoments.length];
-
-  const phoneLabel = useMemo(() => {
-    const [title, body] = items[active];
-    return { title, body };
-  }, [active, items]);
 
   return (
     <div className="emh-profile-explorer">
@@ -311,51 +298,6 @@ export function DigitalProfilePreview({
           <img className="emh-dp-reveal-card" src="/assets/card-fan-1.png" alt="Physical Emblem player card" />
           <span className="emh-dp-nfc" aria-hidden="true"><span /><span /></span>
           <img className="emh-dp-reveal-phone" src="/assets/eos-home.png" alt="Emblem digital profile on a phone" />
-        </div>
-      </div>
-
-      <div className="emh-profile-explorer-title">
-        <span />
-        <p>Explore their digital collection</p>
-        <span />
-      </div>
-
-      <div className="emh-profile-tabs" role="tablist" aria-label="Digital profile sections">
-        {items.map(([title, body], index) => (
-          <button
-            key={title}
-            className="emh-profile-tab"
-            type="button"
-            role="tab"
-            aria-selected={active === index}
-            onClick={() => setActive(index)}
-          >
-            <span className="emh-profile-tab-icon"><ProfileIcon index={index} /></span>
-            <h3>{title}</h3>
-            <p>{body}</p>
-          </button>
-        ))}
-      </div>
-
-      <div className="emh-profile-body">
-        <div className="emh-profile-feature-grid">
-          {features.map(([title, body], index) => (
-            <button
-              key={title}
-              className="emh-profile-feature"
-              type="button"
-              aria-pressed={active % features.length === index}
-              onClick={() => setActive(index)}
-            >
-              <span className="emh-profile-feature-icon"><ProfileIcon index={index} /></span>
-              <h3>{title}</h3>
-              <p>{body}</p>
-            </button>
-          ))}
-        </div>
-
-        <div className="emh-profile-screen-preview" aria-label={`${phoneLabel.title}: ${feature[0]}`}>
-          <img src={profileScreens[active % profileScreens.length]} alt="" />
         </div>
       </div>
 
