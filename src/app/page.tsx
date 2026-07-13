@@ -130,7 +130,7 @@ export default function Home() {
             </p>
 
             <div className="emh-actions">
-              <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Upload Photo</Link>
+              <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Create My Card</Link>
               <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
             </div>
 
