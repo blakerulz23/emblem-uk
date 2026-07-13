@@ -24,7 +24,7 @@ export default function Navbar() {
       }}
     >
       <div className="mx-auto max-w-[1220px] px-6">
-        <div className="flex h-[92px] items-center justify-between gap-6">
+        <div className="emh-site-nav-inner flex h-[92px] items-center justify-between gap-6">
           <Link href="/" className="flex items-center" onClick={() => setMobileOpen(false)}>
             <img src="/embm.png" alt="Emblem" className="emh-nav-logo" />
           </Link>
@@ -50,7 +50,7 @@ export default function Navbar() {
           <button
             type="button"
             aria-label="Toggle menu"
-            className="min-[860px]:hidden"
+            className="emh-mobile-menu-button min-[860px]:hidden"
             onClick={() => setMobileOpen((v) => !v)}
             style={{ color: '#fff', padding: 8, marginRight: -8 }}
           >

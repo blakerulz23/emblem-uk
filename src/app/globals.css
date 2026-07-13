@@ -5665,10 +5665,28 @@ a { text-decoration: none; color: inherit; }
 }
 
 @media (max-width: 700px) {
-  .emh-nav-logo { height: 78px; }
+  .emh-site-nav-inner {
+    height: 76px;
+    gap: 18px;
+  }
+
+  .emh-nav-logo {
+    height: 52px;
+    max-width: 142px;
+    object-fit: contain;
+    transform: none;
+  }
+
+  .emh-mobile-menu-button {
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
 
   .emh-hero {
-    padding: 18px 16px 28px;
+    padding: 14px 16px 28px;
   }
 
   .emh-hero-copy h1 {
