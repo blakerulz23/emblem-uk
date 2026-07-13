@@ -9,10 +9,6 @@ const trust = [
 
 const moments = [
   {
-    title: 'Every season deserves remembering.',
-    body: 'From the first match to the final whistle, capture every moment that makes their journey unforgettable.',
-  },
-  {
     title: 'Everything in one place.',
     body: 'Photos, videos, goals, stats and milestones stay connected to one card and one profile.',
   },
