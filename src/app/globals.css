@@ -6340,17 +6340,21 @@ a { text-decoration: none; color: inherit; }
   grid-template-columns: minmax(300px, 0.82fr) minmax(340px, 1.18fr);
   gap: 48px;
   align-items: center;
+  background:
+    radial-gradient(720px 420px at 82% 24%, rgba(233, 116, 53, 0.08), transparent 68%),
+    #fdfcfa;
+  color: #16130f;
 }
 
 .emh-squad-copy > p:not(.emh-eyebrow) {
   margin: 16px 0 22px;
-  color: rgba(255, 255, 255, 0.66);
+  color: #5f574f;
   font-size: 16.5px;
   line-height: 1.65;
 }
 
 .emh-squad-copy li {
-  color: rgba(255, 255, 255, 0.82);
+  color: #2b2621;
   font-size: 15.5px;
   font-weight: 500;
 }
@@ -6367,10 +6371,10 @@ a { text-decoration: none; color: inherit; }
 
 .emh-roster-card {
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(20, 17, 15, 0.1);
   border-radius: 18px;
-  background: #111316;
-  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+  background: #ffffff;
+  box-shadow: 0 30px 70px -48px rgba(20, 17, 15, 0.45);
 }
 
 .emh-roster-head {
@@ -6379,12 +6383,12 @@ a { text-decoration: none; color: inherit; }
   justify-content: space-between;
   gap: 18px;
   padding: 16px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(20, 17, 15, 0.08);
 }
 
 .emh-roster-head p {
   margin: 0;
-  color: rgba(255, 255, 255, 0.45);
+  color: #8b8478;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -6401,7 +6405,7 @@ a { text-decoration: none; color: inherit; }
   padding: 6px 13px;
   border-radius: 999px;
   background: rgba(23, 169, 104, 0.14);
-  color: #8fd1ae;
+  color: #147a4c;
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -6419,8 +6423,9 @@ a { text-decoration: none; color: inherit; }
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(20, 17, 15, 0.08);
   border-radius: 12px;
+  background: #fdfbf7;
 }
 
 .emh-shirt {
@@ -6450,7 +6455,7 @@ a { text-decoration: none; color: inherit; }
 .emh-roster-row strong { font-size: 14.5px; }
 
 .emh-roster-row small {
-  color: rgba(255, 255, 255, 0.45);
+  color: #756c62;
   font-size: 12.5px;
 }
 
@@ -6466,12 +6471,12 @@ a { text-decoration: none; color: inherit; }
 
 .emh-status-ready {
   background: rgba(23, 169, 104, 0.16);
-  color: #8fd1ae;
+  color: #147a4c;
 }
 
 .emh-status-muted {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.6);
+  background: rgba(20, 17, 15, 0.07);
+  color: #756c62;
 }
 
 .emh-roster-actions {
@@ -6483,8 +6488,8 @@ a { text-decoration: none; color: inherit; }
 .emh-roster-actions span {
   flex: 1;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: #efe8de;
+  color: #2b2621;
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -6493,7 +6498,10 @@ a { text-decoration: none; color: inherit; }
   text-transform: uppercase;
 }
 
-.emh-roster-actions span:last-child { background: #f1601d; }
+.emh-roster-actions span:last-child {
+  background: #f1601d;
+  color: #fff;
+}
 
 .emh-pricing > p:not(.emh-eyebrow) {
   max-width: 560px;
@@ -6761,6 +6769,8 @@ a { text-decoration: none; color: inherit; }
   position: relative;
   overflow: hidden;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: #08090a;
+  color: #f4f4f2;
   padding: 96px 24px;
   text-align: center;
 }
@@ -6807,9 +6817,9 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: #08090a;
-  color: #f4f4f2;
+  border-top: 1px solid rgba(20, 17, 15, 0.08);
+  background: #ffffff;
+  color: #16130f;
 }
 
 .emh-footer-main {
@@ -6830,14 +6840,14 @@ a { text-decoration: none; color: inherit; }
 .emh-footer-brand p {
   max-width: 280px;
   margin: 0;
-  color: rgba(255, 255, 255, 0.5);
+  color: #5f574f;
   font-size: 14.5px;
   line-height: 1.6;
 }
 
 .emh-footer-col h3 {
   margin: 0 0 14px;
-  color: rgba(255, 255, 255, 0.4);
+  color: #8b8478;
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -6853,12 +6863,12 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-footer-col a {
-  color: rgba(255, 255, 255, 0.72);
+  color: #2b2621;
   font-size: 14.5px;
   transition: color 160ms ease;
 }
 
-.emh-footer-col a:hover { color: #fff; }
+.emh-footer-col a:hover { color: #f1601d; }
 
 .emh-footer-bottom {
   max-width: 1220px;
@@ -6869,16 +6879,16 @@ a { text-decoration: none; color: inherit; }
   gap: 10px;
   align-items: center;
   justify-content: space-between;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid rgba(20, 17, 15, 0.08);
 }
 
 .emh-footer-bottom span {
-  color: rgba(255, 255, 255, 0.4);
+  color: #756c62;
   font-size: 13px;
 }
 
 .emh-footer-bottom strong {
-  color: rgba(255, 255, 255, 0.55);
+  color: #5f574f;
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.14em;
