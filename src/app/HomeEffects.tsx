@@ -32,21 +32,28 @@ type DigitalMoment = {
 type DigitalTabId = 'journey' | 'matches' | 'photos' | 'highlights' | 'achievements' | 'teams';
 type DigitalMomentId = 'firstgoal' | 'tournament' | 'teamphoto' | 'captain';
 
+const optimizedAssetPath = '/assets/optimized';
+
 const fanCards = [
-  { name: 'Sapphire', src: '/assets/card-fan-2.png' },
-  { name: 'Emerald', src: '/assets/card-fan-4.png' },
-  { name: 'Floodlight', src: '/assets/card-fan-1.png' },
-  { name: 'Cosmic', src: '/assets/card-fan-3.png' },
-  { name: 'Orange', src: '/assets/card-fan-5.png' },
+  { name: 'Sapphire', src: `${optimizedAssetPath}/card-fan-2.webp` },
+  { name: 'Emerald', src: `${optimizedAssetPath}/card-fan-4.webp` },
+  { name: 'Floodlight', src: `${optimizedAssetPath}/card-fan-1.webp` },
+  { name: 'Cosmic', src: `${optimizedAssetPath}/card-fan-3.webp` },
+  { name: 'Orange', src: `${optimizedAssetPath}/card-fan-5.webp` },
 ];
 
 const nfcScreens = [
-  '/assets/os-mini-home.png',
-  '/assets/os-mini-card.png',
-  '/assets/os-mini-journey.png',
+  `${optimizedAssetPath}/os-mini-home.webp`,
+  `${optimizedAssetPath}/os-mini-card.webp`,
+  `${optimizedAssetPath}/os-mini-journey.webp`,
 ];
 
-const momentArt = ['/assets/moment-1.png', '/assets/moment-2.png', '/assets/moment-3.png', '/assets/moment-4.png'];
+const momentArt = [
+  `${optimizedAssetPath}/moment-1.webp`,
+  `${optimizedAssetPath}/moment-2.webp`,
+  `${optimizedAssetPath}/moment-3.webp`,
+  `${optimizedAssetPath}/moment-4.webp`,
+];
 
 const unlockTabs: { id: DigitalTabId; label: string; iconIndex: number }[] = [
   { id: 'journey', label: 'Journey', iconIndex: 0 },
@@ -89,7 +96,7 @@ const digitalMoments: Record<DigitalMomentId, DigitalMoment> = {
     trust: 'Coach Verified',
     about: 'Every team photo, matchday image and family favourite can sit inside the same digital collection.',
     stats: [['Photos', '24'], ['Squad', '14'], ['Occasion', 'Presentation'], ['Season', '2026']],
-    media: '/assets/dp-team-photo.png',
+    media: `${optimizedAssetPath}/dp-team-photo.webp`,
     mediaType: 'image',
     mediaAlt: 'Team photo moment',
   },
@@ -103,7 +110,7 @@ const digitalMoments: Record<DigitalMomentId, DigitalMoment> = {
     official: true,
     about: 'A final win, a clean-sheet run and a trophy moment stored against the player card forever.',
     stats: [['Result', 'Won 3-1'], ['Clean Sheets', '2'], ['Round', 'Final'], ['Trophy', 'Winners']],
-    media: '/assets/dp-tournament-winner.png',
+    media: `${optimizedAssetPath}/dp-tournament-winner.webp`,
     mediaType: 'image',
     mediaAlt: 'Tournament winner moment',
   },
@@ -117,7 +124,7 @@ const digitalMoments: Record<DigitalMomentId, DigitalMoment> = {
     official: true,
     about: 'A leadership milestone preserved with the match context, team story and people who helped shape the moment.',
     stats: [['Role', 'Captain'], ['Season', '2027'], ['Team', 'U11'], ['Match', 'Ashton United']],
-    media: '/assets/dp-captain.png',
+    media: `${optimizedAssetPath}/dp-captain.webp`,
     mediaType: 'image',
     mediaAlt: 'Captain milestone moment',
   },
@@ -324,7 +331,12 @@ export function HeroCardShowcase() {
                   filter: `brightness(${isCenter ? 1 : 1 - distance * 0.12})`,
                 }}
               >
-                <img src={card.src} alt={`${card.name} Emblem card`} />
+                <img
+                  src={card.src}
+                  alt={`${card.name} Emblem card`}
+                  loading={isCenter ? 'eager' : 'lazy'}
+                  decoding={isCenter ? 'sync' : 'async'}
+                />
               </button>
             );
           })}
@@ -349,6 +361,8 @@ export function HeroCardShowcase() {
               alt=""
               className={`emh-nfc-mini emh-nfc-mini-${index + 1}`}
               style={{ left: `${nfc.x}%`, top: `${nfc.y}%` }}
+              loading="lazy"
+              decoding="async"
             />
           ))}
         </div>
@@ -415,7 +429,7 @@ export function MomentsExplorer({ moments }: { moments: Moment[] }) {
               setOpenIndex(index);
             }}
           >
-            {!moment.isTimeline && <img src={moment.image} alt="" />}
+            {!moment.isTimeline && <img src={moment.image} alt="" loading="lazy" decoding="async" />}
             <span>{String(index + 1).padStart(2, '0')}</span>
             <h3>{moment.title}</h3>
             <p>{moment.body}</p>
@@ -513,9 +527,21 @@ export function DigitalProfilePreview(props: {
         </div>
 
         <div className="emh-dp-reveal" aria-label="Physical card unlocking a phone profile">
-          <img className="emh-dp-reveal-card" src="/assets/dp-profile-slab.png" alt="Graded Emblem player card" />
+          <img
+            className="emh-dp-reveal-card"
+            src={`${optimizedAssetPath}/dp-profile-slab.webp`}
+            alt="Graded Emblem player card"
+            loading="lazy"
+            decoding="async"
+          />
           <span className="emh-dp-nfc" aria-hidden="true"><span /><span /></span>
-          <img className="emh-dp-reveal-phone" src="/assets/eos-home.png" alt="Emblem digital profile on a phone" />
+          <img
+            className="emh-dp-reveal-phone"
+            src={`${optimizedAssetPath}/eos-home.webp`}
+            alt="Emblem digital profile on a phone"
+            loading="lazy"
+            decoding="async"
+          />
         </div>
       </div>
 
@@ -573,9 +599,10 @@ export function DigitalProfilePreview(props: {
                   controls
                   muted
                   playsInline
+                  preload="metadata"
                 />
               ) : (
-                <img src={activeMoment.media} alt={activeMoment.mediaAlt} />
+                <img src={activeMoment.media} alt={activeMoment.mediaAlt} loading="lazy" decoding="async" />
               )}
               <span className={`emh-unlock-media-badge ${activeMoment.official ? 'is-official' : ''}`}>
                 <ProfileIcon index={activeMoment.official ? 4 : 2} />

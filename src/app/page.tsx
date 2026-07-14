@@ -188,19 +188,19 @@ export default function Home() {
                   )}
                   {num === '2' && (
                     <div className="emh-print-visual">
-                      <img src="/assets/card-print-new.png" alt="" />
+                      <img src="/assets/optimized/card-print-new.webp" alt="" loading="lazy" decoding="async" />
                       <strong>Emblem</strong>
                     </div>
                   )}
                   {num === '3' && (
                     <div className="emh-tap-visual">
-                      <img className="emh-tap-card" src="/assets/card-hero-slab.png" alt="" />
+                      <img className="emh-tap-card" src="/assets/optimized/card-hero-slab.webp" alt="" loading="lazy" decoding="async" />
                       <span className="emh-nfc-rings" aria-hidden="true">
                         <i />
                         <i />
                         <i />
                       </span>
-                      <img className="emh-tap-phone" src="/assets/os-tap-home.png" alt="" />
+                      <img className="emh-tap-phone" src="/assets/optimized/os-tap-home.webp" alt="" loading="lazy" decoding="async" />
                     </div>
                   )}
                   {num === '4' && (
@@ -299,7 +299,7 @@ export default function Home() {
       </section>
 
       <section className="emh-final-cta">
-        <img src="/embm.png" alt="Emblem" />
+        <img src="/embm.png" alt="Emblem" loading="lazy" decoding="async" />
         <h2>Start their story today.</h2>
         <p>Every football journey begins somewhere. Give them one worth keeping.</p>
         <div className="emh-actions">

@@ -26,7 +26,7 @@ export default function Navbar() {
       <div className="mx-auto max-w-[1220px] px-6">
         <div className="emh-site-nav-inner flex h-[92px] items-center justify-between gap-6">
           <Link href="/" className="flex items-center" onClick={() => setMobileOpen(false)}>
-            <img src="/embm.png" alt="Emblem" className="emh-nav-logo" />
+            <img src="/embm.png" alt="Emblem" className="emh-nav-logo" decoding="async" />
           </Link>
 
           <div className="hidden min-[860px]:flex items-center gap-[30px]">

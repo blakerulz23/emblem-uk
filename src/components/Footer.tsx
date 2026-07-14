@@ -34,7 +34,7 @@ export default function Footer() {
       <div className="emh-footer-main">
         <div className="emh-footer-brand">
           <Link href="/" aria-label="Emblem home">
-            <img src="/emblem-footer-logo.png" alt="Emblem" />
+            <img src="/emblem-footer-logo.png" alt="Emblem" loading="lazy" decoding="async" />
           </Link>
           <p>Premium collectible player cards and living digital profiles for UK grassroots football.</p>
         </div>
