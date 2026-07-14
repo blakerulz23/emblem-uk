@@ -1,5 +1,5 @@
 ﻿import Link from 'next/link';
-import { DigitalProfilePreview, HeroCardShowcase, MomentsExplorer } from './HomeEffects';
+import { DigitalProfilePreview, FaqAccordion, HeroCardShowcase, MomentsExplorer } from './HomeEffects';
 
 const trust = [
   ['400gsm premium stock', 'Built to last'],
@@ -13,12 +13,16 @@ const moments = [
     body: 'Photos, videos, goals, stats and milestones stay connected to one card and one profile.',
   },
   {
+    title: 'Every memory saved.',
+    body: 'Photos and videos turn matchday moments into memories the whole family can revisit.',
+  },
+  {
     title: 'It grows with them.',
     body: 'Add new seasons, new teams and new achievements over time, instead of starting again.',
   },
   {
-    title: 'A keepsake for years.',
-    body: 'The printed card becomes the thing they can keep, show and return to long after the season ends.',
+    title: "A keepsake they will treasure forever.",
+    body: 'Years from now, it is more than a card. It is the story of where it all began.',
   },
 ];
 
@@ -46,15 +50,6 @@ const profileFeatures: [string, string][] = [
   ['Their Football Identity', 'Bring together their player identity, ambitions and season goals.'],
 ];
 
-const tickerClubs = [
-  'Ashton United',
-  'Riverside Rangers',
-  'Hollinwood Juniors',
-  'Fairfield FC',
-  'Surrey Youth League',
-  'Meadow Colts',
-];
-
 const squadPoints = [
   'Bulk-upload photos and assign them to players',
   'Apply one design to all cards and edit any individually',
@@ -67,12 +62,6 @@ const rosterPreview = [
   { shirt: '7', name: 'Leo Barnes', meta: 'Winger · 2 prints', swatch: '#2F6BD6', status: 'Ready', statusClass: 'ready' },
   { shirt: '1', name: 'Alfie Whitworth', meta: 'Goalkeeper · 3 prints', swatch: '#3A3F45', status: 'Ready', statusClass: 'ready' },
   { shirt: '4', name: 'Musa Adeyemi', meta: 'Defender', swatch: '#1E8A55', status: 'Needs photo', statusClass: 'muted' },
-];
-
-const pillars = [
-  ['Play', 'Celebrate every season. Every child gets their own official card and feels like a professional.'],
-  ['Remember', 'Preserve the memories for life. Every season becomes permanent: a keepsake, not a camera roll.'],
-  ['Belong', 'Strengthen the connection between player, family and club, season after season.'],
 ];
 
 const tiers = [
@@ -176,16 +165,44 @@ export default function Home() {
 
           <div className="emh-forever-grid">
             {steps.map(([num, title, body]) => (
-              <article key={num}>
+              <article key={num} className={`emh-forever-card emh-forever-card-${num}`}>
                 <div>
-                  <span>{num}</span>
+                  <span className="emh-step-number">{num}</span>
                   <h3>{title}</h3>
                   <p>{body}</p>
                 </div>
-                <div className={`emh-step-visual emh-step-visual-${num}`} aria-hidden="true">
-                  {num === '1' && <strong>Drop your photo here</strong>}
-                  {num === '2' && <strong>Emblem</strong>}
-                  {num === '3' && <strong>Tap to unlock</strong>}
+
+                <div className={`emh-step-visual emh-step-visual-${num}`}>
+                  {num === '1' && (
+                    <div className="emh-upload-visual">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 16V5m0 0 4.2 4.2M12 5 7.8 9.2M5 18.5h14" />
+                      </svg>
+                      <div className="emh-upload-thumbs" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </div>
+                      <Link href="/builder?mode=single" className="emh-upload-cta">Upload photo</Link>
+                    </div>
+                  )}
+                  {num === '2' && (
+                    <div className="emh-print-visual">
+                      <img src="/assets/card-print-new.png" alt="" />
+                      <strong>Emblem</strong>
+                    </div>
+                  )}
+                  {num === '3' && (
+                    <div className="emh-tap-visual">
+                      <img className="emh-tap-card" src="/assets/card-hero-slab.png" alt="" />
+                      <span className="emh-nfc-rings" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                      <img className="emh-tap-phone" src="/assets/os-tap-home.png" alt="" />
+                    </div>
+                  )}
                   {num === '4' && (
                     <ul>
                       <li><b>2022/23</b> Joined first club</li>
@@ -200,14 +217,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      <div className="emh-club-ticker" aria-hidden="true">
-        <div>
-          {[...tickerClubs, ...tickerClubs].map((club, index) => (
-            <span key={`${club}-${index}`}>{club}</span>
-          ))}
-        </div>
-      </div>
 
       <section id="card" className="emh-profile-section">
         <div className="emh-profile-inner">
@@ -254,19 +263,6 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="emh-section emh-pillars">
-        <h2>Play. <span>Remember.</span> Belong.</h2>
-        <p>Not a card company. The company that preserves the journey of grassroots sport.</p>
-        <div>
-          {pillars.map(([name, body]) => (
-            <article key={name}>
-              <h3>{name}</h3>
-              <p>{body}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
       <section id="pricing" className="emh-section emh-pricing">
         <p className="emh-eyebrow">Pricing</p>
         <h2>One card. A lifetime of story.</h2>
@@ -284,6 +280,21 @@ export default function Home() {
               <Link href={tier.href}>{tier.cta}</Link>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section id="faq" className="emh-section emh-faq">
+        <div className="emh-faq-inner">
+          <div className="emh-faq-head">
+            <p className="emh-eyebrow">Still deciding?</p>
+            <h2>Frequently Asked Questions</h2>
+            <p>Everything you need to know before you create their card.</p>
+          </div>
+          <FaqAccordion />
+          <div className="emh-faq-cta">
+            <h3>Still have questions?</h3>
+            <Link href="/builder?mode=single">Start your card</Link>
+          </div>
         </div>
       </section>
 
