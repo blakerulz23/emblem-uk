@@ -15,7 +15,7 @@ export default function StaffQueuePage() {
       <span
         style={{
           fontFamily: 'var(--font-jbmono), monospace',
-          fontSize: 11, fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase',
+          fontSize: 12, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase',
           color: 'var(--accent)', background: 'var(--accent-tint)',
           padding: '6px 12px', borderRadius: 999, display: 'inline-block',
         }}
@@ -54,8 +54,8 @@ export default function StaffQueuePage() {
                 <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center' }}>
                   <span
                     style={{
-                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 10.5, fontWeight: 600,
-                      letterSpacing: '0.06em', textTransform: 'uppercase',
+                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, fontWeight: 600,
+                      letterSpacing: '0.05em', textTransform: 'uppercase',
                       padding: '3px 8px', borderRadius: 999, background: s.bg, color: s.color,
                     }}
                   >
@@ -63,7 +63,7 @@ export default function StaffQueuePage() {
                   </span>
                   <span
                     style={{
-                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 10.5,
+                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 12,
                       color: c.chipProgrammed ? '#047857' : '#c2410c',
                     }}
                   >

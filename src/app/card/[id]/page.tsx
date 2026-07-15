@@ -14,7 +14,7 @@ function Block({ block }: { block: ProfileBlock }) {
             }}
           >
             <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 800, fontSize: 22, color: '#fff' }}>{s.value}</div>
-            <div style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 10.5, letterSpacing: '0.08em', color: 'var(--accent)', marginTop: 4 }}>{s.label}</div>
+            <div style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, letterSpacing: '0.06em', color: 'var(--accent)', marginTop: 4 }}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -76,7 +76,7 @@ export default function CardProfilePage({ params }: { params: { id: string } }) 
     return (
       <div style={{ background: 'var(--ink)', minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24 }}>
         <div style={{ maxWidth: 360, textAlign: 'center' }}>
-          <div style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--accent)' }}>
+          <div style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--accent)' }}>
             Emblem · Player Profile
           </div>
           <h1 style={{ marginTop: 16, fontFamily: 'var(--font-sora), system-ui', fontWeight: 800, fontSize: 24, color: '#fff' }}>
@@ -93,7 +93,7 @@ export default function CardProfilePage({ params }: { params: { id: string } }) 
   return (
     <div style={{ background: 'var(--ink)', minHeight: '100vh' }}>
       <div className="mx-auto max-w-md px-5 py-10">
-        <div style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--accent)', textAlign: 'center' }}>
+        <div style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--accent)', textAlign: 'center' }}>
           Emblem · Profile
         </div>
 
@@ -122,7 +122,7 @@ export default function CardProfilePage({ params }: { params: { id: string } }) 
           ))}
         </div>
 
-        <div style={{ marginTop: 36, textAlign: 'center', fontFamily: 'var(--font-jbmono), monospace', fontSize: 10.5, letterSpacing: '0.08em', color: 'rgba(255,255,255,0.3)' }}>
+        <div style={{ marginTop: 36, textAlign: 'center', fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, letterSpacing: '0.06em', color: 'rgba(255,255,255,0.3)' }}>
           MAKE YOUR OWN AT EMBLEM.CARDS
         </div>
       </div>
