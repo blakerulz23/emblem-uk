@@ -4398,7 +4398,7 @@ a { text-decoration: none; color: inherit; }
 .emh-moments-head .emh-eyebrow {
   grid-column: 1 / -1;
   margin-bottom: -7px;
-  font-size: 8px;
+  font-size: 13px;
 }
 
 .emh-moments-head h2 {
@@ -4419,8 +4419,8 @@ a { text-decoration: none; color: inherit; }
 .emh-moments-head > p {
   margin: 0;
   color: rgba(244, 241, 236, 0.68);
-  font-size: 10px;
-  line-height: 1.4;
+  font-size: 16px;
+  line-height: 1.5;
 }
 
 .emh-moments-grid {
@@ -4462,25 +4462,25 @@ a { text-decoration: none; color: inherit; }
   margin-bottom: 17px;
   color: #e97435;
   font-family: var(--font-rajdhani), system-ui, sans-serif;
-  font-size: 6px;
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
 }
 
 .emh-moments-grid article h3,
 .emh-moment-button h3 {
   margin: 0 0 6px;
   color: #fffaf2;
-  font-size: 9px;
-  line-height: 1.1;
+  font-size: 14px;
+  line-height: 1.2;
 }
 
 .emh-moments-grid article p,
 .emh-moment-button p {
   margin: 0;
   color: rgba(244, 241, 236, 0.62);
-  font-size: 7px;
-  line-height: 1.35;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .emh-moment-button em {
@@ -4488,10 +4488,10 @@ a { text-decoration: none; color: inherit; }
   margin-top: 9px;
   color: rgba(233, 116, 53, 0.78);
   font-family: var(--font-rajdhani), system-ui, sans-serif;
-  font-size: 5px;
+  font-size: 10px;
   font-style: normal;
   font-weight: 800;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -4619,8 +4619,8 @@ a { text-decoration: none; color: inherit; }
   margin: 0;
   max-width: 230px;
   color: rgba(244, 241, 236, 0.72);
-  font-size: 7px;
-  line-height: 1.38;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .emh-moment-card em {
@@ -4630,10 +4630,10 @@ a { text-decoration: none; color: inherit; }
   bottom: 11px;
   color: rgba(255, 255, 255, 0.72);
   font-family: var(--font-rajdhani), system-ui, sans-serif;
-  font-size: 5px;
+  font-size: 10px;
   font-style: normal;
   font-weight: 800;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -4737,9 +4737,9 @@ a { text-decoration: none; color: inherit; }
   position: relative;
   color: rgba(255, 250, 242, 0.86);
   font-family: var(--font-rajdhani), system-ui, sans-serif;
-  font-size: 6px;
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
 }
 
 .emh-moment-season-line small::before {
@@ -7322,7 +7322,7 @@ a { text-decoration: none; color: inherit; }
   }
 
   .emh-moment-season-line small {
-    font-size: 9px;
+    font-size: 11px;
   }
 
   .emh-moment-modal {
