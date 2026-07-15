@@ -662,7 +662,7 @@ a { text-decoration: none; color: inherit; }
   padding: 0 10px;
   cursor: pointer;
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.06em;
   line-height: 1.1;
@@ -717,7 +717,7 @@ a { text-decoration: none; color: inherit; }
 .uk-wizard-progress b {
   color: var(--wizard-faint);
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.1em;
   white-space: nowrap;
 }
@@ -741,9 +741,9 @@ a { text-decoration: none; color: inherit; }
   margin: 0 0 8px;
   color: var(--wizard-accent);
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
@@ -775,9 +775,9 @@ a { text-decoration: none; color: inherit; }
 .uk-choice-step span {
   color: var(--wizard-accent);
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -863,10 +863,10 @@ a { text-decoration: none; color: inherit; }
   max-width: 150px;
   color: var(--wizard-accent);
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: 0.08em;
+  line-height: 1.3;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   text-align: center;
 }
@@ -960,9 +960,9 @@ a { text-decoration: none; color: inherit; }
   gap: 7px;
   color: var(--wizard-faint);
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -1457,7 +1457,7 @@ a { text-decoration: none; color: inherit; }
 .uk-personalise-style-head small,
 .uk-personalise-style-head em {
   color: var(--wizard-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 800;
   line-height: 1.3;
@@ -1500,7 +1500,7 @@ a { text-decoration: none; color: inherit; }
 }
 
 .uk-style-carousel.compact small {
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .uk-edit-preview {
@@ -1531,7 +1531,7 @@ a { text-decoration: none; color: inherit; }
 .uk-crop-controls b {
   color: var(--wizard-soft);
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 11px;
+  font-size: 12px;
   text-align: right;
   text-transform: none;
 }
@@ -1744,7 +1744,7 @@ a { text-decoration: none; color: inherit; }
 .uk-review-list em {
   display: block;
   color: var(--wizard-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 800;
   line-height: 1.35;
@@ -2276,7 +2276,7 @@ a { text-decoration: none; color: inherit; }
   display: grid;
   place-items: center;
   color: #766b5f;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -2316,9 +2316,9 @@ a { text-decoration: none; color: inherit; }
   place-items: center;
   align-content: center;
   gap: 2px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
-  line-height: 1.1;
+  line-height: 1.15;
   text-align: center;
   text-transform: uppercase;
 }
@@ -2344,7 +2344,7 @@ a { text-decoration: none; color: inherit; }
   display: block;
   color: var(--wizard-soft);
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -2391,7 +2391,7 @@ a { text-decoration: none; color: inherit; }
   overflow: hidden;
   padding: 0;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
 }
 
@@ -2413,7 +2413,7 @@ a { text-decoration: none; color: inherit; }
   min-width: 0;
   color: var(--wizard-soft);
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 900;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -2600,9 +2600,9 @@ a { text-decoration: none; color: inherit; }
 .uk-production-snapshot span {
   color: var(--wizard-soft);
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 8px;
+  font-size: 12px;
   font-weight: 900;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -2639,9 +2639,9 @@ a { text-decoration: none; color: inherit; }
   grid-column: 2 / 4;
   color: var(--wizard-accent);
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 900;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -2724,9 +2724,9 @@ a { text-decoration: none; color: inherit; }
 .uk-order-summary-card span {
   color: var(--wizard-soft);
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 900;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   line-height: 1.2;
   text-transform: uppercase;
 }
@@ -2776,9 +2776,9 @@ a { text-decoration: none; color: inherit; }
   gap: 7px;
   color: var(--wizard-faint);
   font-family: var(--font-jbmono), ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 900;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -3184,7 +3184,7 @@ a { text-decoration: none; color: inherit; }
   background: rgba(255,255,255,0.1);
   padding: 6px 4px;
   text-align: center;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -3199,7 +3199,7 @@ a { text-decoration: none; color: inherit; }
   left: 7%;
   top: 4%;
   color: rgba(255,255,255,0.7);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .uk-player-card.back {
@@ -3257,7 +3257,7 @@ a { text-decoration: none; color: inherit; }
 .uk-back-memory span {
   margin: 0;
   color: rgba(255,255,255,0.68);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.35;
   text-transform: uppercase;
@@ -3302,7 +3302,7 @@ a { text-decoration: none; color: inherit; }
   padding: 10px 6px;
   text-align: center;
   color: rgba(255,255,255,0.72);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -3409,9 +3409,9 @@ a { text-decoration: none; color: inherit; }
   align-items: center;
   justify-content: center;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 900;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -3549,7 +3549,7 @@ a { text-decoration: none; color: inherit; }
 
   .uk-progress-pill {
     padding: 0 8px;
-    font-size: 8px;
+    font-size: 11px;
   }
 
   .uk-wizard-brand {
