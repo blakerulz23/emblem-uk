@@ -27,7 +27,7 @@ export default function ConditionalChrome({ children }: { children: React.ReactN
     return (
       <>
         <Navbar />
-        <main className="pt-16">{children}</main>
+        <main className="emh-home-shell">{children}</main>
         <Footer />
       </>
     );

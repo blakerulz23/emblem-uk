@@ -23,8 +23,8 @@ export default function Navbar() {
         borderColor: 'rgba(255,255,255,0.07)',
       }}
     >
-      <div className="mx-auto max-w-[1220px] px-6">
-        <div className="emh-site-nav-inner flex h-[92px] items-center justify-between gap-6">
+      <div className="mx-auto max-w-[1220px] px-[10px]">
+        <div className="emh-site-nav-inner flex h-[55px] items-center justify-between gap-4">
           <Link href="/" className="flex items-center" onClick={() => setMobileOpen(false)}>
             <img src="/embm.png" alt="Emblem" className="emh-nav-logo" decoding="async" />
           </Link>
@@ -52,7 +52,7 @@ export default function Navbar() {
             aria-label="Toggle menu"
             className="emh-mobile-menu-button min-[860px]:hidden"
             onClick={() => setMobileOpen((v) => !v)}
-            style={{ color: '#fff', padding: 8, marginRight: -8 }}
+            style={{ color: '#fff', padding: 5, marginRight: -5 }}
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               {mobileOpen ? (

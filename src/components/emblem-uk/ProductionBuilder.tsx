@@ -113,7 +113,10 @@ function reviewActionCopy(player: PlayerDraft) {
 }
 
 function playerClubId(order: OrderDraft, player?: PlayerDraft) {
-  if (order.collectionType === 'custom') return 'custom-club';
+  if (order.collectionType === 'custom') {
+    const club = (player?.club || order.club).trim();
+    return club ? `custom:${club.toLowerCase()}` : `custom:${player?.id || 'collection'}`;
+  }
   return player?.emjflClubId || order.emjflClubId || DEFAULT_EMJFL_CLUB.id;
 }
 
@@ -286,7 +289,9 @@ export default function ProductionBuilder() {
       club,
       players: current.players.map((player) => ({
         ...player,
-        club: current.collectionType === 'custom' ? club : player.clubEdited ? player.club : club,
+        club: current.collectionType === 'custom'
+          ? (player.id === selectedId || !player.clubEdited ? club : player.club)
+          : (player.clubEdited ? player.club : club),
         updatedAt: nowIso(),
       })),
     }));
@@ -597,6 +602,7 @@ export default function ProductionBuilder() {
         throw new Error(result?.error || 'Could not send enquiry');
       }
 
+      setOrder(productionOrder);
       setEnquiryStatus('sent');
     } catch (error) {
       setEnquiryStatus('error');
@@ -780,7 +786,7 @@ export default function ProductionBuilder() {
               {order.type === 'single' && selectedPlayer && !selectedHasPhoto && (
                 <div className="uk-photo-carousel single">
                   <label className="uk-upload-card active">
-                    <span>â–§</span>
+                    <span aria-hidden="true">+</span>
                     <strong>Upload photo</strong>
                     <small>Pick one football photo from your files.</small>
                     <input type="file" accept="image/*" hidden onChange={(event) => assignPhoto(selectedPlayer.id, event.target.files?.[0])} />
@@ -808,13 +814,13 @@ export default function ProductionBuilder() {
               {order.type !== 'single' && !hasAnyPhoto && (
                 <div className="uk-photo-carousel team">
                   <label className="uk-upload-card active">
-                    <span>â–§</span>
+                    <span aria-hidden="true">+</span>
                     <strong>Upload player photos</strong>
                     <small>Select one photo, or choose several at once.</small>
                     <input type="file" accept="image/*" multiple hidden onChange={(event) => bulkPhotos(event.target.files)} />
                   </label>
                   <button type="button" className="uk-upload-card" onClick={() => addPlayer()} disabled={addDisabled}>
-                    <span>ï¼‹</span>
+                    <span aria-hidden="true">+</span>
                     <strong>Add manually</strong>
                     <small>Create a player row before adding their photo.</small>
                   </button>
@@ -837,14 +843,14 @@ export default function ProductionBuilder() {
               <div className="uk-photo-carousel">
                 {selectedPlayer && (
                   <label className="uk-upload-card active">
-                    <span>â–§</span>
+                    <span aria-hidden="true">+</span>
                     <strong>{selectedPlayer.photo ? 'Replace photo' : 'Upload a photo'}</strong>
                     <small>{selectedPlayer.photo?.fileName || 'Pick one from your files.'}</small>
                     <input type="file" accept="image/*" hidden onChange={(event) => assignPhoto(selectedPlayer.id, event.target.files?.[0])} />
                   </label>
                 )}
                 <label className="uk-upload-card">
-                  <span>ï¼‹</span>
+                  <span aria-hidden="true">+</span>
                   <strong>{order.type === 'single' ? 'Use another photo' : 'Bulk upload'}</strong>
                   <small>{order.type === 'single' ? 'Replace the selected player photo.' : 'Create cards from several player photos.'}</small>
                   <input type="file" accept="image/*" multiple hidden onChange={(event) => bulkPhotos(event.target.files)} />
@@ -1520,8 +1526,12 @@ function PlayerEditor({
         {isCustomCollection ? (
           <div className="uk-editor-badge-row single">
             <label>
-              Upload custom badge
-              <input type="file" accept="image/*" hidden onChange={(event) => onBadge(player.id, event.target.files?.[0])} />
+              Club / team name
+              <input
+                value={player.club}
+                onChange={(event) => onPatch(player.id, { club: event.target.value, clubEdited: true })}
+                placeholder={order.club || 'Enter club or team name'}
+              />
             </label>
           </div>
         ) : (

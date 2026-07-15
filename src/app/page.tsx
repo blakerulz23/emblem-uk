@@ -17,8 +17,10 @@ const moments = [
     body: 'Photos and videos turn matchday moments into memories the whole family can revisit.',
   },
   {
-    title: 'It grows with them.',
-    body: 'Add new seasons, new teams and new achievements over time, instead of starting again.',
+    title: 'Keeps growing.',
+    body: '',
+    image: '/assets/moment-growth.png',
+    isTimeline: false,
   },
   {
     title: "A keepsake they will treasure forever.",
@@ -114,10 +116,6 @@ export default function Home() {
           <HeroCardShowcase />
 
           <div className="emh-hero-footer">
-            <p className="emh-lede">
-              Create a personalised football trading card that unlocks a digital collection of every match, photo, goal and milestone so every season is remembered.
-            </p>
-
             <div className="emh-actions">
               <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Create My Card</Link>
               <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
@@ -141,15 +139,7 @@ export default function Home() {
       <section id="collection" className="emh-moments-section">
         <div className="emh-moments-inner">
           <div className="emh-moments-head">
-            <p className="emh-eyebrow">Why parents love Emblem</p>
-            <h2>
-              Built for the moments
-              <br />
-              <span>you&apos;ll want to look back on.</span>
-            </h2>
-            <p>
-              Emblem turns the season into something families can hold, tap and revisit, from muddy matchdays to the goals everyone still talks about.
-            </p>
+            <h2>Built for moments.</h2>
           </div>
 
           <MomentsExplorer moments={moments} />
@@ -160,7 +150,6 @@ export default function Home() {
         <div className="emh-forever-inner">
           <div className="emh-forever-head">
             <h2>From photo to forever.</h2>
-            <p>Create a personalised football trading card in four simple steps and unlock a digital collection that grows every season.</p>
           </div>
 
           <div className="emh-forever-grid">

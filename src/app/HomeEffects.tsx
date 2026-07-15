@@ -5,6 +5,8 @@ import { MouseEvent, useEffect, useRef, useState } from 'react';
 type Moment = {
   title: string;
   body: string;
+  image?: string;
+  isTimeline?: boolean;
 };
 
 type ProfileItem = [string, string];
@@ -312,7 +314,7 @@ export function HeroCardShowcase() {
             const position = order.indexOf(index);
             const slot = position - Math.floor(order.length / 2);
             const distance = Math.abs(slot);
-            const spread = isCompact ? (hovered ? 40 : 34) : (hovered ? 92 : 76);
+            const spread = isCompact ? (hovered ? 24 : 20) : (hovered ? 36 : 30);
             const isCenter = slot === 0;
             const transform = isCenter
               ? 'translateX(-50%) translateY(-22px) rotate(0deg) scale(1.07)'
@@ -382,7 +384,7 @@ export function MomentsExplorer({ moments }: { moments: Moment[] }) {
   const railRef = useRef<HTMLDivElement | null>(null);
   const momentDetails = moments.map((moment, index) => ({
     ...moment,
-    image: momentArt[index % momentArt.length],
+    image: moment.image ?? momentArt[index % momentArt.length],
     category: ['The first season', 'One living profile', 'Season after season', 'A lifetime later'][index] || 'Emblem moment',
     long: [
       [
@@ -402,7 +404,7 @@ export function MomentsExplorer({ moments }: { moments: Moment[] }) {
         'That is what Emblem is really for: not just the stats, but the memory of being small, muddy and completely in love with the game.',
       ],
     ][index] || [moment.body],
-    isTimeline: index === 2,
+    isTimeline: moment.isTimeline ?? index === 2,
   }));
   const openedMoment = openIndex === null ? null : momentDetails[openIndex];
 
@@ -421,18 +423,35 @@ export function MomentsExplorer({ moments }: { moments: Moment[] }) {
         {momentDetails.map((moment, index) => (
           <button
             key={moment.title}
-            className={`emh-moment-card ${moment.isTimeline ? 'emh-moment-card-timeline' : ''}`}
+            className={`emh-moment-card ${moment.isTimeline ? 'emh-moment-card-timeline' : ''} ${moment.image && !moment.body ? 'emh-moment-card-visual' : ''}`}
             type="button"
             aria-pressed={active === index}
             onClick={() => {
               setActive(index);
               setOpenIndex(index);
             }}
-          >
-            {!moment.isTimeline && <img src={moment.image} alt="" loading="lazy" decoding="async" />}
+            >
+            {!moment.isTimeline && <img className="emh-moment-card-image" src={moment.image} alt="" loading="lazy" decoding="async" />}
+            {moment.title === 'Keeps growing.' && (
+              <img
+                className="emh-moment-growth-overlay"
+                src="/assets/moment-growth-overlay.png"
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
+            )}
             <span>{String(index + 1).padStart(2, '0')}</span>
-            <h3>{moment.title}</h3>
-            <p>{moment.body}</p>
+            <h3>
+              {moment.title === 'Keeps growing.' ? (
+                <>
+                  Keeps <strong>growing.</strong>
+                </>
+              ) : (
+                moment.title
+              )}
+            </h3>
+            {moment.body && <p>{moment.body}</p>}
             {moment.isTimeline && (
               <div className="emh-moment-season-line" aria-hidden="true">
                 {['2022/23 Joined first club', '2023/24 Top goal scorer', '2024/25 Player of the season', '2025/26 New club, new journey'].map((row) => (
