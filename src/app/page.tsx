@@ -1,5 +1,11 @@
 ﻿import Link from 'next/link';
-import { DigitalProfilePreview, FaqAccordion, HeroCardShowcase, MomentsExplorer } from './HomeEffects';
+import {
+  DigitalProfileSection,
+  FaqAccordion,
+  HeroCardShowcase,
+  HowItWorksSection,
+  MomentsExplorer,
+} from './HomeEffects';
 
 const trust = [
   ['400gsm premium stock', 'Built to last'],
@@ -26,30 +32,6 @@ const moments = [
     title: "A keepsake they will treasure forever.",
     body: 'Years from now, it is more than a card. It is the story of where it all began.',
   },
-];
-
-const steps = [
-  ['1', 'Upload', 'Choose your favourite photo and personalise your card.'],
-  ['2', 'Print', 'We professionally print your collectible with premium finishes and a real NFC chip.'],
-  ['3', 'Tap', 'Touch your card to your phone to instantly unlock their digital profile and collection.'],
-  ['4', 'Grow', 'Add every goal, match, milestone and memory throughout the season. The story keeps growing.'],
-];
-
-const profileItems: [string, string][] = [
-  ['Journey', 'Every season connected.'],
-  ['Matches', 'Fixtures and progress together.'],
-  ['Photos', 'Every team photo in one place.'],
-  ['Highlights', 'Videos from every season.'],
-  ['Achievements', 'Every milestone preserved.'],
-  ['Teams', 'One profile across every club.'],
-];
-
-const profileFeatures: [string, string][] = [
-  ['Every Match Remembered', 'Keep fixtures, results and season progress connected in one place.'],
-  ['Every Season Together', 'Follow their football journey from the very first match onwards.'],
-  ['See How They Are Developing', 'Coach-led feedback and progress indicators show how they are growing beyond goals alone.'],
-  ['Every Team Connected', 'See the players, manager, fixtures and league position around every season.'],
-  ['Their Football Identity', 'Bring together their player identity, ambitions and season goals.'],
 ];
 
 const squadPoints = [
@@ -147,70 +129,11 @@ export default function Home() {
       </section>
 
       <section id="journey" className="emh-forever-section">
-        <div className="emh-forever-inner">
-          <div className="emh-forever-head">
-            <h2>From photo to forever.</h2>
-          </div>
-
-          <div className="emh-forever-grid">
-            {steps.map(([num, title, body]) => (
-              <article key={num} className={`emh-forever-card emh-forever-card-${num}`}>
-                <div>
-                  <span className="emh-step-number">{num}</span>
-                  <h3>{title}</h3>
-                  <p>{body}</p>
-                </div>
-
-                <div className={`emh-step-visual emh-step-visual-${num}`}>
-                  {num === '1' && (
-                    <div className="emh-upload-visual">
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M12 16V5m0 0 4.2 4.2M12 5 7.8 9.2M5 18.5h14" />
-                      </svg>
-                      <div className="emh-upload-thumbs" aria-hidden="true">
-                        <i />
-                        <i />
-                        <i />
-                      </div>
-                      <Link href="/builder?mode=single" className="emh-upload-cta">Upload photo</Link>
-                    </div>
-                  )}
-                  {num === '2' && (
-                    <div className="emh-print-visual">
-                      <img src="/assets/optimized/card-print-new.webp" alt="" loading="lazy" decoding="async" />
-                      <strong>Emblem</strong>
-                    </div>
-                  )}
-                  {num === '3' && (
-                    <div className="emh-tap-visual">
-                      <img className="emh-tap-card" src="/assets/optimized/card-hero-slab.webp" alt="" loading="lazy" decoding="async" />
-                      <span className="emh-nfc-rings" aria-hidden="true">
-                        <i />
-                        <i />
-                        <i />
-                      </span>
-                      <img className="emh-tap-phone" src="/assets/optimized/os-tap-home.webp" alt="" loading="lazy" decoding="async" />
-                    </div>
-                  )}
-                  {num === '4' && (
-                    <ul>
-                      <li><b>2022/23</b> Joined first club</li>
-                      <li><b>2023/24</b> Top goal scorer</li>
-                      <li><b>2024/25</b> Player of the season</li>
-                      <li><b>2025/26</b> New club, new journey</li>
-                    </ul>
-                  )}
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
+        <HowItWorksSection />
       </section>
 
       <section id="card" className="emh-profile-section">
-        <div className="emh-profile-inner">
-          <DigitalProfilePreview items={profileItems} features={profileFeatures} />
-        </div>
+        <DigitalProfileSection />
       </section>
 
       <section id="squad" className="emh-section emh-squad">
