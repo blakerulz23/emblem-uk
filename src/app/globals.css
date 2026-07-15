@@ -3753,7 +3753,7 @@ a { text-decoration: none; color: inherit; }
   margin: 0 0 8px;
   color: #16130f;
   font-family: var(--font-rajdhani), system-ui, sans-serif;
-  font-size: clamp(10px, 1vw, 13px);
+  font-size: clamp(12px, 1vw, 13px);
   font-weight: 800;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -3784,7 +3784,7 @@ a { text-decoration: none; color: inherit; }
   max-width: 366px;
   margin: 0 auto 14px;
   color: #5a5248;
-  font-size: 11px;
+  font-size: 16px;
   line-height: 1.6;
 }
 
@@ -3808,14 +3808,14 @@ a { text-decoration: none; color: inherit; }
 
 .emh-btn {
   display: inline-flex;
-  min-height: 22px;
+  min-height: 38px;
   align-items: center;
   justify-content: center;
   border-radius: 7px;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.03em;
-  padding: 6px 12px;
+  padding: 10px 18px;
   text-transform: uppercase;
   transition: background 160ms ease, border-color 160ms ease;
 }
@@ -4023,9 +4023,9 @@ a { text-decoration: none; color: inherit; }
   margin-top: 10px;
   color: #8b8272;
   font-family: var(--font-rajdhani), system-ui, sans-serif;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   z-index: 3;
 }
@@ -4304,11 +4304,11 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-hero-footer .emh-actions .emh-btn {
-  min-height: 24px;
+  min-height: 40px;
   border-radius: 8px;
-  padding: 4px 7px;
-  font-size: 9px;
-  letter-spacing: 0.025em;
+  padding: 10px 16px;
+  font-size: 15px;
+  letter-spacing: 0.02em;
 }
 
 .emh-trust-strip {
@@ -4363,7 +4363,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-trust-strip small {
   color: rgba(20, 17, 15, 0.55);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -4630,7 +4630,7 @@ a { text-decoration: none; color: inherit; }
   bottom: 11px;
   color: rgba(255, 255, 255, 0.72);
   font-family: var(--font-rajdhani), system-ui, sans-serif;
-  font-size: 10px;
+  font-size: 12px;
   font-style: normal;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -4737,7 +4737,7 @@ a { text-decoration: none; color: inherit; }
   position: relative;
   color: rgba(255, 250, 242, 0.86);
   font-family: var(--font-rajdhani), system-ui, sans-serif;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.05em;
 }
@@ -7093,7 +7093,7 @@ a { text-decoration: none; color: inherit; }
 
   .emh-hero-subline {
     margin-bottom: 6px;
-    font-size: 10px;
+    font-size: 12px;
     letter-spacing: 0.16em;
   }
 
@@ -7168,9 +7168,9 @@ a { text-decoration: none; color: inherit; }
   .emh-hero-edition-note {
     max-width: 210px;
     margin-top: 8px;
-    font-size: 9px;
+    font-size: 12px;
     line-height: 1.4;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.1em;
   }
 
   .emh-hero-footer .emh-actions {
@@ -7205,8 +7205,8 @@ a { text-decoration: none; color: inherit; }
   .emh-hero-footer .emh-actions .emh-btn {
     flex: 0 1 auto;
     min-width: 88px;
-    min-height: 24px;
-    padding: 4px 7px;
+    min-height: 36px;
+    padding: 8px 12px;
   }
 
   .emh-section,
@@ -7322,7 +7322,7 @@ a { text-decoration: none; color: inherit; }
   }
 
   .emh-moment-season-line small {
-    font-size: 11px;
+    font-size: 13px;
   }
 
   .emh-moment-modal {
@@ -7966,16 +7966,16 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-roster-head p {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .emh-roster-head h3 {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .emh-roster-head > span {
   padding: 4px 7px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .emh-roster-list {
@@ -7993,20 +7993,20 @@ a { text-decoration: none; color: inherit; }
   width: 25px;
   height: 25px;
   border-radius: 6px;
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .emh-roster-row strong {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .emh-roster-row small {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .emh-status {
   padding: 3px 7px;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .emh-roster-actions {
@@ -8016,7 +8016,7 @@ a { text-decoration: none; color: inherit; }
 .emh-roster-actions span {
   padding: 7px;
   border-radius: 7px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .emh-pricing > p:not(.emh-eyebrow) {
@@ -8037,7 +8037,7 @@ a { text-decoration: none; color: inherit; }
   top: -8px;
   left: 14px;
   padding: 3px 8px;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .emh-tier-grid h3 {
@@ -8112,7 +8112,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-faq-chip-list span {
   padding: 4px 7px;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .emh-faq-cta {
@@ -8149,7 +8149,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-final-note {
   margin-top: 8px !important;
-  font-size: 10px !important;
+  font-size: 14px !important;
 }
 
 .emh-footer-main {
@@ -8170,7 +8170,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-footer-col h3 {
   margin-bottom: 7px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .emh-footer-col ul {
@@ -8187,11 +8187,11 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-footer-bottom span {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .emh-footer-bottom strong {
-  font-size: 10px;
+  font-size: 12px;
 }
 }
 
@@ -8661,9 +8661,9 @@ a { text-decoration: none; color: inherit; }
   bottom: -30px;
   color: #8b8478;
   font-family: var(--font-barlow-condensed);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
