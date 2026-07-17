@@ -4373,6 +4373,33 @@ a { text-decoration: none; color: inherit; }
   padding: 88px 24px;
 }
 
+.emh-forever-section,
+.emh-profile-section,
+.emh-section,
+.emh-faq,
+.emh-final-cta,
+.emh-footer {
+  content-visibility: auto;
+}
+
+.emh-forever-section {
+  contain-intrinsic-size: auto 620px;
+}
+
+.emh-profile-section {
+  contain-intrinsic-size: auto 1180px;
+}
+
+.emh-section {
+  contain-intrinsic-size: auto 760px;
+}
+
+.emh-faq,
+.emh-final-cta,
+.emh-footer {
+  contain-intrinsic-size: auto 520px;
+}
+
 .emh-moments-section {
   background:
     radial-gradient(740px 420px at 78% 16%, rgba(233, 116, 53, 0.16), transparent 68%),
@@ -8246,6 +8273,11 @@ a { text-decoration: none; color: inherit; }
 .emh-hiw-head {
   margin-bottom: 18px;
   text-align: center;
+}
+
+.emh-hiw-head .emh-eyebrow {
+  margin: 0 0 6px;
+  color: #ef6c2f;
 }
 
 .emh-hiw-head h2,

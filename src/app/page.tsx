@@ -4,34 +4,12 @@ import {
   FaqAccordion,
   HeroCardShowcase,
   HowItWorksSection,
-  MomentsExplorer,
 } from './HomeEffects';
 
 const trust = [
   ['400gsm premium stock', 'Built to last'],
   ['Real NFC chip built in', 'Tap to unlock'],
   ['Ships in 5-7 days', 'Fast. Tracked. Reliable.'],
-];
-
-const moments = [
-  {
-    title: 'Everything in one place.',
-    body: 'Photos, videos, goals, stats and milestones stay connected to one card and one profile.',
-  },
-  {
-    title: 'Every memory saved.',
-    body: 'Photos and videos turn matchday moments into memories the whole family can revisit.',
-  },
-  {
-    title: 'Keeps growing.',
-    body: '',
-    image: '/assets/moment-growth.png',
-    isTimeline: false,
-  },
-  {
-    title: "A keepsake they will treasure forever.",
-    body: 'Years from now, it is more than a card. It is the story of where it all began.',
-  },
 ];
 
 const squadPoints = [
@@ -115,16 +93,6 @@ export default function Home() {
               ))}
             </div>
           </div>
-        </div>
-      </section>
-
-      <section id="collection" className="emh-moments-section">
-        <div className="emh-moments-inner">
-          <div className="emh-moments-head">
-            <h2>Built for moments.</h2>
-          </div>
-
-          <MomentsExplorer moments={moments} />
         </div>
       </section>
 

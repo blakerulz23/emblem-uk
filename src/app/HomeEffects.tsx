@@ -706,7 +706,8 @@ type DP2Experience = {
   iconIndex: number;
 };
 
-const dpAssetPath = '/assets/digital-profile';
+const dpAssetPath = '/assets/optimized';
+const dpWordmarkPath = '/assets/digital-profile/emblem-wordmark.png';
 
 const dpMoments: Record<DP2MomentId, DP2Moment> = {
   firstgoal: {
@@ -717,7 +718,7 @@ const dpMoments: Record<DP2MomentId, DP2Moment> = {
     trust: 'Coach Verified',
     official: false,
     about: 'Ollie scores his first goal from a corner. Great awareness and a composed finish. A proud moment for the whole family.',
-    media: `${dpAssetPath}/moment-firstgoal.mp4`,
+    media: '/assets/dp-first-goal.mp4',
     mediaType: 'video',
     stats: [['Goal', '1'], ['Assists', '0'], ['Minutes Played', '60'], ['Result', 'Won 3-1']],
   },
@@ -729,7 +730,7 @@ const dpMoments: Record<DP2MomentId, DP2Moment> = {
     trust: 'Coach Verified',
     official: false,
     about: 'The full U10 squad together on presentation day - the group that made the whole season one to remember.',
-    media: `${dpAssetPath}/moment-teamphoto.png`,
+    media: `${dpAssetPath}/dp-team-photo.webp`,
     mediaType: 'image',
     stats: [['Photos', '24'], ['Squad', '14'], ['Season', '2025/26'], ['Occasion', 'Presentation']],
   },
@@ -741,7 +742,7 @@ const dpMoments: Record<DP2MomentId, DP2Moment> = {
     trust: 'Official Club',
     official: true,
     about: 'Curzon Ashton lift the Summer Shield after a 3-1 final. Ollie kept a clean sheet in the semi to get them there.',
-    media: `${dpAssetPath}/moment-tournament.png`,
+    media: `${dpAssetPath}/dp-tournament-winner.webp`,
     mediaType: 'image',
     stats: [['Result', 'Won 3-1'], ['Clean Sheets', '2'], ['Round', 'Final'], ['Trophy', 'Winners']],
   },
@@ -753,7 +754,7 @@ const dpMoments: Record<DP2MomentId, DP2Moment> = {
     trust: 'Official Club',
     official: true,
     about: 'Named club captain for the new season - recognised by the coaches for leadership on and off the pitch.',
-    media: `${dpAssetPath}/moment-captain.png`,
+    media: `${dpAssetPath}/dp-captain.webp`,
     mediaType: 'image',
     stats: [['Appointed', '2027/28'], ['Role', 'Captain'], ['Age Group', 'U11'], ['Club', 'Curzon Ashton']],
   },
@@ -810,7 +811,8 @@ export function HowItWorksSection() {
   return (
     <div className="emh-hiw-inner">
       <div className="emh-hiw-head">
-        <h2>From photo to forever.</h2>
+        <p className="emh-eyebrow">Easy as 1, 2, 3.</p>
+        <h2>How it works.</h2>
       </div>
       <div className="emh-hiw-grid">
         {stepCards.map((step) => (
@@ -845,13 +847,13 @@ function StepCard({
           </span>
         )}
         {step.number === '2' && (
-          <Image src={`${dpAssetPath}/card-print-new.png`} alt="" width={260} height={360} />
+          <Image src={`${dpAssetPath}/card-print-new.webp`} alt="" width={260} height={360} loading="lazy" sizes="(max-width: 760px) 42vw, 260px" />
         )}
         {step.number === '3' && (
           <>
-            <Image src={`${dpAssetPath}/card-hero-slab.png`} alt="" width={220} height={330} />
+            <Image src={`${dpAssetPath}/card-hero-slab.webp`} alt="" width={220} height={330} loading="lazy" sizes="(max-width: 760px) 38vw, 220px" />
             <span className="emh-hiw-nfc"><i /><i /><i /></span>
-            <Image src={`${dpAssetPath}/eos-home.png`} alt="" width={180} height={360} />
+            <Image src={`${dpAssetPath}/eos-home.webp`} alt="" width={180} height={360} loading="lazy" sizes="(max-width: 760px) 32vw, 180px" />
           </>
         )}
       </div>
@@ -972,15 +974,17 @@ export function DigitalProfileSection() {
         className={`emh-dp2-reveal ${unlocked ? 'is-open' : ''}`}
         aria-hidden={!unlocked}
       >
-        <CollectionPanel
-          activeMoment={dpMoments[activeMomentId]}
-          activeMomentId={activeMomentId}
-          activeTab={activeTab}
-          onPickMoment={pickMoment}
-          onPickTab={pickTab}
-          swapping={swapping}
-          videoRef={videoRef}
-        />
+        {unlocked && (
+          <CollectionPanel
+            activeMoment={dpMoments[activeMomentId]}
+            activeMomentId={activeMomentId}
+            activeTab={activeTab}
+            onPickMoment={pickMoment}
+            onPickTab={pickTab}
+            swapping={swapping}
+            videoRef={videoRef}
+          />
+        )}
       </div>
 
       <ClosingStatement />
@@ -1083,10 +1087,12 @@ function CardPhoneReveal({
         style={{ transform: `translate(calc(var(--emh-dp2-card-base-x, 0px) + ${cardOffset.x}px), ${cardOffset.y}px) rotate(-5deg)` }}
       >
         <Image
-          src={`${dpAssetPath}/profile-unlock-slab.png`}
+          src={`${dpAssetPath}/dp-profile-slab.webp`}
           alt="Physical Emblem slab card"
           width={1023}
           height={1537}
+          loading="lazy"
+          sizes="(max-width: 760px) 62vw, 300px"
           draggable={false}
         />
       </div>
@@ -1100,9 +1106,9 @@ function CardPhoneReveal({
         onPointerUp={onPointerUp}
         style={{ transform: `translate(${phoneOffset.x}px, ${phoneOffset.y}px)` }}
       >
-        <Image src={`${dpAssetPath}/eos-home.png`} alt="Emblem digital profile on phone" width={390} height={780} draggable={false} />
+        <Image src={`${dpAssetPath}/eos-home.webp`} alt="Emblem digital profile on phone" width={390} height={780} loading="lazy" sizes="(max-width: 760px) 56vw, 260px" draggable={false} />
         <div className="emh-dp2-boot">
-          <Image src={`${dpAssetPath}/emblem-wordmark.png`} alt="" width={120} height={32} />
+          <Image src={dpWordmarkPath} alt="" width={120} height={32} loading="lazy" sizes="120px" />
           <i />
         </div>
         {!unlocked && <span className="emh-dp2-drag-badge">Drag to the card</span>}
@@ -1224,10 +1230,10 @@ function MomentDetail({
               muted
               playsInline
               loop
-              preload="metadata"
+              preload="none"
             />
           ) : (
-            <Image key={activeMoment.id} src={activeMoment.media} alt={activeMoment.title} width={1200} height={675} />
+            <Image key={activeMoment.id} src={activeMoment.media} alt={activeMoment.title} width={1200} height={675} loading="lazy" sizes="(max-width: 900px) 92vw, 44vw" />
           )}
           <span className="emh-dp2-media-badge">
             <i className={activeMoment.official ? 'is-official' : ''} />
