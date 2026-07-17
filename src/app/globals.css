@@ -9250,3 +9250,61 @@ a { text-decoration: none; color: inherit; }
     animation: none !important;
   }
 }
+
+/* Homepage typography pass: clean condensed headings, practical retail sizes. */
+.emh-page :is(h1, h2, h3),
+.emh-page .emh-dp2-closing p {
+  font-family: var(--font-barlow-condensed), "Arial Narrow", Impact, sans-serif;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.emh-page .emh-hero-copy h1 {
+  font-size: clamp(28px, 3.6vw, 46px);
+}
+
+.emh-page :is(.emh-hiw-head h2, .emh-dp2-copy h2, .emh-dp2-closing p) {
+  font-size: clamp(32px, 5vw, 64px);
+  line-height: 0.96;
+}
+
+.emh-page :is(.emh-section h2, .emh-digital h2, .emh-final-cta h2, .emh-faq-head h2, .emh-profile-lead h2, .emh-moments-head h2) {
+  font-size: clamp(22px, 4vw, 44px);
+  line-height: 1;
+}
+
+.emh-page :is(.emh-hiw-card h3, .emh-dp2-media h3, .emh-dp2-why h3, .emh-moment-card h3, .emh-moment-modal-copy h3) {
+  font-size: clamp(18px, 2vw, 28px);
+  line-height: 1.05;
+}
+
+.emh-page :is(.emh-lede, .emh-dp2-copy > p:not(.emh-dp2-eyebrow), .emh-section-head p:last-child, .emh-squad-copy > p:not(.emh-eyebrow), .emh-pricing > p:not(.emh-eyebrow), .emh-faq-head > p:last-child) {
+  font-size: clamp(15px, 1.35vw, 16px);
+  line-height: 1.55;
+}
+
+.emh-page :is(.emh-hiw-card p, .emh-dp2-about > p:not(.emh-dp2-label), .emh-dp2-why p:not(.emh-dp2-label), .emh-faq-answer p, .emh-tier-grid li, .emh-squad-copy li) {
+  font-size: clamp(13px, 1.2vw, 14px);
+}
+
+.emh-page :is(.emh-btn, .emh-dp2-toggle, .emh-dp2-about button, .emh-tier-grid a) {
+  font-size: clamp(14px, 1.2vw, 15px);
+}
+
+.emh-page :is(.emh-eyebrow, .emh-hiw-number, .emh-dp2-label, .emh-dp2-eyebrow, .emh-hero-subline, .emh-hero-edition-note) {
+  font-size: clamp(12px, 1vw, 13px);
+}
+
+@media (max-width: 620px) {
+  .emh-page .emh-hero-copy h1 {
+    font-size: clamp(28px, 7vw, 34px);
+  }
+
+  .emh-page :is(.emh-hiw-head h2, .emh-dp2-copy h2, .emh-dp2-closing p) {
+    font-size: clamp(28px, 10vw, 42px);
+  }
+
+  .emh-page :is(.emh-section h2, .emh-digital h2, .emh-final-cta h2, .emh-faq-head h2, .emh-profile-lead h2, .emh-moments-head h2) {
+    font-size: clamp(22px, 8vw, 32px);
+  }
+}
