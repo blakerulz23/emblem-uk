@@ -8284,14 +8284,20 @@ a { text-decoration: none; color: inherit; }
 .emh-dp2 h2,
 .emh-dp2-media h3,
 .emh-dp2-closing p {
-  font-family: var(--font-cinematografica);
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.emh-dp2 h2,
+.emh-dp2-media h3,
+.emh-dp2-closing p {
+  font-family: var(--font-cinematografica);
 }
 
 .emh-hiw-head h2 {
   margin: 0;
   color: #16130f;
+  font-family: var(--font-barlow-condensed), Impact, sans-serif;
   font-size: clamp(36px, 6vw, 76px);
   line-height: 0.95;
 }
@@ -8398,20 +8404,21 @@ a { text-decoration: none; color: inherit; }
 
 .emh-hiw-visual-2 img {
   position: absolute;
-  right: 5px;
-  bottom: -40px;
-  width: min(150px, 78%);
+  right: 10px;
+  bottom: -54px;
+  width: min(132px, 72%);
   height: auto;
   filter: drop-shadow(0 24px 32px rgba(20, 17, 15, 0.25));
 }
 
 .emh-hiw-visual-3 img:first-child {
   position: absolute;
-  left: 0;
-  bottom: -26px;
-  width: 86px;
+  left: -2px;
+  bottom: -36px;
+  width: 94px;
   height: auto;
   transform: rotate(-8deg);
+  z-index: 2;
 }
 
 .emh-hiw-visual-3 img:last-child {

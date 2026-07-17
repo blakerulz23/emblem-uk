@@ -847,11 +847,11 @@ function StepCard({
           </span>
         )}
         {step.number === '2' && (
-          <Image src={`${dpAssetPath}/card-print-new.webp`} alt="" width={260} height={360} loading="lazy" sizes="(max-width: 760px) 42vw, 260px" />
+          <Image src={`${dpAssetPath}/hiw-consistent-card.webp`} alt="" width={420} height={599} loading="lazy" sizes="(max-width: 760px) 42vw, 260px" />
         )}
         {step.number === '3' && (
           <>
-            <Image src={`${dpAssetPath}/card-hero-slab.webp`} alt="" width={220} height={330} loading="lazy" sizes="(max-width: 760px) 38vw, 220px" />
+            <Image src={`${dpAssetPath}/hiw-consistent-card.webp`} alt="" width={420} height={599} loading="lazy" sizes="(max-width: 760px) 38vw, 220px" />
             <span className="emh-hiw-nfc"><i /><i /><i /></span>
             <Image src={`${dpAssetPath}/eos-home.webp`} alt="" width={180} height={360} loading="lazy" sizes="(max-width: 760px) 32vw, 180px" />
           </>
