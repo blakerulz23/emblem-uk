@@ -811,8 +811,8 @@ export function HowItWorksSection() {
   return (
     <div className="emh-hiw-inner">
       <div className="emh-hiw-head">
-        <p className="emh-eyebrow">Easy as 1, 2, 3.</p>
-        <h2>How it works.</h2>
+        <p className="emh-eyebrow">How it works.</p>
+        <h2>Easy as 1, 2, 3.</h2>
       </div>
       <div className="emh-hiw-grid">
         {stepCards.map((step) => (
