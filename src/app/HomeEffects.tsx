@@ -877,8 +877,6 @@ export function DigitalProfileSection() {
       <div ref={stageAnchorRef}>
         <DigitalProfileStage armed={unlocked} reducedMotion={reducedMotion} />
       </div>
-
-      <ClosingStatement />
     </div>
   );
 }
@@ -1305,14 +1303,6 @@ function DigitalProfileStage({ armed, reducedMotion }: { armed: boolean; reduced
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function ClosingStatement() {
-  return (
-    <div className="emh-dp2-closing">
-      <p>Every card becomes a living season archive.</p>
     </div>
   );
 }
