@@ -880,6 +880,8 @@ export function DigitalProfileSection() {
   const [swapping, setSwapping] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const revealRef = useRef<HTMLDivElement>(null);
+  const introRef = useRef<HTMLDivElement>(null);
+  const stageAnchorRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -913,16 +915,46 @@ export function DigitalProfileSection() {
     }
     if (reducedMotion) {
       setUnlocked(true);
-      if (scroll) window.setTimeout(() => revealRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+      if (scroll) window.setTimeout(() => stageAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
       return;
     }
     setBooting(true);
     window.setTimeout(() => {
       setBooting(false);
       setUnlocked(true);
-      if (scroll) window.setTimeout(() => revealRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
+      // Scroll into the cinematic stage (beat 0), not the old tabbed
+      // collection panel (#dpReveal) — that now sits after the stage.
+      if (scroll) window.setTimeout(() => stageAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
     }, 900);
   };
+
+  // Hard gate: while locked, clamp scroll so the drag/tap-to-unlock UI stays
+  // centred in view. Never engages under reduced-motion, so those visitors
+  // are never trapped (no-JS/no-motion accessibility fallback).
+  useEffect(() => {
+    if (unlocked || reducedMotion) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const wrap = introRef.current;
+        if (!wrap) return;
+        const r = wrap.getBoundingClientRect();
+        const docCenter = r.top + window.scrollY + r.height / 2;
+        const gateMax = docCenter - window.innerHeight / 2;
+        if (window.scrollY > gateMax + 4) {
+          window.scrollTo(0, gateMax);
+          window.dispatchEvent(new CustomEvent('emblem-dp-hint'));
+        }
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [unlocked, reducedMotion]);
 
   const toggleCollection = () => {
     if (!unlocked) {
@@ -948,7 +980,7 @@ export function DigitalProfileSection() {
 
   return (
     <div className="emh-dp2">
-      <div className="emh-dp2-intro">
+      <div ref={introRef} className="emh-dp2-intro">
         <div className="emh-dp2-copy">
           <p className="emh-dp2-eyebrow">The digital profile</p>
           <h2>The card is just the <span>beginning.</span></h2>
@@ -966,6 +998,10 @@ export function DigitalProfileSection() {
           </div>
         </div>
         <CardPhoneReveal booting={booting} hinting={hinting} unlocked={unlocked} onUnlock={() => unlock(true)} />
+      </div>
+
+      <div ref={stageAnchorRef}>
+        <DigitalProfileStage armed={unlocked} reducedMotion={reducedMotion} />
       </div>
 
       <div
@@ -1114,6 +1150,307 @@ function CardPhoneReveal({
         {!unlocked && <span className="emh-dp2-drag-badge">Drag to the card</span>}
       </div>
       {!unlocked && <span className="emh-dp2-drag-hint">Drag the phone to the card</span>}
+    </div>
+  );
+}
+
+const dpStageAssetPath = '/assets/digital-profile';
+
+type DpStageBeat = {
+  eyebrow: string;
+  lines: string[];
+  accent?: string;
+  body: string;
+};
+
+const dpStageBeats: DpStageBeat[] = [
+  { eyebrow: 'YOUR SEASON', lines: ['Every season', 'begins here.'], body: 'Their football identity, latest fixture and latest achievement — everything in one place, the moment they tap in.' },
+  { eyebrow: 'DEVELOPMENT', lines: ['Watch their', 'game develop.'], body: 'Every match helps shape their football journey. Coach feedback and development become part of the story.' },
+  { eyebrow: 'RECOGNITION', lines: ['Celebrate moments', 'that matter.'], body: 'Trusted by coaches. Shared with families. Remembered forever.' },
+  { eyebrow: 'THE COLLECTION', lines: ['Every moment', 'becomes collectible.'], body: 'Every verified milestone becomes a permanent part of their football story.' },
+  { eyebrow: 'ONE PERMANENT KEY', lines: ['One card.'], accent: 'Every football moment.', body: 'The card stays with them. The football story keeps growing.' },
+];
+
+const dpStageScreens = ['home', 'attributes', 'recognition', 'collection'] as const;
+type DpStageScreen = (typeof dpStageScreens)[number];
+
+function DigitalProfileStage({ armed, reducedMotion }: { armed: boolean; reducedMotion: boolean }) {
+  const refs = useRef<Record<string, HTMLElement | null>>({});
+  const stageWrapRef = useRef<HTMLDivElement>(null);
+  const beatRef = useRef(-1);
+  const didRef = useRef<Record<number, boolean>>({});
+
+  const setRef = (key: string) => (el: HTMLElement | null) => {
+    refs.current[key] = el;
+  };
+
+  const setText = (key: string, value: string) => {
+    const el = refs.current[key];
+    if (el) el.textContent = value;
+  };
+  const setWidth = (key: string, value: string) => {
+    const el = refs.current[key] as HTMLElement | null;
+    if (el) el.style.width = value;
+  };
+
+  const popRecognition = () => {
+    const badge = refs.current.recBadge;
+    if (badge) {
+      badge.style.transform = 'scale(.4)';
+      requestAnimationFrame(() => { badge.style.transform = 'scale(1)'; });
+    }
+    const c = refs.current.confetti;
+    if (!c) return;
+    c.innerHTML = '';
+    const cols = ['#EF6C2F', '#E8B23A', '#F4E9CE', '#46B36B'];
+    for (let i = 0; i < 26; i++) {
+      const s = document.createElement('span');
+      const x = Math.random() * 100;
+      const dur = 1.5 + Math.random() * 1.4;
+      const dl = Math.random() * 0.5;
+      const sz = 5 + Math.random() * 5;
+      s.className = 'emh-dp2-confetti-bit';
+      s.style.cssText = `left:${x}%;width:${sz}px;height:${sz * 1.4}px;background:${cols[i % 4]};animation-duration:${dur}s;animation-delay:${dl}s;`;
+      c.appendChild(s);
+    }
+  };
+
+  const setBeat = (b: number) => {
+    for (let i = 0; i < 5; i++) {
+      const beatEl = refs.current[`beat-${i}`];
+      if (beatEl) {
+        beatEl.style.opacity = i === b ? '1' : '0';
+        beatEl.style.transform = i === b ? 'translateY(0)' : 'translateY(14px)';
+        beatEl.style.pointerEvents = i === b ? 'auto' : 'none';
+      }
+      const dot = refs.current[`dot-${i}`];
+      if (dot) dot.style.background = i === b ? '#EF6C2F' : 'rgba(255,255,255,.16)';
+    }
+    const screenFor = dpStageScreens[b] as DpStageScreen | undefined;
+    dpStageScreens.forEach((name) => {
+      const el = refs.current[`screen-${name}`];
+      if (el) el.style.opacity = name === screenFor ? '1' : '0';
+    });
+    const phone = refs.current.stagePhone;
+    const card = refs.current.stageCard;
+    if (b === 4) {
+      if (phone) { phone.style.opacity = '0'; phone.style.transform = 'scale(.92) translateY(12px)'; }
+      if (card) { card.style.left = '50%'; card.style.transform = 'translate(-50%,-50%) rotate(0deg) scale(1.2)'; card.style.filter = 'drop-shadow(0 34px 66px rgba(239,108,47,.4))'; }
+    } else {
+      if (phone) { phone.style.opacity = '1'; phone.style.transform = 'none'; }
+      if (card) { card.style.left = '2%'; card.style.transform = 'translateY(-50%) rotate(-6deg)'; card.style.filter = 'drop-shadow(0 24px 48px rgba(0,0,0,.7))'; }
+    }
+
+    const did = didRef.current;
+    if (b === 1 && !did[1]) {
+      did[1] = true;
+      window.setTimeout(() => {
+        setText('attrOverall', '88');
+        setText('attrPass', '89');
+        setText('attrVis', '88');
+        setWidth('barPass', '89%');
+        setWidth('barVis', '88%');
+        setWidth('barDrib', '86%');
+      }, 220);
+    }
+    if (b === 2 && !did[2]) {
+      did[2] = true;
+      popRecognition();
+    }
+    if (b === 3 && !did[3]) {
+      did[3] = true;
+      window.setTimeout(() => {
+        const nw = refs.current.collectionNew;
+        const lk = refs.current.collectionLock;
+        if (lk) lk.style.opacity = '0';
+        if (nw) { nw.style.opacity = '1'; nw.style.transform = 'translateY(0) scale(1)'; }
+        setText('collectionCount', '12');
+        setText('collectionPct', '86%');
+        const ring = refs.current.collectionRing as unknown as SVGCircleElement | null;
+        if (ring) ring.style.strokeDashoffset = '28';
+      }, 260);
+    }
+    if (b < 3 && did[3]) {
+      did[3] = false;
+      const nw = refs.current.collectionNew;
+      const lk = refs.current.collectionLock;
+      if (nw) { nw.style.opacity = '0'; nw.style.transform = 'translateY(18px) scale(.9)'; }
+      if (lk) lk.style.opacity = '1';
+      setText('collectionCount', '11');
+      setText('collectionPct', '72%');
+      const ring = refs.current.collectionRing as unknown as SVGCircleElement | null;
+      if (ring) ring.style.strokeDashoffset = '56';
+    }
+  };
+
+  useEffect(() => {
+    if (!armed || reducedMotion) return;
+    beatRef.current = -1;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const stageEl = stageWrapRef.current;
+        if (!stageEl) return;
+        const vh = window.innerHeight;
+        const rect = stageEl.getBoundingClientRect();
+        const range = Math.max(1, stageEl.offsetHeight - vh);
+        let p = -rect.top / range;
+        p = Math.max(0, Math.min(0.9999, p));
+        const beat = Math.min(4, Math.floor(p * 5));
+        if (beat === beatRef.current) return;
+        beatRef.current = beat;
+        setBeat(beat);
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [armed, reducedMotion]);
+
+  if (reducedMotion) {
+    return (
+      <div className="emh-dp2-stage emh-dp2-stage-static" aria-hidden={!armed}>
+        {dpStageBeats.map((beat, i) => (
+          <div key={beat.eyebrow} className="emh-dp2-beat-static">
+            <p className="emh-dp2-eyebrow">{beat.eyebrow}</p>
+            <h3>
+              {beat.lines.map((line) => <span key={line}>{line}<br /></span>)}
+              {beat.accent && <span className="emh-dp2-accent">{beat.accent}</span>}
+            </h3>
+            <p>{beat.body}</p>
+            {i === 0 && (
+              <img className="emh-dp2-stage-static-phone" src={`${dpStageAssetPath}/eos-home.png`} alt="Emblem digital profile home screen" loading="lazy" />
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={stageWrapRef} className="emh-dp2-stage" data-armed={armed ? '1' : undefined} aria-hidden={!armed}>
+      <div className="emh-dp2-pin">
+        <div className="emh-dp2-pin-inner">
+          <div className="emh-dp2-copy-col">
+            {dpStageBeats.map((beat, i) => (
+              <div key={beat.eyebrow} ref={setRef(`beat-${i}`)} className="emh-dp2-beat" style={{ opacity: i === 0 ? 1 : 0, transform: i === 0 ? 'translateY(0)' : 'translateY(14px)' }}>
+                <p className="emh-dp2-eyebrow">{beat.eyebrow}</p>
+                <h3>
+                  {beat.lines.map((line) => <span key={line}>{line}<br /></span>)}
+                  {beat.accent && <span className="emh-dp2-accent">{beat.accent}</span>}
+                </h3>
+                <p>{beat.body}</p>
+              </div>
+            ))}
+            <div className="emh-dp2-dots">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <span key={i} ref={setRef(`dot-${i}`)} className="emh-dp2-dot" style={{ background: i === 0 ? '#EF6C2F' : 'rgba(255,255,255,.16)' }} />
+              ))}
+            </div>
+          </div>
+
+          <div className="emh-dp2-phone-col">
+            <img ref={setRef('stageCard') as unknown as (el: HTMLImageElement | null) => void} className="emh-dp2-stage-card" src={`${dpStageAssetPath}/card-slab-graded.png`} alt="Physical Emblem card" />
+            <div ref={setRef('stagePhone')} className="emh-dp2-stage-phone">
+              <div className="emh-dp2-notch" />
+              <div className="emh-dp2-screens">
+                <div ref={setRef('screen-home')} className="emh-dp2-screen" style={{ opacity: 1 }} data-screen="home">
+                  <div className="emh-dp2-screen-topbar"><span>EMBLEM</span><i /></div>
+                  <div className="emh-dp2-home-card">
+                    <div className="emh-dp2-home-position">MIDFIELDER</div>
+                    <div className="emh-dp2-home-name">OLLIE<br />HARRISON</div>
+                    <div className="emh-dp2-home-club"><img src={`${dpStageAssetPath}/club-badge.png`} alt="" />Curzon Ashton U10</div>
+                    <div className="emh-dp2-home-overall-label">OVERALL</div>
+                    <div className="emh-dp2-home-overall">87</div>
+                    <img className="emh-dp2-home-player" src={`${dpStageAssetPath}/player-ollie.png`} alt="" />
+                  </div>
+                  <div className="emh-dp2-screen-label">TODAY&apos;S ACTIVITY</div>
+                  <div className="emh-dp2-home-match">
+                    <span className="emh-dp2-home-match-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>
+                    </span>
+                    <div><div>Match today</div><small>10:30 · vs Hyde United</small></div>
+                  </div>
+                  <div className="emh-dp2-home-progress">
+                    <div><span>SEASON PROGRESS</span><span>63%</span></div>
+                    <div className="emh-dp2-home-progress-track"><div style={{ width: '63%' }} /></div>
+                  </div>
+                </div>
+
+                <div ref={setRef('screen-attributes')} className="emh-dp2-screen" style={{ opacity: 0 }} data-screen="attributes">
+                  <div className="emh-dp2-screen-label">ATTRIBUTES</div>
+                  <div className="emh-dp2-attr-head">
+                    <div><div className="emh-dp2-attr-name">OLLIE<br />HARRISON</div><div className="emh-dp2-attr-role">MIDFIELDER</div></div>
+                    <div className="emh-dp2-attr-overall"><span>OVERALL</span><strong ref={setRef('attrOverall')}>87</strong><em>+5 THIS SEASON</em></div>
+                  </div>
+                  <div className="emh-dp2-attr-row">
+                    <div><span>Passing</span><span><b ref={setRef('attrPass')}>84</b> <i>↑5</i></span></div>
+                    <div className="emh-dp2-attr-track"><div ref={setRef('barPass')} style={{ width: '56%' }} /></div>
+                  </div>
+                  <div className="emh-dp2-attr-row">
+                    <div><span>Vision</span><span><b ref={setRef('attrVis')}>85</b> <i>↑3</i></span></div>
+                    <div className="emh-dp2-attr-track"><div ref={setRef('barVis')} style={{ width: '58%' }} /></div>
+                  </div>
+                  <div className="emh-dp2-attr-row">
+                    <div><span>Dribbling</span><span>86 <i>↑4</i></span></div>
+                    <div className="emh-dp2-attr-track"><div ref={setRef('barDrib')} style={{ width: '60%' }} /></div>
+                  </div>
+                </div>
+
+                <div ref={setRef('screen-recognition')} className="emh-dp2-screen emh-dp2-screen-recognition" style={{ opacity: 0 }} data-screen="recognition">
+                  <div ref={setRef('confetti')} className="emh-dp2-confetti" aria-hidden="true" />
+                  <div className="emh-dp2-rec-eyebrow">ACHIEVEMENT UNLOCKED</div>
+                  <div ref={setRef('recBadge')} className="emh-dp2-rec-badge">
+                    <svg viewBox="0 0 24 24" fill="#3a2a08"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 18.3 5.9 20.4 7.3 13.6 2.2 8.9l6.9-.8z" /></svg>
+                  </div>
+                  <div className="emh-dp2-rec-title">Player of<br />the Match</div>
+                  <div className="emh-dp2-rec-verified">
+                    <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" /></svg>
+                    COACH VERIFIED
+                  </div>
+                  <div className="emh-dp2-rec-meta">Curzon Ashton Juniors vs Denton FC · 18 May 2026</div>
+                </div>
+
+                <div ref={setRef('screen-collection')} className="emh-dp2-screen" style={{ opacity: 0 }} data-screen="collection">
+                  <div className="emh-dp2-screen-label">COLLECTION</div>
+                  <div className="emh-dp2-coll-hero">
+                    <div className="emh-dp2-coll-season">FIRST SEASON</div>
+                    <div className="emh-dp2-coll-year">2026</div>
+                    <div className="emh-dp2-coll-row">
+                      <div className="emh-dp2-coll-ring">
+                        <svg viewBox="0 0 76 76">
+                          <circle cx="38" cy="38" r="32" className="emh-dp2-coll-ring-track" />
+                          <circle ref={setRef('collectionRing') as unknown as (el: SVGCircleElement | null) => void} cx="38" cy="38" r="32" className="emh-dp2-coll-ring-fill" style={{ strokeDashoffset: 56 }} />
+                        </svg>
+                        <span ref={setRef('collectionPct')}>72%</span>
+                      </div>
+                      <div className="emh-dp2-coll-count-wrap">
+                        <div>CARDS COLLECTED</div>
+                        <div><span ref={setRef('collectionCount')}>11</span> <small>/ 14</small></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="emh-dp2-coll-grid">
+                    <div className="emh-dp2-coll-tile"><img src={`${dpStageAssetPath}/jn-firstgoal.png`} alt="" /></div>
+                    <div className="emh-dp2-coll-tile"><img src={`${dpStageAssetPath}/jn-teamphoto.png`} alt="" /></div>
+                    <div className="emh-dp2-coll-tile"><img src={`${dpStageAssetPath}/jn-trophy.png`} alt="" /></div>
+                    <div className="emh-dp2-coll-tile emh-dp2-coll-slot">
+                      <svg ref={setRef('collectionLock') as unknown as (el: SVGSVGElement | null) => void} viewBox="0 0 24 24" className="emh-dp2-coll-lock"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>
+                      <img ref={setRef('collectionNew') as unknown as (el: HTMLImageElement | null) => void} src={`${dpStageAssetPath}/jn-potm.png`} alt="" className="emh-dp2-coll-new" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1290,6 +1627,38 @@ function WhyItMatters() {
             <div>
               <h3>{title}</h3>
               <p>{body}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const everyoneCards = [
+  { photo: '/assets/everyone/oc-parents.png', alt: 'Family sharing an Emblem card', label: 'PARENTS', body: 'Keep every football memory.', iconIndex: 5 },
+  { photo: '/assets/everyone/oc-players.png', alt: 'Player and stats', label: 'PLAYERS', body: 'Watch yourself improve.', iconIndex: 2 },
+  { photo: '/assets/everyone/oc-coaches.png', alt: 'Coach and player', label: 'COACHES', body: 'Celebrate moments forever.', iconIndex: 4 },
+  { photo: '/assets/everyone/oc-clubs.png', alt: 'Club pitch and moments collected', label: 'CLUBS', body: 'Create a living history.', iconIndex: 0 },
+] as const;
+
+export function BuiltForEveryoneSection() {
+  return (
+    <div className="emh-everyone">
+      <p className="emh-everyone-eyebrow">Built for everyone involved</p>
+      <h2>One card. Everyone connected.</h2>
+      <p className="emh-everyone-sub">Emblem brings every part of the football journey together.<br />One card. Endless value.</p>
+      <div className="emh-everyone-grid">
+        {everyoneCards.map((card) => (
+          <article key={card.label}>
+            <div className="emh-everyone-photo">
+              <img src={card.photo} alt={card.alt} loading="lazy" decoding="async" />
+            </div>
+            <div className="emh-everyone-body">
+              <span className="emh-everyone-icon"><ProfileIcon index={card.iconIndex} /></span>
+              <h3>{card.label}</h3>
+              <i />
+              <p>{card.body}</p>
             </div>
           </article>
         ))}

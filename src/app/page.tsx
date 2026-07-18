@@ -1,5 +1,6 @@
 ﻿import Link from 'next/link';
 import {
+  BuiltForEveryoneSection,
   DigitalProfileSection,
   FaqAccordion,
   HeroCardShowcase,
@@ -102,6 +103,10 @@ export default function Home() {
 
       <section id="card" className="emh-profile-section">
         <DigitalProfileSection />
+      </section>
+
+      <section id="everyone" className="emh-everyone-section">
+        <BuiltForEveryoneSection />
       </section>
 
       <section id="squad" className="emh-section emh-squad">
