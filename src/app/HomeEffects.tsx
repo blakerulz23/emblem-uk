@@ -688,13 +688,6 @@ export function DigitalProfilePreview(props: {
 const dpAssetPath = '/assets/optimized';
 const dpWordmarkPath = '/assets/digital-profile/emblem-wordmark.png';
 
-const dpWhyCards = [
-  ['Every Match Remembered', 'Fixtures, results, goals and assists - all in one place.'],
-  ['Every Memory Saved', 'Photos and videos that turn moments into memories.'],
-  ['Growth You Can See', 'Stats, feedback and progress that show how they are developing.'],
-  ['One Story. Every Team.', 'All clubs. All seasons. One profile that grows forever.'],
-] as const;
-
 const stepCards = [
   {
     number: '1',
@@ -886,7 +879,6 @@ export function DigitalProfileSection() {
       </div>
 
       <ClosingStatement />
-      <WhyItMatters />
     </div>
   );
 }
@@ -1321,25 +1313,6 @@ function ClosingStatement() {
   return (
     <div className="emh-dp2-closing">
       <p>Every card becomes a living season archive.</p>
-    </div>
-  );
-}
-
-function WhyItMatters() {
-  return (
-    <div className="emh-dp2-why">
-      <p className="emh-dp2-label">Why it matters</p>
-      <div>
-        {dpWhyCards.map(([title, body], index) => (
-          <article key={title}>
-            <span><ProfileIcon index={index + 1} /></span>
-            <div>
-              <h3>{title}</h3>
-              <p>{body}</p>
-            </div>
-          </article>
-        ))}
-      </div>
     </div>
   );
 }
