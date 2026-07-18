@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { MouseEvent, PointerEvent, RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { MouseEvent, PointerEvent, useCallback, useEffect, useRef, useState } from 'react';
 
 type Moment = {
   title: string;
@@ -685,94 +685,8 @@ export function DigitalProfilePreview(props: {
   );
 }
 
-type DP2MomentId = 'firstgoal' | 'teamphoto' | 'tournament' | 'captain';
-type DP2TabId = 'journey' | 'matches' | 'photos' | 'highlights' | 'achievements' | 'teams';
-type DP2Moment = {
-  id: DP2MomentId;
-  title: string;
-  date: string;
-  vs: string;
-  trust: 'Official Club' | 'Coach Verified';
-  official: boolean;
-  about: string;
-  media: string;
-  mediaType: 'image' | 'video';
-  stats: [label: string, value: string][];
-};
-type DP2Experience = {
-  id: DP2TabId;
-  label: string;
-  momentId: DP2MomentId;
-  iconIndex: number;
-};
-
 const dpAssetPath = '/assets/optimized';
 const dpWordmarkPath = '/assets/digital-profile/emblem-wordmark.png';
-
-const dpMoments: Record<DP2MomentId, DP2Moment> = {
-  firstgoal: {
-    id: 'firstgoal',
-    title: 'First Goal',
-    date: '12 March 2026',
-    vs: 'vs Hyde United',
-    trust: 'Coach Verified',
-    official: false,
-    about: 'Ollie scores his first goal from a corner. Great awareness and a composed finish. A proud moment for the whole family.',
-    media: '/assets/dp-first-goal.mp4',
-    mediaType: 'video',
-    stats: [['Goal', '1'], ['Assists', '0'], ['Minutes Played', '60'], ['Result', 'Won 3-1']],
-  },
-  teamphoto: {
-    id: 'teamphoto',
-    title: 'Team Photo',
-    date: '22 April 2026',
-    vs: 'Curzon Ashton U10',
-    trust: 'Coach Verified',
-    official: false,
-    about: 'The full U10 squad together on presentation day - the group that made the whole season one to remember.',
-    media: `${dpAssetPath}/dp-team-photo.webp`,
-    mediaType: 'image',
-    stats: [['Photos', '24'], ['Squad', '14'], ['Season', '2025/26'], ['Occasion', 'Presentation']],
-  },
-  tournament: {
-    id: 'tournament',
-    title: 'Tournament Winner',
-    date: '7 June 2026',
-    vs: 'Summer Shield Final',
-    trust: 'Official Club',
-    official: true,
-    about: 'Curzon Ashton lift the Summer Shield after a 3-1 final. Ollie kept a clean sheet in the semi to get them there.',
-    media: `${dpAssetPath}/dp-tournament-winner.webp`,
-    mediaType: 'image',
-    stats: [['Result', 'Won 3-1'], ['Clean Sheets', '2'], ['Round', 'Final'], ['Trophy', 'Winners']],
-  },
-  captain: {
-    id: 'captain',
-    title: 'Captain',
-    date: '15 September 2027',
-    vs: 'Season 2027/28',
-    trust: 'Official Club',
-    official: true,
-    about: 'Named club captain for the new season - recognised by the coaches for leadership on and off the pitch.',
-    media: `${dpAssetPath}/dp-captain.webp`,
-    mediaType: 'image',
-    stats: [['Appointed', '2027/28'], ['Role', 'Captain'], ['Age Group', 'U11'], ['Club', 'Curzon Ashton']],
-  },
-};
-
-const dpExperiences: DP2Experience[] = [
-  { id: 'journey', label: 'Journey', momentId: 'firstgoal', iconIndex: 0 },
-  { id: 'matches', label: 'Matches', momentId: 'tournament', iconIndex: 1 },
-  { id: 'photos', label: 'Photos', momentId: 'teamphoto', iconIndex: 2 },
-  { id: 'highlights', label: 'Highlights', momentId: 'firstgoal', iconIndex: 3 },
-  { id: 'achievements', label: 'Achievements', momentId: 'tournament', iconIndex: 4 },
-  { id: 'teams', label: 'Teams', momentId: 'captain', iconIndex: 5 },
-];
-
-const dpTimeline: { year: string; moments: DP2MomentId[] }[] = [
-  { year: '2026', moments: ['firstgoal', 'teamphoto', 'tournament'] },
-  { year: '2027', moments: ['captain'] },
-];
 
 const dpWhyCards = [
   ['Every Match Remembered', 'Fixtures, results, goals and assists - all in one place.'],
@@ -875,14 +789,9 @@ export function DigitalProfileSection() {
   const [unlocked, setUnlocked] = useState(false);
   const [booting, setBooting] = useState(false);
   const [hinting, setHinting] = useState(false);
-  const [activeTab, setActiveTab] = useState<DP2TabId>('journey');
-  const [activeMomentId, setActiveMomentId] = useState<DP2MomentId>('firstgoal');
-  const [swapping, setSwapping] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const revealRef = useRef<HTMLDivElement>(null);
   const introRef = useRef<HTMLDivElement>(null);
   const stageAnchorRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -900,14 +809,6 @@ export function DigitalProfileSection() {
     window.addEventListener('emblem-dp-hint', onHint);
     return () => window.removeEventListener('emblem-dp-hint', onHint);
   }, []);
-
-  useEffect(() => {
-    if (unlocked && dpMoments[activeMomentId].mediaType === 'video') {
-      videoRef.current?.play().catch(() => {});
-    } else {
-      videoRef.current?.pause();
-    }
-  }, [unlocked, activeMomentId]);
 
   const unlock = (scroll = false) => {
     if (unlocked || booting) {
@@ -956,28 +857,6 @@ export function DigitalProfileSection() {
     };
   }, [unlocked, reducedMotion]);
 
-  const toggleCollection = () => {
-    if (!unlocked) {
-      unlock(true);
-      return;
-    }
-    setUnlocked(false);
-  };
-
-  const pickMoment = (momentId: DP2MomentId) => {
-    if (momentId === activeMomentId) return;
-    setSwapping(true);
-    window.setTimeout(() => {
-      setActiveMomentId(momentId);
-      setSwapping(false);
-    }, reducedMotion ? 0 : 160);
-  };
-
-  const pickTab = (tab: DP2Experience) => {
-    setActiveTab(tab.id);
-    pickMoment(tab.momentId);
-  };
-
   return (
     <div className="emh-dp2">
       <div ref={introRef} className="emh-dp2-intro">
@@ -985,11 +864,13 @@ export function DigitalProfileSection() {
           <p className="emh-dp2-eyebrow">The digital profile</p>
           <h2>The card is just the <span>beginning.</span></h2>
           <p>Every card unlocks a private digital collection that grows with every match, goal, photo and milestone.</p>
-          <button type="button" className={`emh-dp2-toggle ${unlocked ? 'is-open' : ''}`} onClick={toggleCollection}>
-            <NfcIcon />
-            <span>{unlocked ? 'Hide the collection' : 'See everything the card unlocks'}</span>
-            <ChevronIcon />
-          </button>
+          {!unlocked && (
+            <button type="button" className="emh-dp2-toggle" onClick={() => unlock(true)}>
+              <NfcIcon />
+              <span>See everything the card unlocks</span>
+              <ChevronIcon />
+            </button>
+          )}
           <div className="emh-dp2-private">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z" />
@@ -1002,25 +883,6 @@ export function DigitalProfileSection() {
 
       <div ref={stageAnchorRef}>
         <DigitalProfileStage armed={unlocked} reducedMotion={reducedMotion} />
-      </div>
-
-      <div
-        ref={revealRef}
-        id="dpReveal"
-        className={`emh-dp2-reveal ${unlocked ? 'is-open' : ''}`}
-        aria-hidden={!unlocked}
-      >
-        {unlocked && (
-          <CollectionPanel
-            activeMoment={dpMoments[activeMomentId]}
-            activeMomentId={activeMomentId}
-            activeTab={activeTab}
-            onPickMoment={pickMoment}
-            onPickTab={pickTab}
-            swapping={swapping}
-            videoRef={videoRef}
-          />
-        )}
       </div>
 
       <ClosingStatement />
@@ -1452,159 +1314,6 @@ function DigitalProfileStage({ armed, reducedMotion }: { armed: boolean; reduced
         </div>
       </div>
     </div>
-  );
-}
-
-function CollectionPanel({
-  activeMoment,
-  activeMomentId,
-  activeTab,
-  onPickMoment,
-  onPickTab,
-  swapping,
-  videoRef,
-}: {
-  activeMoment: DP2Moment;
-  activeMomentId: DP2MomentId;
-  activeTab: DP2TabId;
-  onPickMoment: (momentId: DP2MomentId) => void;
-  onPickTab: (tab: DP2Experience) => void;
-  swapping: boolean;
-  videoRef: RefObject<HTMLVideoElement>;
-}) {
-  return (
-    <>
-      <ExperienceTabs activeTab={activeTab} onPickTab={onPickTab} />
-      <div className="emh-dp2-panel">
-        <MomentTimeline activeMomentId={activeMomentId} onPickMoment={onPickMoment} />
-        <MomentDetail activeMoment={activeMoment} swapping={swapping} videoRef={videoRef} />
-      </div>
-    </>
-  );
-}
-
-function ExperienceTabs({
-  activeTab,
-  onPickTab,
-}: {
-  activeTab: DP2TabId;
-  onPickTab: (tab: DP2Experience) => void;
-}) {
-  return (
-    <div className="emh-dp2-tabs" role="tablist" aria-label="Digital profile experiences">
-      {dpExperiences.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          role="tab"
-          aria-selected={activeTab === tab.id}
-          className={activeTab === tab.id ? 'is-active' : ''}
-          onClick={() => onPickTab(tab)}
-        >
-          <ProfileIcon index={tab.iconIndex} />
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function MomentTimeline({
-  activeMomentId,
-  onPickMoment,
-}: {
-  activeMomentId: DP2MomentId;
-  onPickMoment: (momentId: DP2MomentId) => void;
-}) {
-  return (
-    <div className="emh-dp2-timeline">
-      <p className="emh-dp2-label">Journey timeline</p>
-      {dpTimeline.map((group) => (
-        <div key={group.year} className="emh-dp2-year">
-          <h3>{group.year}</h3>
-          <div>
-            {group.moments.map((momentId) => {
-              const moment = dpMoments[momentId];
-              return (
-                <button
-                  key={moment.id}
-                  type="button"
-                  className={activeMomentId === moment.id ? 'is-active' : ''}
-                  onClick={() => onPickMoment(moment.id)}
-                >
-                  <span><ProfileIcon index={moment.official ? 4 : 2} /></span>
-                  <strong>{moment.title}</strong>
-                  <small>{moment.date}</small>
-                  <em className={moment.official ? 'is-official' : ''}>{moment.trust}</em>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function MomentDetail({
-  activeMoment,
-  swapping,
-  videoRef,
-}: {
-  activeMoment: DP2Moment;
-  swapping: boolean;
-  videoRef: RefObject<HTMLVideoElement>;
-}) {
-  return (
-    <>
-      <div className={`emh-dp2-media ${swapping ? 'is-swapping' : ''}`}>
-        <div className="emh-dp2-frame">
-          {activeMoment.mediaType === 'video' ? (
-            <video
-              key={activeMoment.id}
-              ref={videoRef}
-              src={activeMoment.media}
-              muted
-              playsInline
-              loop
-              preload="none"
-            />
-          ) : (
-            <Image key={activeMoment.id} src={activeMoment.media} alt={activeMoment.title} width={1200} height={675} loading="lazy" sizes="(max-width: 900px) 92vw, 44vw" />
-          )}
-          <span className="emh-dp2-media-badge">
-            <i className={activeMoment.official ? 'is-official' : ''} />
-            {activeMoment.trust}
-          </span>
-          {activeMoment.mediaType === 'video' && (
-            <div className="emh-dp2-scrubber">
-              <span />
-              <b>0:08 / 0:08</b>
-            </div>
-          )}
-        </div>
-        <h3>{activeMoment.title}</h3>
-        <div className="emh-dp2-meta">
-          <span>{activeMoment.date}</span>
-          <span>{activeMoment.vs}</span>
-          <span className={activeMoment.official ? 'is-official' : ''}>{activeMoment.trust}</span>
-        </div>
-      </div>
-      <div className={`emh-dp2-about ${swapping ? 'is-swapping' : ''}`}>
-        <p className="emh-dp2-label">About this moment</p>
-        <p>{activeMoment.about}</p>
-        <p className="emh-dp2-label">Key stats</p>
-        <div className="emh-dp2-stats">
-          {activeMoment.stats.map(([label, value]) => (
-            <div key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
-            </div>
-          ))}
-        </div>
-        <button type="button">Share Moment</button>
-      </div>
-    </>
   );
 }
 
