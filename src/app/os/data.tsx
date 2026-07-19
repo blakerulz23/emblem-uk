@@ -3,7 +3,6 @@ import type {
   AddEvent,
   AddMomentType,
   AddPlayer,
-  AttrCategory,
   CelebrateGroup,
   CoachActivityItem,
   Moment,
@@ -87,18 +86,6 @@ export const JIC: Record<string, (color: string) => React.ReactElement> = {
     </svg>
   ),
 };
-
-export const ATTR: Record<AttrCategory, [string, number, number][]> = {
-  Attacking: [['Passing', 89, 5], ['Dribbling', 86, 4], ['Vision', 88, 6], ['Finishing', 79, 3], ['Tackling', 74, 4], ['Stamina', 85, 5]],
-  Physical: [['Speed', 78, 3], ['Strength', 72, 2], ['Agility', 85, 5], ['Stamina', 80, 4], ['Jumping', 83, 3]],
-  Mental: [['Composure', 88, 4], ['Concentration', 86, 5], ['Decisions', 84, 4], ['Bravery', 90, 6], ['Leadership', 79, 3]],
-  Technical: [['Distribution', 74, 3], ['Kicking', 76, 4], ['Ball Control', 71, 2], ['Throwing', 82, 5]],
-  Tactical: [['Positioning', 90, 5], ['Anticipation', 85, 4], ['Awareness', 83, 5], ['Organisation', 81, 4]],
-};
-
-export const CAT_META: [AttrCategory, string][] = [
-  ['Attacking', '⚽'], ['Physical', '⚡'], ['Mental', '🧠'], ['Technical', '🥾'], ['Tactical', '🎯'],
-];
 
 export const SQUAD: SquadPlayer[] = [
   { name: 'Ollie Harrison', num: 7, pos: 'Midfielder', status: 'Recognised today' },

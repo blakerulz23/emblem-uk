@@ -4,8 +4,11 @@ export type PlayerTab = 'home' | 'journey' | 'card' | 'team' | 'profile';
 export type CoachTab = 'home' | 'team' | 'celebrate' | 'verify' | 'profile';
 export type Tab = PlayerTab | CoachTab;
 
-export type AttrCategory = 'Attacking' | 'Physical' | 'Mental' | 'Technical' | 'Tactical';
-export type CardBackTab = 'Attributes' | 'Development' | 'Coach';
+// Matches playerProfile.ts's SkillCategoryId — kept as a separate alias here
+// (rather than importing it) so this foundational state-shape file doesn't
+// depend on a specific screen's data module.
+export type AttrCategory = 'attacking' | 'physical' | 'mental' | 'technical' | 'tactical';
+export type CardBackTab = 'Skills' | 'Development' | 'Coach';
 
 export type TrustSource = 'club' | 'league' | 'coach' | 'parent' | 'player';
 export type RarityTier = 'foil' | 'metallic' | 'standard';
@@ -94,8 +97,8 @@ export type OsState = {
 
 export const initialOsState: OsState = {
   tab: 'home',
-  cat: 'Attacking',
-  ctab: 'Attributes',
+  cat: 'attacking',
+  ctab: 'Skills',
   flipped: false,
   moment: null,
   mStage: 1,
