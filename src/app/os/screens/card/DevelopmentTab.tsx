@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { COACH_SUMMARY, DEVELOPMENT_SEASONS, getTopImprovements } from '../../playerProfile';
+import { useOsData, useTopImprovements } from '../../OsDataContext';
 import { useCountUp } from '../../useCountUp';
 
 const WHAT_CHANGED = [
@@ -11,13 +11,14 @@ const WHAT_CHANGED = [
 ];
 
 export default function DevelopmentTab() {
+  const { coachSummary: COACH_SUMMARY, developmentSeasons: DEVELOPMENT_SEASONS } = useOsData();
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
     return () => cancelAnimationFrame(id);
   }, []);
 
-  const improvements = getTopImprovements(4);
+  const improvements = useTopImprovements(4);
 
   return (
     <>

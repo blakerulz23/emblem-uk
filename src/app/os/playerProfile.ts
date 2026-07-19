@@ -410,8 +410,11 @@ export const COACH_SUMMARY: CoachSummary = {
  */
 const IMPROVEMENT_TIEBREAK_ORDER: SkillCategoryId[] = ['mental', 'attacking', 'technical', 'tactical', 'physical'];
 
-export function getTopImprovements(count: number): { label: string; seasonalChange: number }[] {
-  const byId = new Map(SKILL_CATEGORIES.map((c) => [c.id, c]));
+export function getTopImprovements(
+  categories: SkillCategory[],
+  count: number
+): { label: string; seasonalChange: number }[] {
+  const byId = new Map(categories.map((c) => [c.id, c]));
   const all = IMPROVEMENT_TIEBREAK_ORDER.flatMap((id) => byId.get(id)?.skills ?? []);
   return [...all]
     .sort((a, b) => b.seasonalChange - a.seasonalChange)
@@ -419,8 +422,8 @@ export function getTopImprovements(count: number): { label: string; seasonalChan
     .map((s) => ({ label: s.label, seasonalChange: s.seasonalChange }));
 }
 
-export function findSkill(skillId: string): { skill: Skill; category: SkillCategory } | null {
-  for (const category of SKILL_CATEGORIES) {
+export function findSkill(categories: SkillCategory[], skillId: string): { skill: Skill; category: SkillCategory } | null {
+  for (const category of categories) {
     const skill = category.skills.find((s) => s.id === skillId);
     if (skill) return { skill, category };
   }

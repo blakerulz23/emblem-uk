@@ -1,6 +1,19 @@
 import { osAssetPath } from '../data';
+import SignIn from './SignIn';
+import RoleSelect from '../screens/RoleSelect';
 
-export default function ActivationGate({ onActivate }: { onActivate: () => void }) {
+export type ActivationGateProps = {
+  onActivate: () => void;
+  /** Null when there is no Supabase session yet. */
+  hasSession: boolean;
+  /** The signed-in user's profiles.role — null until RoleSelect has run once. */
+  profileRole: 'parent' | 'coach' | null;
+};
+
+export default function ActivationGate({ onActivate, hasSession, profileRole }: ActivationGateProps) {
+  if (!hasSession) return <SignIn />;
+  if (!profileRole) return <RoleSelect />;
+
   return (
     <div style={{ position: 'absolute', inset: 0, zIndex: 80, background: 'radial-gradient(120% 80% at 50% 0%,#211b16 0%,#0f0c0a 55%,#0a0908 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '36px 30px', textAlign: 'center', overflow: 'hidden' }}>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 130, background: 'repeating-linear-gradient(115deg,transparent 0 22px,rgba(233,116,53,.05) 22px 24px)' }} />

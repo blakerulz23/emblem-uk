@@ -1,6 +1,9 @@
-import { VERIFY_QUEUE } from '../data';
+'use client';
+
+import { useOsData } from '../OsDataContext';
 
 export default function CoachVerify() {
+  const { verifyQueue: VERIFY_QUEUE } = useOsData();
   return (
     <>
       <div style={{ marginBottom: 16 }}>
