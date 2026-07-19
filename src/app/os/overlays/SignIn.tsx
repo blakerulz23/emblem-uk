@@ -1,31 +1,59 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { osAssetPath } from '../data';
 import { createClient } from '@/lib/supabase/client';
 
 /**
  * The entry point into Emblem OS when there's no Supabase session yet.
- * Magic-link only — no passwords to leak for a children's-data app.
+ * Sends a 6-digit code by email and verifies it in-app, rather than relying
+ * on the user clicking a link — email security scanners (Outlook Safe Links
+ * and similar) pre-visit links in incoming mail and silently burn through
+ * a magic link's one-time token before the real user ever clicks it. A code
+ * typed into the app can't be consumed that way.
  */
 export default function SignIn() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [code, setCode] = useState('');
+  // Which screen to show — independent of `status`, so a failed code
+  // verification shows its error on the code screen rather than bouncing
+  // back to the email screen (status alone can't distinguish "error while
+  // sending" from "error while verifying").
+  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
 
-  const submit = async (e: React.FormEvent) => {
+  const sendCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (status === 'sending') return;
-    setStatus('sending');
+    if (status === 'loading') return;
+    setStatus('loading');
     setErrorMsg('');
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithOtp({ email: email.trim() });
+
+    if (error) {
+      setStatus('error');
+      setErrorMsg(error.message);
+      return;
+    }
+    setStep('code');
+    setStatus('idle');
+  };
+
+  const verifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (status === 'loading') return;
+    setStatus('loading');
+    setErrorMsg('');
+
+    const supabase = createClient();
+    const { error } = await supabase.auth.verifyOtp({
       email: email.trim(),
-      options: {
-        emailRedirectTo:
-          typeof window !== 'undefined' ? `${window.location.origin}/os` : undefined,
-      },
+      token: code.trim(),
+      type: 'email',
     });
 
     if (error) {
@@ -33,7 +61,7 @@ export default function SignIn() {
       setErrorMsg(error.message);
       return;
     }
-    setStatus('sent');
+    router.refresh();
   };
 
   return (
@@ -66,7 +94,7 @@ export default function SignIn() {
         }}
       />
 
-      {status === 'sent' ? (
+      {step === 'code' ? (
         <>
           <div
             style={{
@@ -87,11 +115,76 @@ export default function SignIn() {
             </svg>
           </div>
           <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 22, lineHeight: 1.2, color: '#F4F1EC', marginBottom: 10 }}>
-            Check your email
+            Enter your code
           </div>
-          <p style={{ fontSize: 14, lineHeight: 1.55, color: '#B8AE9F', maxWidth: 280, margin: 0 }}>
-            We sent a sign-in link to <strong style={{ color: '#F4F1EC' }}>{email.trim()}</strong>. Open it on this device to continue.
+          <p style={{ fontSize: 14, lineHeight: 1.55, color: '#B8AE9F', maxWidth: 280, margin: '0 0 24px' }}>
+            We sent a 6-digit code to <strong style={{ color: '#F4F1EC' }}>{email.trim()}</strong>.
           </p>
+
+          <form onSubmit={verifyCode} style={{ width: '100%', maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              required
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="123456"
+              aria-label="6-digit code"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                minHeight: 48,
+                borderRadius: 12,
+                border: '1px solid rgba(233,116,53,.35)',
+                background: 'rgba(255,255,255,.04)',
+                color: '#F4F1EC',
+                fontFamily: 'Roboto',
+                fontSize: 20,
+                letterSpacing: '.3em',
+                textAlign: 'center',
+                padding: '0 16px',
+                outline: 'none',
+              }}
+            />
+            <button
+              type="submit"
+              disabled={status === 'loading' || !code.trim()}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                background: status === 'loading' ? 'rgba(233,116,53,.5)' : '#E97435',
+                color: '#0B0A09',
+                fontFamily: 'Roboto',
+                fontWeight: 800,
+                fontSize: 15,
+                minHeight: 48,
+                padding: '15px 30px',
+                borderRadius: 14,
+                border: 'none',
+                cursor: status === 'loading' ? 'default' : 'pointer',
+                boxShadow: '0 16px 34px -16px rgba(233,116,53,.8)',
+              }}
+            >
+              {status === 'loading' ? 'Verifying…' : 'Verify code'}
+            </button>
+          </form>
+
+          <button
+            type="button"
+            onClick={() => { setStep('email'); setStatus('idle'); setCode(''); setErrorMsg(''); }}
+            style={{ background: 'none', border: 'none', color: 'var(--os-muted)', fontSize: 13, marginTop: 16, cursor: 'pointer', textDecoration: 'underline' }}
+          >
+            Use a different email
+          </button>
+
+          {status === 'error' && (
+            <p role="alert" style={{ fontSize: 13, color: '#E9745C', marginTop: 14, maxWidth: 280 }}>
+              {errorMsg || 'Something went wrong — try again.'}
+            </p>
+          )}
         </>
       ) : (
         <>
@@ -105,7 +198,7 @@ export default function SignIn() {
             Sign in with your email to unlock your child&apos;s living football journey.
           </p>
 
-          <form onSubmit={submit} style={{ width: '100%', maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <form onSubmit={sendCode} style={{ width: '100%', maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <input
               type="email"
               required
@@ -130,13 +223,13 @@ export default function SignIn() {
             />
             <button
               type="submit"
-              disabled={status === 'sending' || !email.trim()}
+              disabled={status === 'loading' || !email.trim()}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 10,
-                background: status === 'sending' ? 'rgba(233,116,53,.5)' : '#E97435',
+                background: status === 'loading' ? 'rgba(233,116,53,.5)' : '#E97435',
                 color: '#0B0A09',
                 fontFamily: 'Roboto',
                 fontWeight: 800,
@@ -145,11 +238,11 @@ export default function SignIn() {
                 padding: '15px 30px',
                 borderRadius: 14,
                 border: 'none',
-                cursor: status === 'sending' ? 'default' : 'pointer',
+                cursor: status === 'loading' ? 'default' : 'pointer',
                 boxShadow: '0 16px 34px -16px rgba(233,116,53,.8)',
               }}
             >
-              {status === 'sending' ? 'Sending link…' : 'Send sign-in link'}
+              {status === 'loading' ? 'Sending code…' : 'Send sign-in code'}
             </button>
           </form>
 
