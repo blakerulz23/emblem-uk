@@ -1,7 +1,11 @@
-import { COACH_ACTIVITY, JIC, VERIFY_QUEUE, osAssetPath } from '../data';
+'use client';
+
+import { JIC, osAssetPath } from '../data';
+import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 
 export default function CoachHome({ actions }: { actions: OsActions }) {
+  const { coachActivity: COACH_ACTIVITY, verifyQueue: VERIFY_QUEUE } = useOsData();
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#15130F', borderRadius: 18, padding: '16px 18px', marginBottom: 20 }}>

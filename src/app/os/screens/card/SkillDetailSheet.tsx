@@ -1,8 +1,11 @@
+'use client';
+
 import { onActivateKey } from '../../a11y';
-import { COACH_SUMMARY, findSkill } from '../../playerProfile';
+import { useFindSkill, useOsData } from '../../OsDataContext';
 
 export default function SkillDetailSheet({ skillId, onClose }: { skillId: string; onClose: () => void }) {
-  const found = findSkill(skillId);
+  const { coachSummary: COACH_SUMMARY } = useOsData();
+  const found = useFindSkill(skillId);
   if (!found) return null;
   const { skill } = found;
 

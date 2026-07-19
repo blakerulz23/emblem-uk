@@ -1,7 +1,9 @@
-import { COACH_SUMMARY } from '../../playerProfile';
+'use client';
+
+import { useOsData } from '../../OsDataContext';
 
 export default function CoachTab() {
-  const c = COACH_SUMMARY;
+  const { coachSummary: c } = useOsData();
 
   return (
     <div style={{ background: 'var(--os-card)', borderRadius: 16, padding: 22, boxShadow: '0 6px 16px -12px rgba(0,0,0,.2)' }}>

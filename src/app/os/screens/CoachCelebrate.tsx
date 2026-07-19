@@ -1,7 +1,10 @@
-import { SQUAD } from '../data';
+'use client';
+
+import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 
 export default function CoachCelebrate({ actions }: { actions: OsActions }) {
+  const { squad: SQUAD } = useOsData();
   return (
     <>
       <div style={{ marginBottom: 16 }}>

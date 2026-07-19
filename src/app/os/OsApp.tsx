@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent, SyntheticEvent } from 'react';
-import { ICN, fmtFileSize, osAssetPath } from './data';
+import { ADD_ACH, ICN, fmtFileSize, osAssetPath } from './data';
 import { initialOsState } from './types';
 import type { AttrCategory, CardBackTab, OsState, Tab } from './types';
+import { OsDataProvider, DEMO_OS_DATA } from './OsDataContext';
+import type { OsData } from './OsDataContext';
 
 import ActivationGate from './overlays/ActivationGate';
 import MomentStage from './overlays/MomentStage';
@@ -73,8 +75,20 @@ export type OsActions = {
   goCoachCelebrate: () => void;
 };
 
-export default function OsApp() {
-  const [state, setState] = useState<OsState>(initialOsState);
+export type OsAppProps = {
+  /** Real Supabase-backed player/team data, fetched server-side. Falls back to demo data when absent (no Supabase project configured, or no linked player yet). */
+  initialData?: OsData;
+  /** Whether src/app/os/page.tsx found a Supabase session. */
+  hasSession?: boolean;
+  /** The signed-in user's profiles.role. Null until RoleSelect has run once. */
+  profileRole?: 'parent' | 'coach' | null;
+};
+
+export default function OsApp({ initialData, hasSession = false, profileRole = null }: OsAppProps) {
+  const [state, setState] = useState<OsState>(() => ({
+    ...initialOsState,
+    role: profileRole === 'coach' ? 'coach' : 'owner',
+  }));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const sentTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -93,14 +107,43 @@ export default function OsApp() {
   }, []);
 
   const addFiles = useCallback((list: FileList | null) => {
-    const arr = Array.from(list || []).map((file, i) => {
+    const incoming = Array.from(list || []);
+    const arr = incoming.map((file, i) => {
       const isVideo = (file.type || '').indexOf('video') === 0;
       const url = URL.createObjectURL(file);
       objectUrlsRef.current.add(url);
-      return { id: `${Date.now()}-${i}`, name: file.name, size: fmtFileSize(file.size), isVideo, url };
+      return {
+        id: `${Date.now()}-${i}`,
+        name: file.name,
+        size: fmtFileSize(file.size),
+        isVideo,
+        url,
+        uploadStatus: 'uploading' as const,
+      };
     });
     patch((s) => ({ files: s.files.concat(arr) }));
-  }, [patch]);
+
+    // Instant local preview above is the UX; this upload happens in the
+    // background so submitMoment() has real S3 keys ready by the time the
+    // user actually hits submit.
+    arr.forEach((entry, i) => {
+      const form = new FormData();
+      form.append('file', incoming[i]);
+      form.append('playerId', state.aPlayer);
+      fetch('/api/os/moments/upload', { method: 'POST', body: form })
+        .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+        .then((data: { key: string }) => {
+          patch((s) => ({
+            files: s.files.map((f) => (f.id === entry.id ? { ...f, uploadStatus: 'done', s3Key: data.key } : f)),
+          }));
+        })
+        .catch(() => {
+          patch((s) => ({
+            files: s.files.map((f) => (f.id === entry.id ? { ...f, uploadStatus: 'error' } : f)),
+          }));
+        });
+    });
+  }, [patch, state.aPlayer]);
 
   const closeFlow = useCallback(() => {
     state.files.forEach((f) => { URL.revokeObjectURL(f.url); objectUrlsRef.current.delete(f.url); });
@@ -167,7 +210,21 @@ export default function OsApp() {
     pickAAch: (id) => patch({ aAch: id }),
     setDesc: (e) => patch({ aDesc: e.target.value }),
     setScore: (e) => patch({ aScore: e.target.value }),
-    submitMoment: () => patch({ addStep: 0, addOpen: false, addUnlock: true }),
+    submitMoment: () => {
+      const achLabel = ADD_ACH.find((a) => a.id === state.aAch)?.label ?? state.aDesc ?? 'New Moment';
+      const media = state.files
+        .filter((f) => f.uploadStatus === 'done' && f.s3Key)
+        .map((f) => ({ key: f.s3Key as string, kind: (f.isVideo ? 'video' : 'photo') as 'video' | 'photo' }));
+      // Fire-and-forget: the demo unlock celebration is instant either way,
+      // matching the app's existing UX; the real DB row lands in the
+      // background using whichever uploads have already confirmed.
+      fetch('/api/os/moments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: state.aPlayer, title: achLabel, note: state.aDesc, media }),
+      }).catch(() => {});
+      patch({ addStep: 0, addOpen: false, addUnlock: true });
+    },
     unlockViewCollection: () => { closeFlow(); patch({ tab: 'journey' }); },
     unlockCreateStory: () => { closeFlow(); patch({ tab: 'journey' }); },
     unlockReturnHome: () => { closeFlow(); patch({ tab: 'home' }); },
@@ -187,6 +244,16 @@ export default function OsApp() {
     pickAward: (a) => patch({ award: a }),
     sendRecognition: () => {
       if (!state.award) return;
+      // state.celeb is the player's display name, not a DB id — SQUAD is
+      // still demo data (see osData.ts) with no stable player id to send
+      // here yet. Once a real coach's squad is wired through, this becomes
+      // a real players.id and the celebrate route's RLS check starts doing
+      // real work instead of just rejecting the request.
+      fetch('/api/os/celebrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId: state.celeb, award: state.award, message: state.coachMsg }),
+      }).catch(() => {});
       patch({ celeb: null, award: null, coachMsg: '', sent: true });
       clearTimeout(sentTimerRef.current);
       sentTimerRef.current = setTimeout(() => patch({ sent: false }), 2600);
@@ -212,11 +279,14 @@ export default function OsApp() {
   const showLogo = state.tab === 'home';
 
   return (
+    <OsDataProvider value={initialData ?? DEMO_OS_DATA}>
     <div className={`emblem-os${state.dark ? ' os-dark' : ''}`}>
       <div style={{ position: 'relative', width: 400, maxWidth: '100%', height: 848, background: '#0B0B0B', borderRadius: 52, padding: 11, boxShadow: '0 50px 100px -30px rgba(0,0,0,.55)' }}>
         <div style={{ position: 'relative', width: '100%', height: '100%', background: 'var(--os-screen)', borderRadius: 42, overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'background .35s ease' }}>
 
-          {!state.activated && <ActivationGate onActivate={actions.activate} />}
+          {!state.activated && (
+            <ActivationGate onActivate={actions.activate} hasSession={hasSession} profileRole={profileRole} />
+          )}
 
           {/* status bar */}
           <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 30px 6px', fontFamily: 'Roboto', fontWeight: 700, fontSize: 15, color: 'var(--os-ink)' }}>
@@ -322,5 +392,6 @@ export default function OsApp() {
         </div>
       </div>
     </div>
+    </OsDataProvider>
   );
 }

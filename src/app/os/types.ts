@@ -59,7 +59,16 @@ export type AddPlayer = { id: string; name: string; team: string; num: number; g
 export type AddEvent = { id: string; label: string; emoji: string };
 export type AddAchievement = { id: string; label: string; emoji: string; rank: MomentId };
 
-export type UploadedFile = { id: string; name: string; size: string; isVideo: boolean; url: string };
+export type UploadedFile = {
+  id: string;
+  name: string;
+  size: string;
+  isVideo: boolean;
+  url: string;
+  /** Background-upload status against src/app/api/os/moments/upload. 'error' still lets the moment submit — the local preview isn't blocked on it. */
+  uploadStatus: 'uploading' | 'done' | 'error';
+  s3Key?: string;
+};
 
 export type SquadPlayer = { name: string; num: number; pos: string; status: string };
 

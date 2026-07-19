@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { onActivateKey } from '../../a11y';
 import { HOW_SCORES_WORK_COPY } from '../../scoring';
-import { SKILL_CATEGORIES } from '../../playerProfile';
+import { useOsData } from '../../OsDataContext';
 import type { Skill } from '../../playerProfile';
 import type { AttrCategory } from '../../types';
 import { useCountUp } from '../../useCountUp';
@@ -20,6 +20,7 @@ export default function SkillsTab({
   onFlipCard: () => void;
   flipHint: string;
 }) {
+  const { skillCategories: SKILL_CATEGORIES } = useOsData();
   const [openSkillId, setOpenSkillId] = useState<string | null>(null);
   const [showScoreInfo, setShowScoreInfo] = useState(false);
   const category = SKILL_CATEGORIES.find((c) => c.id === activeCategory) || SKILL_CATEGORIES[0];

@@ -1,5 +1,7 @@
+'use client';
+
 import { osAssetPath } from '../data';
-import { PLAYER_PROFILE, getTopImprovements } from '../playerProfile';
+import { useOsData, useTopImprovements } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
 import SkillsTab from './card/SkillsTab';
@@ -7,10 +9,11 @@ import DevelopmentTab from './card/DevelopmentTab';
 import CoachTab from './card/CoachTab';
 
 export default function CardScreen({ state, actions }: { state: OsState; actions: OsActions }) {
+  const { playerProfile: PLAYER_PROFILE } = useOsData();
   const flipHint = state.flipped ? 'Tap to see the front' : 'Tap to flip the card';
   const [firstName, ...restName] = PLAYER_PROFILE.name.split(' ');
   const lastName = restName.join(' ');
-  const drivenBy = getTopImprovements(3);
+  const drivenBy = useTopImprovements(3);
 
   const firstGoalTeaser = (
     <div onClick={actions.openLatest} style={{ position: 'relative', overflow: 'hidden', width: 300, maxWidth: '100%', margin: '0 auto 12px', borderRadius: 14, background: 'var(--os-card)', border: '1px solid var(--os-border)', boxShadow: '0 8px 22px -14px rgba(0,0,0,.22)', padding: '12px 13px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
