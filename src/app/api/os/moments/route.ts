@@ -41,6 +41,11 @@ export async function POST(request: NextRequest) {
       title,
       occurred_on: occurredOn ?? null,
       trust: 'parent',
+      // Explicit even though the DB default is 'pending' — makes it obvious
+      // in code review that parent submissions are gated on coach approval
+      // (see /api/os/moments/[id]/moderate for the approve/reject flow, and
+      // the CoachVerify screen for the surface a coach reviews from).
+      status: 'pending',
       note: note ?? null,
       uploaded_by: user.id,
     })

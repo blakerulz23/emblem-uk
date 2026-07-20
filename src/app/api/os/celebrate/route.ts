@@ -30,6 +30,11 @@ export async function POST(request: NextRequest) {
       player_id: playerId,
       title: award,
       trust: 'coach',
+      // Coach-authored recognitions bypass the moderation queue — the coach's
+      // action IS the approval step. Contrast with parent-submitted moments
+      // (see /api/os/moments/route.ts) which start status='pending' until a
+      // coach on the player's team explicitly approves via /moderate.
+      status: 'approved',
       note: message ?? null,
       uploaded_by: user.id,
       verified_by: user.id,
