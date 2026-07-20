@@ -1,4 +1,8 @@
+'use client';
+
+import { useState } from 'react';
 import { osAssetPath } from '../data';
+import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 
 const identity: [string, string][] = [
@@ -18,6 +22,23 @@ const goals = [
 ];
 
 export default function Profile({ actions }: { actions: OsActions }) {
+  const { mode, playerId } = useOsData();
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteStatus, setInviteStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+
+  const sendInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!playerId || !inviteEmail.trim()) return;
+    setInviteStatus('sending');
+    const res = await fetch('/api/os/invites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playerId, invitedEmail: inviteEmail.trim() }),
+    });
+    setInviteStatus(res.ok ? 'sent' : 'error');
+  };
+
   return (
     <>
       <div onMouseMove={actions.tiltMove} onMouseLeave={actions.tiltReset} style={{ background: 'var(--os-card)', borderRadius: 20, padding: 18, boxShadow: '0 10px 26px -16px rgba(0,0,0,.22)', marginBottom: 16 }}>
@@ -106,10 +127,42 @@ export default function Profile({ actions }: { actions: OsActions }) {
           <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: 'var(--os-muted)' }}>Profile visibility</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: 'var(--os-ink)' }}>Private</div><div style={{ fontSize: 11, color: 'var(--os-muted)' }}>Approved family &amp; team only</div></div>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, padding: 13, borderRadius: 12, background: 'rgba(233,116,53,.1)', border: '1px solid rgba(233,116,53,.3)', color: '#C4501C', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, cursor: 'pointer' }}>
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#C4501C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="8" r="3.2" /><path d="M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 3 1M18 8v6M21 11h-6" /></svg>
-          Invite family or coach
-        </div>
+        {mode === 'demo' || !showInvite ? (
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setShowInvite(true)}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, padding: 13, borderRadius: 12, background: 'rgba(233,116,53,.1)', border: '1px solid rgba(233,116,53,.3)', color: '#C4501C', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, cursor: 'pointer' }}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#C4501C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="8" r="3.2" /><path d="M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 3 1M18 8v6M21 11h-6" /></svg>
+            Invite family or coach
+          </div>
+        ) : (
+          <form onSubmit={sendInvite} style={{ marginTop: 14 }}>
+            {inviteStatus === 'sent' ? (
+              <p style={{ fontSize: 13, color: '#2E9E5B', textAlign: 'center' }}>Invite sent to {inviteEmail}.</p>
+            ) : (
+              <>
+                <input
+                  type="email"
+                  required
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="Their email address"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 14, marginBottom: 8 }}
+                />
+                <button
+                  type="submit"
+                  disabled={inviteStatus === 'sending'}
+                  style={{ width: '100%', padding: 12, borderRadius: 11, background: '#E97435', color: '#fff', border: 'none', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, cursor: inviteStatus === 'sending' ? 'default' : 'pointer' }}
+                >
+                  {inviteStatus === 'sending' ? 'Sending…' : 'Send invite'}
+                </button>
+                {inviteStatus === 'error' && <p style={{ fontSize: 12.5, color: '#C0392B', marginTop: 6 }}>Could not send the invite — try again.</p>}
+              </>
+            )}
+          </form>
+        )}
       </div>
     </>
   );

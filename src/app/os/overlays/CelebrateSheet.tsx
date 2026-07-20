@@ -1,14 +1,19 @@
 import { CELEBRATE_CATS } from '../data';
+import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
 
 export default function CelebrateSheet({ state, actions }: { state: OsState; actions: OsActions }) {
+  const { squad } = useOsData();
   const sendBg = state.award ? '#E97435' : '#C9C2B6';
+  // state.celeb holds a player id (not a display name) so the celebrate
+  // API route can target a real playerId — resolve the name to show here.
+  const playerName = squad.find((p) => p.id === state.celeb)?.name ?? '';
   return (
     <div onClick={actions.closeCeleb} style={{ position: 'absolute', inset: 0, zIndex: 46, background: 'rgba(15,13,11,.5)', display: 'flex', alignItems: 'flex-end' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', background: '#F4F2EE', borderRadius: '26px 26px 0 0', padding: '10px 20px 26px', maxHeight: '90%', overflowY: 'auto' }}>
         <div style={{ width: 42, height: 5, borderRadius: 4, background: 'rgba(0,0,0,.18)', margin: '0 auto 16px' }} />
-        <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 22, color: 'var(--os-ink)' }}>Celebrate {state.celeb}</div>
+        <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 22, color: 'var(--os-ink)' }}>Celebrate {playerName}</div>
         <div style={{ fontSize: 13, color: 'var(--os-muted)', margin: '3px 0 16px' }}>Pick one — it&apos;s added to their journey and their family is notified.</div>
         {CELEBRATE_CATS.map((group) => (
           <div key={group.group}>

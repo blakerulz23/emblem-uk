@@ -17,8 +17,9 @@ export type PlayerProfile = {
   age: number;
   height: string;
   preferredFoot: 'Left' | 'Right';
-  overallScore: number;
-  seasonalChange: number;
+  /** Null for a real player with no coach assessment yet — never a demo/placeholder number. */
+  overallScore: number | null;
+  seasonalChange: number | null;
 };
 
 export type Skill = {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useOsData, useTopImprovements } from '../../OsDataContext';
 import { useCountUp } from '../../useCountUp';
+import EmptyState from '../EmptyState';
 
 const WHAT_CHANGED = [
   'More confident receiving the ball',
@@ -11,7 +12,7 @@ const WHAT_CHANGED = [
 ];
 
 export default function DevelopmentTab() {
-  const { coachSummary: COACH_SUMMARY, developmentSeasons: DEVELOPMENT_SEASONS } = useOsData();
+  const { mode, coachSummary: COACH_SUMMARY, developmentSeasons: DEVELOPMENT_SEASONS } = useOsData();
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     const id = requestAnimationFrame(() => setMounted(true));
@@ -19,6 +20,15 @@ export default function DevelopmentTab() {
   }, []);
 
   const improvements = useTopImprovements(4);
+
+  if (mode !== 'demo' && DEVELOPMENT_SEASONS.length === 0) {
+    return (
+      <EmptyState
+        title="Development begins this season."
+        body="Progress will appear after two or more assessments."
+      />
+    );
+  }
 
   return (
     <>
@@ -48,17 +58,19 @@ export default function DevelopmentTab() {
         </ul>
       </div>
 
-      <div style={{ background: 'var(--os-card)', borderRadius: 16, padding: 16, boxShadow: '0 6px 16px -12px rgba(0,0,0,.2)', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.09em', fontSize: 11, color: 'var(--os-muted)', marginBottom: 6 }}>COACH RATING</div>
-        <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 34, color: '#E97435', lineHeight: 1 }}>{COACH_SUMMARY.rating}</div>
-        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 11, color: '#6B6357', marginTop: 2 }}>out of 10 · a coaching assessment, not part of the calculated overall score</div>
-        {COACH_SUMMARY.verified && (
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2E9E5B" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-            <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 9.5, letterSpacing: '.05em', color: '#2E9E5B' }}>VERIFIED</span>
-          </div>
-        )}
-      </div>
+      {COACH_SUMMARY && (
+        <div style={{ background: 'var(--os-card)', borderRadius: 16, padding: 16, boxShadow: '0 6px 16px -12px rgba(0,0,0,.2)', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.09em', fontSize: 11, color: 'var(--os-muted)', marginBottom: 6 }}>COACH RATING</div>
+          <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 34, color: '#E97435', lineHeight: 1 }}>{COACH_SUMMARY.rating}</div>
+          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 11, color: '#6B6357', marginTop: 2 }}>out of 10 · a coaching assessment, not part of the calculated overall score</div>
+          {COACH_SUMMARY.verified && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#2E9E5B" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+              <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 9.5, letterSpacing: '.05em', color: '#2E9E5B' }}>VERIFIED</span>
+            </div>
+          )}
+        </div>
+      )}
     </>
   );
 }

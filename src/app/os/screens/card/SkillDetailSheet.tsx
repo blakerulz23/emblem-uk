@@ -79,10 +79,12 @@ export default function SkillDetailSheet({ skillId, onClose }: { skillId: string
           </div>
         )}
 
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2E9E5B" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
-          <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 11.5, letterSpacing: '.05em', color: '#2E9E5B', textTransform: 'uppercase' }}>Verified by {COACH_SUMMARY.name}</span>
-        </div>
+        {COACH_SUMMARY && (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2E9E5B" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+            <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 11.5, letterSpacing: '.05em', color: '#2E9E5B', textTransform: 'uppercase' }}>Verified by {COACH_SUMMARY.name}</span>
+          </div>
+        )}
       </div>
     </div>
   );

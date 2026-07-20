@@ -70,9 +70,9 @@ export type UploadedFile = {
   s3Key?: string;
 };
 
-export type SquadPlayer = { name: string; num: number; pos: string; status: string };
+export type SquadPlayer = { id: string; name: string; num: number; pos: string; status: string };
 
-export type VerifyItem = { player: string; moment: string; thumb: string; by: string; date: string };
+export type VerifyItem = { id: string; player: string; moment: string; thumb: string; by: string; date: string };
 export type CoachActivityItem = { text: string; when: string; ic: string };
 export type CelebrateGroup = { group: string; items: [string, string][] };
 

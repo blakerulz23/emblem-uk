@@ -15,7 +15,7 @@ export default function CoachCelebrate({ actions }: { actions: OsActions }) {
       {SQUAD.map((p) => {
         const initials = p.name.split(' ').map((w) => w[0]).join('');
         return (
-          <div key={p.name} onClick={() => actions.openCeleb(p.name)} style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'var(--os-card)', borderRadius: 16, padding: 12, boxShadow: '0 6px 18px -14px rgba(0,0,0,.2)', marginBottom: 11, cursor: 'pointer' }}>
+          <div key={p.id} onClick={() => actions.openCeleb(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'var(--os-card)', borderRadius: 16, padding: 12, boxShadow: '0 6px 18px -14px rgba(0,0,0,.2)', marginBottom: 11, cursor: 'pointer' }}>
             <div style={{ width: 46, height: 46, borderRadius: '50%', background: 'linear-gradient(150deg,#E9C46A,#C98B3A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto', fontFamily: 'Roboto', fontWeight: 900, fontSize: 15, color: '#fff' }}>{initials}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>{p.name}</div>

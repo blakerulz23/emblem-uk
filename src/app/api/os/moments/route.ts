@@ -82,12 +82,21 @@ export async function GET(request: NextRequest) {
   if (!playerId) {
     return NextResponse.json({ error: 'playerId is required' }, { status: 400 });
   }
+  const status = request.nextUrl.searchParams.get('status') ?? 'all';
 
-  const { data: moments, error } = await supabase
+  let query = supabase
     .from('moments')
     .select('*, moment_media(*)')
     .eq('player_id', playerId)
     .order('created_at', { ascending: false });
+
+  if (status === 'pending') {
+    query = query.is('verified_at', null);
+  } else if (status === 'verified') {
+    query = query.not('verified_at', 'is', null);
+  }
+
+  const { data: moments, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
