@@ -132,14 +132,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "This code isn't valid or has already been claimed" }, { status: 400 });
   }
 
-  const result = await claimPlayerForCard(serviceRole, card, user.id);
-  if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: result.status });
-  }
-
+  // guardians.profile_id is a foreign key into profiles — a brand-new
+  // account has no profiles row yet, so this upsert must happen before
+  // claimPlayerForCard's guardians insert, not after.
   const { error: roleError } = await supabase.from('profiles').upsert({ id: user.id, role: 'parent' });
   if (roleError) {
     return NextResponse.json({ error: roleError.message }, { status: 500 });
+  }
+
+  const result = await claimPlayerForCard(serviceRole, card, user.id);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
   return NextResponse.json({ ok: true, playerId: result.playerId });

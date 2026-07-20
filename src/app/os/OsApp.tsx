@@ -117,6 +117,18 @@ export default function OsApp({
     };
   }, []);
 
+  // The initial useState above only runs on first mount, which can happen
+  // before sign-in (profileRole still null). Later transitions — signing
+  // in, creating a team — go through router.refresh() rather than a full
+  // remount, so without this the view stays stuck on whatever role was
+  // true at that first, pre-auth mount. Re-sync whenever the server-known
+  // role changes; the manual toggle below still works for demo preview.
+  useEffect(() => {
+    if (profileRole) {
+      setState((s) => ({ ...s, role: profileRole === 'coach' ? 'coach' : 'owner' }));
+    }
+  }, [profileRole]);
+
   const addFiles = useCallback((list: FileList | null) => {
     const incoming = Array.from(list || []);
     const arr = incoming.map((file, i) => {

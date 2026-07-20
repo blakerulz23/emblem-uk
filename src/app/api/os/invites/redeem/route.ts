@@ -95,6 +95,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "This invite isn't valid or has expired" }, { status: 400 });
   }
 
+  // guardians.profile_id is a foreign key into profiles — must exist
+  // before the guardians insert below, same reasoning as /api/os/claim.
+  const { error: roleError } = await supabase.from('profiles').upsert({ id: user.id, role: 'parent' });
+  if (roleError) {
+    return NextResponse.json({ error: roleError.message }, { status: 500 });
+  }
+
   const { error: guardianError } = await serviceRole
     .from('guardians')
     .insert({ player_id: invite.player_id, profile_id: user.id });
@@ -123,11 +130,6 @@ export async function POST(request: NextRequest) {
     .update({ status: 'claimed' })
     .eq('player_id', invite.player_id)
     .neq('status', 'claimed');
-
-  const { error: roleError } = await supabase.from('profiles').upsert({ id: user.id, role: 'parent' });
-  if (roleError) {
-    return NextResponse.json({ error: roleError.message }, { status: 500 });
-  }
 
   return NextResponse.json({ ok: true, playerId: invite.player_id });
 }
