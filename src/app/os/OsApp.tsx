@@ -16,6 +16,7 @@ import CelebrateSheet from './overlays/CelebrateSheet';
 
 import PlayerHome from './screens/PlayerHome';
 import Journey from './screens/Journey';
+import RealJourney from './screens/RealJourney';
 import CardScreen from './screens/Card';
 import Team from './screens/Team';
 import Profile from './screens/Profile';
@@ -82,9 +83,19 @@ export type OsAppProps = {
   hasSession?: boolean;
   /** The signed-in user's profiles.role. Null until RoleSelect has run once. */
   profileRole?: 'parent' | 'coach' | null;
+  /** Parent: has at least one guardians row (a real player claimed). */
+  hasClaimedPlayer?: boolean;
+  /** Coach: has at least one coach_team row (a real team created). */
+  hasTeam?: boolean;
 };
 
-export default function OsApp({ initialData, hasSession = false, profileRole = null }: OsAppProps) {
+export default function OsApp({
+  initialData,
+  hasSession = false,
+  profileRole = null,
+  hasClaimedPlayer = false,
+  hasTeam = false,
+}: OsAppProps) {
   const [state, setState] = useState<OsState>(() => ({
     ...initialOsState,
     role: profileRole === 'coach' ? 'coach' : 'owner',
@@ -105,6 +116,18 @@ export default function OsApp({ initialData, hasSession = false, profileRole = n
       clearTimeout(sentTimerRef.current);
     };
   }, []);
+
+  // The initial useState above only runs on first mount, which can happen
+  // before sign-in (profileRole still null). Later transitions — signing
+  // in, creating a team — go through router.refresh() rather than a full
+  // remount, so without this the view stays stuck on whatever role was
+  // true at that first, pre-auth mount. Re-sync whenever the server-known
+  // role changes; the manual toggle below still works for demo preview.
+  useEffect(() => {
+    if (profileRole) {
+      setState((s) => ({ ...s, role: profileRole === 'coach' ? 'coach' : 'owner' }));
+    }
+  }, [profileRole]);
 
   const addFiles = useCallback((list: FileList | null) => {
     const incoming = Array.from(list || []);
@@ -285,7 +308,13 @@ export default function OsApp({ initialData, hasSession = false, profileRole = n
         <div style={{ position: 'relative', width: '100%', height: '100%', background: 'var(--os-screen)', borderRadius: 42, overflow: 'hidden', display: 'flex', flexDirection: 'column', transition: 'background .35s ease' }}>
 
           {!state.activated && (
-            <ActivationGate onActivate={actions.activate} hasSession={hasSession} profileRole={profileRole} />
+            <ActivationGate
+              onActivate={actions.activate}
+              hasSession={hasSession}
+              profileRole={profileRole}
+              hasClaimedPlayer={hasClaimedPlayer}
+              hasTeam={hasTeam}
+            />
           )}
 
           {/* status bar */}
@@ -344,7 +373,7 @@ export default function OsApp({ initialData, hasSession = false, profileRole = n
             ) : (
               <>
                 {state.tab === 'home' && <PlayerHome actions={actions} />}
-                {state.tab === 'journey' && <Journey actions={actions} />}
+                {state.tab === 'journey' && ((initialData ?? DEMO_OS_DATA).mode === 'demo' ? <Journey actions={actions} /> : <RealJourney />)}
                 {state.tab === 'card' && <CardScreen state={state} actions={actions} />}
                 {state.tab === 'team' && <Team actions={actions} />}
                 {state.tab === 'profile' && <Profile actions={actions} />}

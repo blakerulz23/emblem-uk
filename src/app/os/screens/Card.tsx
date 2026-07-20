@@ -74,8 +74,10 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
           </div>
           <div style={{ textAlign: 'right', flex: '0 0 auto' }}>
             <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, letterSpacing: '.06em', fontSize: 11, color: 'var(--os-muted)' }}>OVERALL</div>
-            <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 52, lineHeight: .85, color: '#E97435' }}>{PLAYER_PROFILE.overallScore}</div>
-            <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: '#2E9E5B' }}>+{PLAYER_PROFILE.seasonalChange}</div>
+            <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 52, lineHeight: .85, color: '#E97435' }}>{PLAYER_PROFILE.overallScore ?? '—'}</div>
+            {PLAYER_PROFILE.seasonalChange != null && (
+              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: '#2E9E5B' }}>+{PLAYER_PROFILE.seasonalChange}</div>
+            )}
             <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 9.5, color: 'var(--os-muted)' }}>THIS SEASON</div>
           </div>
         </div>

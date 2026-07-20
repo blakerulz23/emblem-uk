@@ -1,9 +1,20 @@
 'use client';
 
 import { useOsData } from '../../OsDataContext';
+import EmptyState from '../EmptyState';
 
 export default function CoachTab() {
-  const { coachSummary: c } = useOsData();
+  const { mode, coachSummary: c } = useOsData();
+
+  if (mode !== 'demo' && !c) {
+    return (
+      <EmptyState
+        title="Waiting for coach feedback."
+        body="Comments, strengths and current focus will appear here."
+      />
+    );
+  }
+  if (!c) return null;
 
   return (
     <div style={{ background: 'var(--os-card)', borderRadius: 16, padding: 22, boxShadow: '0 6px 16px -12px rgba(0,0,0,.2)' }}>

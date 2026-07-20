@@ -88,12 +88,12 @@ export const JIC: Record<string, (color: string) => React.ReactElement> = {
 };
 
 export const SQUAD: SquadPlayer[] = [
-  { name: 'Ollie Harrison', num: 7, pos: 'Midfielder', status: 'Recognised today' },
-  { name: 'Jack Bennett', num: 9, pos: 'Striker', status: 'Add recognition' },
-  { name: 'Leo Marsh', num: 4, pos: 'Defender', status: 'Add recognition' },
-  { name: 'Finn Doyle', num: 1, pos: 'Goalkeeper', status: 'Add recognition' },
-  { name: 'Reuben Clarke', num: 8, pos: 'Midfielder', status: 'Recognised today' },
-  { name: 'Theo Nkosi', num: 11, pos: 'Winger', status: 'Add recognition' },
+  { id: 'ollie', name: 'Ollie Harrison', num: 7, pos: 'Midfielder', status: 'Recognised today' },
+  { id: 'jack', name: 'Jack Bennett', num: 9, pos: 'Striker', status: 'Add recognition' },
+  { id: 'leo', name: 'Leo Marsh', num: 4, pos: 'Defender', status: 'Add recognition' },
+  { id: 'finn', name: 'Finn Doyle', num: 1, pos: 'Goalkeeper', status: 'Add recognition' },
+  { id: 'reuben', name: 'Reuben Clarke', num: 8, pos: 'Midfielder', status: 'Recognised today' },
+  { id: 'theo', name: 'Theo Nkosi', num: 11, pos: 'Winger', status: 'Add recognition' },
 ];
 
 export const CELEBRATE_CATS: CelebrateGroup[] = [
@@ -102,9 +102,9 @@ export const CELEBRATE_CATS: CelebrateGroup[] = [
 ];
 
 export const VERIFY_QUEUE: VerifyItem[] = [
-  { player: 'Ollie Harrison', moment: 'First Goal', thumb: `${assetPath}/jn-firstgoal.png`, by: 'Rebecca Penny (Parent)', date: '12 March 2026' },
-  { player: 'Jack Bennett', moment: 'Tournament Winner', thumb: `${assetPath}/jn-trophy.png`, by: 'Mark Bennett (Parent)', date: '7 June 2026' },
-  { player: 'Leo Marsh', moment: 'Team Photo', thumb: `${assetPath}/jn-teamphoto.png`, by: 'Sara Marsh (Parent)', date: '22 April 2026' },
+  { id: 'v1', player: 'Ollie Harrison', moment: 'First Goal', thumb: `${assetPath}/jn-firstgoal.png`, by: 'Rebecca Penny (Parent)', date: '12 March 2026' },
+  { id: 'v2', player: 'Jack Bennett', moment: 'Tournament Winner', thumb: `${assetPath}/jn-trophy.png`, by: 'Mark Bennett (Parent)', date: '7 June 2026' },
+  { id: 'v3', player: 'Leo Marsh', moment: 'Team Photo', thumb: `${assetPath}/jn-teamphoto.png`, by: 'Sara Marsh (Parent)', date: '22 April 2026' },
 ];
 
 export const COACH_ACTIVITY: CoachActivityItem[] = [

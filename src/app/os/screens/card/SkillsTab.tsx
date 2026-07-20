@@ -8,6 +8,7 @@ import type { Skill } from '../../playerProfile';
 import type { AttrCategory } from '../../types';
 import { useCountUp } from '../../useCountUp';
 import SkillDetailSheet from './SkillDetailSheet';
+import EmptyState from '../EmptyState';
 
 export default function SkillsTab({
   activeCategory,
@@ -20,11 +21,20 @@ export default function SkillsTab({
   onFlipCard: () => void;
   flipHint: string;
 }) {
-  const { skillCategories: SKILL_CATEGORIES } = useOsData();
+  const { mode, skillCategories: SKILL_CATEGORIES } = useOsData();
   const [openSkillId, setOpenSkillId] = useState<string | null>(null);
   const [showScoreInfo, setShowScoreInfo] = useState(false);
   const category = SKILL_CATEGORIES.find((c) => c.id === activeCategory) || SKILL_CATEGORIES[0];
-  const categoryScore = useCountUp(category.categoryScore, true);
+  const categoryScore = useCountUp(category?.categoryScore ?? 0, true);
+
+  if (mode !== 'demo' && SKILL_CATEGORIES.length === 0) {
+    return (
+      <EmptyState
+        title="No coach assessment yet."
+        body="Skills and development will appear after the first coach assessment."
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', gap: 12, position: 'relative' }}>

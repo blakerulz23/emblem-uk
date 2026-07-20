@@ -42,6 +42,7 @@ export default function PrintFileBlock() {
   const [downloadUrl, setDownloadUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [posterSize, setPosterSize] = useState<PosterSize>('poster-md');
+  const [purchaserEmail, setPurchaserEmail] = useState('');
 
   const printProduct: PrintProduct | undefined = product === 'posters' ? posterSize : PRODUCT_MAP[product];
   if (!printProduct) return null;
@@ -82,18 +83,45 @@ export default function PrintFileBlock() {
   };
 
   const onBuy = async () => {
+    const email = purchaserEmail.trim();
+    if (printProduct === 'card' && !/\S+@\S+\.\S+/.test(email)) {
+      setError('Enter the email you’re buying with before checking out');
+      return;
+    }
+
     setBusy(true); setError(''); setDownloadUrl('');
     try {
       const url = await generate();
       if (!url) throw new Error('failed to generate print file');
       setStatus('Redirecting to checkout');
+      const orderRef = 'BUILDER-' + Date.now().toString(36);
+      const playerName = details?.playerName || details?.name;
+
+      if (printProduct === 'card') {
+        // Persist an order/player intent before the Shopify redirect — this
+        // is the only server-side moment this standalone path has, since
+        // checkout itself is a plain cart-permalink redirect with no
+        // webhook back to this app. See src/app/api/orders/intent/route.ts.
+        try {
+          await fetch('/api/orders/intent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderRef, purchaserEmail: email, playerName }),
+          });
+        } catch {
+          // Never block checkout on this — the no-card recovery flow is a
+          // fallback; a failure here just means that fallback won't find
+          // this particular order later.
+        }
+      }
+
       let cartUrl = buildCartUrl(printProduct, {
         printFileUrl: url,
-        playerName: details?.playerName || details?.name,
+        playerName,
         teamName: details?.teamName || details?.team,
         template: template?.name || template?.family,
         posterSize: product === 'posters' ? POSTER_SIZES.find(s => s.id === posterSize)?.dim : undefined,
-        orderRef: 'BUILDER-' + Date.now().toString(36),
+        orderRef,
         discountCodes: referralCodes.length > 0 ? referralCodes : undefined,
       });
       if (product === 'puzzles' && puzzleStyle) {
@@ -193,6 +221,28 @@ export default function PrintFileBlock() {
               );
             })}
           </div>
+        )}
+
+        {printProduct === 'card' && (
+          <input
+            type="email"
+            value={purchaserEmail}
+            onChange={(e) => setPurchaserEmail(e.target.value)}
+            placeholder="Your email (for order confirmation)"
+            aria-label="Purchaser email"
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '12px 14px',
+              marginBottom: 10,
+              borderRadius: 8,
+              border: '1px solid var(--line)',
+              fontFamily: 'var(--font-manrope), system-ui',
+              fontSize: 14,
+              color: 'var(--ink)',
+              background: 'var(--paper)',
+            }}
+          />
         )}
 
         <button
