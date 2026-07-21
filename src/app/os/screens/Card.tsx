@@ -38,7 +38,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
   const teaserTrust = firstMoment ? TRUST[firstMoment.trust] : null;
 
   const firstGoalTeaser = (!isReal || firstMoment) && (
-    <div onClick={actions.openLatest} style={{ position: 'relative', overflow: 'hidden', width: 300, maxWidth: '100%', margin: '0 auto 12px', borderRadius: 14, background: 'var(--os-card)', border: '1px solid var(--os-border)', boxShadow: '0 8px 22px -14px rgba(0,0,0,.22)', padding: '12px 13px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+    <div onClick={isReal ? actions.goCollection : actions.openLatest} style={{ position: 'relative', overflow: 'hidden', width: 300, maxWidth: '100%', margin: '0 auto 12px', borderRadius: 14, background: 'var(--os-card)', border: '1px solid var(--os-border)', boxShadow: '0 8px 22px -14px rgba(0,0,0,.22)', padding: '12px 13px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
       <div style={{ position: 'absolute', top: 0, bottom: 0, width: '34%', left: 0, background: 'linear-gradient(90deg,transparent,rgba(233,116,53,.09),transparent)', animation: 'foilSweep 4.4s ease-in-out infinite', pointerEvents: 'none' }} />
       <div style={{ position: 'relative', width: 42, height: 42, borderRadius: '50%', flex: '0 0 auto', background: 'radial-gradient(circle at 32% 28%,#FCE9A8,#E8B14C 60%,#C6892E)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px -4px rgba(233,177,76,.7)' }}>
         <svg width="21" height="21" viewBox="0 0 24 24" fill="#3a2a08"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 18.3 5.9 20.4 7.3 13.6 2.2 8.9l6.9-.8z" /></svg>

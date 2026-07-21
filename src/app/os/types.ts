@@ -93,6 +93,8 @@ export type OsState = {
   aDesc: string;
   aScore: string;
   addUnlock: boolean;
+  /** True when a real-account moment submission actually failed server-side — surfaced instead of silently celebrating. */
+  addSubmitError: boolean;
   files: UploadedFile[];
   dragging: boolean;
   role: Role;
@@ -121,6 +123,7 @@ export const initialOsState: OsState = {
   aDesc: '',
   aScore: '',
   addUnlock: false,
+  addSubmitError: false,
   files: [],
   dragging: false,
   role: 'owner',

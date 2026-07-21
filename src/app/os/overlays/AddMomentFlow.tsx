@@ -1,15 +1,19 @@
 import type { RefObject } from 'react';
 import { ADD_ACH, ADD_EVENTS, ADD_PLAYERS, ADD_TYPES, RARITY_BY_ACH } from '../data';
+import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
 
 const stepTitles = ['', 'Who is it for?', 'Which match or event?', 'What happened?', 'Add the evidence', 'Ready to add'];
 
 export default function AddMomentFlow({ state, actions, fileInputRef }: { state: OsState; actions: OsActions; fileInputRef: RefObject<HTMLInputElement> }) {
+  const { mode, playerId, playerProfile } = useOsData();
+  const isReal = mode !== 'demo';
   const activeAch = ADD_ACH.find((a) => a.id === state.aAch) || ADD_ACH[0];
   const activeRarity = RARITY_BY_ACH(activeAch.rank);
   const activeEvent = ADD_EVENTS.find((e) => e.id === state.aEvent);
   const activePlayer = ADD_PLAYERS.find((p) => p.id === state.aPlayer) || ADD_PLAYERS[0];
+  const activePlayerName = isReal ? (playerProfile?.name ?? 'Your player') : activePlayer.name;
   const photos = state.files.filter((f) => !f.isVideo).length;
   const videos = state.files.filter((f) => f.isVideo).length;
   const mediaLabel = (() => {
@@ -60,15 +64,26 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
           <div style={{ flex: 1, overflowY: 'auto', padding: '22px 20px 16px' }}>
             <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.06em', fontSize: 24, color: 'var(--os-ink)', marginBottom: 18 }}>{stepTitles[state.addStep] || ''}</div>
 
-            {state.addStep === 1 && ADD_PLAYERS.map((p) => {
-              const sel = p.id === state.aPlayer;
-              return (
-                <div key={p.id} onClick={() => actions.pickAPlayer(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 14, background: sel ? 'rgba(233,116,53,.08)' : 'var(--os-card)', border: `1.5px solid ${sel ? '#E97435' : 'var(--os-border)'}`, borderRadius: 18, padding: 14, marginBottom: 12, cursor: 'pointer', transition: 'border-color .15s ease,background .15s ease' }}>
-                  <div style={{ width: 52, height: 66, borderRadius: 11, background: p.grad, flex: '0 0 auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 5 }}><span style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, fontSize: 15, color: 'rgba(255,255,255,.95)' }}>{p.name.split(' ').map((w) => w[0]).join('')}</span></div>
-                  <div style={{ flex: 1 }}><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)' }}>{p.name}</div><div style={{ fontSize: 12.5, color: 'var(--os-muted)', marginTop: 2 }}>{p.team} · No. {p.num}</div></div>
-                </div>
-              );
-            })}
+            {state.addStep === 1 && (
+              isReal ? (
+                playerId ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'rgba(233,116,53,.08)', border: '1.5px solid #E97435', borderRadius: 18, padding: 14 }}>
+                    <div style={{ width: 52, height: 66, borderRadius: 11, background: 'linear-gradient(150deg,#E9C46A,#C98B3A)', flex: '0 0 auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 5 }}><span style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, fontSize: 15, color: 'rgba(255,255,255,.95)' }}>{playerProfile.name.split(' ').map((w) => w[0]).join('')}</span></div>
+                    <div style={{ flex: 1 }}><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)' }}>{playerProfile.name}</div><div style={{ fontSize: 12.5, color: 'var(--os-muted)', marginTop: 2 }}>{playerProfile.club}</div></div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13.5, color: 'var(--os-muted)' }}>No claimed player found on this account yet.</div>
+                )
+              ) : ADD_PLAYERS.map((p) => {
+                const sel = p.id === state.aPlayer;
+                return (
+                  <div key={p.id} onClick={() => actions.pickAPlayer(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 14, background: sel ? 'rgba(233,116,53,.08)' : 'var(--os-card)', border: `1.5px solid ${sel ? '#E97435' : 'var(--os-border)'}`, borderRadius: 18, padding: 14, marginBottom: 12, cursor: 'pointer', transition: 'border-color .15s ease,background .15s ease' }}>
+                    <div style={{ width: 52, height: 66, borderRadius: 11, background: p.grad, flex: '0 0 auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 5 }}><span style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, fontSize: 15, color: 'rgba(255,255,255,.95)' }}>{p.name.split(' ').map((w) => w[0]).join('')}</span></div>
+                    <div style={{ flex: 1 }}><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)' }}>{p.name}</div><div style={{ fontSize: 12.5, color: 'var(--os-muted)', marginTop: 2 }}>{p.team} · No. {p.num}</div></div>
+                  </div>
+                );
+              })
+            )}
 
             {state.addStep === 2 && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -134,7 +149,7 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
                 </div>
                 <div style={{ height: 1, background: 'rgba(255,255,255,.1)', margin: '18px 0' }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12.5, color: '#8E867B' }}>Player</span><span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: '#F4F1EC' }}>{activePlayer.name}</span></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12.5, color: '#8E867B' }}>Player</span><span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: '#F4F1EC' }}>{activePlayerName}</span></div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12.5, color: '#8E867B' }}>Event</span><span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: '#F4F1EC' }}>{activeEvent?.label || 'Match'}</span></div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12.5, color: '#8E867B' }}>Date</span><span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: '#F4F1EC' }}>16 July 2026</span></div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12.5, color: '#8E867B' }}>Media</span><span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: '#F4F1EC' }}>{mediaLabel}</span></div>
@@ -144,6 +159,11 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
           </div>
 
           <div style={{ flex: '0 0 auto', padding: '14px 20px 20px', borderTop: '1px solid var(--os-border)' }}>
+            {state.addStep === 5 && state.addSubmitError && (
+              <div style={{ textAlign: 'center', fontSize: 12.5, color: '#A63426', marginBottom: 10 }}>
+                Couldn&apos;t save this moment — check your connection and try again.
+              </div>
+            )}
             {state.addStep === 5 ? (
               <div onClick={actions.submitMoment} style={{ textAlign: 'center', padding: 16, borderRadius: 14, background: 'linear-gradient(150deg,#E97435,#C4501C)', color: '#fff', fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.1em', fontSize: 16, cursor: 'pointer', boxShadow: '0 14px 30px -14px rgba(233,116,53,.7)' }}>ADD TO COLLECTION</div>
             ) : (

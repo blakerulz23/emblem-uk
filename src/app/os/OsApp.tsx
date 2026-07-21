@@ -149,10 +149,12 @@ export default function OsApp({
     // Instant local preview above is the UX; this upload happens in the
     // background so submitMoment() has real S3 keys ready by the time the
     // user actually hits submit.
+    const osData = initialData ?? DEMO_OS_DATA;
+    const uploadPlayerId = osData.mode === 'demo' ? state.aPlayer : osData.playerId;
     arr.forEach((entry, i) => {
       const form = new FormData();
       form.append('file', incoming[i]);
-      form.append('playerId', state.aPlayer);
+      if (uploadPlayerId) form.append('playerId', uploadPlayerId);
       fetch('/api/os/moments/upload', { method: 'POST', body: form })
         .then((res) => (res.ok ? res.json() : Promise.reject(res)))
         .then((data: { key: string }) => {
@@ -166,11 +168,11 @@ export default function OsApp({
           }));
         });
     });
-  }, [patch, state.aPlayer]);
+  }, [patch, state.aPlayer, initialData]);
 
   const closeFlow = useCallback(() => {
     state.files.forEach((f) => { URL.revokeObjectURL(f.url); objectUrlsRef.current.delete(f.url); });
-    patch({ addOpen: false, addStep: 0, addType: null, aEvent: null, aAch: null, aDesc: '', aScore: '', addUnlock: false, files: [], dragging: false });
+    patch({ addOpen: false, addStep: 0, addType: null, aEvent: null, aAch: null, aDesc: '', aScore: '', addUnlock: false, addSubmitError: false, files: [], dragging: false });
   }, [patch, state.files]);
 
   const actions: OsActions = {
@@ -220,7 +222,7 @@ export default function OsApp({
       state.files.forEach((f) => { URL.revokeObjectURL(f.url); objectUrlsRef.current.delete(f.url); });
       patch({ addOpen: false, files: [], dragging: false });
     },
-    pickAddType: (t) => patch({ addOpen: false, addStep: 1, addType: t }),
+    pickAddType: (t) => patch({ addOpen: false, addStep: 1, addType: t, addSubmitError: false }),
     closeFlow,
     flowNext: () => patch((s) => {
       if (s.addStep === 2 && !s.aEvent) return {};
@@ -238,15 +240,37 @@ export default function OsApp({
       const media = state.files
         .filter((f) => f.uploadStatus === 'done' && f.s3Key)
         .map((f) => ({ key: f.s3Key as string, kind: (f.isVideo ? 'video' : 'photo') as 'video' | 'photo' }));
-      // Fire-and-forget: the demo unlock celebration is instant either way,
-      // matching the app's existing UX; the real DB row lands in the
-      // background using whichever uploads have already confirmed.
-      fetch('/api/os/moments', {
+      const osData = initialData ?? DEMO_OS_DATA;
+      const isRealSession = osData.mode !== 'demo';
+      const playerIdToSubmit = isRealSession ? osData.playerId : state.aPlayer;
+
+      if (isRealSession && !playerIdToSubmit) {
+        patch({ addSubmitError: true });
+        return;
+      }
+
+      const request = fetch('/api/os/moments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: state.aPlayer, title: achLabel, note: state.aDesc, media }),
-      }).catch(() => {});
-      patch({ addStep: 0, addOpen: false, addUnlock: true });
+        body: JSON.stringify({ playerId: playerIdToSubmit, title: achLabel, note: state.aDesc, media }),
+      });
+
+      if (isRealSession) {
+        // Real accounts must see the truth: only celebrate once the moment
+        // actually saved, and surface a retryable error instead of the
+        // previous fire-and-forget behaviour that swallowed failures and
+        // showed the unlock celebration regardless.
+        request
+          .then((res) => {
+            if (!res.ok) throw new Error('submit failed');
+            patch({ addStep: 0, addOpen: false, addUnlock: true, addSubmitError: false });
+          })
+          .catch(() => patch({ addSubmitError: true }));
+      } else {
+        // Demo: instant celebration regardless, matching the existing UX.
+        request.catch(() => {});
+        patch({ addStep: 0, addOpen: false, addUnlock: true });
+      }
     },
     unlockViewCollection: () => { closeFlow(); patch({ tab: 'journey' }); },
     unlockCreateStory: () => { closeFlow(); patch({ tab: 'journey' }); },

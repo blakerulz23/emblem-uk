@@ -1,7 +1,21 @@
 import { osAssetPath } from '../data';
+import { useOsData } from '../OsDataContext';
+import EmptyState from './EmptyState';
 import type { OsActions } from '../OsApp';
 
 export default function Team({ actions }: { actions: OsActions }) {
+  const { mode, playerProfile } = useOsData();
+  const isReal = mode !== 'demo';
+
+  if (isReal) {
+    return (
+      <EmptyState
+        title={playerProfile.club ? `${playerProfile.club}` : 'Your team.'}
+        body="Team roster, fixtures and league standings will appear here once your club adds them."
+      />
+    );
+  }
+
   return (
     <>
       <div onMouseMove={actions.tiltMove} onMouseLeave={actions.tiltReset} style={{ background: 'var(--os-card)', borderRadius: 18, padding: 18, boxShadow: '0 8px 22px -15px rgba(0,0,0,.2)', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 16 }}>

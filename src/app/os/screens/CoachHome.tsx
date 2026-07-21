@@ -5,31 +5,48 @@ import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 
 export default function CoachHome({ actions }: { actions: OsActions }) {
-  const { coachActivity: COACH_ACTIVITY, verifyQueue: VERIFY_QUEUE } = useOsData();
+  const {
+    mode,
+    coachActivity: COACH_ACTIVITY,
+    verifyQueue: VERIFY_QUEUE,
+    coachDisplayName,
+    coachClub,
+    coachTeamsManaged,
+  } = useOsData();
+  const isReal = mode !== 'demo';
+  const totalPlayers = coachTeamsManaged.reduce((sum, t) => sum + t.playerCount, 0);
+  const teamsLabel = coachTeamsManaged.length === 1
+    ? coachTeamsManaged[0].name
+    : `${coachTeamsManaged.length} teams`;
+
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#15130F', borderRadius: 18, padding: '16px 18px', marginBottom: 20 }}>
         <div style={{ width: 46, height: 46, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
-          <img src={`${osAssetPath}/club-badge.png`} alt="Curzon Ashton Juniors" style={{ width: 42, height: 42, objectFit: 'contain' }} />
+          <img src={`${osAssetPath}/club-badge.png`} alt={isReal ? (coachClub?.name ?? 'Your club') : 'Curzon Ashton Juniors'} style={{ width: 42, height: 42, objectFit: 'contain' }} />
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435' }}>COACH DANNY · HEAD COACH</div>
-          <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 19, color: '#fff' }}>Curzon Ashton U10</div>
-          <div style={{ fontSize: 12, color: '#9A9082' }}>14 players · 2026/27 season</div>
+          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435' }}>{isReal ? (coachDisplayName ?? 'COACH').toUpperCase() : 'COACH DANNY · HEAD COACH'}</div>
+          <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 19, color: '#fff' }}>{isReal ? (coachClub?.name ?? 'Your club') : 'Curzon Ashton U10'}</div>
+          <div style={{ fontSize: 12, color: '#9A9082' }}>{isReal ? `${totalPlayers} players · ${teamsLabel}` : '14 players · 2026/27 season'}</div>
         </div>
       </div>
 
-      <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', margin: '0 0 10px 2px' }}>TODAY&apos;S MATCH</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'var(--os-card)', borderRadius: 18, padding: 16, boxShadow: '0 8px 22px -14px rgba(0,0,0,.2)', marginBottom: 22 }}>
-        <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(233,116,53,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#E97435" strokeWidth={1.8}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>vs Hyde United</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#E97435', fontWeight: 700, margin: '2px 0' }}>⏱ 10:30 · Home</div>
-          <div style={{ fontSize: 12.5, color: '#6B6357' }}>EMJFL U10 Division One</div>
-        </div>
-      </div>
+      {!isReal && (
+        <>
+          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', margin: '0 0 10px 2px' }}>TODAY&apos;S MATCH</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'var(--os-card)', borderRadius: 18, padding: 16, boxShadow: '0 8px 22px -14px rgba(0,0,0,.2)', marginBottom: 22 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(233,116,53,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#E97435" strokeWidth={1.8}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>vs Hyde United</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#E97435', fontWeight: 700, margin: '2px 0' }}>⏱ 10:30 · Home</div>
+              <div style={{ fontSize: 12.5, color: '#6B6357' }}>EMJFL U10 Division One</div>
+            </div>
+          </div>
+        </>
+      )}
 
       <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', margin: '0 0 10px 2px' }}>PENDING VERIFICATIONS</div>
       <div onClick={actions.goCoachVerify} role="button" aria-label="Open Verify" tabIndex={0} style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'var(--os-card)', borderRadius: 18, padding: 16, boxShadow: '0 8px 22px -14px rgba(0,0,0,.2)', marginBottom: 22, cursor: 'pointer' }}>
