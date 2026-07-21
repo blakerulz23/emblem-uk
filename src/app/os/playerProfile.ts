@@ -20,7 +20,21 @@ export type PlayerProfile = {
   /** Null for a real player with no coach assessment yet — never a demo/placeholder number. */
   overallScore: number | null;
   seasonalChange: number | null;
+  /** A signed, time-limited S3 download URL — never a stored public link. Null until a guardian uploads one. */
+  photoUrl: string | null;
+  squadNumber: number | null;
+  /** Derived from the team name (e.g. "U10"), not a separate stored field. */
+  ageGroup: string | null;
+  memberSinceYear: number | null;
+  season: string | null;
+  favouritePlayer: string | null;
+  footballAmbition: string | null;
 };
+
+/** Pulls an age-group label like "U10" out of a team name — there's no separate stored field for it. */
+export function extractAgeGroup(teamName: string | null | undefined): string | null {
+  return teamName?.match(/U\d{1,2}\b/i)?.[0]?.toUpperCase() ?? null;
+}
 
 export type Skill = {
   id: string;
@@ -56,6 +70,9 @@ export type DevelopmentSeason = {
 };
 
 export type SeasonTarget = {
+  /** Real goals only — undefined for CoachSummary's demo seasonTargets, which nothing writes back to. */
+  id?: string;
+  createdBy?: string;
   label: string;
   current: number;
   target: number;
@@ -373,6 +390,15 @@ export const PLAYER_PROFILE: PlayerProfile = {
   preferredFoot: 'Right',
   overallScore,
   seasonalChange: 5,
+  // Demo mode keeps its own hardcoded card-front image regardless of this
+  // field — real mode is the only branch that reads photoUrl.
+  photoUrl: null,
+  squadNumber: 7,
+  ageGroup: 'U10',
+  memberSinceYear: 2026,
+  season: '2026/27',
+  favouritePlayer: 'Kevin De Bruyne',
+  footballAmbition: 'Play academy football',
 };
 
 export const DEVELOPMENT_SEASONS: DevelopmentSeason[] = [

@@ -6,6 +6,7 @@ import { osAssetPath } from '../data';
 
 export default function CreateTeamOnboarding() {
   const router = useRouter();
+  const [displayName, setDisplayName] = useState('');
   const [clubName, setClubName] = useState('');
   const [teamName, setTeamName] = useState('');
   const [season, setSeason] = useState('');
@@ -21,7 +22,12 @@ export default function CreateTeamOnboarding() {
     const res = await fetch('/api/os/teams', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clubName: clubName.trim(), teamName: teamName.trim(), season: season.trim() }),
+      body: JSON.stringify({
+        displayName: displayName.trim(),
+        clubName: clubName.trim(),
+        teamName: teamName.trim(),
+        season: season.trim(),
+      }),
     });
     const data = await res.json();
 
@@ -60,6 +66,13 @@ export default function CreateTeamOnboarding() {
       </p>
 
       <form onSubmit={submit} style={{ width: '100%', maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <input
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          placeholder="Your name"
+          required
+          style={{ boxSizing: 'border-box', minHeight: 48, borderRadius: 12, border: '1px solid rgba(233,116,53,.35)', background: 'rgba(255,255,255,.04)', color: '#F4F1EC', fontFamily: 'Roboto', fontSize: 15, padding: '0 16px', outline: 'none' }}
+        />
         <input
           value={clubName}
           onChange={(e) => setClubName(e.target.value)}

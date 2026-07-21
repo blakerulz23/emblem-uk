@@ -18,10 +18,22 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { clubName, teamName, season } = body as { clubName?: string; teamName?: string; season?: string };
+  const { displayName, clubName, teamName, season } = body as {
+    displayName?: string;
+    clubName?: string;
+    teamName?: string;
+    season?: string;
+  };
 
   if (!clubName?.trim() || !teamName?.trim() || !season?.trim()) {
     return NextResponse.json({ error: 'clubName, teamName and season are required' }, { status: 400 });
+  }
+
+  // ActivationGate's coach-intent auto-resolve already upserted this
+  // profile's role to 'coach' before this route is ever reached — this
+  // upsert just adds the name on top, no conflict.
+  if (displayName?.trim()) {
+    await supabase.from('profiles').upsert({ id: user.id, role: 'coach', display_name: displayName.trim() });
   }
 
   const { data: club, error: clubError } = await supabase

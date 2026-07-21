@@ -1,7 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import { osAssetPath } from '../data';
 import type { ClaimLookupResult } from './ClaimCodeEntry';
+
+export type ClaimConfirmFields = { displayName: string; relationship: string };
+
+const RELATIONSHIPS = ['Mother', 'Father', 'Guardian', 'Other'];
 
 /**
  * Shows only the minimum necessary identity before authentication — first
@@ -9,6 +14,10 @@ import type { ClaimLookupResult } from './ClaimCodeEntry';
  * media. An already-claimed card discloses nothing at all: the tightened
  * multi-guardian rule means a second person with the same physical code
  * can't see who it belongs to, only that it's already active.
+ *
+ * Also collects the guardian's own name + relationship here — the one
+ * place both the card-claim and invite-redeem paths already converge —
+ * so "Managed by [real name]" has an actual name to show later.
  */
 export default function ClaimConfirm({
   result,
@@ -16,9 +25,12 @@ export default function ClaimConfirm({
   onBack,
 }: {
   result: ClaimLookupResult;
-  onConfirm: () => void;
+  onConfirm: (fields: ClaimConfirmFields) => void;
   onBack: () => void;
 }) {
+  const [displayName, setDisplayName] = useState('');
+  const [relationship, setRelationship] = useState(RELATIONSHIPS[0]);
+
   return (
     <div
       style={{
@@ -74,10 +86,30 @@ export default function ClaimConfirm({
           )}
 
           <div style={{ width: '100%', maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <input
+              type="text"
+              required
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Your name"
+              aria-label="Your name"
+              style={{ width: '100%', boxSizing: 'border-box', minHeight: 48, borderRadius: 12, border: '1px solid rgba(233,116,53,.35)', background: 'rgba(255,255,255,.04)', color: '#F4F1EC', fontFamily: 'Roboto', fontSize: 15, padding: '0 16px', outline: 'none' }}
+            />
+            <select
+              value={relationship}
+              onChange={(e) => setRelationship(e.target.value)}
+              aria-label="Your relationship to this player"
+              style={{ width: '100%', boxSizing: 'border-box', minHeight: 48, borderRadius: 12, border: '1px solid rgba(233,116,53,.35)', background: 'rgba(255,255,255,.04)', color: '#F4F1EC', fontFamily: 'Roboto', fontSize: 15, padding: '0 16px', outline: 'none' }}
+            >
+              {RELATIONSHIPS.map((r) => (
+                <option key={r} value={r} style={{ background: '#15130F' }}>{r}</option>
+              ))}
+            </select>
             <button
               type="button"
-              onClick={onConfirm}
-              style={{ background: '#E97435', color: '#0B0A09', border: 'none', borderRadius: 14, padding: '15px 30px', fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 16px 34px -16px rgba(233,116,53,.8)' }}
+              disabled={!displayName.trim()}
+              onClick={() => onConfirm({ displayName: displayName.trim(), relationship })}
+              style={{ background: displayName.trim() ? '#E97435' : 'rgba(233,116,53,.5)', color: '#0B0A09', border: 'none', borderRadius: 14, padding: '15px 30px', fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, cursor: displayName.trim() ? 'pointer' : 'default', boxShadow: '0 16px 34px -16px rgba(233,116,53,.8)' }}
             >
               Yes, this is my child
             </button>

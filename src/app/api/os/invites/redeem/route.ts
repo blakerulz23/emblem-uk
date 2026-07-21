@@ -78,7 +78,11 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { inviteCode } = body as { inviteCode?: string };
+  const { inviteCode, displayName, relationship } = body as {
+    inviteCode?: string;
+    displayName?: string;
+    relationship?: string;
+  };
   if (!inviteCode) {
     return NextResponse.json({ error: 'inviteCode is required' }, { status: 400 });
   }
@@ -97,14 +101,16 @@ export async function POST(request: NextRequest) {
 
   // guardians.profile_id is a foreign key into profiles — must exist
   // before the guardians insert below, same reasoning as /api/os/claim.
-  const { error: roleError } = await supabase.from('profiles').upsert({ id: user.id, role: 'parent' });
+  const profileUpsert: Record<string, unknown> = { id: user.id, role: 'parent' };
+  if (displayName?.trim()) profileUpsert.display_name = displayName.trim();
+  const { error: roleError } = await supabase.from('profiles').upsert(profileUpsert);
   if (roleError) {
     return NextResponse.json({ error: roleError.message }, { status: 500 });
   }
 
   const { error: guardianError } = await serviceRole
     .from('guardians')
-    .insert({ player_id: invite.player_id, profile_id: user.id });
+    .insert({ player_id: invite.player_id, profile_id: user.id, relationship: relationship?.trim() || null });
 
   if (guardianError) {
     if (guardianError.code === '23505') {

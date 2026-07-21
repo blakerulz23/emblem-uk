@@ -12,6 +12,7 @@ import ClaimConfirm from './ClaimConfirm';
 import RecoverByEmail from './RecoverByEmail';
 import CreateTeamOnboarding from './CreateTeamOnboarding';
 import type { ClaimLookupResult } from './ClaimCodeEntry';
+import type { ClaimConfirmFields } from './ClaimConfirm';
 
 export type ActivationGateProps = {
   onActivate: () => void;
@@ -24,7 +25,7 @@ export type ActivationGateProps = {
 const INTENT_KEY = 'emblem_pending_intent';
 
 type PendingIntent =
-  | { kind: 'claim'; source: 'card' | 'invite'; code: string }
+  | { kind: 'claim'; source: 'card' | 'invite'; code: string; displayName: string; relationship: string }
   | { kind: 'coach' }
   | { kind: 'recover' };
 
@@ -74,7 +75,7 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
         await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ [bodyKey]: intent.code }),
+          body: JSON.stringify({ [bodyKey]: intent.code, displayName: intent.displayName, relationship: intent.relationship }),
         });
         clearIntent();
       } else if (intent.kind === 'coach') {
@@ -121,8 +122,8 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
       return (
         <ClaimConfirm
           result={pendingResult}
-          onConfirm={() => {
-            storeIntent({ kind: 'claim', source: pendingResult.source, code: pendingResult.code });
+          onConfirm={(fields: ClaimConfirmFields) => {
+            storeIntent({ kind: 'claim', source: pendingResult.source, code: pendingResult.code, ...fields });
             setPreAuthStep('auth');
           }}
           onBack={() => setPreAuthStep('code')}
@@ -224,13 +225,13 @@ function ClaimCodeEntryResume() {
   return (
     <ClaimConfirm
       result={result}
-      onConfirm={async () => {
+      onConfirm={async (fields: ClaimConfirmFields) => {
         const endpoint = result.source === 'invite' ? '/api/os/invites/redeem' : '/api/os/claim';
         const bodyKey = result.source === 'invite' ? 'inviteCode' : 'claimToken';
         await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ [bodyKey]: result.code }),
+          body: JSON.stringify({ [bodyKey]: result.code, displayName: fields.displayName, relationship: fields.relationship }),
         });
         router.refresh();
       }}

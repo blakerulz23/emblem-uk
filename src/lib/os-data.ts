@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { DEMO_OS_DATA } from '@/app/os/osData';
-import type { OsData, RealMoment } from '@/app/os/osData';
-import type { SkillCategory, CoachSummary, DevelopmentSeason } from '@/app/os/playerProfile';
+import type { OsData, RealMoment, RealConnection, CoachTeamSummary } from '@/app/os/osData';
+import type { SkillCategory, CoachSummary, DevelopmentSeason, SeasonTarget } from '@/app/os/playerProfile';
+import { extractAgeGroup } from '@/app/os/playerProfile';
 import { computeOverallScore, MIDFIELDER_WEIGHTS } from '@/app/os/scoring';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import type { SquadPlayer, VerifyItem } from '@/app/os/types';
@@ -89,11 +90,13 @@ async function getParentOsData(supabase: ReturnType<typeof createClient>, userId
   const { data: guardianLinks } = await supabase.from('guardians').select('player_id').eq('profile_id', userId);
   const playerId = guardianLinks?.[0]?.player_id as string | undefined;
 
+  const emptyConnections = { connections: [], viewerId: userId, coachDisplayName: null, coachClub: null, coachTeamsManaged: [], goals: [] };
+
   if (!playerId) {
-    return { ...DEMO_OS_DATA, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [], playerId: null };
+    return { ...DEMO_OS_DATA, ...emptyConnections, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [], playerId: null };
   }
 
-  const [{ data: player }, { data: snapshots }, { data: momentRows }] = await Promise.all([
+  const [{ data: player }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }] = await Promise.all([
     supabase
       .from('players')
       .select('*, teams ( name, season, clubs ( name ) )')
@@ -110,11 +113,62 @@ async function getParentOsData(supabase: ReturnType<typeof createClient>, userId
       .eq('player_id', playerId)
       .not('verified_at', 'is', null)
       .order('created_at', { ascending: false }),
+    supabase
+      .from('guardians')
+      .select('profile_id, relationship, profiles ( display_name )')
+      .eq('player_id', playerId),
+    supabase
+      .from('player_goals')
+      .select('*')
+      .eq('player_id', playerId)
+      .order('created_at', { ascending: true }),
   ]);
 
   if (!player) {
-    return { ...DEMO_OS_DATA, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [] };
+    return { ...DEMO_OS_DATA, ...emptyConnections, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [] };
   }
+
+  const goals: SeasonTarget[] = (goalRows ?? []).map((g) => ({
+    id: g.id,
+    createdBy: g.created_by,
+    label: g.label,
+    current: g.current,
+    target: g.target,
+    unit: g.unit ?? undefined,
+    status: g.status,
+  }));
+
+  // coach_team lookup depends on player.team_id, so it can't join the
+  // Promise.all above — only known once `player` resolves.
+  const { data: coachRows } = player.team_id
+    ? await supabase
+        .from('coach_team')
+        .select('profile_id, profiles ( display_name )')
+        .eq('team_id', player.team_id)
+    : { data: [] as never[] };
+
+  // Supabase's untyped client (no generated Database schema here)
+  // mis-infers embedded-resource joins on a multi-row select as arrays in
+  // its TypeScript types — but PostgREST's actual runtime response for a
+  // many-to-one FK (confirmed directly against the real database) is a
+  // single object, same as it is on a .maybeSingle() query. Cast past the
+  // wrong inferred type rather than indexing [0] into something that was
+  // never really a list.
+  type ProfileNameRow = { profile_id: string; profiles: { display_name: string | null } | null };
+  const connections: RealConnection[] = [
+    ...((guardianRows ?? []) as unknown as (ProfileNameRow & { relationship: string | null })[]).map((g) => ({
+      profileId: g.profile_id,
+      displayName: g.profiles?.display_name ?? null,
+      relationship: g.relationship,
+      kind: 'guardian' as const,
+    })),
+    ...((coachRows ?? []) as unknown as ProfileNameRow[]).map((c) => ({
+      profileId: c.profile_id,
+      displayName: c.profiles?.display_name ?? null,
+      relationship: null,
+      kind: 'coach' as const,
+    })),
+  ];
 
   const latestSnapshot = snapshots?.[0];
   const skillCategories = (latestSnapshot?.skills as SkillCategory[]) ?? [];
@@ -173,6 +227,13 @@ async function getParentOsData(supabase: ReturnType<typeof createClient>, userId
       preferredFoot: (player.preferred_foot as 'Left' | 'Right') ?? 'Right',
       overallScore,
       seasonalChange: latestSnapshot?.seasonal_change ?? null,
+      photoUrl: player.photo_key ? await getSignedDownloadUrl(player.photo_key) : null,
+      squadNumber: player.squad_number ?? null,
+      ageGroup: extractAgeGroup(player.teams?.name),
+      memberSinceYear: player.created_at ? new Date(player.created_at).getFullYear() : null,
+      season: player.teams?.season ?? null,
+      favouritePlayer: player.favourite_player ?? null,
+      footballAmbition: player.football_ambition ?? null,
     },
     skillCategories,
     developmentSeasons,
@@ -180,20 +241,33 @@ async function getParentOsData(supabase: ReturnType<typeof createClient>, userId
     moments,
     teamId: null,
     playerId,
+    viewerId: userId,
+    connections,
+    coachDisplayName: null,
+    coachClub: null,
+    coachTeamsManaged: [],
+    goals,
   };
 }
 
 async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId: string): Promise<OsData> {
-  const { data: teamLinks } = await supabase.from('coach_team').select('team_id').eq('profile_id', userId);
+  const emptyConnections = { connections: [] as RealConnection[], viewerId: userId, coachDisplayName: null, coachClub: null, coachTeamsManaged: [] as CoachTeamSummary[], goals: [] as SeasonTarget[] };
+
+  const { data: teamLinks } = await supabase
+    .from('coach_team')
+    .select('team_id, teams ( name, clubs ( name, badge_url ) )')
+    .eq('profile_id', userId);
   const teamIds = (teamLinks ?? []).map((t) => t.team_id);
 
   if (!teamIds.length) {
-    return { ...DEMO_OS_DATA, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [], teamId: null };
+    return { ...DEMO_OS_DATA, ...emptyConnections, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [], teamId: null };
   }
+
+  const { data: profile } = await supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle();
 
   const { data: players } = await supabase
     .from('players')
-    .select('id, name, position, squad_number')
+    .select('id, name, position, squad_number, team_id')
     .in('team_id', teamIds);
 
   const squad: SquadPlayer[] = (players ?? []).map((p) => ({
@@ -228,6 +302,23 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
     })
   );
 
+  const playerCounts = new Map<string, number>();
+  (players ?? []).forEach((p) => playerCounts.set(p.team_id, (playerCounts.get(p.team_id) ?? 0) + 1));
+
+  // Same wrong-array-inference quirk as the guardians/coach_team join
+  // above — teams and clubs are genuinely single objects per coach_team
+  // row at runtime (confirmed directly against the real database), despite
+  // how the untyped client's TypeScript types this multi-row select.
+  type TeamLinkRow = { team_id: string; teams: { name: string; clubs: { name: string; badge_url: string | null } | null } | null };
+  const teamLinkRows = (teamLinks ?? []) as unknown as TeamLinkRow[];
+  const coachTeamsManaged: CoachTeamSummary[] = teamLinkRows.map((t) => ({
+    id: t.team_id,
+    name: t.teams?.name ?? '',
+    playerCount: playerCounts.get(t.team_id) ?? 0,
+  }));
+  const firstClub = teamLinkRows[0]?.teams?.clubs;
+  const coachClub = firstClub ? { name: firstClub.name, location: null } : null;
+
   return {
     // playerProfile/skillCategories/etc. aren't rendered anywhere in the
     // coach view — kept as harmless demo placeholders rather than adding a
@@ -240,5 +331,11 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
     moments: [],
     teamId: teamIds[0] ?? null,
     playerId: null,
+    viewerId: userId,
+    connections: [],
+    coachDisplayName: profile?.display_name ?? null,
+    coachClub,
+    coachTeamsManaged,
+    goals: [],
   };
 }

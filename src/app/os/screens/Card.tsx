@@ -1,6 +1,8 @@
 'use client';
 
-import { osAssetPath } from '../data';
+import { useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { osAssetPath, TRUST } from '../data';
 import { useOsData, useTopImprovements } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
@@ -9,13 +11,33 @@ import DevelopmentTab from './card/DevelopmentTab';
 import CoachTab from './card/CoachTab';
 
 export default function CardScreen({ state, actions }: { state: OsState; actions: OsActions }) {
-  const { playerProfile: PLAYER_PROFILE } = useOsData();
+  const { mode, playerId, playerProfile: PLAYER_PROFILE, moments } = useOsData();
+  const isReal = mode !== 'demo';
+  const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
   const flipHint = state.flipped ? 'Tap to see the front' : 'Tap to flip the card';
   const [firstName, ...restName] = PLAYER_PROFILE.name.split(' ');
   const lastName = restName.join(' ');
   const drivenBy = useTopImprovements(3);
 
-  const firstGoalTeaser = (
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !playerId || uploading) return;
+    setUploading(true);
+    const form = new FormData();
+    form.append('file', file);
+    await fetch(`/api/os/players/${playerId}/photo`, { method: 'POST', body: form });
+    setUploading(false);
+    router.refresh();
+  };
+
+  // Newest-first per os-data.ts's query — the earliest is the last entry.
+  const firstMoment = isReal && moments.length ? [...moments].reverse()[0] : null;
+  const teaserTrust = firstMoment ? TRUST[firstMoment.trust] : null;
+
+  const firstGoalTeaser = (!isReal || firstMoment) && (
     <div onClick={actions.openLatest} style={{ position: 'relative', overflow: 'hidden', width: 300, maxWidth: '100%', margin: '0 auto 12px', borderRadius: 14, background: 'var(--os-card)', border: '1px solid var(--os-border)', boxShadow: '0 8px 22px -14px rgba(0,0,0,.22)', padding: '12px 13px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
       <div style={{ position: 'absolute', top: 0, bottom: 0, width: '34%', left: 0, background: 'linear-gradient(90deg,transparent,rgba(233,116,53,.09),transparent)', animation: 'foilSweep 4.4s ease-in-out infinite', pointerEvents: 'none' }} />
       <div style={{ position: 'relative', width: 42, height: 42, borderRadius: '50%', flex: '0 0 auto', background: 'radial-gradient(circle at 32% 28%,#FCE9A8,#E8B14C 60%,#C6892E)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px -4px rgba(233,177,76,.7)' }}>
@@ -23,16 +45,18 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
       </div>
       <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 16, color: 'var(--os-ink)', lineHeight: 1 }}>FIRST GOAL</span>
+          <span style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 16, color: 'var(--os-ink)', lineHeight: 1 }}>{isReal ? firstMoment!.title.toUpperCase() : 'FIRST GOAL'}</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 999, background: 'linear-gradient(180deg,#3FB65C,#268440)' }}><span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 8.5, letterSpacing: '.1em', color: '#fff' }}>MILESTONE</span></span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 13, marginTop: 6 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 11, letterSpacing: '.03em', color: '#2E9E5B' }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2E9E5B" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>Coach Verified
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2E9E5B" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>{isReal ? teaserTrust?.label ?? firstMoment!.trust : 'Coach Verified'}
           </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 11, letterSpacing: '.03em', color: 'var(--os-muted)' }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 2v4M16 2v4" /></svg>12 March 2026
-          </span>
+          {(!isReal || firstMoment!.occurredOn) && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 11, letterSpacing: '.03em', color: 'var(--os-muted)' }}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 2v4M16 2v4" /></svg>{isReal ? firstMoment!.occurredOn : '12 March 2026'}
+            </span>
+          )}
         </div>
       </div>
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" style={{ position: 'relative', flex: '0 0 auto' }}><path d="M9 5l7 7-7 7" /></svg>
@@ -42,9 +66,32 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
   if (!state.flipped) {
     return (
       <div style={{ animation: 'faceIn .45s ease' }}>
-        <div onClick={actions.flipCard} onMouseMove={actions.tiltMove} onMouseLeave={actions.tiltReset} style={{ position: 'relative', width: 300, maxWidth: '100%', margin: '14px auto 14px', borderRadius: 18, overflow: 'hidden', boxShadow: '0 26px 50px -18px rgba(0,0,0,.55)', cursor: 'pointer' }}>
-          <img src={`${osAssetPath}/card-ollie-front.png`} alt="Ollie Harrison card front" style={{ display: 'block', width: '100%', height: 'auto' }} />
-        </div>
+        {isReal && !PLAYER_PROFILE.photoUrl ? (
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            aria-label="Add a card photo"
+            style={{
+              position: 'relative', width: 300, maxWidth: '100%', aspectRatio: '3 / 4', margin: '14px auto 14px',
+              borderRadius: 18, overflow: 'hidden', cursor: 'pointer', display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 10, background: 'var(--os-card)',
+              border: '2px dashed var(--os-border)',
+            }}
+          >
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onChange={handlePhotoChange} style={{ display: 'none' }} />
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--os-muted)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="9" cy="9" r="2" /><path d="M21 15l-5-5L5 21" /></svg>
+            <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 14, color: 'var(--os-ink)' }}>{uploading ? 'Uploading…' : 'Add a photo'}</span>
+          </div>
+        ) : (
+          <div onClick={actions.flipCard} onMouseMove={actions.tiltMove} onMouseLeave={actions.tiltReset} style={{ position: 'relative', width: 300, maxWidth: '100%', margin: '14px auto 14px', borderRadius: 18, overflow: 'hidden', boxShadow: '0 26px 50px -18px rgba(0,0,0,.55)', cursor: 'pointer' }}>
+            <img
+              src={isReal && PLAYER_PROFILE.photoUrl ? PLAYER_PROFILE.photoUrl : `${osAssetPath}/card-ollie-front.png`}
+              alt={`${PLAYER_PROFILE.name} card front`}
+              style={{ display: 'block', width: '100%', height: 'auto' }}
+            />
+          </div>
+        )}
         {firstGoalTeaser}
         <div onClick={actions.flipCard} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 6, padding: 12, borderRadius: 12, background: '#15130F', color: '#F4F1EC', fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.09em', fontSize: 11, textTransform: 'uppercase', cursor: 'pointer' }}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F4F1EC" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /><path d="M3 21v-5h5" /></svg>

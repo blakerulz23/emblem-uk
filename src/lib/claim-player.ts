@@ -13,7 +13,8 @@ type ClaimResult = { ok: true; playerId: string } | { ok: false; status: number;
 export async function claimPlayerForCard(
   serviceRole: SupabaseClient,
   card: { id: string; status: string; player_id: string | null },
-  userId: string
+  userId: string,
+  relationship: string | null = null
 ): Promise<ClaimResult> {
   if (!card.player_id || card.status === 'claimed') {
     return { ok: false, status: 400, error: "This card isn't available to claim" };
@@ -21,7 +22,7 @@ export async function claimPlayerForCard(
 
   const { error: guardianError } = await serviceRole
     .from('guardians')
-    .insert({ player_id: card.player_id, profile_id: userId });
+    .insert({ player_id: card.player_id, profile_id: userId, relationship });
 
   if (guardianError) {
     if (guardianError.code === '23505') {

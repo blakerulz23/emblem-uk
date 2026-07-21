@@ -115,7 +115,11 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { claimToken } = body as { claimToken?: string };
+  const { claimToken, displayName, relationship } = body as {
+    claimToken?: string;
+    displayName?: string;
+    relationship?: string;
+  };
   if (!claimToken) {
     return NextResponse.json({ error: 'claimToken is required' }, { status: 400 });
   }
@@ -135,12 +139,14 @@ export async function POST(request: NextRequest) {
   // guardians.profile_id is a foreign key into profiles — a brand-new
   // account has no profiles row yet, so this upsert must happen before
   // claimPlayerForCard's guardians insert, not after.
-  const { error: roleError } = await supabase.from('profiles').upsert({ id: user.id, role: 'parent' });
+  const profileUpsert: Record<string, unknown> = { id: user.id, role: 'parent' };
+  if (displayName?.trim()) profileUpsert.display_name = displayName.trim();
+  const { error: roleError } = await supabase.from('profiles').upsert(profileUpsert);
   if (roleError) {
     return NextResponse.json({ error: roleError.message }, { status: 500 });
   }
 
-  const result = await claimPlayerForCard(serviceRole, card, user.id);
+  const result = await claimPlayerForCard(serviceRole, card, user.id, relationship?.trim() || null);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
