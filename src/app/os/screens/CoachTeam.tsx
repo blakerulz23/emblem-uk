@@ -13,9 +13,19 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
   const [name, setName] = useState('');
   const [position, setPosition] = useState('');
   const [squadNumber, setSquadNumber] = useState('');
+  const [parentEmail, setParentEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [claimToken, setClaimToken] = useState<string | null>(null);
+  const [invitedEmail, setInvitedEmail] = useState<string | null>(null);
+  const [showCodeInstead, setShowCodeInstead] = useState(false);
+
+  const resetAdd = () => {
+    setShowAdd((v) => !v);
+    setClaimToken(null);
+    setInvitedEmail(null);
+    setShowCodeInstead(false);
+  };
 
   const addPlayer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,9 +49,32 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
         return;
       }
       setClaimToken(data.claimToken);
+      setInvitedEmail(null);
+      setShowCodeInstead(false);
+
+      // Preferred digital flow when the coach has the parent's email —
+      // reuses the existing second-guardian invite route unmodified. The
+      // claim code above is the canonical fallback either way: if this
+      // fails, the coach can still relay the code by hand, so a failure
+      // here must never block or error out the rest of the flow.
+      const email = parentEmail.trim();
+      if (email) {
+        try {
+          const inviteRes = await fetch('/api/os/invites', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playerId: data.playerId, invitedEmail: email }),
+          });
+          if (inviteRes.ok) setInvitedEmail(email);
+        } catch {
+          // Claim code fallback above still works — no error surfaced here.
+        }
+      }
+
       setName('');
       setPosition('');
       setSquadNumber('');
+      setParentEmail('');
       router.refresh();
     } finally {
       setBusy(false);
@@ -62,7 +95,7 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
         {isReal && (
           <button
             type="button"
-            onClick={() => { setShowAdd((v) => !v); setClaimToken(null); }}
+            onClick={resetAdd}
             style={{ background: '#E97435', color: '#fff', border: 'none', borderRadius: 11, padding: '10px 14px', fontFamily: 'Roboto', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', flex: '0 0 auto' }}
           >
             + Add Player
@@ -74,9 +107,21 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
         <div style={{ background: 'var(--os-card)', borderRadius: 16, padding: 16, marginBottom: 16, boxShadow: '0 6px 18px -14px rgba(0,0,0,.2)' }}>
           {claimToken ? (
             <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 13, color: 'var(--os-muted)', marginBottom: 8 }}>Share this code with the player&apos;s parent — they&apos;ll enter it when they sign up.</div>
-              <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 24, letterSpacing: '.2em', color: 'var(--os-ink)', marginBottom: 12 }}>{claimToken}</div>
-              <button type="button" onClick={() => setShowAdd(false)} style={{ background: 'none', border: '1px solid var(--os-border)', borderRadius: 10, padding: '9px 16px', fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, cursor: 'pointer', color: 'var(--os-ink)' }}>
+              {invitedEmail && !showCodeInstead ? (
+                <>
+                  <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)', marginBottom: 6 }}>Invitation sent to {invitedEmail}</div>
+                  <div style={{ fontSize: 13, color: 'var(--os-muted)', marginBottom: 14 }}>They&apos;ll get an email with a code to set up the player&apos;s profile.</div>
+                  <button type="button" onClick={() => setShowCodeInstead(true)} style={{ background: 'none', border: 'none', color: 'var(--os-muted)', fontSize: 13, textDecoration: 'underline', cursor: 'pointer', marginBottom: 14, display: 'block', width: '100%' }}>
+                    Show code instead
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, color: 'var(--os-muted)', marginBottom: 8 }}>Share this code with the player&apos;s parent — they&apos;ll enter it when they sign up.</div>
+                  <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 24, letterSpacing: '.2em', color: 'var(--os-ink)', marginBottom: 12 }}>{claimToken}</div>
+                </>
+              )}
+              <button type="button" onClick={resetAdd} style={{ background: 'none', border: '1px solid var(--os-border)', borderRadius: 10, padding: '9px 16px', fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, cursor: 'pointer', color: 'var(--os-ink)' }}>
                 Done
               </button>
             </div>
@@ -90,6 +135,8 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
                 <input value={squadNumber} onChange={(e) => setSquadNumber(e.target.value)} placeholder="Squad #" inputMode="numeric"
                   style={{ width: 90, padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 14 }} />
               </div>
+              <input value={parentEmail} onChange={(e) => setParentEmail(e.target.value)} placeholder="Parent's email (optional)" type="email"
+                style={{ padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 14 }} />
               <button type="submit" disabled={busy || !name.trim()} style={{ background: busy ? 'rgba(233,116,53,.5)' : '#E97435', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 16px', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: busy ? 'default' : 'pointer' }}>
                 {busy ? 'Adding…' : 'Add player'}
               </button>
