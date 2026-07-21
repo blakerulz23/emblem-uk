@@ -23,6 +23,17 @@ const nextConfig = {
         destination: '/builder',
         permanent: false,
       },
+      {
+        // /pricing is a leftover page from the generic AI-custom-merch
+        // product line (USD, "printed and shipped from the US") — not
+        // linked anywhere in the current UK grassroots-football site and
+        // inconsistent with its real GBP pricing. The homepage's own
+        // #pricing section is the single source of truth; redirect rather
+        // than maintain pricing copy in two places.
+        source: '/pricing',
+        destination: '/#pricing',
+        permanent: false,
+      },
     ];
   },
   webpack: (config, { isServer }) => {
