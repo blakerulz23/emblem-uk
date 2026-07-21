@@ -6,6 +6,13 @@ export const metadata: Metadata = {
   title: 'Emblem UK | Grassroots player cards',
   description:
     'Turn a child football photo into a premium printed player card with an interactive digital profile for stats, photos, highlights and memories.',
+  manifest: '/manifest.json',
+  themeColor: '#E97435',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Emblem OS',
+  },
 };
 
 export default function RootLayout({
