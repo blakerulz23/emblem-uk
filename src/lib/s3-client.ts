@@ -34,12 +34,22 @@ export async function uploadPdf(key: string, buffer: Buffer, contentType = 'appl
   return uploadObject(key, buffer, contentType);
 }
 
-/** Get a presigned download URL valid for `expiresInSec` seconds (default 7 days). */
-export async function getSignedDownloadUrl(key: string, expiresInSec = 60 * 60 * 24 * 7): Promise<string> {
+/** SigV4's AWS-enforced ceiling for presigned URL expiry: 7 days. */
+const MAX_PRESIGN_EXPIRY_SEC = 60 * 60 * 24 * 7;
+
+/**
+ * Get a presigned download URL valid for `expiresInSec` seconds (default,
+ * and maximum, 7 days). Values above the SigV4 ceiling are clamped rather
+ * than passed through — AWS hard-rejects anything longer with
+ * "Signature version 4 presigned URLs must have an expiration date less
+ * than one week in the future", which surfaced as a customer-facing
+ * checkout failure when a caller asked for 14 days.
+ */
+export async function getSignedDownloadUrl(key: string, expiresInSec = MAX_PRESIGN_EXPIRY_SEC): Promise<string> {
   if (!bucket) throw new Error('AWS_S3_BUCKET is not set');
   return getSignedUrl(
     s3,
     new GetObjectCommand({ Bucket: bucket, Key: key }),
-    { expiresIn: expiresInSec }
+    { expiresIn: Math.min(expiresInSec, MAX_PRESIGN_EXPIRY_SEC) }
   );
 }

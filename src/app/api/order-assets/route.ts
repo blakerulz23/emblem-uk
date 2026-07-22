@@ -48,7 +48,12 @@ export async function POST(request: NextRequest) {
     const key = `order-assets/${orderId}/${playerId}/${Date.now()}-${kind}.${extensionFor(file)}`;
 
     await uploadObject(key, bytes, file.type || 'application/octet-stream');
-    const url = await getSignedDownloadUrl(key, 60 * 60 * 24 * 14);
+    // SigV4 presigned URLs have a hard AWS-side maximum of 7 days
+    // (604800s) — requesting more fails with "Signature version 4
+    // presigned URLs must have an expiration date less than one week
+    // in the future". The S3 key (returned below) is the durable
+    // reference; anything needing access later re-signs from the key.
+    const url = await getSignedDownloadUrl(key, 60 * 60 * 24 * 7);
 
     return NextResponse.json({
       ok: true,
@@ -57,7 +62,7 @@ export async function POST(request: NextRequest) {
       contentType: file.type,
       size: file.size,
       fileName: file.name,
-      expiresInDays: 14,
+      expiresInDays: 7,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not upload order asset';
