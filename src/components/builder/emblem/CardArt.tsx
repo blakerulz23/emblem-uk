@@ -18,6 +18,12 @@ type Style = {
   mono?: boolean;
 };
 
+function nameFitScale(name: string | undefined, comfortableChars = 10) {
+  const length = (name || '').trim().length;
+  if (length <= comfortableChars) return 1;
+  return Math.max(0.68, comfortableChars / length);
+}
+
 function familyStyle(fam: Family, accent: string): Style {
   switch (fam) {
     case 'Prism':
@@ -1623,8 +1629,9 @@ function CustomCollectionCardArt({
   const H = Math.round(size * 1.4);
   const { assets } = variant;
   const isComic = variant.id === 'custom-comic';
+  const playerName = d.name || 'Player Name';
   const nameWidth = variant.nameBox?.width
-    ? H * (Number(variant.nameBox.width.replace('%', '')) / 100)
+    ? H * (Number(variant.nameBox.width.replace('%', '')) / 100) * 1.18
     : H * 0.298;
   const positionWidth = variant.positionBox?.width
     ? H * (Number(variant.positionBox.width.replace('%', '')) / 100)
@@ -1717,13 +1724,13 @@ function CustomCollectionCardArt({
             color: '#fff',
             fontFamily: variant.nameBox?.fontFamily || 'var(--font-oswald), system-ui',
             fontWeight: variant.nameBox?.fontWeight || 800,
-            fontSize: W * (variant.nameBox?.fontSize ? Number(variant.nameBox.fontSize) : isComic ? 0.064 : 0.057), lineHeight: 1, letterSpacing: '0.01em', textTransform: 'uppercase',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            fontSize: W * (variant.nameBox?.fontSize ? Number(variant.nameBox.fontSize) : isComic ? 0.064 : 0.057) * nameFitScale(playerName, 11), lineHeight: 1, letterSpacing: 0, textTransform: 'uppercase',
+            whiteSpace: 'nowrap',
             textShadow: '0 2px 4px rgba(0,0,0,.45)',
             pointerEvents: 'none',
           }}
         >
-          {d.name || 'Player Name'}
+          {playerName}
         </div>
 
         <div
@@ -1903,6 +1910,7 @@ function CustomCollectionCardBack({
   const backPath = back?.base || variant.assets.backBase || variant.assets.preview;
   const logoBox = back?.logoBox;
   const nameBox = back?.nameBox;
+  const playerName = d.name || 'Player Name';
 
   return (
     <div
@@ -1949,25 +1957,23 @@ function CustomCollectionCardBack({
             position: 'absolute',
             left: nameBox.left,
             top: nameBox.top,
-            width: nameBox.width,
+            width: '68%',
             zIndex: 3,
             transform: 'translate(-50%, -50%)',
             color: nameBox.color || '#fff',
-            fontFamily: nameBox.fontFamily || 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
+            fontFamily: 'var(--font-oswald), var(--font-barlow-condensed), "Arial Narrow", sans-serif',
             fontWeight: 900,
-            fontSize: W * (nameBox.fontSize ? Number(nameBox.fontSize) : 0.098),
-            lineHeight: 0.9,
-            letterSpacing: '0.02em',
+            fontSize: W * (nameBox.fontSize ? Number(nameBox.fontSize) : 0.098) * 0.9 * nameFitScale(playerName, 12),
+            lineHeight: 1,
+            letterSpacing: 0,
             textTransform: 'uppercase',
             textAlign: 'center',
             whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
             textShadow: '0 2px 8px rgba(0,0,0,.45)',
             pointerEvents: 'none',
           }}
         >
-          {d.name || 'Player Name'}
+          {playerName}
         </div>
       ) : null}
     </div>
