@@ -46,6 +46,17 @@ export function createServiceRoleClient() {
         getAll: () => [],
         setAll: () => {},
       },
+      global: {
+        // Supabase-js issues its PostgREST calls through the global fetch.
+        // In the App Router, Next's Data Cache captures those fetches even
+        // on force-dynamic pages — which served /staff/queue a ~90-minute-
+        // stale order list (new orders and their print_files invisible
+        // while the DB had them all along). Service-role reads are always
+        // operational truth (staff queue, webhook order lookups), never
+        // cacheable content, so opt every one of them out.
+        fetch: (input: RequestInfo | URL, init?: RequestInit) =>
+          fetch(input, { ...init, cache: 'no-store' }),
+      },
     }
   );
 }
