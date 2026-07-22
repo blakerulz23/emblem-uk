@@ -98,7 +98,7 @@ export async function POST(request: Request) {
   // create provisional records that aren't claimable until approved."
   const serviceRole = createServiceRoleClient();
   try {
-    const { data: order, error: orderError } = await serviceRole
+    let { data: order, error: orderError } = await serviceRole
       .from('orders')
       .insert({
         order_ref: requestId,
@@ -109,6 +109,26 @@ export async function POST(request: Request) {
       })
       .select()
       .single();
+
+    // Defensive: until migration 0007 (print_files jsonb) has run against
+    // the live Supabase project, the insert above fails with a
+    // column-does-not-exist error. Losing the print-file REFERENCE is
+    // acceptable (the PDFs still live in S3, keyed by orderRef); losing
+    // the whole order row is not — so retry without the column rather
+    // than silently persisting nothing.
+    if (orderError && /print_files/.test(orderError.message)) {
+      console.warn('print_files column missing (migration 0007 not run) — inserting order without it');
+      ({ data: order, error: orderError } = await serviceRole
+        .from('orders')
+        .insert({
+          order_ref: requestId,
+          purchaser_email: email!,
+          source: 'team_order',
+          payment_status: 'order_intent',
+        })
+        .select()
+        .single());
+    }
 
     if (orderError || !order) {
       console.warn('Could not persist team order', orderError?.message);

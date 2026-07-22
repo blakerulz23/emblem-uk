@@ -19,11 +19,23 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }>
 async function getPendingOrders() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return [];
   const supabase = createServiceRoleClient();
-  const { data } = await supabase
+  let { data } = await supabase
     .from('orders')
     .select('id, order_ref, purchaser_email, source, payment_status, created_at, print_files')
     .in('payment_status', ['order_intent', 'pending_payment', 'paid'])
     .order('created_at', { ascending: false });
+
+  // Until migration 0007 runs, the print_files column doesn't exist and the
+  // select above errors out (returns null data). Fall back to the original
+  // column list so the queue keeps working.
+  if (!data) {
+    const fallback = await supabase
+      .from('orders')
+      .select('id, order_ref, purchaser_email, source, payment_status, created_at')
+      .in('payment_status', ['order_intent', 'pending_payment', 'paid'])
+      .order('created_at', { ascending: false });
+    data = (fallback.data ?? []).map((o) => ({ ...o, print_files: null }));
+  }
 
   type PrintFileRef = { playerId?: string | null; playerName?: string | null; key: string };
   // Presigned URLs expire (SigV4 max 7 days) — re-sign from the stored S3
