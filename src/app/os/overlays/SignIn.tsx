@@ -13,7 +13,7 @@ import { createClient } from '@/lib/supabase/client';
  * a magic link's one-time token before the real user ever clicks it. A code
  * typed into the app can't be consumed that way.
  */
-export default function SignIn() {
+export default function SignIn({ onSuccess }: { onSuccess?: () => void }) {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -61,7 +61,11 @@ export default function SignIn() {
       setErrorMsg(error.message);
       return;
     }
-    router.refresh();
+    if (onSuccess) {
+      onSuccess();
+    } else {
+      router.refresh();
+    }
   };
 
   return (

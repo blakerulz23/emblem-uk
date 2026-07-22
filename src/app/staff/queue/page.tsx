@@ -135,7 +135,7 @@ export default async function StaffQueuePage() {
   const supabase = createClient();
   const staffCheck = await requireStaff(supabase);
   if (!staffCheck.ok) {
-    redirect('/os');
+    redirect('/staff/login?next=/staff/queue');
   }
 
   const cards = Object.values(SAMPLE_CARDS);
