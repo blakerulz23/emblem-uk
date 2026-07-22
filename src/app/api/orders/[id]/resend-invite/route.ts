@@ -6,11 +6,15 @@ import { createGuardianInvite } from '@/lib/create-guardian-invite';
 export const runtime = 'nodejs';
 
 /**
- * Explicit staff-triggered resend for a standalone order's post-approval
+ * Explicit staff-triggered resend for a single-card order's post-approval
  * invitation. Safe to call any number of times: createGuardianInvite
- * reuses the existing unused/unexpired invite for each player rather than
- * minting a new one, so this can't create duplicate active invitations —
- * it only re-sends the email and updates email_status/email_sent_at.
+ * reuses the existing unused/unexpired invite rather than minting a new
+ * one, so this can't create duplicate active invitations — it only
+ * re-sends the email and updates email_status/email_sent_at.
+ *
+ * "Single-card" is exactly-one-linked-card, same rule as the approve
+ * route — see its doc comment for why this no longer checks
+ * orders.source.
  */
 export async function POST(_request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -23,7 +27,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
 
   const { data: order, error } = await serviceRole
     .from('orders')
-    .select('id, source, payment_status, purchaser_email, intended_guardian_email')
+    .select('id, payment_status, purchaser_email, intended_guardian_email')
     .eq('id', params.id)
     .single();
 
@@ -31,13 +35,8 @@ export async function POST(_request: Request, { params }: { params: { id: string
     return NextResponse.json({ error: error?.message ?? 'Order not found' }, { status: 404 });
   }
 
-  if (order.source !== 'standalone_order' || order.payment_status !== 'fulfilled') {
-    return NextResponse.json({ error: 'Only approved standalone orders have an invitation to resend' }, { status: 400 });
-  }
-
-  const recipient = order.intended_guardian_email?.trim() || order.purchaser_email?.trim();
-  if (!recipient) {
-    return NextResponse.json({ error: 'No recipient email on this order' }, { status: 400 });
+  if (order.payment_status !== 'fulfilled') {
+    return NextResponse.json({ error: 'Only approved orders have an invitation to resend' }, { status: 400 });
   }
 
   const { data: cards } = await serviceRole
@@ -46,12 +45,18 @@ export async function POST(_request: Request, { params }: { params: { id: string
     .eq('order_id', order.id)
     .not('player_id', 'is', null);
 
-  let resent = 0;
-  for (const card of cards ?? []) {
-    if (!card.player_id) continue;
-    await createGuardianInvite(serviceRole, card.player_id, null, recipient, 'order_approval', order.id);
-    resent += 1;
+  const linkedCards = cards ?? [];
+  if (linkedCards.length !== 1) {
+    return NextResponse.json({ error: 'Resend is only available for single-card orders' }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, resent });
+  const playerId = linkedCards[0].player_id;
+  const recipient = order.intended_guardian_email?.trim() || order.purchaser_email?.trim();
+  if (!playerId || !recipient) {
+    return NextResponse.json({ error: 'No player or recipient email on this order' }, { status: 400 });
+  }
+
+  await createGuardianInvite(serviceRole, playerId, null, recipient, 'order_approval', order.id);
+
+  return NextResponse.json({ ok: true, resent: 1 });
 }

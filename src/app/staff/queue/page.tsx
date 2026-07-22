@@ -25,12 +25,27 @@ const INVITE_BADGE: Record<string, { bg: string; color: string; label: string }>
   skipped_no_email: { bg: 'var(--surface)', color: 'var(--ink-faint)', label: 'No recipient email' },
 };
 
+/** How many cards with a player_id are linked to each of these orders — the
+ * ground truth for "single-card vs. squad," since `orders.source` no longer
+ * reflects it (every live order is recorded as 'team_order', one card or
+ * many; see the approve route's doc comment for the full reasoning). */
+async function getCardCountsByOrder(supabase: ReturnType<typeof createServiceRoleClient>, orderIds: string[]) {
+  const counts = new Map<string, number>();
+  if (orderIds.length === 0) return counts;
+  const { data } = await supabase.from('cards').select('order_id').in('order_id', orderIds).not('player_id', 'is', null);
+  for (const row of data ?? []) {
+    if (!row.order_id) continue;
+    counts.set(row.order_id, (counts.get(row.order_id) ?? 0) + 1);
+  }
+  return counts;
+}
+
 async function getPendingOrders() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return [];
   const supabase = createServiceRoleClient();
   let { data } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, source, payment_status, created_at, print_files')
+    .select('id, order_ref, purchaser_email, payment_status, created_at, print_files')
     .in('payment_status', ['order_intent', 'pending_payment', 'paid'])
     .order('created_at', { ascending: false });
 
@@ -40,11 +55,16 @@ async function getPendingOrders() {
   if (!data) {
     const fallback = await supabase
       .from('orders')
-      .select('id, order_ref, purchaser_email, source, payment_status, created_at')
+      .select('id, order_ref, purchaser_email, payment_status, created_at')
       .in('payment_status', ['order_intent', 'pending_payment', 'paid'])
       .order('created_at', { ascending: false });
     data = (fallback.data ?? []).map((o) => ({ ...o, print_files: null }));
   }
+
+  const cardCounts = await getCardCountsByOrder(
+    supabase,
+    (data ?? []).map((o) => o.id)
+  );
 
   type PrintFileRef = { playerId?: string | null; playerName?: string | null; key: string };
   // Presigned URLs expire (SigV4 max 7 days) — re-sign from the stored S3
@@ -60,32 +80,39 @@ async function getPendingOrders() {
             url: await getSignedDownloadUrl(f.key, 3600),
           }))
       );
-      return { ...order, printFiles };
+      return { ...order, printFiles, cardCount: cardCounts.get(order.id) ?? 0 };
     })
   );
 }
 
 /**
- * Standalone orders staff have already approved, most recent first — this
+ * Single-card orders staff have already approved, most recent first — this
  * is where the post-approval invitation's delivery status/resend action
- * lives, since fulfilled orders drop off the pending list above. Team
- * orders are excluded: Phase 1 doesn't trigger any invitation for them
- * (see the staff-queue gaps plan) — showing them here with no status would
- * read as a bug rather than the deliberate Phase 2 deferral it is.
+ * lives, since fulfilled orders drop off the pending list above.
+ * Multi-player orders are excluded: Phase 1 doesn't trigger any invitation
+ * for them (see the staff-queue gaps plan) — showing them here with no
+ * status would read as a bug rather than the deliberate Phase 2 deferral
+ * it is.
  */
-async function getRecentlyApprovedStandaloneOrders() {
+async function getRecentlyApprovedSingleCardOrders() {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return [];
   const supabase = createServiceRoleClient();
 
   const { data: orders } = await supabase
     .from('orders')
     .select('id, order_ref, purchaser_email, intended_guardian_email, approved_at')
-    .eq('source', 'standalone_order')
     .eq('payment_status', 'fulfilled')
     .order('approved_at', { ascending: false })
-    .limit(20);
+    .limit(50);
 
   if (!orders || orders.length === 0) return [];
+
+  const cardCounts = await getCardCountsByOrder(
+    supabase,
+    orders.map((o) => o.id)
+  );
+  const singleCardOrders = orders.filter((o) => (cardCounts.get(o.id) ?? 0) === 1).slice(0, 20);
+  if (singleCardOrders.length === 0) return [];
 
   const { data: invites } = await supabase
     .from('player_invites')
@@ -93,7 +120,7 @@ async function getRecentlyApprovedStandaloneOrders() {
     .eq('origin', 'order_approval')
     .in(
       'order_id',
-      orders.map((o) => o.id)
+      singleCardOrders.map((o) => o.id)
     );
 
   const inviteByOrder = new Map<string, { email_status: string | null; email_sent_at: string | null }>();
@@ -101,7 +128,7 @@ async function getRecentlyApprovedStandaloneOrders() {
     if (invite.order_id) inviteByOrder.set(invite.order_id, invite);
   }
 
-  return orders.map((order) => ({ ...order, invite: inviteByOrder.get(order.id) ?? null }));
+  return singleCardOrders.map((order) => ({ ...order, invite: inviteByOrder.get(order.id) ?? null }));
 }
 
 export default async function StaffQueuePage() {
@@ -113,7 +140,7 @@ export default async function StaffQueuePage() {
 
   const cards = Object.values(SAMPLE_CARDS);
   const pendingOrders = await getPendingOrders();
-  const approvedOrders = await getRecentlyApprovedStandaloneOrders();
+  const approvedOrders = await getRecentlyApprovedSingleCardOrders();
 
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-14">
@@ -137,7 +164,7 @@ export default async function StaffQueuePage() {
         Emblem OS orders awaiting approval
       </h1>
       <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 15, color: 'var(--ink-soft)', margin: 0 }}>
-        A cart redirect or submitted enquiry isn&rsquo;t proof of purchase — approving here is what makes an order&rsquo;s claim code(s) actually claimable by a parent. Standalone orders also send the customer an invitation email once approved; team orders do not yet (see below).
+        A cart redirect or submitted enquiry isn&rsquo;t proof of purchase — approving here is what makes an order&rsquo;s claim code(s) actually claimable by a parent. Orders with exactly one card also send the customer an invitation email once approved; multi-player orders do not yet (see below).
       </p>
 
       <div style={{ marginTop: 28, display: 'grid', gap: 12 }}>
@@ -157,7 +184,7 @@ export default async function StaffQueuePage() {
           >
             <div style={{ flex: 1 }}>
               <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>
-                {order.order_ref} <span style={{ color: 'var(--ink-faint)', fontWeight: 500 }}>· {order.source === 'team_order' ? 'Team order' : 'Standalone card'}</span>
+                {order.order_ref} <span style={{ color: 'var(--ink-faint)', fontWeight: 500 }}>· {order.cardCount === 1 ? 'Single card' : order.cardCount === 0 ? 'No player yet' : `Team order (${order.cardCount} players)`}</span>
               </div>
               <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
                 {order.purchaser_email} · {order.payment_status}
@@ -205,16 +232,16 @@ export default async function StaffQueuePage() {
           fontSize: 22, letterSpacing: '-0.01em', color: 'var(--ink)', margin: '40px 0 6px',
         }}
       >
-        Recently approved — standalone orders
+        Recently approved — single-card orders
       </h2>
       <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 15, color: 'var(--ink-soft)', margin: 0 }}>
-        Invitation delivery status for the last 20 approved standalone orders. Team orders aren&rsquo;t shown here — they don&rsquo;t get an automatic customer invitation yet.
+        Invitation delivery status for the last 20 approved orders with exactly one card. Multi-player orders aren&rsquo;t shown here — they don&rsquo;t get an automatic customer invitation yet.
       </p>
 
       <div style={{ marginTop: 28, display: 'grid', gap: 12 }}>
         {approvedOrders.length === 0 && (
           <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
-            No approved standalone orders yet.
+            No approved single-card orders yet.
           </p>
         )}
         {approvedOrders.map((order) => {
