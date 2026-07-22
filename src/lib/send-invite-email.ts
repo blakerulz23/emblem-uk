@@ -19,7 +19,7 @@ export async function sendInviteEmail(toEmail: string, inviteCode: string): Prom
   }
 
   const from = process.env.RESEND_FROM_EMAIL || 'Emblem <onboarding@resend.dev>';
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk.vercel.app';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk-lauda-collectives-projects.vercel.app';
   const inviteUrl = `${siteUrl}/os?invite=${encodeURIComponent(inviteCode)}`;
 
   try {
