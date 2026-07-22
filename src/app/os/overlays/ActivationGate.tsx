@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { osAssetPath } from '../data';
 import { createClient } from '@/lib/supabase/client';
 import SignIn from './SignIn';
@@ -58,7 +58,17 @@ function clearIntent() {
  */
 export default function ActivationGate({ onActivate, hasSession, profileRole, hasClaimedPlayer, hasTeam }: ActivationGateProps) {
   const router = useRouter();
-  const [preAuthStep, setPreAuthStep] = useState<'fork' | 'code' | 'confirm' | 'recover' | 'auth'>('fork');
+  const searchParams = useSearchParams();
+  // A post-approval or coach-invite email links here as /os?invite=CODE.
+  // Without this, a brand-new visitor hits RoleFork's card/no-card/coach
+  // choice before ClaimCodeEntry (which reads the same param) ever
+  // mounts — the link would silently degrade to "pick a path" instead of
+  // resolving the invite. Skip straight to the code step so the mounted
+  // ClaimCodeEntry's own ?invite= auto-lookup actually runs.
+  const hasInviteParam = !!searchParams?.get('invite')?.trim();
+  const [preAuthStep, setPreAuthStep] = useState<'fork' | 'code' | 'confirm' | 'recover' | 'auth'>(
+    hasInviteParam ? 'code' : 'fork'
+  );
   const [pendingResult, setPendingResult] = useState<ClaimLookupResult | null>(null);
   const [resolving, setResolving] = useState(false);
 

@@ -21,12 +21,22 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { playerId, invitedEmail } = body as { playerId?: string; invitedEmail?: string };
+  const { playerId, invitedEmail, origin } = body as {
+    playerId?: string;
+    invitedEmail?: string;
+    origin?: 'second_guardian' | 'coach_added_player';
+  };
   if (!playerId) {
     return NextResponse.json({ error: 'playerId is required' }, { status: 400 });
   }
 
-  const result = await createGuardianInvite(supabase, playerId, user.id, invitedEmail);
+  const result = await createGuardianInvite(
+    supabase,
+    playerId,
+    user.id,
+    invitedEmail,
+    origin === 'coach_added_player' ? 'coach_added_player' : 'second_guardian'
+  );
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }

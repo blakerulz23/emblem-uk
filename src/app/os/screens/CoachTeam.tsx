@@ -63,7 +63,7 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
           const inviteRes = await fetch('/api/os/invites', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ playerId: data.playerId, invitedEmail: email }),
+            body: JSON.stringify({ playerId: data.playerId, invitedEmail: email, origin: 'coach_added_player' }),
           });
           if (inviteRes.ok) setInvitedEmail(email);
         } catch {

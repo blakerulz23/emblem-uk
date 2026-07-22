@@ -47,13 +47,19 @@ export default function PrintFileBlock() {
   const printProduct: PrintProduct | undefined = product === 'posters' ? posterSize : PRODUCT_MAP[product];
   if (!printProduct) return null;
 
-  /** Capture the hidden design, render to PDF on S3, return the signed URL. */
-  const generate = async (): Promise<string | null> => {
+  /**
+   * Capture the hidden design, render to PDF on S3, return the key + signed
+   * URL. Takes the caller's orderRef rather than generating its own — one
+   * ref, generated once by the caller, reused for the PDF metadata, the
+   * orders row, and the Shopify cart attribute (closes Checkout Phase 0
+   * defect #1 for this path, matching how the team-order builder already
+   * does it).
+   */
+  const generate = async (orderRef: string): Promise<{ key: string; downloadUrl: string } | null> => {
     if (!hiddenRef.current) return null;
     setStatus('Step 1 of 2: capturing your design');
     const dataUrl = await captureElementToPng(hiddenRef.current, { pixelRatio: 2, backgroundColor: '#fff' });
     setStatus('Step 2 of 2: uploading and generating print PDF');
-    const orderRef = 'BUILDER-' + Date.now().toString(36);
     let backDataUrl: string | undefined;
     if (printProduct === 'card' && hiddenBackRef.current) {
       backDataUrl = await captureElementToPng(hiddenBackRef.current);
@@ -64,15 +70,15 @@ export default function PrintFileBlock() {
       template: template?.name || template?.family,
       orderRef,
     }, backDataUrl);
-    return out.downloadUrl;
+    return { key: out.key, downloadUrl: out.downloadUrl };
   };
 
   const onPreview = async () => {
     setBusy(true); setError(''); setDownloadUrl('');
     try {
-      const url = await generate();
-      if (url) {
-        setDownloadUrl(url);
+      const out = await generate('BUILDER-' + Date.now().toString(36));
+      if (out) {
+        setDownloadUrl(out.downloadUrl);
         setStatus('Print file ready');
       }
     } catch (e: any) {
@@ -91,10 +97,11 @@ export default function PrintFileBlock() {
 
     setBusy(true); setError(''); setDownloadUrl('');
     try {
-      const url = await generate();
-      if (!url) throw new Error('failed to generate print file');
-      setStatus('Redirecting to checkout');
       const orderRef = 'BUILDER-' + Date.now().toString(36);
+      const out = await generate(orderRef);
+      if (!out) throw new Error('failed to generate print file');
+      const url = out.downloadUrl;
+      setStatus('Redirecting to checkout');
       const playerName = details?.playerName || details?.name;
 
       if (printProduct === 'card') {
@@ -106,7 +113,12 @@ export default function PrintFileBlock() {
           await fetch('/api/orders/intent', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orderRef, purchaserEmail: email, playerName }),
+            body: JSON.stringify({
+              orderRef,
+              purchaserEmail: email,
+              playerName,
+              printFiles: [{ playerName, key: out.key }],
+            }),
           });
         } catch {
           // Never block checkout on this — the no-card recovery flow is a

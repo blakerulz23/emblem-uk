@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { osAssetPath } from '../data';
 
 export type ClaimIdentity = {
@@ -27,15 +28,13 @@ export default function ClaimCodeEntry({
   onFound: (result: ClaimLookupResult) => void;
   onBack?: () => void;
 }) {
+  const searchParams = useSearchParams();
   const [code, setCode] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!code.trim() || status === 'loading') return;
+  const attemptLookup = async (trimmed: string) => {
+    if (!trimmed) return;
     setStatus('loading');
-
-    const trimmed = code.trim();
     try {
       const cardRes = await fetch(`/api/os/claim?code=${encodeURIComponent(trimmed)}`);
       const cardData = await cardRes.json();
@@ -59,6 +58,24 @@ export default function ClaimCodeEntry({
     } catch {
       setStatus('error');
     }
+  };
+
+  // A post-approval or coach-invite email links here as /os?invite=CODE —
+  // auto-run the same lookup used for manual entry instead of making the
+  // recipient re-type a code they just clicked a link for.
+  useEffect(() => {
+    const fromLink = searchParams?.get('invite')?.trim();
+    if (fromLink) {
+      setCode(fromLink);
+      attemptLookup(fromLink);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!code.trim() || status === 'loading') return;
+    await attemptLookup(code.trim());
   };
 
   return (

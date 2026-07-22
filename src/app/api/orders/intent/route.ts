@@ -16,16 +16,25 @@ export const runtime = 'nodejs';
  */
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { orderRef, purchaserEmail, playerName, intendedGuardianEmail } = body as {
+  const { orderRef, purchaserEmail, playerName, intendedGuardianEmail, printFiles } = body as {
     orderRef?: string;
     purchaserEmail?: string;
     playerName?: string;
     intendedGuardianEmail?: string;
+    /** Print-ready PDF captured by the builder before submit. S3 keys only —
+     * same shape as the team-order path (order-enquiry/route.ts). */
+    printFiles?: Array<{ playerId?: string; playerName?: string; key?: string }>;
   };
 
   if (!orderRef || !purchaserEmail?.trim()) {
     return NextResponse.json({ error: 'orderRef and purchaserEmail are required' }, { status: 400 });
   }
+
+  const validPrintFiles = Array.isArray(printFiles)
+    ? printFiles
+        .filter((f) => typeof f?.key === 'string' && f.key.startsWith('print-files/'))
+        .map((f) => ({ playerId: f.playerId ?? null, playerName: f.playerName ?? null, key: f.key }))
+    : [];
 
   const serviceRole = createServiceRoleClient();
 
@@ -37,6 +46,7 @@ export async function POST(request: NextRequest) {
       intended_guardian_email: intendedGuardianEmail?.trim() || null,
       source: 'standalone_order',
       payment_status: 'order_intent',
+      print_files: validPrintFiles.length > 0 ? validPrintFiles : null,
     })
     .select()
     .single();
