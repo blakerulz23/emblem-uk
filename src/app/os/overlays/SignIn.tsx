@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 
 /**
  * The entry point into Emblem OS when there's no Supabase session yet.
- * Sends a 6-digit code by email and verifies it in-app, rather than relying
+ * Sends a one-time code by email and verifies it in-app, rather than relying
  * on the user clicking a link — email security scanners (Outlook Safe Links
  * and similar) pre-visit links in incoming mail and silently burn through
  * a magic link's one-time token before the real user ever clicks it. A code
@@ -32,7 +32,12 @@ export default function SignIn({ onSuccess }: { onSuccess?: () => void }) {
     setErrorMsg('');
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({ email: email.trim() });
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: {
+        emailRedirectTo: window.location.href,
+      },
+    });
 
     if (error) {
       setStatus('error');
@@ -122,7 +127,7 @@ export default function SignIn({ onSuccess }: { onSuccess?: () => void }) {
             Enter your code
           </div>
           <p style={{ fontSize: 14, lineHeight: 1.55, color: '#B8AE9F', maxWidth: 280, margin: '0 0 24px' }}>
-            We sent a 6-digit code to <strong style={{ color: '#F4F1EC' }}>{email.trim()}</strong>.
+            We sent a one-time code to <strong style={{ color: '#F4F1EC' }}>{email.trim()}</strong>.
           </p>
 
           <form onSubmit={verifyCode} style={{ width: '100%', maxWidth: 300, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -133,8 +138,8 @@ export default function SignIn({ onSuccess }: { onSuccess?: () => void }) {
               required
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="123456"
-              aria-label="6-digit code"
+              placeholder="12345678"
+              aria-label="One-time code"
               style={{
                 width: '100%',
                 boxSizing: 'border-box',
