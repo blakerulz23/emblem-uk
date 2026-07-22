@@ -71,6 +71,7 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   );
   const [pendingResult, setPendingResult] = useState<ClaimLookupResult | null>(null);
   const [resolving, setResolving] = useState(false);
+  const [authInviteResolved, setAuthInviteResolved] = useState(false);
 
   const intent = readIntent();
 
@@ -153,6 +154,19 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
         }}
       />
     );
+  }
+
+  // Authenticated from here on — but an incoming invite link takes priority
+  // over whatever this account's normal state would otherwise show. Without
+  // this, a browser that already has ANY session (a coach testing their own
+  // team, a parent who already claimed a different child, staff) silently
+  // swallows the invite and lands on that account's normal home screen —
+  // exactly what happened testing this the first time. Scoped to ?invite=
+  // only; normal /os access for a signed-in user is untouched below.
+  // authInviteResolved gates it off once redeemed (or explicitly skipped)
+  // so it doesn't re-trigger on the router.refresh() that follows.
+  if (hasInviteParam && !authInviteResolved) {
+    return <AuthenticatedInviteResolve onResolved={() => setAuthInviteResolved(true)} />;
   }
 
   // Authenticated from here on — branching is purely server-known facts.
@@ -243,6 +257,46 @@ function ClaimCodeEntryResume() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ [bodyKey]: result.code, displayName: fields.displayName, relationship: fields.relationship }),
         });
+        router.refresh();
+      }}
+      onBack={() => setResult(null)}
+    />
+  );
+}
+
+/**
+ * An already-authenticated session (any role/state) landing on /os?invite=
+ * CODE — takes priority over that account's normal routing so the invite
+ * doesn't get silently swallowed. Same code-entry/confirm UI and dual
+ * endpoint (claim_token vs. invite code) as ClaimCodeEntryResume; the only
+ * difference is `onBack`/skip calls onResolved too, so declining the
+ * invite (or finishing it) returns control to ActivationGate's normal
+ * authenticated branching rather than re-showing this on every render.
+ */
+function AuthenticatedInviteResolve({ onResolved }: { onResolved: () => void }) {
+  const router = useRouter();
+  const [result, setResult] = useState<ClaimLookupResult | null>(null);
+
+  if (!result) {
+    return <ClaimCodeEntry onFound={setResult} onBack={onResolved} />;
+  }
+
+  if (result.alreadyClaimed) {
+    return <ClaimConfirm result={result} onConfirm={() => onResolved()} onBack={() => setResult(null)} />;
+  }
+
+  return (
+    <ClaimConfirm
+      result={result}
+      onConfirm={async (fields: ClaimConfirmFields) => {
+        const endpoint = result.source === 'invite' ? '/api/os/invites/redeem' : '/api/os/claim';
+        const bodyKey = result.source === 'invite' ? 'inviteCode' : 'claimToken';
+        await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [bodyKey]: result.code, displayName: fields.displayName, relationship: fields.relationship }),
+        });
+        onResolved();
         router.refresh();
       }}
       onBack={() => setResult(null)}
