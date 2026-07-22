@@ -1,6 +1,6 @@
 'use client';
 
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import CardArt from '@/components/builder/emblem/CardArt';
@@ -8,6 +8,8 @@ import { CARD_TEMPLATES } from '@/components/builder/emblem/data';
 import { isCustomCollectionTemplateId } from '@/lib/custom-collection-manifest';
 import { DEFAULT_EMJFL_CLUB, EAST_MANCHESTER_LEAGUE, EMJFL_CLUBS, getEmjflClub, preferredTemplateForClub } from '@/lib/emjfl-clubs';
 import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
+import { captureElementToPng, renderPrintFile } from '@/lib/print-capture';
+import { buildUkCardCartUrl } from '@/lib/shopify';
 import {
   createPlayer,
   DEFAULT_CUSTOM_TEMPLATE_ID,
@@ -196,6 +198,13 @@ export default function ProductionBuilder() {
   const [showPayload, setShowPayload] = useState(false);
   const [cardSide, setCardSide] = useState<CardSide>('front');
   const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>('idle');
+  // Print-capture rig: rendered off-screen only while a submit is in
+  // flight, so html2canvas has a full-size, image-loaded card DOM to
+  // rasterise for each approved player. Captures happen BEFORE the photo
+  // assets are swapped to S3 URLs — local blob:/data: sources keep the
+  // canvas untainted without needing S3 CORS configuration.
+  const [captureMode, setCaptureMode] = useState(false);
+  const captureRefs = useRef(new Map<string, HTMLDivElement>());
   const [enquiryError, setEnquiryError] = useState('');
   const [enquiry, setEnquiry] = useState({
     name: '',
@@ -579,6 +588,24 @@ export default function ProductionBuilder() {
     URL.revokeObjectURL(url);
   };
 
+  /** Two paint frames — enough for the capture rig to mount and lay out. */
+  const nextPaint = () =>
+    new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+
+  /** Wait for every <img> under el to finish decoding (bounded, never throws). */
+  const waitForImages = async (el: HTMLElement | null) => {
+    if (!el) return;
+    const imgs = Array.from(el.querySelectorAll('img'));
+    await Promise.all(
+      imgs.map((img) =>
+        Promise.race([
+          img.decode().catch(() => undefined),
+          new Promise((r) => setTimeout(r, 4000)),
+        ])
+      )
+    );
+  };
+
   const submitEnquiry = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSendEnquiry) return;
@@ -586,13 +613,56 @@ export default function ProductionBuilder() {
     setEnquiryError('');
 
     try {
+      // One order reference, generated once, reused everywhere: the print
+      // PDF metadata, the orders row, and the Shopify cart attribute the
+      // paid-webhook later matches on (Checkout Phase 0 defect #1).
+      const orderRef = `emblem-${order.id.slice(0, 8)}-${Date.now().toString(36)}`;
+
+      // 1) Capture print files while photos are still local blob URLs —
+      //    after orderWithUploadedAssets() swaps them to S3 URLs, canvas
+      //    capture would need bucket CORS config to avoid tainting.
+      setCaptureMode(true);
+      await nextPaint();
+      const rig = captureRefs.current;
+      for (const el of Array.from(rig.values())) await waitForImages(el);
+
+      const printFiles: Array<{ playerId: string; playerName: string; key: string }> = [];
+      for (const player of summary.approvedPlayers) {
+        const frontEl = rig.get(`${player.id}:front`);
+        const backEl = rig.get(`${player.id}:back`);
+        if (!frontEl) continue;
+        const front = await captureElementToPng(frontEl, { pixelRatio: 3, backgroundColor: '#ffffff' });
+        const back = backEl
+          ? await captureElementToPng(backEl, { pixelRatio: 3, backgroundColor: '#ffffff' })
+          : undefined;
+        const rendered = await renderPrintFile(
+          'card',
+          front,
+          {
+            playerName: player.name || 'Player',
+            teamName: playerClubName(order, player) || undefined,
+            template: selectedTemplate(order, player).name,
+            orderRef,
+          },
+          back
+        );
+        printFiles.push({ playerId: player.id, playerName: player.name || 'Player', key: rendered.key });
+      }
+      setCaptureMode(false);
+
+      // 2) Upload source assets (photos/badges) to S3.
       const productionOrder = await orderWithUploadedAssets();
+
+      // 3) Create the orders/players/cards rows — now carrying the shared
+      //    orderRef and the print-file keys for staff fulfilment.
       const response = await fetch('/api/order-enquiry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contact: enquiry,
           submittedAt: nowIso(),
+          orderRef,
+          printFiles,
           ...productionPayload(productionOrder),
         }),
       });
@@ -604,7 +674,17 @@ export default function ProductionBuilder() {
 
       setOrder(productionOrder);
       setEnquiryStatus('sent');
+
+      // 4) Hand off to Shopify checkout when the UK card variant is
+      //    configured. The paid-webhook flips this order to 'paid' when
+      //    payment completes. Without the env var we stay on the manual
+      //    "we'll email a payment link" flow — same behaviour as before.
+      const cartUrl = buildUkCardCartUrl(summary.approvedPrints, orderRef);
+      if (cartUrl) {
+        window.location.href = cartUrl;
+      }
     } catch (error) {
+      setCaptureMode(false);
       setEnquiryStatus('error');
       setEnquiryError(error instanceof Error ? error.message : 'Could not send enquiry');
     }
@@ -642,6 +722,26 @@ export default function ProductionBuilder() {
 
   return (
     <div className="uk-builder-shell uk-wizard-shell">
+      {captureMode && (
+        <div aria-hidden style={{ position: 'fixed', left: -10000, top: 0, pointerEvents: 'none' }}>
+          {summary.approvedPlayers.map((player) => (
+            <div key={player.id}>
+              <div
+                ref={(el) => { if (el) captureRefs.current.set(`${player.id}:front`, el); }}
+                style={{ width: 340 }}
+              >
+                <PlayerCard order={order} player={player} side="front" />
+              </div>
+              <div
+                ref={(el) => { if (el) captureRefs.current.set(`${player.id}:back`, el); }}
+                style={{ width: 340 }}
+              >
+                <PlayerCard order={order} player={player} side="back" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="uk-wizard-phone">
         <header className="uk-wizard-header">
           <div className="uk-wizard-topbar">
@@ -1221,7 +1321,7 @@ export default function ProductionBuilder() {
                 {enquiryStatus === 'error' && <p className="uk-enquiry-error">{enquiryError}</p>}
                 {enquiryStatus !== 'sent' ? (
                   <button type="submit" className="uk-wizard-primary" disabled={!canSendEnquiry || enquiryStatus === 'sending'}>
-                    {enquiryStatus === 'sending' ? 'Sending...' : 'Request production'}
+                    {enquiryStatus === 'sending' ? 'Preparing your cards...' : 'Continue to secure checkout'}
                   </button>
                 ) : null}
               </form>

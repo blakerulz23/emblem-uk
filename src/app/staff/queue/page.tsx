@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { SAMPLE_CARDS } from '../../card/[id]/sample-data';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { getSignedDownloadUrl } from '@/lib/s3-client';
 import ApproveOrderButton from './ApproveOrderButton';
 
 // This reads live pending orders on every request — without this, Next
@@ -20,10 +21,27 @@ async function getPendingOrders() {
   const supabase = createServiceRoleClient();
   const { data } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, source, payment_status, created_at')
+    .select('id, order_ref, purchaser_email, source, payment_status, created_at, print_files')
     .in('payment_status', ['order_intent', 'pending_payment', 'paid'])
     .order('created_at', { ascending: false });
-  return data ?? [];
+
+  type PrintFileRef = { playerId?: string | null; playerName?: string | null; key: string };
+  // Presigned URLs expire (SigV4 max 7 days) — re-sign from the stored S3
+  // keys on every page load so the download links always work.
+  return Promise.all(
+    (data ?? []).map(async (order) => {
+      const refs = Array.isArray(order.print_files) ? (order.print_files as PrintFileRef[]) : [];
+      const printFiles = await Promise.all(
+        refs
+          .filter((f) => typeof f?.key === 'string')
+          .map(async (f) => ({
+            playerName: f.playerName ?? 'Player',
+            url: await getSignedDownloadUrl(f.key, 3600),
+          }))
+      );
+      return { ...order, printFiles };
+    })
+  );
 }
 
 export default async function StaffQueuePage() {
@@ -77,6 +95,26 @@ export default async function StaffQueuePage() {
               <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
                 {order.purchaser_email} · {order.payment_status}
               </div>
+              {order.printFiles.length > 0 && (
+                <div style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  {order.printFiles.map((f, i) => (
+                    <a
+                      key={i}
+                      href={f.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, fontWeight: 600,
+                        color: 'var(--accent)', textDecoration: 'none',
+                        padding: '4px 10px', borderRadius: 999,
+                        background: 'var(--accent-tint)',
+                      }}
+                    >
+                      ⬇ {f.playerName} print PDF
+                    </a>
+                  ))}
+                </div>
+              )}
             </div>
             <ApproveOrderButton orderId={order.id} />
           </div>

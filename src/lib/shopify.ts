@@ -65,3 +65,22 @@ export const AI_VARIANT_BY_PRODUCT: Record<'armymen' | 'pendants' | 'rushmore', 
   pendants: '46376072970412',  // Custom Pendant (cameo)
   rushmore: '46376075034796',  // Custom Mount Rushmore
 };
+
+/**
+ * Cart permalink for the UK single/team card checkout (Checkout Rebuild
+ * Decision A — permalink over Storefront API). `Order Ref` rides along as
+ * a cart attribute; Shopify carries it into the order's note_attributes,
+ * which is how /api/webhooks/shopify/orders-paid finds the matching
+ * `orders` row and flips it to 'paid'.
+ *
+ * Returns null when NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT is unset so the
+ * builder can fall back to the manual "we'll email a payment link" flow
+ * instead of breaking — the env var is a launch switch, not a hard dep.
+ */
+export function buildUkCardCartUrl(quantity: number, orderRef: string): string | null {
+  const variantId = process.env.NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT;
+  if (!variantId) return null;
+  const params = new URLSearchParams();
+  params.set('attributes[Order Ref]', orderRef);
+  return 'https://' + SHOPIFY_SHOP + '/cart/' + variantId + ':' + Math.max(1, quantity) + '?' + params.toString();
+}
