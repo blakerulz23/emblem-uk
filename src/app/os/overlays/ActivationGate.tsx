@@ -146,6 +146,14 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
             // auto-resolve effect above picks this back up exactly like the
             // manual SignIn path does, unchanged.
             storeIntent({ kind: 'claim', source: pendingResult.source, code: pendingResult.code, ...fields });
+            // Also mark this code as already being handled by the stored
+            // intent above — without this, once hasSession flips true the
+            // authenticated-priority check further down (meant for a
+            // DIFFERENT invite opened on an already-signed-in browser) has
+            // no way to know this exact code is already covered, and
+            // redundantly re-triggers its own confirm/redeem for the same
+            // code the auto-resolve effect is already finishing.
+            setResolvedInviteCode(pendingResult.code);
             setPreAuthStep(pendingResult.hasIntendedEmail ? 'verifyEmail' : 'auth');
           }}
           onBack={() => setPreAuthStep('code')}
