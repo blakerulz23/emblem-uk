@@ -21,6 +21,9 @@ type Props = {
   // For products that have multiple physical shape options:
   keychainShape?: KeychainShape;
   charmShape?: CharmShape;
+  photoScale?: number;
+  photoOffsetX?: number;
+  photoOffsetY?: number;
 };
 
 export default function ProductArt({
@@ -34,6 +37,9 @@ export default function ProductArt({
   className,
   keychainShape,
   charmShape,
+  photoScale,
+  photoOffsetX,
+  photoOffsetY,
 }: Props) {
   if (product === 'posters') {
     return (
@@ -72,7 +78,16 @@ export default function ProductArt({
   }
   return (
     <div style={style} className={className}>
-      <CardArt template={template} photo={photo} details={details} size={size} selected={selected} />
+      <CardArt
+        template={template}
+        photo={photo}
+        details={details}
+        size={size}
+        selected={selected}
+        photoScale={photoScale}
+        photoOffsetX={photoOffsetX}
+        photoOffsetY={photoOffsetY}
+      />
     </div>
   );
 }

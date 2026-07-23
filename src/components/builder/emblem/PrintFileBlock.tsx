@@ -29,6 +29,9 @@ export default function PrintFileBlock() {
   const template = ctx.template;
   const photo = ctx.photo;
   const details = ctx.details;
+  const photoScale = ctx.photoScale;
+  const photoOffsetX = ctx.photoOffsetX;
+  const photoOffsetY = ctx.photoOffsetY;
   const keychainShape = ctx.keychain?.shape;
   const referralCode = ctx.referralCode as string | null | undefined;
   const referralCodes = (ctx.referralCodes as string[] | undefined) ?? (referralCode ? [referralCode] : []);
@@ -169,6 +172,9 @@ export default function PrintFileBlock() {
             size={700}
             keychainShape={keychainShape}
             charmShape={charmShape}
+            photoScale={photoScale}
+            photoOffsetX={photoOffsetX}
+            photoOffsetY={photoOffsetY}
           />
         </div>
         {printProduct === 'card' && (
