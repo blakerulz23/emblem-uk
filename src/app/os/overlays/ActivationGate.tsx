@@ -65,13 +65,19 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   // mounts — the link would silently degrade to "pick a path" instead of
   // resolving the invite. Skip straight to the code step so the mounted
   // ClaimCodeEntry's own ?invite= auto-lookup actually runs.
-  const hasInviteParam = !!searchParams?.get('invite')?.trim();
+  const currentInviteCode = searchParams?.get('invite')?.trim() || null;
   const [preAuthStep, setPreAuthStep] = useState<'fork' | 'code' | 'confirm' | 'recover' | 'auth'>(
-    hasInviteParam ? 'code' : 'fork'
+    currentInviteCode ? 'code' : 'fork'
   );
   const [pendingResult, setPendingResult] = useState<ClaimLookupResult | null>(null);
   const [resolving, setResolving] = useState(false);
-  const [authInviteResolved, setAuthInviteResolved] = useState(false);
+  // Tracks the specific code already handled this session, not just
+  // "an invite was resolved at some point" — a plain boolean would keep a
+  // FIRST invite's resolution stuck "resolved" forever, silently skipping
+  // the confirm screen for any DIFFERENT invite code opened afterward in
+  // the same tab/session (e.g. a second child's invite after the first
+  // was claimed) instead of showing it.
+  const [resolvedInviteCode, setResolvedInviteCode] = useState<string | null>(null);
 
   const intent = readIntent();
 
@@ -163,10 +169,11 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   // swallows the invite and lands on that account's normal home screen —
   // exactly what happened testing this the first time. Scoped to ?invite=
   // only; normal /os access for a signed-in user is untouched below.
-  // authInviteResolved gates it off once redeemed (or explicitly skipped)
-  // so it doesn't re-trigger on the router.refresh() that follows.
-  if (hasInviteParam && !authInviteResolved) {
-    return <AuthenticatedInviteResolve onResolved={() => setAuthInviteResolved(true)} />;
+  // Compares against the specific code (not just a resolved/not-resolved
+  // flag) so it doesn't re-trigger on the router.refresh() that follows
+  // redemption, but still fires again for a genuinely different code.
+  if (currentInviteCode && currentInviteCode !== resolvedInviteCode) {
+    return <AuthenticatedInviteResolve onResolved={() => setResolvedInviteCode(currentInviteCode)} />;
   }
 
   // Authenticated from here on — branching is purely server-known facts.
