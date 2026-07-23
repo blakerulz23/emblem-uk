@@ -1680,8 +1680,7 @@ function CustomCollectionCardArt({
               alt=""
               style={{
                 position: 'absolute', inset: 0, width: '100%', height: '100%',
-                objectFit: 'contain', objectPosition: 'center bottom',
-                transformOrigin: 'center bottom',
+                objectFit: 'cover', objectPosition: 'center 12%',
                 transform: `translate(${photoOffsetX}%, ${photoOffsetY}%) scale(${photoScale})`,
               }}
             />
