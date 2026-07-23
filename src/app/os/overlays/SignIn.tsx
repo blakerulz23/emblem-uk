@@ -32,12 +32,7 @@ export default function SignIn({ onSuccess }: { onSuccess?: () => void }) {
     setErrorMsg('');
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: {
-        emailRedirectTo: window.location.href,
-      },
-    });
+    const { error } = await supabase.auth.signInWithOtp({ email: email.trim() });
 
     if (error) {
       setStatus('error');
