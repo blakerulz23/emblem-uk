@@ -9,6 +9,7 @@ import RoleSelect from '../screens/RoleSelect';
 import RoleFork from './RoleFork';
 import ClaimCodeEntry from './ClaimCodeEntry';
 import ClaimConfirm from './ClaimConfirm';
+import VerifyIntendedEmail from './VerifyIntendedEmail';
 import RecoverByEmail from './RecoverByEmail';
 import CreateTeamOnboarding from './CreateTeamOnboarding';
 import type { ClaimLookupResult } from './ClaimCodeEntry';
@@ -66,7 +67,7 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   // resolving the invite. Skip straight to the code step so the mounted
   // ClaimCodeEntry's own ?invite= auto-lookup actually runs.
   const currentInviteCode = searchParams?.get('invite')?.trim() || null;
-  const [preAuthStep, setPreAuthStep] = useState<'fork' | 'code' | 'confirm' | 'recover' | 'auth'>(
+  const [preAuthStep, setPreAuthStep] = useState<'fork' | 'code' | 'confirm' | 'verifyEmail' | 'recover' | 'auth'>(
     currentInviteCode ? 'code' : 'fork'
   );
   const [pendingResult, setPendingResult] = useState<ClaimLookupResult | null>(null);
@@ -140,10 +141,24 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
         <ClaimConfirm
           result={pendingResult}
           onConfirm={(fields: ClaimConfirmFields) => {
+            // Stored regardless of which path comes next — the masked-email
+            // step still ends with hasSession becoming true, and the
+            // auto-resolve effect above picks this back up exactly like the
+            // manual SignIn path does, unchanged.
             storeIntent({ kind: 'claim', source: pendingResult.source, code: pendingResult.code, ...fields });
-            setPreAuthStep('auth');
+            setPreAuthStep(pendingResult.hasIntendedEmail ? 'verifyEmail' : 'auth');
           }}
           onBack={() => setPreAuthStep('code')}
+        />
+      );
+    }
+    if (preAuthStep === 'verifyEmail' && pendingResult && !pendingResult.alreadyClaimed && pendingResult.maskedEmail) {
+      return (
+        <VerifyIntendedEmail
+          inviteCode={pendingResult.code}
+          maskedEmail={pendingResult.maskedEmail}
+          onVerified={() => router.refresh()}
+          onUseDifferentEmail={() => setPreAuthStep('auth')}
         />
       );
     }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { normalizeClaimCode } from '@/lib/claim-code';
 import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
+import { maskEmail } from '@/lib/mask-email';
 
 export const runtime = 'nodejs';
 
@@ -10,6 +11,7 @@ type InviteLookupRow = {
   used_at: string | null;
   expires_at: string;
   player_id: string;
+  invited_email: string | null;
   players: {
     name: string;
     teams: { name: string; season: string; clubs: { name: string; badge_url: string | null } | null } | null;
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
   const { data } = await serviceRole
     .from('player_invites')
     .select(
-      `id, used_at, expires_at, player_id,
+      `id, used_at, expires_at, player_id, invited_email,
        players ( name, teams ( name, season, clubs ( name, badge_url ) ) )`
     )
     .eq('code', code)
@@ -55,9 +57,16 @@ export async function GET(request: NextRequest) {
   const [firstName, ...rest] = (player?.name ?? '').trim().split(/\s+/);
   const lastInitial = rest.length ? rest[rest.length - 1][0] : '';
 
+  // The raw address never leaves the server — only a masked display value
+  // and a boolean. /api/os/invites/send-code and verify-code re-derive the
+  // real address themselves when it's actually needed.
+  const masked = maskEmail(data.invited_email);
+
   return NextResponse.json({
     found: true,
     inviteCode: code,
+    hasIntendedEmail: !!masked,
+    maskedEmail: masked,
     player: {
       firstName,
       lastInitial,

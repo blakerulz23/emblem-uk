@@ -13,7 +13,16 @@ export type ClaimIdentity = {
 
 export type ClaimLookupResult =
   | { source: 'card' | 'invite'; code: string; alreadyClaimed: true }
-  | { source: 'card' | 'invite'; code: string; alreadyClaimed: false; player: ClaimIdentity };
+  | {
+      source: 'card' | 'invite';
+      code: string;
+      alreadyClaimed: false;
+      player: ClaimIdentity;
+      /** Only ever true for the invite path — a physical card's claim_token
+       * has no email concept at all. */
+      hasIntendedEmail: boolean;
+      maskedEmail: string | null;
+    };
 
 /**
  * Tries the code against a card claim_token first, then a guardian invite
@@ -42,7 +51,7 @@ export default function ClaimCodeEntry({
         onFound(
           cardData.alreadyClaimed
             ? { source: 'card', code: trimmed, alreadyClaimed: true }
-            : { source: 'card', code: trimmed, alreadyClaimed: false, player: cardData.player }
+            : { source: 'card', code: trimmed, alreadyClaimed: false, player: cardData.player, hasIntendedEmail: false, maskedEmail: null }
         );
         return;
       }
@@ -50,7 +59,14 @@ export default function ClaimCodeEntry({
       const inviteRes = await fetch(`/api/os/invites/redeem?code=${encodeURIComponent(trimmed)}`);
       const inviteData = await inviteRes.json();
       if (inviteData.found) {
-        onFound({ source: 'invite', code: trimmed, alreadyClaimed: false, player: inviteData.player });
+        onFound({
+          source: 'invite',
+          code: trimmed,
+          alreadyClaimed: false,
+          player: inviteData.player,
+          hasIntendedEmail: !!inviteData.hasIntendedEmail,
+          maskedEmail: inviteData.maskedEmail ?? null,
+        });
         return;
       }
 
