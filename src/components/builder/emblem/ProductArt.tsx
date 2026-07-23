@@ -1,7 +1,7 @@
 'use client';
 
 import type { CSSProperties } from 'react';
-import type { CardTemplate, Details, ProductId, KeychainShape, CharmShape } from './data';
+import type { CardTemplate, Details, ProductId, KeychainShape, CharmShape, PhysicalKey, SportId } from './data';
 import CardArt from './CardArt';
 import PosterArt from './PosterArt';
 import StickerArt from './StickerArt';
@@ -21,6 +21,11 @@ type Props = {
   // For products that have multiple physical shape options:
   keychainShape?: KeychainShape;
   charmShape?: CharmShape;
+  logo?: string | null;
+  stats?: Record<string, string>;
+  sport?: SportId;
+  backText?: string;
+  physical?: Record<PhysicalKey, string>;
   photoScale?: number;
   photoOffsetX?: number;
   photoOffsetY?: number;
@@ -37,6 +42,11 @@ export default function ProductArt({
   className,
   keychainShape,
   charmShape,
+  logo,
+  stats,
+  sport,
+  backText,
+  physical,
   photoScale,
   photoOffsetX,
   photoOffsetY,
@@ -84,6 +94,11 @@ export default function ProductArt({
         details={details}
         size={size}
         selected={selected}
+        logo={logo}
+        stats={stats}
+        sport={sport}
+        backText={backText}
+        physical={physical}
         photoScale={photoScale}
         photoOffsetX={photoOffsetX}
         photoOffsetY={photoOffsetY}

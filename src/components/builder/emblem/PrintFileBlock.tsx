@@ -29,6 +29,11 @@ export default function PrintFileBlock() {
   const template = ctx.template;
   const photo = ctx.photo;
   const details = ctx.details;
+  const logo = ctx.logo;
+  const stats = ctx.stats;
+  const sport = ctx.sport;
+  const backText = ctx.backText;
+  const physical = ctx.physical;
   const photoScale = ctx.photoScale;
   const photoOffsetX = ctx.photoOffsetX;
   const photoOffsetY = ctx.photoOffsetY;
@@ -172,6 +177,11 @@ export default function PrintFileBlock() {
             size={700}
             keychainShape={keychainShape}
             charmShape={charmShape}
+            logo={logo}
+            stats={stats}
+            sport={sport}
+            backText={backText}
+            physical={physical}
             photoScale={photoScale}
             photoOffsetX={photoOffsetX}
             photoOffsetY={photoOffsetY}
@@ -185,6 +195,11 @@ export default function PrintFileBlock() {
               details={details}
               size={700}
               side="back"
+              logo={logo}
+              stats={stats}
+              sport={sport}
+              backText={backText}
+              physical={physical}
             />
           </div>
         )}

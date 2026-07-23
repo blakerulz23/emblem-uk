@@ -29,6 +29,8 @@ export default function ReviewScreen() {
   const {
     photo, details, product, template, size, qty, addToCart,
     wristband, keychain, jewelry, pin, magnet, plushie, bobblehead,
+    logo, stats, sport, backText, physical,
+    photoScale, photoOffsetX, photoOffsetY,
     referralCodes, setReferralCodes,
   } = useEmblem();
   const [codeDraft, setCodeDraft] = useState('');
@@ -64,10 +66,35 @@ export default function ReviewScreen() {
         }}
       >
         <div style={{ scrollSnapAlign: 'center', flexShrink: 0 }}>
-          <CardArt template={template} photo={photo} details={details} size={140} side="front" />
+          <CardArt
+            template={template}
+            photo={photo}
+            details={details}
+            size={140}
+            side="front"
+            logo={logo}
+            stats={stats}
+            sport={sport}
+            backText={backText}
+            physical={physical}
+            photoScale={photoScale}
+            photoOffsetX={photoOffsetX}
+            photoOffsetY={photoOffsetY}
+          />
         </div>
         <div style={{ scrollSnapAlign: 'center', flexShrink: 0 }}>
-          <CardArt template={template} photo={photo} details={details} size={140} side="back" />
+          <CardArt
+            template={template}
+            photo={photo}
+            details={details}
+            size={140}
+            side="back"
+            logo={logo}
+            stats={stats}
+            sport={sport}
+            backText={backText}
+            physical={physical}
+          />
         </div>
       </div>
     );
