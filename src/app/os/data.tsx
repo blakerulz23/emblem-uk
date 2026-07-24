@@ -121,6 +121,20 @@ export const TRUST: Record<TrustSource, { label: string; dot: string }> = {
   player: { label: 'Player Reflection', dot: '#8E5BD0' },
 };
 
+/**
+ * Real-data moment status badges — a distinct axis from TRUST above.
+ * family_memory/coach_verified deliberately reuse TRUST's parent/coach
+ * entries exactly (same label, same color); pending_verification is new,
+ * using the neutral grey already established elsewhere in this file
+ * (RARITY_BY_ACH's default) so "still waiting" reads as neither of the
+ * other two, not a third shade of the same "verified" feeling.
+ */
+export const MOMENT_STATUS_BADGE: Record<'family_memory' | 'pending_verification' | 'coach_verified', { label: string; dot: string }> = {
+  family_memory: TRUST.parent,
+  pending_verification: { label: 'Pending Verification', dot: '#8A8378' },
+  coach_verified: TRUST.coach,
+};
+
 export const RANK: Record<RankTier, { label: string; text: string; chip: string; ring: string }> = {
   legendary: { label: 'LEGENDARY MOMENT', text: 'linear-gradient(180deg,#FCE9A8,#E8B14C 55%,#C6892E)', chip: 'rgba(233,177,76,.16)', ring: '#E9B14C' },
   rare: { label: 'RARE ACHIEVEMENT', text: 'linear-gradient(180deg,#FBD9B0,#E97435 60%,#C4501C)', chip: 'rgba(233,116,53,.16)', ring: '#E97435' },

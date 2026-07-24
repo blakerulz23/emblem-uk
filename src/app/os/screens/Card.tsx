@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { osAssetPath, TRUST } from '../data';
+import { osAssetPath, MOMENT_STATUS_BADGE } from '../data';
 import { useOsData, useTopImprovements } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
@@ -55,9 +55,19 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
     </div>
   ) : null;
 
-  // Newest-first per os-data.ts's query — the earliest is the last entry.
-  const firstMoment = isReal && moments.length ? [...moments].reverse()[0] : null;
-  const teaserTrust = firstMoment ? TRUST[firstMoment.trust] : null;
+  // The card-front milestone teaser only ever surfaces settled moments —
+  // never Pending Verification, since a coach could still reject it before
+  // it's earned a permanent place on the "this is who they are" front card.
+  // Preference order: earliest Coach Verified moment if any exist,
+  // otherwise earliest Family Memory, otherwise no teaser at all. `moments`
+  // is newest-first per os-data.ts's query, so filtering preserves order
+  // and the last entry of each filtered list is that category's earliest.
+  const coachVerifiedMoments = isReal ? moments.filter((m) => m.status === 'coach_verified') : [];
+  const familyMemoryMoments = isReal ? moments.filter((m) => m.status === 'family_memory') : [];
+  const firstMoment = isReal
+    ? coachVerifiedMoments[coachVerifiedMoments.length - 1] ?? familyMemoryMoments[familyMemoryMoments.length - 1] ?? null
+    : null;
+  const teaserBadge = firstMoment ? MOMENT_STATUS_BADGE[firstMoment.status] : null;
 
   const firstGoalTeaser = (!isReal || firstMoment) && (
     <div onClick={isReal ? actions.goCollection : actions.openLatest} style={{ position: 'relative', overflow: 'hidden', width: 300, maxWidth: '100%', margin: '0 auto 12px', borderRadius: 14, background: 'var(--os-card)', border: '1px solid var(--os-border)', boxShadow: '0 8px 22px -14px rgba(0,0,0,.22)', padding: '12px 13px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
@@ -71,8 +81,8 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
           <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 7px', borderRadius: 999, background: 'linear-gradient(180deg,#3FB65C,#268440)' }}><span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 8.5, letterSpacing: '.1em', color: '#fff' }}>MILESTONE</span></span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 13, marginTop: 6 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 11, letterSpacing: '.03em', color: '#2E9E5B' }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2E9E5B" strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>{isReal ? teaserTrust?.label ?? firstMoment!.trust : 'Coach Verified'}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 11, letterSpacing: '.03em', color: teaserBadge?.dot ?? '#2E9E5B' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={teaserBadge?.dot ?? '#2E9E5B'} strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>{isReal ? teaserBadge?.label ?? firstMoment!.status : 'Coach Verified'}
           </span>
           {(!isReal || firstMoment!.occurredOn) && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 11, letterSpacing: '.03em', color: 'var(--os-muted)' }}>

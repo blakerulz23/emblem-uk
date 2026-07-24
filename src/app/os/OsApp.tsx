@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent, SyntheticEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { ADD_ACH, ICN, fmtFileSize, osAssetPath } from './data';
 import { initialOsState } from './types';
 import type { AttrCategory, CardBackTab, OsState, Tab } from './types';
@@ -96,6 +97,7 @@ export default function OsApp({
   hasClaimedPlayer = false,
   hasTeam = false,
 }: OsAppProps) {
+  const router = useRouter();
   const [state, setState] = useState<OsState>(() => ({
     ...initialOsState,
     role: profileRole === 'coach' ? 'coach' : 'owner',
@@ -259,11 +261,17 @@ export default function OsApp({
         // Real accounts must see the truth: only celebrate once the moment
         // actually saved, and surface a retryable error instead of the
         // previous fire-and-forget behaviour that swallowed failures and
-        // showed the unlock celebration regardless.
+        // showed the unlock celebration regardless. The success screen's
+        // copy reads the server's actual assigned status, never assumes it
+        // client-side. router.refresh() so the newly-submitted moment is
+        // actually there once the guardian views the Collection, not just
+        // the celebration overlay.
         request
-          .then((res) => {
+          .then(async (res) => {
             if (!res.ok) throw new Error('submit failed');
-            patch({ addStep: 0, addOpen: false, addUnlock: true, addSubmitError: false });
+            const data = (await res.json().catch(() => ({}))) as { status?: 'family_memory' | 'pending_verification' };
+            patch({ addStep: 0, addOpen: false, addUnlock: true, addSubmitError: false, addResultStatus: data.status ?? null });
+            router.refresh();
           })
           .catch(() => patch({ addSubmitError: true }));
       } else {

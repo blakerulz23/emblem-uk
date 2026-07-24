@@ -95,6 +95,8 @@ export type OsState = {
   addUnlock: boolean;
   /** True when a real-account moment submission actually failed server-side — surfaced instead of silently celebrating. */
   addSubmitError: boolean;
+  /** The real verification_status POST /api/os/moments actually assigned — read to show honest success copy, never assumed client-side. Null in demo mode. */
+  addResultStatus: 'family_memory' | 'pending_verification' | null;
   files: UploadedFile[];
   dragging: boolean;
   role: Role;
@@ -124,6 +126,7 @@ export const initialOsState: OsState = {
   aScore: '',
   addUnlock: false,
   addSubmitError: false,
+  addResultStatus: null,
   files: [],
   dragging: false,
   role: 'owner',

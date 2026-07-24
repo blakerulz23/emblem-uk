@@ -132,11 +132,16 @@ async function getParentOsData(
       .select('*')
       .eq('player_id', playerId)
       .order('season', { ascending: false }),
+    // Every moment regardless of verification_status — Family Memory and
+    // Pending Verification are both real, immediately-visible states now,
+    // not just a staging area before a coach acts. verification_status is
+    // fixed at submission/approval time (see migration 0011) and read
+    // straight through below, never re-derived from current team/coach
+    // state.
     supabase
       .from('moments')
       .select('*, moment_media (*)')
       .eq('player_id', playerId)
-      .not('verified_at', 'is', null)
       .order('created_at', { ascending: false }),
     supabase
       .from('guardians')
@@ -235,6 +240,7 @@ async function getParentOsData(
       title: m.title,
       occurredOn: m.occurred_on,
       trust: m.trust,
+      status: m.verification_status,
       note: m.note,
       media: await Promise.all(
         (m.moment_media ?? []).map(async (mm: { id: string; kind: 'photo' | 'video'; s3_key: string }) => ({
@@ -318,7 +324,7 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
         .from('moments')
         .select('*, players ( name ), moment_media (*)')
         .in('player_id', playerIds)
-        .is('verified_at', null)
+        .eq('verification_status', 'pending_verification')
         .order('created_at', { ascending: false })
     : { data: [] as never[] };
 

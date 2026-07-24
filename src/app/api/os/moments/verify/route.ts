@@ -40,7 +40,7 @@ export async function PATCH(request: NextRequest) {
   if (decision === 'approve') {
     const { error } = await supabase
       .from('moments')
-      .update({ verified_by: user.id, verified_at: new Date().toISOString() })
+      .update({ verified_by: user.id, verified_at: new Date().toISOString(), verification_status: 'coach_verified' })
       .eq('id', momentId);
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

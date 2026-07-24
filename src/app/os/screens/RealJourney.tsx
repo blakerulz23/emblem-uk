@@ -1,5 +1,5 @@
 import { useOsData } from '../OsDataContext';
-import { TRUST } from '../data';
+import { MOMENT_STATUS_BADGE } from '../data';
 
 const EMPTY_SLOT_COUNT = 6;
 
@@ -19,13 +19,13 @@ export default function RealJourney() {
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 22, color: 'var(--os-ink)', lineHeight: 1.1 }}>Collection</div>
         <div style={{ fontSize: 13, color: 'var(--os-muted)', marginTop: 4 }}>
-          {moments.length > 0 ? `${moments.length} verified moment${moments.length === 1 ? '' : 's'}` : 'Your first verified moment will appear here.'}
+          {moments.length > 0 ? `${moments.length} ${moments.length === 1 ? 'memory' : 'memories'} so far` : 'Your first memory will appear here.'}
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {moments.map((m) => {
-          const trust = TRUST[m.trust];
+          const badge = MOMENT_STATUS_BADGE[m.status];
           const photo = m.media.find((med) => med.kind === 'photo');
           return (
             <div
@@ -45,8 +45,8 @@ export default function RealJourney() {
               <div style={{ padding: '10px 12px' }}>
                 <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: 'var(--os-ink)' }}>{m.title}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: trust?.dot ?? '#8A8378' }} />
-                  <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10.5, color: 'var(--os-muted)' }}>{trust?.label ?? m.trust}</span>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: badge.dot }} />
+                  <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10.5, color: 'var(--os-muted)' }}>{badge.label}</span>
                 </div>
                 {m.occurredOn && (
                   <div style={{ fontSize: 11, color: 'var(--os-muted)', marginTop: 3 }}>{m.occurredOn}</div>

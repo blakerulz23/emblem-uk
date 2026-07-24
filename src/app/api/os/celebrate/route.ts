@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
       uploaded_by: user.id,
       verified_by: user.id,
       verified_at: new Date().toISOString(),
+      verification_status: 'coach_verified',
     })
     .select()
     .single();

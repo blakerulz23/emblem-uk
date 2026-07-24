@@ -11,6 +11,12 @@ type MediaInput = { key: string; kind: 'photo' | 'video' };
  * the "moments: guardians can submit for their player" RLS policy to reject
  * anyone who isn't a guardian of playerId, so there's no need to re-check
  * that relationship here.
+ *
+ * verification_status is decided once, right here, at submission time — not
+ * something read paths ever re-derive from the player's current team/coach
+ * state (see migration 0011). "Family Memory" vs "Pending Verification"
+ * depends on whether an eligible coach is assigned *right now*; if the
+ * player later joins a team, this row's status never changes retroactively.
  */
 export async function POST(request: NextRequest) {
   const supabase = createClient();
@@ -34,6 +40,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'playerId and title are required' }, { status: 400 });
   }
 
+  const { data: player } = await supabase
+    .from('players')
+    .select('team_id')
+    .eq('id', playerId)
+    .maybeSingle();
+
+  let hasEligibleCoach = false;
+  if (player?.team_id) {
+    const { count } = await supabase
+      .from('coach_team')
+      .select('profile_id', { count: 'exact', head: true })
+      .eq('team_id', player.team_id);
+    hasEligibleCoach = (count ?? 0) > 0;
+  }
+  const verificationStatus = hasEligibleCoach ? 'pending_verification' : 'family_memory';
+
   const { data: moment, error: momentError } = await supabase
     .from('moments')
     .insert({
@@ -43,6 +65,7 @@ export async function POST(request: NextRequest) {
       trust: 'parent',
       note: note ?? null,
       uploaded_by: user.id,
+      verification_status: verificationStatus,
     })
     .select()
     .single();
@@ -60,7 +83,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, momentId: moment.id });
+  return NextResponse.json({ ok: true, momentId: moment.id, status: verificationStatus });
 }
 
 /**

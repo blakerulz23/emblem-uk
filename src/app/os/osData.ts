@@ -21,6 +21,12 @@ export type RealMoment = {
   title: string;
   occurredOn: string | null;
   trust: 'club' | 'league' | 'coach' | 'parent' | 'player';
+  /**
+   * Fixed at submission/approval time (see migration 0011) — never
+   * re-derived from the player's current team/coach state, so an existing
+   * moment's status can't silently change if the player later joins a team.
+   */
+  status: 'family_memory' | 'pending_verification' | 'coach_verified';
   note: string | null;
   media: RealMomentMedia[];
 };

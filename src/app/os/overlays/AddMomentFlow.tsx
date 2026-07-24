@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import { ADD_ACH, ADD_EVENTS, ADD_PLAYERS, ADD_TYPES, RARITY_BY_ACH } from '../data';
+import { ADD_ACH, ADD_EVENTS, ADD_PLAYERS, ADD_TYPES, RARITY_BY_ACH, MOMENT_STATUS_BADGE } from '../data';
 import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
@@ -143,10 +143,22 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
                 <div style={{ position: 'absolute', top: 14, right: 16, fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 10, padding: '5px 10px', borderRadius: 20, background: 'rgba(255,255,255,.06)', border: `1px solid ${activeRarity.color}`, color: activeRarity.color }}>{activeRarity.label}</div>
                 <div style={{ fontSize: 44, lineHeight: 1, marginBottom: 14 }}>{activeAch.emoji}</div>
                 <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.06em', fontSize: 30, color: '#F4F1EC', lineHeight: 1 }}>{activeAch.label.toUpperCase()}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 12 }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4FD07E" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V5z" /><path d="M9 12l2 2 4-4" /></svg>
-                  <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 12.5, color: '#B9F2CE' }}>Coach Verified</span>
-                </div>
+                {/* Before submit, the real outcome (Family Memory vs. Pending
+                    Verification) isn't decided yet — the server assigns it
+                    at insert time — so this preview never claims a specific
+                    verification state for a real account. Demo content is
+                    illustrative, hardcoded data, so its "Coach Verified"
+                    preview stays as-is. */}
+                {isReal ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 12 }}>
+                    <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 12.5, color: '#9A9082' }}>Adding to your Collection…</span>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 12 }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4FD07E" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V5z" /><path d="M9 12l2 2 4-4" /></svg>
+                    <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 12.5, color: '#B9F2CE' }}>Coach Verified</span>
+                  </div>
+                )}
                 <div style={{ height: 1, background: 'rgba(255,255,255,.1)', margin: '18px 0' }} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: 12.5, color: '#8E867B' }}>Player</span><span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: '#F4F1EC' }}>{activePlayerName}</span></div>
@@ -193,6 +205,15 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
             </div>
             <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.05em', fontSize: 26, color: '#F4F1EC', lineHeight: 1.05 }}>{activeAch.label.toUpperCase()}</div>
             <div style={{ fontSize: 13.5, color: '#9A9082', marginTop: 8, maxWidth: 260 }}>Successfully added to your 2026 Collection.</div>
+            {/* Reads the server's actual assigned status — a guardian's own
+                submission is never shown as Coach Verified here, since it
+                never is at this point. */}
+            {state.addResultStatus && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10, padding: '5px 12px', borderRadius: 999, background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: MOMENT_STATUS_BADGE[state.addResultStatus].dot }} />
+                <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 11.5, letterSpacing: '.04em', color: '#C7BFB4' }}>{MOMENT_STATUS_BADGE[state.addResultStatus].label}</span>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 280, marginTop: 26, animation: 'rowIn .6s ease .7s both' }}>
             <div onClick={actions.unlockViewCollection} style={{ textAlign: 'center', padding: 14, borderRadius: 13, background: 'linear-gradient(150deg,#E97435,#C4501C)', color: '#fff', fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.1em', fontSize: 15, cursor: 'pointer' }}>VIEW COLLECTION</div>
