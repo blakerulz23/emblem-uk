@@ -5,6 +5,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import ApproveOrderButton from './ApproveOrderButton';
+import ApproveTeamOrderButton from './ApproveTeamOrderButton';
 import ResendInviteButton from './ResendInviteButton';
 
 // This reads live pending orders on every request — without this, Next
@@ -45,20 +46,21 @@ async function getPendingOrders() {
   const supabase = createServiceRoleClient();
   let { data } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, payment_status, created_at, print_files')
+    .select('id, order_ref, purchaser_email, payment_status, created_at, print_files, club_name, team_name')
     .in('payment_status', ['order_intent', 'pending_payment', 'paid'])
     .order('created_at', { ascending: false });
 
-  // Until migration 0007 runs, the print_files column doesn't exist and the
-  // select above errors out (returns null data). Fall back to the original
-  // column list so the queue keeps working.
+  // Until migrations 0007 (print_files) / 0009 (club_name/team_name) run,
+  // those columns don't exist and the select above errors out (returns
+  // null data). Fall back to the original column list so the queue keeps
+  // working.
   if (!data) {
     const fallback = await supabase
       .from('orders')
       .select('id, order_ref, purchaser_email, payment_status, created_at')
       .in('payment_status', ['order_intent', 'pending_payment', 'paid'])
       .order('created_at', { ascending: false });
-    data = (fallback.data ?? []).map((o) => ({ ...o, print_files: null }));
+    data = (fallback.data ?? []).map((o) => ({ ...o, print_files: null, club_name: null, team_name: null }));
   }
 
   const cardCounts = await getCardCountsByOrder(
@@ -221,7 +223,16 @@ export default async function StaffQueuePage() {
                 )}
               </div>
             </div>
-            <ApproveOrderButton orderId={order.id} />
+            {order.cardCount > 1 ? (
+              <ApproveTeamOrderButton
+                orderId={order.id}
+                purchaserEmail={order.purchaser_email}
+                clubNameHint={order.club_name}
+                teamNameHint={order.team_name}
+              />
+            ) : (
+              <ApproveOrderButton orderId={order.id} />
+            )}
           </div>
         ))}
       </div>

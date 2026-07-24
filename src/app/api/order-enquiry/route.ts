@@ -98,6 +98,13 @@ export async function POST(request: Request) {
   // create provisional records that aren't claimable until approved."
   const serviceRole = createServiceRoleClient();
   try {
+    // Free-text hints only — prefilled into the staff club/team picker at
+    // approval time, never applied automatically (see migration 0009's
+    // reasoning: auto-matching a club by typed name risks silently
+    // merging two different real clubs sharing a common name).
+    const clubName = body.order?.club?.trim() || null;
+    const teamName = body.contact?.team?.trim() || null;
+
     let { data: order, error: orderError } = await serviceRole
       .from('orders')
       .insert({
@@ -106,18 +113,20 @@ export async function POST(request: Request) {
         source: 'team_order',
         payment_status: 'order_intent',
         print_files: printFiles.length > 0 ? printFiles : null,
+        club_name: clubName,
+        team_name: teamName,
       })
       .select()
       .single();
 
-    // Defensive: until migration 0007 (print_files jsonb) has run against
-    // the live Supabase project, the insert above fails with a
-    // column-does-not-exist error. Losing the print-file REFERENCE is
-    // acceptable (the PDFs still live in S3, keyed by orderRef); losing
-    // the whole order row is not — so retry without the column rather
-    // than silently persisting nothing.
-    if (orderError && /print_files/.test(orderError.message)) {
-      console.warn('print_files column missing (migration 0007 not run) — inserting order without it');
+    // Defensive: until migrations 0007 (print_files jsonb) / 0009
+    // (club_name/team_name) have run against the live Supabase project,
+    // the insert above fails with a column-does-not-exist error. Losing
+    // these REFERENCE-only fields is acceptable; losing the whole order
+    // row is not — so retry without them rather than silently persisting
+    // nothing.
+    if (orderError && /(print_files|club_name|team_name)/.test(orderError.message)) {
+      console.warn('print_files/club_name/team_name column missing (migration 0007/0009 not run) — inserting order without them');
       ({ data: order, error: orderError } = await serviceRole
         .from('orders')
         .insert({

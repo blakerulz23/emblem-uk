@@ -4,6 +4,29 @@ import { createClient } from '@/lib/supabase/server';
 export const runtime = 'nodejs';
 
 /**
+ * Lists teams for a club — used by the staff approve-order club/team
+ * picker (ApproveTeamOrderButton) once a club is chosen. Same "readable
+ * by authenticated users" RLS as GET /api/os/clubs, no requireStaff gate.
+ */
+export async function GET(request: NextRequest) {
+  const clubId = request.nextUrl.searchParams.get('clubId');
+  if (!clubId) {
+    return NextResponse.json({ error: 'clubId is required' }, { status: 400 });
+  }
+
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('teams')
+    .select('id, name, season')
+    .eq('club_id', clubId)
+    .order('name', { ascending: true });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ teams: data ?? [] });
+}
+
+/**
  * A coach creates their club + team for the first time. No duplicate-club
  * detection in Phase 1 (a coach could create two clubs with the same name)
  * — acceptable for self-serve provisioning at this stage.

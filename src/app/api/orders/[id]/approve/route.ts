@@ -2,8 +2,13 @@ import { NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { createGuardianInvite } from '@/lib/create-guardian-invite';
+import { createTeamInvite } from '@/lib/create-team-invite';
+import { currentUkFootballSeason } from '@/lib/season';
 
 export const runtime = 'nodejs';
+
+type ClubChoice = { mode: 'existing'; id: string } | { mode: 'new'; name: string };
+type TeamChoice = { mode: 'existing'; id: string } | { mode: 'new'; name: string; season: string };
 
 /**
  * The one staff action that unblocks claiming for an order's cards — flips
@@ -24,12 +29,17 @@ export const runtime = 'nodejs';
  * one-purchaser-one-recipient case the old standalone flow meant to
  * capture — the field just isn't reliable anymore, the count is.
  *
- * More than one linked card: no auto-invite. Connecting a real squad
- * order's players to a specific coach's Coach OS roster is Phase 2 — this
- * route must not email the purchaser/coach a bundle of child claim links,
- * and must not imply the players are already invitable.
+ * More than one linked card: a squad order. The purchaser/coach never
+ * gets emailed a bundle of child claim links (unchanged) — instead this
+ * route resolves the order to a real team (staff picks or creates a
+ * club/team in the request body, since auto-matching a typed club name
+ * risks silently merging two different real clubs — see migration
+ * 0009's reasoning), sets team_id on every one of this order's players,
+ * and invites the purchaser into Coach OS for that team. A missing/
+ * invalid body on a multi-card order is rejected before anything is
+ * written — the human decision is required every time, not optional.
  */
-export async function POST(_request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
   const staffCheck = await requireStaff(supabase);
   if (!staffCheck.ok) {
@@ -37,6 +47,74 @@ export async function POST(_request: Request, { params }: { params: { id: string
   }
 
   const serviceRole = createServiceRoleClient();
+
+  const { data: cards } = await serviceRole
+    .from('cards')
+    .select('player_id')
+    .eq('order_id', params.id)
+    .not('player_id', 'is', null);
+
+  const linkedCards = cards ?? [];
+  let resolvedTeamId: string | null = null;
+
+  if (linkedCards.length > 1) {
+    const body = await request.json().catch(() => null);
+    const club = body?.club as ClubChoice | undefined;
+    const team = body?.team as TeamChoice | undefined;
+
+    if (!club || !team || (club.mode === 'new' && !club.name?.trim()) || (team.mode === 'new' && !team.name?.trim())) {
+      return NextResponse.json(
+        { error: 'Pick or create a club and team before approving a squad order' },
+        { status: 400 }
+      );
+    }
+
+    let clubId: string;
+    if (club.mode === 'existing') {
+      clubId = club.id;
+    } else {
+      const { data: newClub, error: clubError } = await serviceRole
+        .from('clubs')
+        .insert({ name: club.name.trim() })
+        .select('id')
+        .single();
+      if (clubError || !newClub) {
+        return NextResponse.json({ error: clubError?.message ?? 'Could not create club' }, { status: 500 });
+      }
+      clubId = newClub.id;
+    }
+
+    if (team.mode === 'existing') {
+      const { data: existingTeam, error: teamLookupError } = await serviceRole
+        .from('teams')
+        .select('id, club_id')
+        .eq('id', team.id)
+        .maybeSingle();
+      if (teamLookupError || !existingTeam || existingTeam.club_id !== clubId) {
+        return NextResponse.json({ error: "That team doesn't belong to the chosen club" }, { status: 400 });
+      }
+      resolvedTeamId = existingTeam.id;
+    } else {
+      const { data: newTeam, error: teamError } = await serviceRole
+        .from('teams')
+        .insert({ club_id: clubId, name: team.name.trim(), season: team.season?.trim() || currentUkFootballSeason() })
+        .select('id')
+        .single();
+      if (teamError || !newTeam) {
+        return NextResponse.json({ error: teamError?.message ?? 'Could not create team' }, { status: 500 });
+      }
+      resolvedTeamId = newTeam.id;
+    }
+
+    const playerIds = linkedCards.map((c) => c.player_id).filter(Boolean) as string[];
+    const { error: assignError } = await serviceRole
+      .from('players')
+      .update({ team_id: resolvedTeamId })
+      .in('id', playerIds);
+    if (assignError) {
+      return NextResponse.json({ error: assignError.message }, { status: 500 });
+    }
+  }
 
   const { data: order, error } = await serviceRole
     .from('orders')
@@ -53,13 +131,6 @@ export async function POST(_request: Request, { params }: { params: { id: string
     return NextResponse.json({ error: error?.message ?? 'Order not found' }, { status: 500 });
   }
 
-  const { data: cards } = await serviceRole
-    .from('cards')
-    .select('player_id')
-    .eq('order_id', order.id)
-    .not('player_id', 'is', null);
-
-  const linkedCards = cards ?? [];
   let inviteTriggered = false;
 
   if (linkedCards.length === 1) {
@@ -67,6 +138,12 @@ export async function POST(_request: Request, { params }: { params: { id: string
     const recipient = order.intended_guardian_email?.trim() || order.purchaser_email?.trim();
     if (playerId && recipient) {
       await createGuardianInvite(serviceRole, playerId, null, recipient, 'order_approval', order.id);
+      inviteTriggered = true;
+    }
+  } else if (linkedCards.length > 1 && resolvedTeamId) {
+    const recipient = order.purchaser_email?.trim();
+    if (recipient) {
+      await createTeamInvite(serviceRole, resolvedTeamId, recipient, order.id);
       inviteTriggered = true;
     }
   }

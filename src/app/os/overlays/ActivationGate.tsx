@@ -12,8 +12,10 @@ import ClaimConfirm from './ClaimConfirm';
 import VerifyIntendedEmail from './VerifyIntendedEmail';
 import RecoverByEmail from './RecoverByEmail';
 import CreateTeamOnboarding from './CreateTeamOnboarding';
+import TeamInviteConfirm from './TeamInviteConfirm';
 import type { ClaimLookupResult } from './ClaimCodeEntry';
 import type { ClaimConfirmFields } from './ClaimConfirm';
+import type { TeamInviteLookupResult, TeamInviteConfirmFields } from './TeamInviteConfirm';
 
 export type ActivationGateProps = {
   onActivate: () => void;
@@ -28,7 +30,8 @@ const INTENT_KEY = 'emblem_pending_intent';
 type PendingIntent =
   | { kind: 'claim'; source: 'card' | 'invite'; code: string; displayName: string; relationship: string }
   | { kind: 'coach' }
-  | { kind: 'recover' };
+  | { kind: 'recover' }
+  | { kind: 'teamInvite'; code: string; displayName: string };
 
 function readIntent(): PendingIntent | null {
   if (typeof window === 'undefined') return null;
@@ -67,10 +70,16 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   // resolving the invite. Skip straight to the code step so the mounted
   // ClaimCodeEntry's own ?invite= auto-lookup actually runs.
   const currentInviteCode = searchParams?.get('invite')?.trim() || null;
-  const [preAuthStep, setPreAuthStep] = useState<'fork' | 'code' | 'confirm' | 'verifyEmail' | 'recover' | 'auth'>(
-    currentInviteCode ? 'code' : 'fork'
+  // A team-order approval email links here as /os?teaminvite=CODE — same
+  // "skip straight past the fork" reasoning as ?invite= above, but this
+  // code has no manual-entry UI in this phase (link-only), so its lookup
+  // is a plain effect below rather than something ClaimCodeEntry handles.
+  const currentTeamInviteCode = searchParams?.get('teaminvite')?.trim() || null;
+  const [preAuthStep, setPreAuthStep] = useState<'fork' | 'code' | 'confirm' | 'verifyEmail' | 'recover' | 'auth' | 'teamInvite'>(
+    currentTeamInviteCode ? 'teamInvite' : currentInviteCode ? 'code' : 'fork'
   );
   const [pendingResult, setPendingResult] = useState<ClaimLookupResult | null>(null);
+  const [teamInviteResult, setTeamInviteResult] = useState<TeamInviteLookupResult | null>(null);
   const [resolving, setResolving] = useState(false);
   // Tracks the specific code already handled this session, not just
   // "an invite was resolved at some point" — a plain boolean would keep a
@@ -79,8 +88,27 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   // the same tab/session (e.g. a second child's invite after the first
   // was claimed) instead of showing it.
   const [resolvedInviteCode, setResolvedInviteCode] = useState<string | null>(null);
+  const [resolvedTeamInviteCode, setResolvedTeamInviteCode] = useState<string | null>(null);
 
   const intent = readIntent();
+
+  // Pre-auth team-invite lookup — mirrors ClaimCodeEntry's internal
+  // ?invite= auto-lookup effect, kept here instead since team invites
+  // have no manual code-entry UI to house it in this phase.
+  useEffect(() => {
+    if (hasSession || !currentTeamInviteCode || preAuthStep !== 'teamInvite' || teamInviteResult) return;
+    fetch(`/api/os/team-invites/redeem?code=${encodeURIComponent(currentTeamInviteCode)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.found) {
+          setTeamInviteResult({ code: currentTeamInviteCode, team: data.team, club: data.club });
+        } else {
+          setPreAuthStep('fork');
+        }
+      })
+      .catch(() => setPreAuthStep('fork'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasSession, currentTeamInviteCode, preAuthStep, teamInviteResult]);
 
   // Post-auth auto-resolve: finalizes whatever was chosen before sign-in.
   useEffect(() => {
@@ -111,6 +139,13 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
         if (user) {
           await supabase.from('profiles').upsert({ id: user.id, role: 'coach' });
         }
+        clearIntent();
+      } else if (intent.kind === 'teamInvite') {
+        await fetch('/api/os/team-invites/redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inviteCode: intent.code, displayName: intent.displayName }),
+        });
         clearIntent();
       }
       // 'recover' is intentionally left in storage and NOT auto-resolved —
@@ -177,6 +212,22 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
         />
       );
     }
+    if (preAuthStep === 'teamInvite') {
+      if (!teamInviteResult) {
+        return <ResolvingScreen />;
+      }
+      return (
+        <TeamInviteConfirm
+          result={teamInviteResult}
+          onConfirm={(fields: TeamInviteConfirmFields) => {
+            storeIntent({ kind: 'teamInvite', code: teamInviteResult.code, ...fields });
+            setResolvedTeamInviteCode(teamInviteResult.code);
+            setPreAuthStep('auth');
+          }}
+          onBack={() => setPreAuthStep('fork')}
+        />
+      );
+    }
     return (
       <RoleFork
         onPickCard={() => setPreAuthStep('code')}
@@ -204,6 +255,9 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   // redemption, but still fires again for a genuinely different code.
   if (currentInviteCode && currentInviteCode !== resolvedInviteCode) {
     return <AuthenticatedInviteResolve onResolved={() => setResolvedInviteCode(currentInviteCode)} />;
+  }
+  if (currentTeamInviteCode && currentTeamInviteCode !== resolvedTeamInviteCode) {
+    return <AuthenticatedTeamInviteResolve onResolved={() => setResolvedTeamInviteCode(currentTeamInviteCode)} />;
   }
 
   // Authenticated from here on — branching is purely server-known facts.
@@ -351,6 +405,58 @@ function AuthenticatedInviteResolve({ onResolved }: { onResolved: () => void }) 
         router.refresh();
       }}
       onBack={() => setResult(null)}
+    />
+  );
+}
+
+/**
+ * An already-authenticated session landing on /os?teaminvite=CODE — same
+ * priority-over-normal-routing reasoning as AuthenticatedInviteResolve,
+ * for a team invite instead of a player claim/invite. Does its own
+ * lookup fetch (no ClaimCodeEntry-style shared component exists for
+ * teams — link-only in this phase, no manual entry UI).
+ */
+function AuthenticatedTeamInviteResolve({ onResolved }: { onResolved: () => void }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const code = searchParams?.get('teaminvite')?.trim() || '';
+  const [result, setResult] = useState<TeamInviteLookupResult | null>(null);
+
+  useEffect(() => {
+    if (!code) {
+      onResolved();
+      return;
+    }
+    fetch(`/api/os/team-invites/redeem?code=${encodeURIComponent(code)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.found) {
+          setResult({ code, team: data.team, club: data.club });
+        } else {
+          onResolved();
+        }
+      })
+      .catch(() => onResolved());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
+
+  if (!result) {
+    return <ResolvingScreen />;
+  }
+
+  return (
+    <TeamInviteConfirm
+      result={result}
+      onConfirm={async (fields: TeamInviteConfirmFields) => {
+        await fetch('/api/os/team-invites/redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inviteCode: result.code, displayName: fields.displayName }),
+        });
+        onResolved();
+        router.refresh();
+      }}
+      onBack={() => onResolved()}
     />
   );
 }
