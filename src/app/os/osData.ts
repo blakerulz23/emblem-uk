@@ -65,6 +65,8 @@ export type OsData = {
   coachTeamsManaged: CoachTeamSummary[];
   /** Parent sessions only — this claimed player's season goals. */
   goals: SeasonTarget[];
+  /** Parent sessions only — every child this guardian has claimed, oldest-claimed first. Powers the child switcher (only ever rendered in authenticated parent context, never for coaches or signed-out visitors). */
+  claimedPlayers: { id: string; name: string }[];
 };
 
 /** Demo-mode goals, moved here from Profile.tsx so DEMO_OS_DATA is the one source of truth for demo content. */
@@ -99,4 +101,5 @@ export const DEMO_OS_DATA: OsData = {
     { id: 'demo-team-u8', name: 'Curzon Ashton U8', playerCount: 11 },
   ],
   goals: DEMO_GOALS,
+  claimedPlayers: [],
 };

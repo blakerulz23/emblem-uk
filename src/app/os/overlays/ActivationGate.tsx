@@ -90,12 +90,19 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
       if (intent.kind === 'claim') {
         const endpoint = intent.source === 'invite' ? '/api/os/invites/redeem' : '/api/os/claim';
         const bodyKey = intent.source === 'invite' ? 'inviteCode' : 'claimToken';
-        await fetch(endpoint, {
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ [bodyKey]: intent.code, displayName: intent.displayName, relationship: intent.relationship }),
         });
         clearIntent();
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}) as { playerId?: string });
+          if (data.playerId) {
+            router.push(`/os?player=${data.playerId}`);
+            return;
+          }
+        }
       } else if (intent.kind === 'coach') {
         const supabase = createClient();
         const {
@@ -282,11 +289,18 @@ function ClaimCodeEntryResume() {
       onConfirm={async (fields: ClaimConfirmFields) => {
         const endpoint = result.source === 'invite' ? '/api/os/invites/redeem' : '/api/os/claim';
         const bodyKey = result.source === 'invite' ? 'inviteCode' : 'claimToken';
-        await fetch(endpoint, {
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ [bodyKey]: result.code, displayName: fields.displayName, relationship: fields.relationship }),
         });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}) as { playerId?: string });
+          if (data.playerId) {
+            router.push(`/os?player=${data.playerId}`);
+            return;
+          }
+        }
         router.refresh();
       }}
       onBack={() => setResult(null)}
@@ -321,12 +335,19 @@ function AuthenticatedInviteResolve({ onResolved }: { onResolved: () => void }) 
       onConfirm={async (fields: ClaimConfirmFields) => {
         const endpoint = result.source === 'invite' ? '/api/os/invites/redeem' : '/api/os/claim';
         const bodyKey = result.source === 'invite' ? 'inviteCode' : 'claimToken';
-        await fetch(endpoint, {
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ [bodyKey]: result.code, displayName: fields.displayName, relationship: fields.relationship }),
         });
         onResolved();
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}) as { playerId?: string });
+          if (data.playerId) {
+            router.push(`/os?player=${data.playerId}`);
+            return;
+          }
+        }
         router.refresh();
       }}
       onBack={() => setResult(null)}

@@ -73,7 +73,11 @@ export async function getOsAccount(): Promise<OsAccount> {
  * claim/team-creation flow first) — the empty-real-data branches here are
  * a defensive fallback, not the primary path.
  */
-export async function getOsData(userId: string | null, profileRole: 'parent' | 'coach' | null): Promise<OsData> {
+export async function getOsData(
+  userId: string | null,
+  profileRole: 'parent' | 'coach' | null,
+  requestedPlayerId?: string | null
+): Promise<OsData> {
   if (!userId || !SUPABASE_CONFIGURED) {
     return DEMO_OS_DATA;
   }
@@ -83,20 +87,41 @@ export async function getOsData(userId: string | null, profileRole: 'parent' | '
   if (profileRole === 'coach') {
     return getCoachOsData(supabase, userId);
   }
-  return getParentOsData(supabase, userId);
+  return getParentOsData(supabase, userId, requestedPlayerId ?? undefined);
 }
 
-async function getParentOsData(supabase: ReturnType<typeof createClient>, userId: string): Promise<OsData> {
-  const { data: guardianLinks } = await supabase.from('guardians').select('player_id').eq('profile_id', userId);
-  const playerId = guardianLinks?.[0]?.player_id as string | undefined;
+async function getParentOsData(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  requestedPlayerId?: string
+): Promise<OsData> {
+  // No timestamp column to order by "first claimed" — player_id is still
+  // a fully deterministic, stable ordering (a fixed UUID per player never
+  // changes), just not a semantically meaningful one. That's an
+  // acceptable trade to avoid a schema migration for a default-child
+  // choice nothing else depends on.
+  const { data: guardianLinks } = await supabase
+    .from('guardians')
+    .select('player_id')
+    .eq('profile_id', userId)
+    .order('player_id', { ascending: true });
+
+  const linkedIds = (guardianLinks ?? []).map((g) => g.player_id as string);
+  const linkedIdSet = new Set(linkedIds);
+  // A ?player= for a player this guardian doesn't actually guard falls
+  // back to their own default (oldest-claimed) child rather than
+  // erroring — RLS independently blocks the downstream queries from ever
+  // returning another guardian's data regardless, so this is a clean-UX
+  // fallback, not the security boundary.
+  const playerId = requestedPlayerId && linkedIdSet.has(requestedPlayerId) ? requestedPlayerId : linkedIds[0];
 
   const emptyConnections = { connections: [], viewerId: userId, coachDisplayName: null, coachClub: null, coachTeamsManaged: [], goals: [] };
 
   if (!playerId) {
-    return { ...DEMO_OS_DATA, ...emptyConnections, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [], playerId: null };
+    return { ...DEMO_OS_DATA, ...emptyConnections, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [], playerId: null, claimedPlayers: [] };
   }
 
-  const [{ data: player }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }] = await Promise.all([
+  const [{ data: player }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }] = await Promise.all([
     supabase
       .from('players')
       .select('*, teams ( name, season, clubs ( name ) )')
@@ -122,10 +147,18 @@ async function getParentOsData(supabase: ReturnType<typeof createClient>, userId
       .select('*')
       .eq('player_id', playerId)
       .order('created_at', { ascending: true }),
+    // Every child this guardian has claimed — powers the child switcher.
+    // Only fetched/rendered anywhere in authenticated parent context.
+    supabase
+      .from('players')
+      .select('id, name')
+      .in('id', linkedIds),
   ]);
 
+  const claimedPlayers = (claimedPlayerRows ?? []).map((p) => ({ id: p.id as string, name: p.name as string }));
+
   if (!player) {
-    return { ...DEMO_OS_DATA, ...emptyConnections, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [] };
+    return { ...DEMO_OS_DATA, ...emptyConnections, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [], claimedPlayers };
   }
 
   const goals: SeasonTarget[] = (goalRows ?? []).map((g) => ({
@@ -247,6 +280,7 @@ async function getParentOsData(supabase: ReturnType<typeof createClient>, userId
     coachClub: null,
     coachTeamsManaged: [],
     goals,
+    claimedPlayers,
   };
 }
 
@@ -260,7 +294,7 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
   const teamIds = (teamLinks ?? []).map((t) => t.team_id);
 
   if (!teamIds.length) {
-    return { ...DEMO_OS_DATA, ...emptyConnections, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [], teamId: null };
+    return { ...DEMO_OS_DATA, ...emptyConnections, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [], teamId: null, claimedPlayers: [] };
   }
 
   const { data: profile } = await supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle();
@@ -337,5 +371,6 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
     coachClub,
     coachTeamsManaged,
     goals: [],
+    claimedPlayers: [],
   };
 }

@@ -11,7 +11,7 @@ import DevelopmentTab from './card/DevelopmentTab';
 import CoachTab from './card/CoachTab';
 
 export default function CardScreen({ state, actions }: { state: OsState; actions: OsActions }) {
-  const { mode, playerId, playerProfile: PLAYER_PROFILE, moments } = useOsData();
+  const { mode, playerId, playerProfile: PLAYER_PROFILE, moments, claimedPlayers } = useOsData();
   const isReal = mode !== 'demo';
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -32,6 +32,28 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
     setUploading(false);
     router.refresh();
   };
+
+  // Only ever rendered for an authenticated guardian with 2+ claimed
+  // children — a single-child guardian, a coach, or a signed-out visitor
+  // never sees this (claimedPlayers is empty in every one of those cases).
+  const childSwitcher = isReal && claimedPlayers.length > 1 ? (
+    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+      <select
+        value={playerId ?? ''}
+        onChange={(e) => router.push(`/os?player=${e.target.value}`)}
+        aria-label="Switch child"
+        style={{
+          fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 12, letterSpacing: '.04em',
+          color: 'var(--os-ink)', background: 'var(--os-card)', border: '1px solid var(--os-border)',
+          borderRadius: 999, padding: '6px 14px', cursor: 'pointer',
+        }}
+      >
+        {claimedPlayers.map((p) => (
+          <option key={p.id} value={p.id}>{p.name}</option>
+        ))}
+      </select>
+    </div>
+  ) : null;
 
   // Newest-first per os-data.ts's query — the earliest is the last entry.
   const firstMoment = isReal && moments.length ? [...moments].reverse()[0] : null;
@@ -66,6 +88,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
   if (!state.flipped) {
     return (
       <div style={{ animation: 'faceIn .45s ease' }}>
+        {childSwitcher}
         {isReal && !PLAYER_PROFILE.photoUrl ? (
           <div
             onClick={() => fileInputRef.current?.click()}
@@ -103,6 +126,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
 
   return (
     <div style={{ animation: 'faceIn .45s ease' }}>
+      {childSwitcher}
       <div style={{ position: 'relative', background: 'var(--os-card)', borderRadius: 22, overflow: 'hidden', boxShadow: '0 12px 30px -14px rgba(0,0,0,.2)', marginBottom: 12, minHeight: 180 }}>
         <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(115deg,transparent 0 22px,rgba(233,116,53,.05) 22px 24px)' }} />
         <div style={{ position: 'relative', display: 'flex', padding: 20 }}>
