@@ -14,7 +14,12 @@ type InviteLookupRow = {
   invited_email: string | null;
   players: {
     name: string;
-    teams: { name: string; season: string; clubs: { name: string; badge_url: string | null } | null } | null;
+    teams: {
+      name: string;
+      season: string;
+      clubs: { name: string; badge_url: string | null } | null;
+      seasons: { label: string } | null;
+    } | null;
   } | null;
 };
 
@@ -41,7 +46,7 @@ export async function GET(request: NextRequest) {
     .from('player_invites')
     .select(
       `id, used_at, expires_at, player_id, invited_email,
-       players ( name, teams ( name, season, clubs ( name, badge_url ) ) )`
+       players ( name, teams ( name, season, clubs ( name, badge_url ), seasons ( label ) ) )`
     )
     .eq('code', code)
     .maybeSingle<InviteLookupRow>();
@@ -70,7 +75,7 @@ export async function GET(request: NextRequest) {
     player: {
       firstName,
       lastInitial,
-      team: player?.teams ? { name: player.teams.name, season: player.teams.season } : null,
+      team: player?.teams ? { name: player.teams.name, season: player.teams.seasons?.label ?? player.teams.season } : null,
       club: player?.teams?.clubs ? { name: player.teams.clubs.name, badgeUrl: player.teams.clubs.badge_url } : null,
     },
   });

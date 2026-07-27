@@ -4,6 +4,7 @@ import { requireStaff } from '@/lib/require-staff';
 import { createGuardianInvite } from '@/lib/create-guardian-invite';
 import { createTeamInvite } from '@/lib/create-team-invite';
 import { currentUkFootballSeason } from '@/lib/season';
+import { resolveOrCreateSeason } from '@/lib/resolve-season';
 
 export const runtime = 'nodejs';
 
@@ -95,9 +96,20 @@ export async function POST(request: Request, { params }: { params: { id: string 
       }
       resolvedTeamId = existingTeam.id;
     } else {
+      // Resolves-or-creates by normalized label — safe to do implicitly
+      // here (unlike club/team, which need an explicit staff choice to
+      // avoid fragmenting/merging real organizations) since seasons are
+      // low-cardinality shared reference data; typing the same season
+      // twice, even worded slightly differently, reuses the one row
+      // rather than creating a duplicate.
+      const seasonResult = await resolveOrCreateSeason(serviceRole, team.season?.trim() || currentUkFootballSeason());
+      if (!seasonResult.ok) {
+        return NextResponse.json({ error: seasonResult.error }, { status: seasonResult.status });
+      }
+
       const { data: newTeam, error: teamError } = await serviceRole
         .from('teams')
-        .insert({ club_id: clubId, name: team.name.trim(), season: team.season?.trim() || currentUkFootballSeason() })
+        .insert({ club_id: clubId, name: team.name.trim(), season: seasonResult.label, season_id: seasonResult.id })
         .select('id')
         .single();
       if (teamError || !newTeam) {

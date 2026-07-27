@@ -124,14 +124,13 @@ async function getParentOsData(
   const [{ data: player }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }] = await Promise.all([
     supabase
       .from('players')
-      .select('*, teams ( name, season, clubs ( name ) )')
+      .select('*, teams ( name, season, clubs ( name ), seasons ( label ) )')
       .eq('id', playerId)
       .maybeSingle(),
     supabase
       .from('player_skill_snapshots')
-      .select('*')
-      .eq('player_id', playerId)
-      .order('season', { ascending: false }),
+      .select('*, seasons ( label, starts_on )')
+      .eq('player_id', playerId),
     // Every moment regardless of verification_status — Family Memory and
     // Pending Verification are both real, immediately-visible states now,
     // not just a staging area before a coach acts. verification_status is
@@ -159,6 +158,19 @@ async function getParentOsData(
       .select('id, name')
       .in('id', linkedIds),
   ]);
+
+  // Sorted client-side rather than via `.order(col, { foreignTable })` —
+  // that PostgREST option orders rows *within* a one-to-many embed, not a
+  // many-to-one joined column like this snapshot-to-season relationship,
+  // so it can't be relied on to reorder these parent rows correctly.
+  const orderedSnapshots = [...(snapshots ?? [])].sort((a, b) => {
+    const aDate = a.seasons?.starts_on;
+    const bDate = b.seasons?.starts_on;
+    if (aDate && bDate) return bDate.localeCompare(aDate);
+    if (aDate && !bDate) return -1;
+    if (!aDate && bDate) return 1;
+    return (b.seasons?.label ?? '').localeCompare(a.seasons?.label ?? '');
+  });
 
   const claimedPlayers = (claimedPlayerRows ?? []).map((p) => ({ id: p.id as string, name: p.name as string }));
 
@@ -208,7 +220,7 @@ async function getParentOsData(
     })),
   ];
 
-  const latestSnapshot = snapshots?.[0];
+  const latestSnapshot = orderedSnapshots[0];
   const skillCategories = (latestSnapshot?.skills as SkillCategory[]) ?? [];
   const overallScore = latestSnapshot
     ? computeOverallScore(
@@ -220,11 +232,11 @@ async function getParentOsData(
   // "Progress will appear after two or more assessments" — needs the full
   // history, not just the latest, to know how many exist.
   const developmentSeasons: DevelopmentSeason[] =
-    (snapshots?.length ?? 0) >= 2
-      ? [...(snapshots ?? [])]
+    orderedSnapshots.length >= 2
+      ? [...orderedSnapshots]
           .reverse()
           .map((s) => ({
-            season: s.season,
+            season: s.seasons?.label ?? s.season,
             overallScore: computeOverallScore(
               Object.fromEntries(((s.skills as SkillCategory[]) ?? []).map((c) => [c.id, c.categoryScore])),
               MIDFIELDER_WEIGHTS
@@ -270,7 +282,7 @@ async function getParentOsData(
       squadNumber: player.squad_number ?? null,
       ageGroup: extractAgeGroup(player.teams?.name),
       memberSinceYear: player.created_at ? new Date(player.created_at).getFullYear() : null,
-      season: player.teams?.season ?? null,
+      season: player.teams?.seasons?.label ?? player.teams?.season ?? null,
       favouritePlayer: player.favourite_player ?? null,
       footballAmbition: player.football_ambition ?? null,
     },

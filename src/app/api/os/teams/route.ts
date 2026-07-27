@@ -17,19 +17,34 @@ export async function GET(request: NextRequest) {
   const supabase = createClient();
   const { data, error } = await supabase
     .from('teams')
-    .select('id, name, season')
+    .select('id, name, season, seasons ( label )')
     .eq('club_id', clubId)
     .order('name', { ascending: true });
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ teams: data ?? [] });
+  // seasons.label is the authoritative display value once season_id is
+  // populated (true for every team as of migration 0014's backfill) —
+  // the legacy `season` text column is only a fallback for the
+  // transition window, never the primary source going forward.
+  type TeamRow = { id: string; name: string; season: string; seasons: { label: string } | null };
+  const teams = ((data ?? []) as unknown as TeamRow[]).map((t) => ({
+    id: t.id,
+    name: t.name,
+    season: t.seasons?.label ?? t.season,
+  }));
+  return NextResponse.json({ teams });
 }
 
 /**
  * A coach creates their club + team for the first time. No duplicate-club
  * detection in Phase 1 (a coach could create two clubs with the same name)
  * — acceptable for self-serve provisioning at this stage.
+ *
+ * seasonId/seasonLabel are resolved client-side beforehand (via GET/POST
+ * /api/os/seasons) — this route dual-writes both season_id (the real FK)
+ * and the legacy season text column for the whole expand-phase transition
+ * window, matching the same pattern already used for club/team creation.
  */
 export async function POST(request: NextRequest) {
   const supabase = createClient();
@@ -41,15 +56,16 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { displayName, clubName, teamName, season } = body as {
+  const { displayName, clubName, teamName, seasonId, seasonLabel } = body as {
     displayName?: string;
     clubName?: string;
     teamName?: string;
-    season?: string;
+    seasonId?: string;
+    seasonLabel?: string;
   };
 
-  if (!clubName?.trim() || !teamName?.trim() || !season?.trim()) {
-    return NextResponse.json({ error: 'clubName, teamName and season are required' }, { status: 400 });
+  if (!clubName?.trim() || !teamName?.trim() || !seasonId || !seasonLabel?.trim()) {
+    return NextResponse.json({ error: 'clubName, teamName and a season are required' }, { status: 400 });
   }
 
   // ActivationGate's coach-intent auto-resolve already upserted this
@@ -70,7 +86,7 @@ export async function POST(request: NextRequest) {
 
   const { data: team, error: teamError } = await supabase
     .from('teams')
-    .insert({ club_id: club.id, name: teamName.trim(), season: season.trim() })
+    .insert({ club_id: club.id, name: teamName.trim(), season: seasonLabel.trim(), season_id: seasonId })
     .select()
     .single();
   if (teamError || !team) {
