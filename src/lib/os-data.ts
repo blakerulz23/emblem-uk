@@ -1,11 +1,27 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { DEMO_OS_DATA } from '@/app/os/osData';
 import type { OsData, RealMoment, RealConnection, CoachTeamSummary } from '@/app/os/osData';
 import type { SkillCategory, CoachSummary, DevelopmentSeason, SeasonTarget } from '@/app/os/playerProfile';
 import { extractAgeGroup } from '@/app/os/playerProfile';
 import { computeOverallScore, MIDFIELDER_WEIGHTS } from '@/app/os/scoring';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
-import type { SquadPlayer, VerifyItem } from '@/app/os/types';
+import type { SquadPlayer, VerifyItem, GuardianStatus } from '@/app/os/types';
+
+/**
+ * Derives the coach-facing guardian status from counts/dates only —
+ * never a raw guardian row. 'none'/'pending'/'expired' only apply when
+ * guardianCount is 0: a used, expired invite that already produced a
+ * guardian is irrelevant once that guardian exists.
+ */
+function deriveGuardianStatus(
+  guardianCount: number,
+  latestInvite: { expiresAt: string } | undefined
+): GuardianStatus {
+  if (guardianCount >= 2) return 'multiple';
+  if (guardianCount === 1) return 'connected';
+  if (!latestInvite) return 'none';
+  return new Date(latestInvite.expiresAt) > new Date() ? 'pending' : 'expired';
+}
 
 export type OsSession = {
   userId: string;
@@ -322,15 +338,57 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
     .select('id, name, position, squad_number, team_id')
     .in('team_id', teamIds);
 
-  const squad: SquadPlayer[] = (players ?? []).map((p) => ({
-    id: p.id,
-    name: p.name,
-    num: p.squad_number ?? 0,
-    pos: p.position ?? '',
-    status: 'Add recognition',
-  }));
-
   const playerIds = (players ?? []).map((p) => p.id);
+
+  // guardians has no coach-select RLS policy (only "a parent can see
+  // their own links") — rather than add one, this reads via service-role
+  // scoped to playerIds, which is already a coach-authorized set at this
+  // point (players above came back through RLS's "visible to assigned
+  // coaches" policy). Only a per-player count ever leaves this function —
+  // no guardian row, no profile_id, no email.
+  const { data: guardianRows } = playerIds.length
+    ? await createServiceRoleClient().from('guardians').select('player_id').in('player_id', playerIds)
+    : { data: [] as { player_id: string }[] };
+  const guardianCounts = new Map<string, number>();
+  (guardianRows ?? []).forEach((g) => guardianCounts.set(g.player_id as string, (guardianCounts.get(g.player_id as string) ?? 0) + 1));
+
+  // player_invites already has a coach-select policy — no service-role
+  // needed here, the ordinary session client is enough. Deliberately
+  // never selects `code` — the code is only ever fetched on demand, via
+  // GET /api/os/players/[id]/invite-link, when the coach actually opens
+  // Manage Invite or taps Copy Link.
+  const { data: inviteRows } = playerIds.length
+    ? await supabase
+        .from('player_invites')
+        .select('player_id, expires_at')
+        .in('player_id', playerIds)
+        .is('used_at', null)
+        .order('created_at', { ascending: false })
+    : { data: [] as { player_id: string; expires_at: string }[] };
+  const latestInviteByPlayer = new Map<string, { expiresAt: string }>();
+  (inviteRows ?? []).forEach((inv) => {
+    const playerId = inv.player_id as string;
+    if (!latestInviteByPlayer.has(playerId)) {
+      latestInviteByPlayer.set(playerId, { expiresAt: inv.expires_at as string });
+    }
+  });
+
+  const squad: SquadPlayer[] = (players ?? []).map((p) => {
+    const guardianCount = guardianCounts.get(p.id) ?? 0;
+    const latestInvite = latestInviteByPlayer.get(p.id);
+    const guardianStatus = deriveGuardianStatus(guardianCount, latestInvite);
+    return {
+      id: p.id,
+      name: p.name,
+      num: p.squad_number ?? 0,
+      pos: p.position ?? '',
+      status: 'Add recognition',
+      guardianStatus,
+      guardianCount,
+      latestInviteExpiresAt: guardianStatus === 'pending' || guardianStatus === 'expired' ? latestInvite?.expiresAt ?? null : null,
+      hasManageableInvite: guardianStatus === 'pending',
+    };
+  });
   const { data: pendingMoments } = playerIds.length
     ? await supabase
         .from('moments')

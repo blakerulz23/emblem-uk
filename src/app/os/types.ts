@@ -70,7 +70,36 @@ export type UploadedFile = {
   s3Key?: string;
 };
 
-export type SquadPlayer = { id: string; name: string; num: number; pos: string; status: string };
+/**
+ * Derived server-side in getCoachOsData() from guardians + player_invites
+ * counts/dates only — never a raw guardian row, never an email. 'none'/
+ * 'pending'/'expired' are mutually exclusive with 'connected'/'multiple'
+ * (a player either has guardians or has an outstanding invite, not both
+ * states at once from the coach's point of view).
+ */
+export type GuardianStatus = 'none' | 'pending' | 'expired' | 'connected' | 'multiple';
+
+export type SquadPlayer = {
+  id: string;
+  name: string;
+  num: number;
+  pos: string;
+  status: string;
+  guardianStatus: GuardianStatus;
+  guardianCount: number;
+  /** Only set when guardianStatus is 'pending' or 'expired'. */
+  latestInviteExpiresAt: string | null;
+  /**
+   * True only when guardianStatus is 'pending' — a live, unused,
+   * unexpired invite exists for this player. Drives whether "Manage
+   * invite" is offered; the invite code itself is deliberately NOT part
+   * of this payload — it's fetched on demand (GET
+   * /api/os/players/[id]/invite-link) only when the coach actually opens
+   * Manage Invite or taps Copy Link, re-checking team membership at that
+   * point rather than handing every code out on every Team-screen load.
+   */
+  hasManageableInvite: boolean;
+};
 
 export type VerifyItem = { id: string; player: string; moment: string; thumb: string; by: string; date: string };
 export type CoachActivityItem = { text: string; when: string; ic: string };

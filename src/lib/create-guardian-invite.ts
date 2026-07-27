@@ -4,7 +4,7 @@ import { sendInviteEmail } from '@/lib/send-invite-email';
 
 type InviteResult = { ok: true; code: string; reused: boolean } | { ok: false; status: number; error: string };
 
-type InviteOrigin = 'order_approval' | 'second_guardian' | 'coach_added_player';
+export type InviteOrigin = 'order_approval' | 'second_guardian' | 'coach_added_player';
 
 /**
  * The one operation behind generating a guardian invite — used when an

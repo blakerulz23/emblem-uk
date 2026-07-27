@@ -87,13 +87,16 @@ export const JIC: Record<string, (color: string) => React.ReactElement> = {
   ),
 };
 
+const inThreeDays = new Date(Date.now() + 3 * 86400000).toISOString();
+const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString();
+
 export const SQUAD: SquadPlayer[] = [
-  { id: 'ollie', name: 'Ollie Harrison', num: 7, pos: 'Midfielder', status: 'Recognised today' },
-  { id: 'jack', name: 'Jack Bennett', num: 9, pos: 'Striker', status: 'Add recognition' },
-  { id: 'leo', name: 'Leo Marsh', num: 4, pos: 'Defender', status: 'Add recognition' },
-  { id: 'finn', name: 'Finn Doyle', num: 1, pos: 'Goalkeeper', status: 'Add recognition' },
-  { id: 'reuben', name: 'Reuben Clarke', num: 8, pos: 'Midfielder', status: 'Recognised today' },
-  { id: 'theo', name: 'Theo Nkosi', num: 11, pos: 'Winger', status: 'Add recognition' },
+  { id: 'ollie', name: 'Ollie Harrison', num: 7, pos: 'Midfielder', status: 'Recognised today', guardianStatus: 'connected', guardianCount: 1, latestInviteExpiresAt: null, hasManageableInvite: false },
+  { id: 'jack', name: 'Jack Bennett', num: 9, pos: 'Striker', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false },
+  { id: 'leo', name: 'Leo Marsh', num: 4, pos: 'Defender', status: 'Add recognition', guardianStatus: 'pending', guardianCount: 0, latestInviteExpiresAt: inThreeDays, hasManageableInvite: true },
+  { id: 'finn', name: 'Finn Doyle', num: 1, pos: 'Goalkeeper', status: 'Add recognition', guardianStatus: 'expired', guardianCount: 0, latestInviteExpiresAt: twoDaysAgo, hasManageableInvite: false },
+  { id: 'reuben', name: 'Reuben Clarke', num: 8, pos: 'Midfielder', status: 'Recognised today', guardianStatus: 'multiple', guardianCount: 2, latestInviteExpiresAt: null, hasManageableInvite: false },
+  { id: 'theo', name: 'Theo Nkosi', num: 11, pos: 'Winger', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false },
 ];
 
 export const CELEBRATE_CATS: CelebrateGroup[] = [

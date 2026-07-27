@@ -4,12 +4,58 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
+import type { SquadPlayer } from '../types';
+import GuardianInviteSheet, { daysLeftLabel } from '../overlays/GuardianInviteSheet';
+
+// Status and action are stacked, not sharing a row — a shared
+// space-between row crowds/wraps badly once the label text (e.g. "Invite
+// sent · 3 days left") gets long, since the label and action are fighting
+// the avatar + Celebrate button for the same narrow column. Stacking
+// keeps both fully legible regardless of label length or card width.
+function GuardianStatusRow({ player, onAction }: { player: SquadPlayer; onAction: () => void }) {
+  const wrapStyle = { marginTop: 4 };
+  const labelStyle = { fontSize: 12, color: 'var(--os-muted)' };
+  const actionStyle = { fontSize: 12, fontWeight: 700, color: '#E97435', cursor: 'pointer', marginTop: 2 };
+
+  switch (player.guardianStatus) {
+    case 'connected':
+      return <div style={wrapStyle}><span style={labelStyle}>● Guardian connected</span></div>;
+    case 'multiple':
+      return <div style={wrapStyle}><span style={labelStyle}>●● {player.guardianCount} guardians connected</span></div>;
+    case 'none':
+      return (
+        <div style={wrapStyle}>
+          <div style={labelStyle}>○ No guardian connected</div>
+          <div onClick={onAction} style={actionStyle}>Invite guardian</div>
+        </div>
+      );
+    case 'pending': {
+      const label = player.latestInviteExpiresAt ? `Invite sent · ${daysLeftLabel(player.latestInviteExpiresAt)}` : 'Invite sent';
+      return (
+        <div style={wrapStyle}>
+          <div style={labelStyle}>○ {label}</div>
+          <div onClick={onAction} style={actionStyle}>Manage invite</div>
+        </div>
+      );
+    }
+    case 'expired':
+      return (
+        <div style={wrapStyle}>
+          <div style={labelStyle}>○ Invite expired</div>
+          <div onClick={onAction} style={actionStyle}>Invite guardian</div>
+        </div>
+      );
+    default:
+      return null;
+  }
+}
 
 export default function CoachTeam({ actions }: { actions: OsActions }) {
   const router = useRouter();
   const { mode, squad: SQUAD, teamId } = useOsData();
   const isReal = mode !== 'demo';
   const [showAdd, setShowAdd] = useState(false);
+  const [sheetPlayer, setSheetPlayer] = useState<SquadPlayer | null>(null);
   const [name, setName] = useState('');
   const [position, setPosition] = useState('');
   const [squadNumber, setSquadNumber] = useState('');
@@ -154,6 +200,7 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>{p.name}</div>
               <div style={{ fontSize: 12, color: 'var(--os-muted)' }}>#{p.num} · {p.pos}</div>
+              <GuardianStatusRow player={p} onAction={() => setSheetPlayer(p)} />
             </div>
             <div onClick={() => actions.openCeleb(p.id)} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 6, background: '#E97435', color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 12.5, padding: '10px 14px', borderRadius: 11, cursor: 'pointer', boxShadow: '0 8px 18px -10px rgba(233,116,53,.7)' }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 18.3 5.9 20.4 7.3 13.6 2.2 8.9l6.9-.8z" /></svg>Celebrate
@@ -161,6 +208,8 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
           </div>
         );
       })}
+
+      {sheetPlayer && <GuardianInviteSheet player={sheetPlayer} onClose={() => setSheetPlayer(null)} />}
     </>
   );
 }
