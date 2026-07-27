@@ -1,7 +1,7 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { DEMO_OS_DATA } from '@/app/os/osData';
 import type { OsData, RealMoment, RealConnection, CoachTeamSummary } from '@/app/os/osData';
-import type { SkillCategory, CoachSummary, DevelopmentSeason, SeasonTarget } from '@/app/os/playerProfile';
+import type { SkillCategory, CoachSummary, DevelopmentSeason, SeasonTarget, PlayerProfile } from '@/app/os/playerProfile';
 import { extractAgeGroup } from '@/app/os/playerProfile';
 import { computeOverallScore, MIDFIELDER_WEIGHTS } from '@/app/os/scoring';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
@@ -13,6 +13,29 @@ import type { SquadPlayer, VerifyItem, GuardianStatus } from '@/app/os/types';
  * guardianCount is 0: a used, expired invite that already produced a
  * guardian is irrelevant once that guardian exists.
  */
+// Never DEMO_OS_DATA's playerProfile ("Ollie Harrison") — a real,
+// authenticated account whose player lookup comes up empty must show a
+// genuinely empty state, not fake demo content mistaken for real data.
+// Core Product Principle #6, enforced here the same way `squad: []` and
+// `claimedPlayers: []` already are for their own empty cases.
+const EMPTY_PLAYER_PROFILE: PlayerProfile = {
+  name: '',
+  position: '',
+  club: '',
+  age: 0,
+  height: '',
+  preferredFoot: 'Right',
+  overallScore: null,
+  seasonalChange: null,
+  photoUrl: null,
+  squadNumber: null,
+  ageGroup: null,
+  memberSinceYear: null,
+  season: null,
+  favouritePlayer: null,
+  footballAmbition: null,
+};
+
 function deriveGuardianStatus(
   guardianCount: number,
   latestInvite: { expiresAt: string } | undefined
@@ -134,7 +157,21 @@ async function getParentOsData(
   const emptyConnections = { connections: [], viewerId: userId, coachDisplayName: null, coachClub: null, coachTeamsManaged: [], goals: [] };
 
   if (!playerId) {
-    return { ...DEMO_OS_DATA, ...emptyConnections, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [], playerId: null, claimedPlayers: [] };
+    return {
+      ...emptyConnections,
+      mode: 'real',
+      squad: [],
+      verifyQueue: [],
+      coachActivity: [],
+      playerProfile: EMPTY_PLAYER_PROFILE,
+      skillCategories: [],
+      developmentSeasons: [],
+      coachSummary: null,
+      moments: [],
+      teamId: null,
+      playerId: null,
+      claimedPlayers: [],
+    };
   }
 
   const [{ data: player }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }] = await Promise.all([
@@ -191,7 +228,21 @@ async function getParentOsData(
   const claimedPlayers = (claimedPlayerRows ?? []).map((p) => ({ id: p.id as string, name: p.name as string }));
 
   if (!player) {
-    return { ...DEMO_OS_DATA, ...emptyConnections, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [], claimedPlayers };
+    return {
+      ...emptyConnections,
+      mode: 'real',
+      squad: [],
+      verifyQueue: [],
+      coachActivity: [],
+      playerProfile: EMPTY_PLAYER_PROFILE,
+      skillCategories: [],
+      developmentSeasons: [],
+      coachSummary: null,
+      moments: [],
+      teamId: null,
+      playerId: null,
+      claimedPlayers,
+    };
   }
 
   const goals: SeasonTarget[] = (goalRows ?? []).map((g) => ({
