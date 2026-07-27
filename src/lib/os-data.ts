@@ -124,7 +124,7 @@ async function getParentOsData(
   const [{ data: player }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }] = await Promise.all([
     supabase
       .from('players')
-      .select('*, teams ( name, season, clubs ( name ), seasons ( label ) )')
+      .select('*, teams ( name, clubs ( name ), seasons ( label ) )')
       .eq('id', playerId)
       .maybeSingle(),
     supabase
@@ -236,7 +236,7 @@ async function getParentOsData(
       ? [...orderedSnapshots]
           .reverse()
           .map((s) => ({
-            season: s.seasons?.label ?? s.season,
+            season: s.seasons?.label,
             overallScore: computeOverallScore(
               Object.fromEntries(((s.skills as SkillCategory[]) ?? []).map((c) => [c.id, c.categoryScore])),
               MIDFIELDER_WEIGHTS
@@ -282,7 +282,7 @@ async function getParentOsData(
       squadNumber: player.squad_number ?? null,
       ageGroup: extractAgeGroup(player.teams?.name),
       memberSinceYear: player.created_at ? new Date(player.created_at).getFullYear() : null,
-      season: player.teams?.seasons?.label ?? player.teams?.season ?? null,
+      season: player.teams?.seasons?.label ?? null,
       favouritePlayer: player.favourite_player ?? null,
       footballAmbition: player.football_ambition ?? null,
     },

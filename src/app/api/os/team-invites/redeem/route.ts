@@ -12,7 +12,6 @@ type TeamInviteLookupRow = {
   team_id: string;
   teams: {
     name: string;
-    season: string;
     clubs: { name: string; badge_url: string | null } | null;
     seasons: { label: string } | null;
   } | null;
@@ -39,7 +38,7 @@ export async function GET(request: NextRequest) {
   const serviceRole = createServiceRoleClient();
   const { data } = await serviceRole
     .from('team_invites')
-    .select('id, used_at, expires_at, team_id, teams ( name, season, clubs ( name, badge_url ), seasons ( label ) )')
+    .select('id, used_at, expires_at, team_id, teams ( name, clubs ( name, badge_url ), seasons ( label ) )')
     .eq('code', code)
     .maybeSingle<TeamInviteLookupRow>();
 
@@ -53,7 +52,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     found: true,
     inviteCode: code,
-    team: data.teams ? { name: data.teams.name, season: data.teams.seasons?.label ?? data.teams.season } : null,
+    team: data.teams ? { name: data.teams.name, season: data.teams.seasons?.label } : null,
     club: data.teams?.clubs ? { name: data.teams.clubs.name, badgeUrl: data.teams.clubs.badge_url } : null,
   });
 }

@@ -39,7 +39,6 @@ export default function CreateTeamOnboarding() {
     setErrorMsg('');
 
     let seasonId = selectedSeasonId;
-    let seasonLabel = seasons.find((s) => s.id === selectedSeasonId)?.label ?? '';
 
     if (seasonMode === 'new') {
       const seasonRes = await fetch('/api/os/seasons', {
@@ -54,7 +53,6 @@ export default function CreateTeamOnboarding() {
         return;
       }
       seasonId = seasonData.id;
-      seasonLabel = seasonData.label;
     }
 
     if (!seasonId) {
@@ -71,7 +69,6 @@ export default function CreateTeamOnboarding() {
         clubName: clubName.trim(),
         teamName: teamName.trim(),
         seasonId,
-        seasonLabel,
       }),
     });
     const data = await res.json();

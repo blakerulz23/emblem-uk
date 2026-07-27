@@ -109,7 +109,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
       const { data: newTeam, error: teamError } = await serviceRole
         .from('teams')
-        .insert({ club_id: clubId, name: team.name.trim(), season: seasonResult.label, season_id: seasonResult.id })
+        .insert({ club_id: clubId, name: team.name.trim(), season_id: seasonResult.id })
         .select('id')
         .single();
       if (teamError || !newTeam) {

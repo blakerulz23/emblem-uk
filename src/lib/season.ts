@@ -1,8 +1,9 @@
 /**
- * Free-text UK football season string (e.g. "2026/27"), matching the
- * convention CreateTeamOnboarding.tsx already uses for teams.season.
- * Season runs Aug–May — before August, the current calendar year is
- * still inside the previous season.
+ * Free-text UK football season string (e.g. "2026/27") in the format
+ * resolveOrCreateSeason() expects — used as ApproveTeamOrderButton's
+ * default season input and approve/route.ts's fallback when staff leave
+ * it blank. Season runs Aug–May — before August, the current calendar
+ * year is still inside the previous season.
  */
 export function currentUkFootballSeason(date: Date = new Date()): string {
   const year = date.getFullYear();
