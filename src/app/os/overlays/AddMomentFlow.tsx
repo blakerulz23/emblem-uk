@@ -177,7 +177,20 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
               </div>
             )}
             {state.addStep === 5 ? (
-              <div onClick={actions.submitMoment} style={{ textAlign: 'center', padding: 16, borderRadius: 14, background: 'linear-gradient(150deg,#E97435,#C4501C)', color: '#fff', fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.1em', fontSize: 16, cursor: 'pointer', boxShadow: '0 14px 30px -14px rgba(233,116,53,.7)' }}>ADD TO COLLECTION</div>
+              <div
+                onClick={state.addSubmitting ? undefined : actions.submitMoment}
+                role="button"
+                aria-disabled={state.addSubmitting}
+                style={{
+                  textAlign: 'center', padding: 16, borderRadius: 14,
+                  background: state.addSubmitting ? 'rgba(233,116,53,.55)' : 'linear-gradient(150deg,#E97435,#C4501C)',
+                  color: '#fff', fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.1em', fontSize: 16,
+                  cursor: state.addSubmitting ? 'default' : 'pointer',
+                  boxShadow: '0 14px 30px -14px rgba(233,116,53,.7)',
+                }}
+              >
+                {state.addSubmitting ? 'Adding…' : 'ADD TO COLLECTION'}
+              </div>
             ) : (
               <div onClick={actions.flowNext} style={{ textAlign: 'center', padding: 16, borderRadius: 14, background: contBg, color: '#fff', fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.1em', fontSize: 16, cursor: 'pointer', transition: 'background .2s ease' }}>CONTINUE</div>
             )}

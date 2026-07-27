@@ -113,10 +113,15 @@ export async function GET(request: NextRequest) {
     .eq('player_id', playerId)
     .order('created_at', { ascending: false });
 
+  // Filters on verification_status, not verified_at — both family_memory
+  // and pending_verification have verified_at is null, so a verified_at
+  // filter alone can't distinguish them (see migration 0011).
   if (status === 'pending') {
-    query = query.is('verified_at', null);
+    query = query.eq('verification_status', 'pending_verification');
   } else if (status === 'verified') {
-    query = query.not('verified_at', 'is', null);
+    query = query.eq('verification_status', 'coach_verified');
+  } else if (status === 'family') {
+    query = query.eq('verification_status', 'family_memory');
   }
 
   const { data: moments, error } = await query;

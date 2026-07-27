@@ -95,6 +95,8 @@ export type OsState = {
   addUnlock: boolean;
   /** True when a real-account moment submission actually failed server-side — surfaced instead of silently celebrating. */
   addSubmitError: boolean;
+  /** True from the moment "ADD TO COLLECTION" is tapped until the request settles — guards against a double-tap firing a second POST and creating a duplicate moment. */
+  addSubmitting: boolean;
   /** The real verification_status POST /api/os/moments actually assigned — read to show honest success copy, never assumed client-side. Null in demo mode. */
   addResultStatus: 'family_memory' | 'pending_verification' | null;
   files: UploadedFile[];
@@ -126,6 +128,7 @@ export const initialOsState: OsState = {
   aScore: '',
   addUnlock: false,
   addSubmitError: false,
+  addSubmitting: false,
   addResultStatus: null,
   files: [],
   dragging: false,

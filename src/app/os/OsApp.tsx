@@ -238,6 +238,11 @@ export default function OsApp({
     setDesc: (e) => patch({ aDesc: e.target.value }),
     setScore: (e) => patch({ aScore: e.target.value }),
     submitMoment: () => {
+      // Guards against a double-tap firing a second POST before the first
+      // one settles, which would otherwise create two moment rows for the
+      // same event — there was no such guard before this.
+      if (state.addSubmitting) return;
+
       const achLabel = ADD_ACH.find((a) => a.id === state.aAch)?.label ?? state.aDesc ?? 'New Moment';
       const media = state.files
         .filter((f) => f.uploadStatus === 'done' && f.s3Key)
@@ -250,6 +255,8 @@ export default function OsApp({
         patch({ addSubmitError: true });
         return;
       }
+
+      patch({ addSubmitting: true, addSubmitError: false });
 
       const request = fetch('/api/os/moments', {
         method: 'POST',
@@ -270,14 +277,14 @@ export default function OsApp({
           .then(async (res) => {
             if (!res.ok) throw new Error('submit failed');
             const data = (await res.json().catch(() => ({}))) as { status?: 'family_memory' | 'pending_verification' };
-            patch({ addStep: 0, addOpen: false, addUnlock: true, addSubmitError: false, addResultStatus: data.status ?? null });
+            patch({ addStep: 0, addOpen: false, addUnlock: true, addSubmitError: false, addSubmitting: false, addResultStatus: data.status ?? null });
             router.refresh();
           })
-          .catch(() => patch({ addSubmitError: true }));
+          .catch(() => patch({ addSubmitError: true, addSubmitting: false }));
       } else {
         // Demo: instant celebration regardless, matching the existing UX.
         request.catch(() => {});
-        patch({ addStep: 0, addOpen: false, addUnlock: true });
+        patch({ addStep: 0, addOpen: false, addUnlock: true, addSubmitting: false });
       }
     },
     unlockViewCollection: () => { closeFlow(); patch({ tab: 'journey' }); },
