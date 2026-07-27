@@ -132,12 +132,20 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
           }
         }
       } else if (intent.kind === 'coach') {
-        const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) {
-          await supabase.from('profiles').upsert({ id: user.id, role: 'coach' });
+        // Only ever promotes a brand-new profile (no role yet) to coach —
+        // never overwrites an existing role. A 'coach' intent can linger
+        // in sessionStorage from an earlier, abandoned RoleFork pick in
+        // the same tab; without this check, a later, unrelated sign-in in
+        // that same tab (e.g. a parent recovering a different card) would
+        // silently flip an already-set-up parent account to coach.
+        if (!profileRole) {
+          const supabase = createClient();
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          if (user) {
+            await supabase.from('profiles').upsert({ id: user.id, role: 'coach' });
+          }
         }
         clearIntent();
       } else if (intent.kind === 'teamInvite') {
