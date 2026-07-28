@@ -174,7 +174,7 @@ async function getParentOsData(
     };
   }
 
-  const [{ data: player, error: playerError }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }] = await Promise.all([
+  const [{ data: player }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }] = await Promise.all([
     supabase
       .from('players')
       .select('*, teams ( name, clubs ( name ), seasons ( label ) )')
@@ -228,15 +228,6 @@ async function getParentOsData(
   const claimedPlayers = (claimedPlayerRows ?? []).map((p) => ({ id: p.id as string, name: p.name as string }));
 
   if (!player) {
-    // TEMPORARY — diagnosing a live "player lookup fails despite a real
-    // guardians row" report. Remove once root-caused.
-    console.error('[getParentOsData] player lookup returned nothing', {
-      userId,
-      requestedPlayerId,
-      resolvedPlayerId: playerId,
-      linkedIds,
-      playerError: playerError ? { message: playerError.message, code: playerError.code, details: playerError.details, hint: playerError.hint } : null,
-    });
     return {
       ...emptyConnections,
       mode: 'real',
