@@ -99,6 +99,17 @@ type RarityInput = {
   id: string;
   title: string;
   effectiveDate: string | null;
+  /**
+   * The real, always-present, full-precision creation timestamp — used only
+   * to break ties when two moments share the same day-granularity
+   * effectiveDate (e.g. a system-generated moment with a real occurred_on
+   * and a same-day submission whose null occurred_on fell back to its own
+   * created_at truncated to a date). Without this, a same-day tie falls
+   * through to whatever order the moments arrived in from the DB query
+   * (newest-first, for display) — silently reversing two same-day moments'
+   * true chronological order.
+   */
+  createdAt: string;
   status: 'family_memory' | 'pending_verification' | 'coach_verified' | 'system_generated';
   seasonLabel: string | null;
 };
@@ -121,10 +132,16 @@ type RarityInput = {
  */
 function computeRarityAndOrdinals(entries: RarityInput[]): Map<string, { rarity: RarityTier; careerOrdinal: number; seasonOrdinal: number }> {
   const ascending = [...entries].sort((a, b) => {
-    if (a.effectiveDate && b.effectiveDate) return a.effectiveDate.localeCompare(b.effectiveDate);
+    if (a.effectiveDate && b.effectiveDate && a.effectiveDate !== b.effectiveDate) {
+      return a.effectiveDate.localeCompare(b.effectiveDate);
+    }
     if (a.effectiveDate && !b.effectiveDate) return -1;
     if (!a.effectiveDate && b.effectiveDate) return 1;
-    return 0;
+    // Same effectiveDate (including both null, or a day-level collision
+    // between a real occurred_on and a created_at-derived fallback) —
+    // break the tie with the real, full-precision timestamp so same-day
+    // moments still land in their true order instead of DB query order.
+    return a.createdAt.localeCompare(b.createdAt);
   });
 
   const seenTitles = new Set<string>();
@@ -474,6 +491,7 @@ async function getParentOsData(
       id: e.raw.id as string,
       title: e.raw.title as string,
       effectiveDate: e.effectiveDate,
+      createdAt: e.raw.created_at as string,
       status: e.raw.verification_status as 'family_memory' | 'pending_verification' | 'coach_verified' | 'system_generated',
       seasonLabel: e.seasonLabel,
     }))
