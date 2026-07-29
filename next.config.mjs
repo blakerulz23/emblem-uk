@@ -3,19 +3,6 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  // SharedArrayBuffer is required by @imgly/background-removal's WASM runtime.
-  // COOP + COEP headers enable it in modern browsers.
-  async headers() {
-    return [
-      {
-        source: '/(.*)',
-        headers: [
-          { key: 'Cross-Origin-Opener-Policy',   value: 'same-origin' },
-          { key: 'Cross-Origin-Embedder-Policy',  value: 'require-corp' },
-        ],
-      },
-    ];
-  },
   async redirects() {
     return [
       {
