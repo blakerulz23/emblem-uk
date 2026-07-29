@@ -173,12 +173,15 @@ export default function PlayerHome({ actions }: { actions: OsActions }) {
         </div>
       )}
 
-      {currentSeason && (
-        <div style={{ margin: '24px 2px 0' }}>
-          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435', marginBottom: 8, textTransform: 'uppercase' }}>
-            This Season
+      <div style={{ margin: '24px 2px 0' }}>
+        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435', marginBottom: 8, textTransform: 'uppercase' }}>
+          This Season
+        </div>
+        {!currentSeason ? (
+          <div style={{ fontFamily: 'Roboto', fontSize: 14.5, color: 'var(--os-muted)', lineHeight: 1.5 }}>
+            No season on record yet.
           </div>
-          {momentsThisSeason.length > 0 ? (
+        ) : momentsThisSeason.length > 0 ? (
             <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: '16px 8px', boxShadow: '0 8px 20px -16px rgba(0,0,0,.2)', display: 'flex', alignItems: 'flex-start' }}>
               <div style={{ flex: 1, textAlign: 'center', padding: '0 6px' }}>
                 <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgba(233,116,53,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 8px' }}>{PhotoIcon('#E97435')}</div>
@@ -210,11 +213,10 @@ export default function PlayerHome({ actions }: { actions: OsActions }) {
               <b style={{ color: 'var(--os-ink)' }}>{currentSeason}</b> — this season is just getting started.
             </div>
           )}
-          {!isSeasonOpen && momentsThisSeason.length > 0 && (
-            <div style={{ fontSize: 12, color: 'var(--os-muted)', marginTop: 8 }}>This season has closed.</div>
-          )}
-        </div>
-      )}
+        {!isSeasonOpen && currentSeason && momentsThisSeason.length > 0 && (
+          <div style={{ fontSize: 12, color: 'var(--os-muted)', marginTop: 8 }}>This season has closed.</div>
+        )}
+      </div>
 
       <div
         onClick={actions.goCollection}
