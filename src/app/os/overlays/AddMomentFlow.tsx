@@ -1,5 +1,6 @@
 import type { RefObject } from 'react';
 import { ADD_ACH, ADD_EVENTS, ADD_PLAYERS, ADD_TYPES, RARITY_BY_ACH, MOMENT_STATUS_BADGE } from '../data';
+import { onActivateKey } from '../a11y';
 import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
@@ -32,10 +33,10 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
           <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', background: 'var(--os-screen)', borderRadius: '26px 26px 0 0', padding: '10px 20px 26px', maxHeight: '90%', overflowY: 'auto', animation: 'sheetUp .34s cubic-bezier(.22,.61,.36,1)' }}>
             <div style={{ width: 42, height: 5, borderRadius: 4, background: 'rgba(140,130,118,.35)', margin: '0 auto 18px' }} />
             <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.14em', fontSize: 22, color: 'var(--os-ink)' }}>ADD MOMENT</div>
-            <div style={{ fontSize: 13.5, color: 'var(--os-muted)', margin: '4px 0 20px' }}>Capture another chapter of your football journey.</div>
+            <div style={{ fontSize: 13.5, color: 'var(--os-muted)', margin: '4px 0 20px' }}>Add another memory to their Collection.</div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {ADD_TYPES.map((t) => (
-                <div key={t.id} onClick={() => actions.pickAddType(t.id)} className="col-card" style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 18, padding: '18px 15px', cursor: 'pointer', boxShadow: '0 8px 20px -16px rgba(0,0,0,.35)' }}>
+                <div key={t.id} onClick={() => actions.pickAddType(t.id)} role="button" tabIndex={0} aria-label={t.label} onKeyDown={onActivateKey(() => actions.pickAddType(t.id))} className="col-card" style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 18, padding: '18px 15px', cursor: 'pointer', boxShadow: '0 8px 20px -16px rgba(0,0,0,.35)' }}>
                   <span style={{ fontSize: 28, lineHeight: 1 }}>{t.emoji}</span>
                   <div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14.5, color: 'var(--os-ink)', lineHeight: 1.2 }}>{t.label}</div><div style={{ fontSize: 11.5, color: 'var(--os-muted)', marginTop: 2 }}>{t.sub}</div></div>
                 </div>
@@ -50,9 +51,9 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
         <div style={{ position: 'absolute', inset: 0, zIndex: 48, background: 'var(--os-screen)', display: 'flex', flexDirection: 'column', fontFamily: 'Roboto' }}>
           <div style={{ flex: '0 0 auto', padding: '16px 20px 12px', borderBottom: '1px solid var(--os-border)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <div onClick={actions.flowBack} style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--os-card)', border: '1px solid var(--os-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--os-ink)" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg></div>
+              <div onClick={actions.flowBack} role="button" tabIndex={0} aria-label="Back" onKeyDown={onActivateKey(actions.flowBack)} style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--os-card)', border: '1px solid var(--os-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--os-ink)" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg></div>
               <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.14em', fontSize: 12, color: 'var(--os-muted)' }}>Step {state.addStep} of 5</span>
-              <div onClick={actions.closeFlow} style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--os-card)', border: '1px solid var(--os-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--os-ink)" strokeWidth={2.2} strokeLinecap="round"><path d="M5 5l14 14M19 5L5 19" /></svg></div>
+              <div onClick={actions.closeFlow} role="button" tabIndex={0} aria-label="Close" onKeyDown={onActivateKey(actions.closeFlow)} style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--os-card)', border: '1px solid var(--os-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--os-ink)" strokeWidth={2.2} strokeLinecap="round"><path d="M5 5l14 14M19 5L5 19" /></svg></div>
             </div>
             <div style={{ display: 'flex', gap: 6 }}>
               {[1, 2, 3, 4, 5].map((n) => (
@@ -77,7 +78,7 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
               ) : ADD_PLAYERS.map((p) => {
                 const sel = p.id === state.aPlayer;
                 return (
-                  <div key={p.id} onClick={() => actions.pickAPlayer(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 14, background: sel ? 'rgba(233,116,53,.08)' : 'var(--os-card)', border: `1.5px solid ${sel ? '#E97435' : 'var(--os-border)'}`, borderRadius: 18, padding: 14, marginBottom: 12, cursor: 'pointer', transition: 'border-color .15s ease,background .15s ease' }}>
+                  <div key={p.id} onClick={() => actions.pickAPlayer(p.id)} role="button" tabIndex={0} aria-label={p.name} onKeyDown={onActivateKey(() => actions.pickAPlayer(p.id))} style={{ display: 'flex', alignItems: 'center', gap: 14, background: sel ? 'rgba(233,116,53,.08)' : 'var(--os-card)', border: `1.5px solid ${sel ? '#E97435' : 'var(--os-border)'}`, borderRadius: 18, padding: 14, marginBottom: 12, cursor: 'pointer', transition: 'border-color .15s ease,background .15s ease' }}>
                     <div style={{ width: 52, height: 66, borderRadius: 11, background: p.grad, flex: '0 0 auto', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 5 }}><span style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, fontSize: 15, color: 'rgba(255,255,255,.95)' }}>{p.name.split(' ').map((w) => w[0]).join('')}</span></div>
                     <div style={{ flex: 1 }}><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)' }}>{p.name}</div><div style={{ fontSize: 12.5, color: 'var(--os-muted)', marginTop: 2 }}>{p.team} · No. {p.num}</div></div>
                   </div>
@@ -90,7 +91,7 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
                 {ADD_EVENTS.map((e) => {
                   const sel = e.id === state.aEvent;
                   return (
-                    <div key={e.id} onClick={() => actions.pickAEvent(e.id)} style={{ display: 'flex', flexDirection: 'column', gap: 9, background: sel ? 'rgba(233,116,53,.08)' : 'var(--os-card)', border: `1.5px solid ${sel ? '#E97435' : 'var(--os-border)'}`, borderRadius: 16, padding: '17px 15px', cursor: 'pointer', transition: 'border-color .15s ease,background .15s ease' }}>
+                    <div key={e.id} onClick={() => actions.pickAEvent(e.id)} role="button" tabIndex={0} aria-label={e.label} onKeyDown={onActivateKey(() => actions.pickAEvent(e.id))} style={{ display: 'flex', flexDirection: 'column', gap: 9, background: sel ? 'rgba(233,116,53,.08)' : 'var(--os-card)', border: `1.5px solid ${sel ? '#E97435' : 'var(--os-border)'}`, borderRadius: 16, padding: '17px 15px', cursor: 'pointer', transition: 'border-color .15s ease,background .15s ease' }}>
                       <span style={{ fontSize: 26, lineHeight: 1 }}>{e.emoji}</span>
                       <span style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{e.label}</span>
                     </div>
@@ -105,7 +106,7 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
                   const sel = a.id === state.aAch;
                   const r = RARITY_BY_ACH(a.rank);
                   return (
-                    <div key={a.id} onClick={() => actions.pickAAch(a.id)} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, background: sel ? 'rgba(233,116,53,.06)' : 'var(--os-card)', border: `1.5px solid ${sel ? r.color : 'var(--os-border)'}`, borderRadius: 16, padding: '16px 14px', cursor: 'pointer', transition: 'border-color .15s ease,background .15s ease' }}>
+                    <div key={a.id} onClick={() => actions.pickAAch(a.id)} role="button" tabIndex={0} aria-label={a.label} onKeyDown={onActivateKey(() => actions.pickAAch(a.id))} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 10, background: sel ? 'rgba(233,116,53,.06)' : 'var(--os-card)', border: `1.5px solid ${sel ? r.color : 'var(--os-border)'}`, borderRadius: 16, padding: '16px 14px', cursor: 'pointer', transition: 'border-color .15s ease,background .15s ease' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}><span style={{ fontSize: 26, lineHeight: 1 }}>{a.emoji}</span><span style={{ width: 9, height: 9, borderRadius: '50%', background: r.color }} /></div>
                       <div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, color: 'var(--os-ink)', lineHeight: 1.2 }}>{a.label}</div><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 9.5, color: r.color, marginTop: 3 }}>{r.label}</div></div>
                     </div>
@@ -116,7 +117,7 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
 
             {state.addStep === 4 && (
               <>
-                <div onClick={actions.pickFiles} onDragOver={actions.dragOver} onDragLeave={actions.dragLeave} onDrop={actions.dropFiles} style={{ position: 'relative', borderRadius: 18, border: `2px dashed ${state.dragging ? '#E97435' : 'rgba(233,116,53,.4)'}`, background: 'rgba(233,116,53,.05)', padding: '30px 20px', textAlign: 'center', cursor: 'pointer', transition: 'border-color .2s ease' }}>
+                <div onClick={actions.pickFiles} onDragOver={actions.dragOver} onDragLeave={actions.dragLeave} onDrop={actions.dropFiles} role="button" tabIndex={0} aria-label="Add photos or video" onKeyDown={onActivateKey(actions.pickFiles)} style={{ position: 'relative', borderRadius: 18, border: `2px dashed ${state.dragging ? '#E97435' : 'rgba(233,116,53,.4)'}`, background: 'rgba(233,116,53,.05)', padding: '30px 20px', textAlign: 'center', cursor: 'pointer', transition: 'border-color .2s ease' }}>
                   <div style={{ width: 54, height: 54, borderRadius: 15, background: 'rgba(233,116,53,.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E97435" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4M12 4l-5 5M12 4l5 5" /><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" /></svg>
                   </div>
@@ -130,7 +131,7 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
                       ? <div style={{ width: 46, height: 46, borderRadius: 10, background: 'linear-gradient(155deg,#2a2320,#14110e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}><svg width="18" height="18" viewBox="0 0 24 24" fill="#E97435"><path d="M8 5v14l11-7z" /></svg></div>
                       : <img src={f.url} alt="" style={{ width: 46, height: 46, borderRadius: 10, objectFit: 'cover', flex: '0 0 auto' }} />}
                     <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: 'var(--os-ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.name}</div><div style={{ fontSize: 11, color: 'var(--os-muted)', marginTop: 2 }}>{f.size}</div></div>
-                    <div onClick={() => actions.removeFile(f.id)} style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(140,130,118,.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: '0 0 auto' }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--os-muted)" strokeWidth={2.4} strokeLinecap="round"><path d="M5 5l14 14M19 5L5 19" /></svg></div>
+                    <div onClick={() => actions.removeFile(f.id)} role="button" tabIndex={0} aria-label={`Remove ${f.name}`} onKeyDown={onActivateKey(() => actions.removeFile(f.id))} style={{ width: 26, height: 26, borderRadius: '50%', background: 'rgba(140,130,118,.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flex: '0 0 auto' }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--os-muted)" strokeWidth={2.4} strokeLinecap="round"><path d="M5 5l14 14M19 5L5 19" /></svg></div>
                   </div>
                 ))}
                 <textarea onChange={actions.setDesc} value={state.aDesc} placeholder="Add a short description (optional)" style={{ width: '100%', boxSizing: 'border-box', marginTop: 14, background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 14, padding: 13, fontFamily: 'Roboto', fontSize: 13.5, color: 'var(--os-ink)', resize: 'none', minHeight: 64, outline: 'none' }} />
@@ -192,7 +193,7 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
                 {state.addSubmitting ? 'Adding…' : 'ADD TO COLLECTION'}
               </div>
             ) : (
-              <div onClick={actions.flowNext} style={{ textAlign: 'center', padding: 16, borderRadius: 14, background: contBg, color: '#fff', fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.1em', fontSize: 16, cursor: 'pointer', transition: 'background .2s ease' }}>CONTINUE</div>
+              <div onClick={actions.flowNext} role="button" tabIndex={0} onKeyDown={onActivateKey(actions.flowNext)} style={{ textAlign: 'center', padding: 16, borderRadius: 14, background: contBg, color: '#fff', fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.1em', fontSize: 16, cursor: 'pointer', transition: 'background .2s ease' }}>CONTINUE</div>
             )}
           </div>
         </div>
@@ -212,10 +213,6 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
             <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.05em', fontSize: 22, color: '#F4F1EC', textAlign: 'center', padding: '0 14px', lineHeight: 1.05 }}>{activeAch.label.toUpperCase()}</div>
           </div>
           <div style={{ marginTop: 30, textAlign: 'center', animation: 'rowIn .6s ease .5s both' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 9, background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.12)', borderRadius: 24, padding: '8px 16px', marginBottom: 18 }}>
-              <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: '#C7BFB4' }}>2026 Collection</span>
-              <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, fontSize: 16, color: '#E97435', animation: 'counterPop .7s ease .9s both' }}>11 / 14</span>
-            </div>
             <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.05em', fontSize: 26, color: '#F4F1EC', lineHeight: 1.05 }}>{activeAch.label.toUpperCase()}</div>
             <div style={{ fontSize: 13.5, color: '#9A9082', marginTop: 8, maxWidth: 260 }}>Successfully added to your 2026 Collection.</div>
             {/* Reads the server's actual assigned status — a guardian's own
@@ -229,9 +226,8 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
             )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 280, marginTop: 26, animation: 'rowIn .6s ease .7s both' }}>
-            <div onClick={actions.unlockViewCollection} style={{ textAlign: 'center', padding: 14, borderRadius: 13, background: 'linear-gradient(150deg,#E97435,#C4501C)', color: '#fff', fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.1em', fontSize: 15, cursor: 'pointer' }}>VIEW COLLECTION</div>
-            <div onClick={actions.unlockCreateStory} style={{ textAlign: 'center', padding: 13, borderRadius: 13, background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.14)', color: '#F4F1EC', fontFamily: 'Roboto', fontWeight: 700, fontSize: 13.5, cursor: 'pointer' }}>Create Story</div>
-            <div onClick={actions.unlockReturnHome} style={{ textAlign: 'center', padding: 13, color: '#8E867B', fontFamily: 'Roboto', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Return Home</div>
+            <div onClick={actions.unlockViewCollection} role="button" tabIndex={0} onKeyDown={onActivateKey(actions.unlockViewCollection)} style={{ textAlign: 'center', padding: 14, borderRadius: 13, background: 'linear-gradient(150deg,#E97435,#C4501C)', color: '#fff', fontFamily: 'Barlow Condensed', fontWeight: 800, letterSpacing: '.1em', fontSize: 15, cursor: 'pointer' }}>VIEW COLLECTION</div>
+            <div onClick={actions.unlockReturnHome} role="button" tabIndex={0} onKeyDown={onActivateKey(actions.unlockReturnHome)} style={{ textAlign: 'center', padding: 13, color: '#8E867B', fontFamily: 'Roboto', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Return Home</div>
           </div>
         </div>
       )}

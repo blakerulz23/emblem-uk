@@ -32,11 +32,11 @@ export default function CoachVerify() {
   return (
     <>
       <div style={{ marginBottom: 16 }}>
-        <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 22, color: 'var(--os-ink)', lineHeight: 1.1 }}>Verify moments</div>
-        <div style={{ fontSize: 13, color: 'var(--os-muted)', marginTop: 4 }}>Approved moments receive the Coach Verified badge.</div>
+        <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 22, color: 'var(--os-ink)', lineHeight: 1.1 }}>Recognition</div>
+        <div style={{ fontSize: 13, color: 'var(--os-muted)', marginTop: 4 }}>Moments waiting for your recognition.</div>
       </div>
       {items.length === 0 && (
-        <div style={{ fontSize: 13.5, color: 'var(--os-muted)', textAlign: 'center', padding: '24px 0' }}>Nothing waiting on review right now.</div>
+        <div style={{ fontSize: 13.5, color: 'var(--os-muted)', textAlign: 'center', padding: '24px 0' }}>Nothing waiting on your recognition right now.</div>
       )}
       {items.map((v) => (
         <div key={v.id} style={{ background: 'var(--os-card)', borderRadius: 18, padding: 14, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 14 }}>
@@ -57,7 +57,7 @@ export default function CoachVerify() {
               onClick={() => decide(v.id, 'approve')}
               style={{ flex: 1, textAlign: 'center', padding: 11, borderRadius: 11, background: busyId === v.id ? 'rgba(233,116,53,.5)' : '#E97435', color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: busyId === v.id ? 'default' : 'pointer', boxShadow: '0 8px 18px -10px rgba(233,116,53,.7)' }}
             >
-              Approve
+              Recognize
             </div>
             <div
               role="button"
@@ -65,7 +65,7 @@ export default function CoachVerify() {
               onClick={() => decide(v.id, 'reject')}
               style={{ flex: '0 0 auto', textAlign: 'center', padding: '11px 16px', borderRadius: 11, border: '1px solid rgba(210,60,50,.3)', color: '#C0392B', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: busyId === v.id ? 'default' : 'pointer' }}
             >
-              Reject
+              Not this time
             </div>
           </div>
         </div>

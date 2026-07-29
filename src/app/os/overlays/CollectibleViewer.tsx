@@ -1,4 +1,5 @@
-import { MOMENT_ORDER, MOMENTS, TRUST } from '../data';
+import { MOMENTS, TRUST } from '../data';
+import { onActivateKey } from '../a11y';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
 
@@ -6,10 +7,9 @@ export default function CollectibleViewer({ state, actions }: { state: OsState; 
   const cv = state.collectible ? MOMENTS[state.collectible] : null;
   if (!cv) return null;
   const trust = TRUST[cv.trust];
-  const idx = MOMENT_ORDER.indexOf(cv.id) + 1;
-  const cardNo = String(idx).padStart(3, '0');
-  const totalNo = String(MOMENT_ORDER.length).padStart(3, '0');
-  const edition = 'Founding Collection';
+  // A real, ever-counting position in this player's whole history — never
+  // a fraction of a fixed total (mirrors RealMoment.careerOrdinal).
+  const ordinalNo = String(cv.reward.careerOrdinal).padStart(3, '0');
   const rc = cv.reward;
 
   const matchDetails: [string, string][] = [
@@ -20,9 +20,8 @@ export default function CollectibleViewer({ state, actions }: { state: OsState; 
     ['Venue', 'Curzon Ashton'],
   ];
   const collector: [string, string][] = [
-    ['Collection', `${cv.year} First Season`],
-    ['Card', `${cardNo} / ${totalNo}`],
-    ['Edition', edition],
+    ['Season', `${cv.year}`],
+    ['Career Moment', `#${ordinalNo}`],
     ['Category', trust.label],
   ];
 
@@ -36,7 +35,7 @@ export default function CollectibleViewer({ state, actions }: { state: OsState; 
         </div>
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(11,10,9,.55) 0%,transparent 26%,transparent 52%,rgba(11,10,9,.96) 100%)' }} />
         <div style={{ position: 'absolute', inset: 0, border: `2px solid ${cv.rarity.color}`, opacity: .5, pointerEvents: 'none', boxShadow: 'inset 0 0 40px -10px rgba(0,0,0,.6)' }} />
-        <div onClick={actions.closeCollectible} style={{ position: 'absolute', top: 16, right: 16, zIndex: 3, width: 36, height: 36, borderRadius: '50%', background: 'rgba(0,0,0,.4)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+        <div onClick={actions.closeCollectible} role="button" tabIndex={0} aria-label="Close" onKeyDown={onActivateKey(actions.closeCollectible)} style={{ position: 'absolute', top: 16, right: 16, zIndex: 3, width: 36, height: 36, borderRadius: '50%', background: 'rgba(0,0,0,.4)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" stroke="#fff" strokeWidth={2.4} strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
         </div>
         {cv.video && (
@@ -47,10 +46,10 @@ export default function CollectibleViewer({ state, actions }: { state: OsState; 
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '0 24px 22px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999, background: 'rgba(11,10,9,.6)', border: `1px solid ${cv.rarity.color}` }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: cv.rarity.color }} /><span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 10.5, letterSpacing: '.13em', color: '#F4E9CE' }}>{cv.rarity.label}</span></span>
-            <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 10.5, letterSpacing: '.13em', color: '#9C948A' }}>EDITION {cardNo} / {totalNo}</span>
+            <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 10.5, letterSpacing: '.13em', color: '#9C948A' }}>CAREER MOMENT #{ordinalNo}</span>
           </div>
           <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 44, lineHeight: .92, textTransform: 'uppercase', color: '#fff' }}>{cv.title}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 8, fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 12, letterSpacing: '.06em', color: '#9C948A', textTransform: 'uppercase' }}><span>{cv.year} Season</span><span>·</span><span>{edition}</span></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 8, fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 12, letterSpacing: '.06em', color: '#9C948A', textTransform: 'uppercase' }}><span>{cv.year} Season</span></div>
         </div>
       </div>
 
@@ -91,7 +90,7 @@ export default function CollectibleViewer({ state, actions }: { state: OsState; 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, padding: 16, borderRadius: 14, background: '#E97435', color: '#fff', fontWeight: 800, fontSize: 14.5, letterSpacing: '.02em', cursor: 'pointer', boxShadow: '0 12px 26px -12px rgba(233,116,53,.8)' }}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8h16v-8" /><path d="M12 16V4" /><path d="M8 8l4-4 4 4" /></svg>Share Collectible
         </div>
-        <div onClick={actions.closeCollectible} style={{ textAlign: 'center', marginTop: 14, padding: 14, fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 12, letterSpacing: '.14em', color: '#9C948A', textTransform: 'uppercase', cursor: 'pointer' }}>Close · Return to Collection</div>
+        <div onClick={actions.closeCollectible} role="button" tabIndex={0} onKeyDown={onActivateKey(actions.closeCollectible)} style={{ textAlign: 'center', marginTop: 14, padding: 14, fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 12, letterSpacing: '.14em', color: '#9C948A', textTransform: 'uppercase', cursor: 'pointer' }}>Close · Return to Collection</div>
       </div>
     </div>
   );

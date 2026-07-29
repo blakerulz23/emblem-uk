@@ -4,17 +4,19 @@ export type PlayerTab = 'home' | 'journey' | 'card' | 'team' | 'profile';
 export type CoachTab = 'home' | 'team' | 'celebrate' | 'verify' | 'profile';
 export type Tab = PlayerTab | CoachTab;
 
-// Matches playerProfile.ts's SkillCategoryId — kept as a separate alias here
-// (rather than importing it) so this foundational state-shape file doesn't
-// depend on a specific screen's data module.
-export type AttrCategory = 'attacking' | 'physical' | 'mental' | 'technical' | 'tactical';
-export type CardBackTab = 'Skills' | 'Development' | 'Coach';
-
 export type TrustSource = 'club' | 'league' | 'coach' | 'parent' | 'player';
+/** Purely a visual card-stock treatment (foil/metallic/standard finish) — never a scarcity claim by itself. Driven by RankTier below, one per moment. */
 export type RarityTier = 'foil' | 'metallic' | 'standard';
-export type RankTier = 'legendary' | 'rare' | 'common';
+/**
+ * The real taxonomy (Collection OS Product Specification v1.0, Milestone 1) —
+ * 'milestone' = the first time this exact achievement happened, 'recognized'
+ * = coach-verified but not a first, 'standard' = everything else. Demo mode
+ * hand-assigns this per moment to tell the same honest story real mode
+ * computes automatically; it is never a random or purchased tier.
+ */
+export type RankTier = 'milestone' | 'recognized' | 'standard';
 
-export type MomentId = 'e1' | 'e2' | 'e3' | 'e4' | 'e5' | 'e6';
+export type MomentId = 'e1' | 'e2' | 'e3' | 'e4' | 'e5' | 'e6' | 'e7' | 'e8';
 
 export type MatchFact = [string, string];
 export type KeyMoment = [string, string, string];
@@ -41,8 +43,8 @@ export type Moment = {
     rank: RankTier;
     sub: string;
     rewards: Reward[];
-    have: number;
-    total: number;
+    /** This moment's real, ever-counting position in the player's whole history — never a fraction of a fixed total. Mirrors RealMoment.careerOrdinal. */
+    careerOrdinal: number;
     season: string;
     story?: string;
     coach?: string;
@@ -107,8 +109,6 @@ export type CelebrateGroup = { group: string; items: [string, string][] };
 
 export type OsState = {
   tab: Tab;
-  cat: AttrCategory;
-  ctab: CardBackTab;
   flipped: boolean;
   moment: MomentId | null;
   mStage: number;
@@ -141,8 +141,6 @@ export type OsState = {
 
 export const initialOsState: OsState = {
   tab: 'home',
-  cat: 'attacking',
-  ctab: 'Skills',
   flipped: false,
   moment: null,
   mStage: 1,

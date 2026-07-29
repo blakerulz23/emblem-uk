@@ -132,16 +132,31 @@ export const TRUST: Record<TrustSource, { label: string; dot: string }> = {
  * (RARITY_BY_ACH's default) so "still waiting" reads as neither of the
  * other two, not a third shade of the same "verified" feeling.
  */
-export const MOMENT_STATUS_BADGE: Record<'family_memory' | 'pending_verification' | 'coach_verified', { label: string; dot: string }> = {
+export const MOMENT_STATUS_BADGE: Record<'family_memory' | 'pending_verification' | 'coach_verified' | 'system_generated', { label: string; dot: string }> = {
   family_memory: TRUST.parent,
-  pending_verification: { label: 'Pending Verification', dot: '#8A8378' },
+  pending_verification: { label: 'Awaiting Coach Recognition', dot: '#8A8378' },
   coach_verified: TRUST.coach,
+  /**
+   * A real, system-generated fact ("this card came to life") — never a
+   * fabricated coach/family claim, so it gets its own honest label.
+   * Deliberately not "Activated": that word is reserved for the family's
+   * own first NFC tap-to-activate moment, a distinct, later real event —
+   * this badge describes Builder approval, not activation.
+   */
+  system_generated: { label: 'Recorded by Emblem', dot: '#E97435' },
 };
 
+/**
+ * Real taxonomy, not a random or purchased tier (Collection OS Product
+ * Specification v1.0) — 'milestone' is structurally unfakeable (a genuine
+ * first), 'recognized' means a coach verified it, 'standard' is everything
+ * else. Same three tiers RealCollection.tsx computes automatically from
+ * real data; demo mode hand-assigns them to tell the same honest story.
+ */
 export const RANK: Record<RankTier, { label: string; text: string; chip: string; ring: string }> = {
-  legendary: { label: 'LEGENDARY MOMENT', text: 'linear-gradient(180deg,#FCE9A8,#E8B14C 55%,#C6892E)', chip: 'rgba(233,177,76,.16)', ring: '#E9B14C' },
-  rare: { label: 'RARE ACHIEVEMENT', text: 'linear-gradient(180deg,#FBD9B0,#E97435 60%,#C4501C)', chip: 'rgba(233,116,53,.16)', ring: '#E97435' },
-  common: { label: 'SEASON MOMENT', text: 'linear-gradient(180deg,#F2EEE6,#CFC7B8)', chip: 'rgba(255,255,255,.1)', ring: '#8A8378' },
+  milestone: { label: 'MILESTONE', text: 'linear-gradient(180deg,#FCE9A8,#E8B14C 55%,#C6892E)', chip: 'rgba(233,177,76,.16)', ring: '#E9B14C' },
+  recognized: { label: 'RECOGNIZED', text: 'linear-gradient(180deg,#FBD9B0,#E97435 60%,#C4501C)', chip: 'rgba(233,116,53,.16)', ring: '#E97435' },
+  standard: { label: 'STANDARD', text: 'linear-gradient(180deg,#F2EEE6,#CFC7B8)', chip: 'rgba(255,255,255,.1)', ring: '#8A8378' },
 };
 
 export const FRAME: Record<'foil' | 'metallic' | 'standard', { bg: string; pad: string; shadow: string }> = {
@@ -185,22 +200,33 @@ export const ADD_ACH: AddAchievement[] = [
 ];
 
 // Normalized moments — merges the source's parallel EVENTS / RARITY / RW
-// lookup tables (all keyed by the same e1-e6 ids) into one typed table.
+// lookup tables (all keyed by the same e1-e8 ids) into one typed table.
+//
+// Rarity is hand-assigned per the same real taxonomy RealCollection.tsx
+// computes automatically (Milestone 1): 'milestone' = a genuine first for
+// this player, 'recognized' = coach-verified but not a first, 'standard' =
+// everything else. e1-e6 are honestly all firsts (a small early collection
+// naturally is mostly milestones) — e7/e8 are deliberately repeat titles
+// (a second Team Photo, a second Player of the Match) so the demo actually
+// demonstrates all three tiers, the same way a real family's collection
+// only starts showing 'recognized'/'standard' moments once repeats occur.
+// careerOrdinal mirrors RealMoment.careerOrdinal — a real, ever-counting
+// position, never a fraction of a fixed total.
 export const MOMENTS: Record<string, Moment> = {
   e1: {
     id: 'e1', year: '2026', title: 'First Goal', date: '12 March 2026', ic: 'ball',
     thumb: `${assetPath}/jn-firstgoal.png`, video: `${assetPath}/jn-firstgoal.mp4`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
     note: 'Left-foot finish from the edge of the box — his first competitive goal.', media: true,
-    rarity: { label: 'MILESTONE', color: '#3FB65C', tier: 'metallic' },
+    rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
-      rank: 'common', sub: 'Goal Scorer',
+      rank: 'milestone', sub: 'Goal Scorer',
       rewards: [
         { ic: 'ball', label: 'Goal Scorer', sub: 'Unlocked', lit: true },
         { ic: 'star', label: 'Goal Counter', sub: '1 Goal', lit: true },
         { ic: 'shield', label: 'Milestone Badge', sub: 'Unlocked', lit: true },
       ],
-      have: 1, total: 14, season: '2026',
+      careerOrdinal: 1, season: '2026',
     },
   },
   e2: {
@@ -208,14 +234,14 @@ export const MOMENTS: Record<string, Moment> = {
     thumb: `${assetPath}/jn-teamphoto.png`,
     trust: 'coach', source: 'Curzon Ashton Juniors', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
     note: 'End-of-season squad photo on the home pitch.', media: true,
-    rarity: { label: 'MEMORY', color: '#7A8A99', tier: 'standard' },
+    rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
-      rank: 'common', sub: 'Team Memory',
+      rank: 'milestone', sub: 'Team Memory',
       rewards: [
         { ic: 'camera', label: 'Team Memory', sub: 'Photo added', lit: true },
         { ic: 'star', label: 'Season Gallery', sub: '+1 photo', lit: true },
       ],
-      have: 2, total: 14, season: '2026',
+      careerOrdinal: 2, season: '2026',
     },
   },
   e3: {
@@ -223,16 +249,16 @@ export const MOMENTS: Record<string, Moment> = {
     thumb: `${assetPath}/jn-trophy.png`,
     trust: 'club', source: 'Curzon Ashton Juniors', uploadedBy: 'Rebecca Penny', verifiedBy: 'Curzon Ashton Juniors',
     note: 'Lifted the summer cup after a 2-1 final.', media: true,
-    rarity: { label: 'LEGENDARY', color: '#E8B23A', tier: 'foil' },
+    rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
-      rank: 'legendary', sub: 'Summer Shield Final',
+      rank: 'milestone', sub: 'Summer Shield Final',
       rewards: [
         { ic: 'trophy', label: 'Trophy', sub: 'Added', lit: true },
         { ic: 'camera', label: 'Team Photo', sub: 'Added', lit: true },
         { ic: 'star', label: 'Milestone', sub: 'Unlocked', lit: true },
         { ic: 'shield', label: 'Official Club', sub: 'Verified', lit: true },
       ],
-      have: 11, total: 14, season: '2026',
+      careerOrdinal: 3, season: '2026',
       story: 'Curzon Ashton lifted the Summer Shield after a 3-1 victory in the final. Ollie kept a clean sheet in the semi final to help the team reach the final.',
       coach: 'Ollie was outstanding throughout the tournament. Calm, composed and commanding at the back.',
       coachName: 'Coach James Walker',
@@ -246,14 +272,28 @@ export const MOMENTS: Record<string, Moment> = {
     thumb: `${assetPath}/jn-potm.png`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
     note: 'Awarded for a commanding performance in goal.', media: false,
-    rarity: { label: 'RARE', color: '#3B82F6', tier: 'metallic' },
+    rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
-      rank: 'rare', sub: 'Player of the Match',
+      rank: 'milestone', sub: 'Player of the Match',
       rewards: [
         { ic: 'star', label: 'Award Cabinet', sub: '+1 award', lit: true },
-        { ic: 'trophy', label: 'Rare Achievement', sub: 'Unlocked', lit: true },
+        { ic: 'trophy', label: 'First Award', sub: 'Unlocked', lit: true },
       ],
-      have: 12, total: 14, season: '2026',
+      careerOrdinal: 4, season: '2026',
+    },
+  },
+  e7: {
+    id: 'e7', year: '2027', title: 'Team Photo', date: '10 April 2027', ic: 'camera',
+    thumb: `${assetPath}/jn-teamphoto.png`,
+    trust: 'parent', source: 'Rebecca Penny', uploadedBy: 'Rebecca Penny', verifiedBy: 'Rebecca Penny',
+    note: 'Pre-season squad photo — his second year with the team.', media: true,
+    rarity: { label: 'STANDARD', color: '#8A8378', tier: 'standard' },
+    reward: {
+      rank: 'standard', sub: 'Team Memory',
+      rewards: [
+        { ic: 'camera', label: 'Team Memory', sub: 'Photo added', lit: true },
+      ],
+      careerOrdinal: 5, season: '2027',
     },
   },
   e5: {
@@ -261,14 +301,28 @@ export const MOMENTS: Record<string, Moment> = {
     thumb: `${assetPath}/jn-captain.png`,
     trust: 'club', source: 'Curzon Ashton Juniors', uploadedBy: 'Coach Danny', verifiedBy: 'Curzon Ashton Juniors',
     note: 'Named team captain for the new season.', media: false,
-    rarity: { label: 'CLUB HONOUR', color: '#A855F7', tier: 'metallic' },
+    rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
-      rank: 'rare', sub: 'Leadership Unlocked',
+      rank: 'milestone', sub: 'Leadership Unlocked',
       rewards: [
         { ic: 'captain', label: 'Captain Badge', sub: 'Unlocked', lit: true },
         { ic: 'star', label: 'Leadership', sub: 'Unlocked', lit: true },
       ],
-      have: 3, total: 14, season: '2027',
+      careerOrdinal: 6, season: '2027',
+    },
+  },
+  e8: {
+    id: 'e8', year: '2027', title: 'Player of the Match', date: '2 November 2027', ic: 'star',
+    thumb: `${assetPath}/jn-potm.png`,
+    trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
+    note: 'A second Player of the Match award, this time in midfield.', media: false,
+    rarity: { label: 'RECOGNIZED', color: '#E97435', tier: 'metallic' },
+    reward: {
+      rank: 'recognized', sub: 'Player of the Match',
+      rewards: [
+        { ic: 'star', label: 'Award Cabinet', sub: '+1 award', lit: true },
+      ],
+      careerOrdinal: 7, season: '2027',
     },
   },
   e6: {
@@ -276,23 +330,23 @@ export const MOMENTS: Record<string, Moment> = {
     thumb: `${assetPath}/jn-county.png`,
     trust: 'league', source: 'Greater Manchester FA', uploadedBy: 'Rebecca Penny', verifiedBy: 'Greater Manchester FA',
     note: 'Selected for the county development squad.', media: false,
-    rarity: { label: 'HISTORIC', color: '#E8B23A', tier: 'foil' },
+    rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
-      rank: 'legendary', sub: 'County Selected',
+      rank: 'milestone', sub: 'County Selected',
       rewards: [
         { ic: 'shield', label: 'Elite Badge', sub: 'Unlocked', lit: true },
         { ic: 'trophy', label: 'County Collection', sub: 'Unlocked', lit: true },
       ],
-      have: 1, total: 14, season: '2028',
+      careerOrdinal: 8, season: '2028',
     },
   },
 };
 
-export const MOMENT_ORDER: string[] = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6'];
+export const MOMENT_ORDER: string[] = ['e1', 'e2', 'e3', 'e4', 'e7', 'e5', 'e8', 'e6'];
 
 /** Looks up the rarity treatment for an Add-Moment achievement's linked moment id (e.g. ADD_ACH[n].rank). */
 export function RARITY_BY_ACH(momentId: string): { label: string; color: string; tier: 'foil' | 'metallic' | 'standard' } {
-  return MOMENTS[momentId]?.rarity || { label: 'COMMON', color: '#8A8378', tier: 'standard' };
+  return MOMENTS[momentId]?.rarity || { label: 'STANDARD', color: '#8A8378', tier: 'standard' };
 }
 
 export function fmtFileSize(bytes: number): string {

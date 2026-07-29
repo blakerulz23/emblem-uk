@@ -2,6 +2,7 @@ import { SQUAD, VERIFY_QUEUE, COACH_ACTIVITY } from './data';
 import { PLAYER_PROFILE, SKILL_CATEGORIES, DEVELOPMENT_SEASONS, COACH_SUMMARY } from './playerProfile';
 import type { PlayerProfile, SkillCategory, DevelopmentSeason, CoachSummary, SeasonTarget } from './playerProfile';
 import type { SquadPlayer, VerifyItem, CoachActivityItem } from './types';
+import type { CardFaceData } from '@/lib/card-definition';
 
 export type RealMomentMedia = { id: string; kind: 'photo' | 'video'; url: string };
 
@@ -26,9 +27,41 @@ export type RealMoment = {
    * re-derived from the player's current team/coach state, so an existing
    * moment's status can't silently change if the player later joins a team.
    */
-  status: 'family_memory' | 'pending_verification' | 'coach_verified';
+  status: 'family_memory' | 'pending_verification' | 'coach_verified' | 'system_generated';
   note: string | null;
   media: RealMomentMedia[];
+  /**
+   * Computed at fetch time by matching this moment's date against the real
+   * `seasons` table (starts_on/ends_on) — never a stored column. Powers
+   * Collection's season-chapter grouping with zero schema change. Null if
+   * the date falls outside every known season's range.
+   */
+  seasonLabel: string | null;
+  /** The real status of that same matched season — drives the open/closed chapter treatment. Null alongside seasonLabel. */
+  seasonStatus: 'active' | 'closed' | null;
+  /**
+   * Structural rarity, computed at fetch time from real facts about this
+   * moment and its place in the player's own history — never a random tier,
+   * never relative to a fixed total. 'milestone' = the earliest moment of
+   * this exact title this player has ever had (a real, unfakeable first).
+   * 'recognized' = coach_verified but not a first. 'standard' = everything
+   * else. See computeRarityAndOrdinals in src/lib/os-data.ts.
+   */
+  rarity: 'milestone' | 'recognized' | 'standard';
+  /** This moment's 1-indexed position in the player's whole real chronological history. Only ever increases — no denominator, no fixed total. */
+  careerOrdinal: number;
+  /** This moment's 1-indexed position within its own season (or the 'Earlier' bucket for undated moments) — mirrors careerOrdinal but scoped to one season. */
+  seasonOrdinal: number;
+  /**
+   * The real Card Definition this moment references (Milestone 4B — "seed
+   * Collection from Builder"), when this is a system-generated card_created
+   * moment. Null for every ordinary user-submitted moment. Never duplicates
+   * card artwork data onto the moment row itself — always resolved fresh
+   * from card_definitions via this reference.
+   */
+  cardDefinition: CardFaceData | null;
+  /** A freshly signed URL for cardDefinition's photo, resolved server-side. Null alongside cardDefinition. */
+  cardPhotoUrl: string | null;
 };
 
 /**
@@ -73,6 +106,18 @@ export type OsData = {
   goals: SeasonTarget[];
   /** Parent sessions only — every child this guardian has claimed, oldest-claimed first. Powers the child switcher (only ever rendered in authenticated parent context, never for coaches or signed-out visitors). */
   claimedPlayers: { id: string; name: string }[];
+  /** Parent sessions only — the real status of the claimed player's current season (matches playerProfile.season by label). Drives the player card's open/closed chapter treatment. Null until a season is resolved. */
+  currentSeasonStatus: 'active' | 'closed' | null;
+  /**
+   * The Card Definition Builder authored for this player's card, when one
+   * is linked (see src/lib/card-definition.tsx). Null for demo mode
+   * (which keeps its own static asset) and for real cards claimed before
+   * this integration existed — Card.tsx falls back to today's raw-photo
+   * rendering in that case, never a fabricated design.
+   */
+  cardDefinition: CardFaceData | null;
+  /** A freshly signed URL for cardDefinition's photo, resolved server-side — never a stored/public link. Null alongside cardDefinition. */
+  cardPhotoUrl: string | null;
 };
 
 /** Demo-mode goals, moved here from Profile.tsx so DEMO_OS_DATA is the one source of truth for demo content. */
@@ -108,4 +153,7 @@ export const DEMO_OS_DATA: OsData = {
   ],
   goals: DEMO_GOALS,
   claimedPlayers: [],
+  currentSeasonStatus: null,
+  cardDefinition: null,
+  cardPhotoUrl: null,
 };

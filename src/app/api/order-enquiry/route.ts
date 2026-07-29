@@ -9,6 +9,25 @@ type EnquiryPlayer = {
   name?: string;
   position?: string;
   kitNo?: string;
+  /**
+   * Already present on every player in productionPayload()'s output
+   * (src/lib/emblem-uk-builder.ts) — not previously read by this route.
+   * Persisted into card_definitions below so Collection OS and any future
+   * renderer can render the exact approved design, not a re-implementation
+   * of it. All optional/best-effort: a missing field just narrows what
+   * that surface can render, it never blocks order/player/card creation.
+   */
+  club?: string;
+  badgeUrl?: string;
+  badgeSnapshotUrl?: string;
+  templateId?: string;
+  stats?: Record<string, string>;
+  photo?: {
+    storageKey?: string;
+    contentType?: string;
+    crop?: { x?: number; y?: number; scale?: number };
+    bgRemoved?: boolean;
+  };
 };
 
 type EnquiryBody = {
@@ -170,6 +189,85 @@ export async function POST(request: Request) {
         );
         if (cardResult.error) {
           console.warn('Could not create card for roster player', cardResult.error.message);
+        } else if (cardResult.data) {
+          // Best-effort, additive: the Card Definition this order approved.
+          // Never blocks card creation above — a card with no linked
+          // definition just falls back to today's behaviour until this
+          // backfills or a future Builder edit sets one.
+          const team = enquiryPlayer.club?.trim() || clubName || '';
+          const templateId = enquiryPlayer.templateId?.trim();
+          if (team && templateId) {
+            const { data: definition, error: definitionError } = await serviceRole
+              .from('card_definitions')
+              .insert({
+                status: 'approved',
+                template_id: templateId,
+                name: playerName,
+                number: enquiryPlayer.kitNo ?? null,
+                team,
+                position: enquiryPlayer.position ?? null,
+                logo: enquiryPlayer.badgeSnapshotUrl ?? enquiryPlayer.badgeUrl ?? null,
+                photo: enquiryPlayer.photo?.storageKey
+                  ? {
+                      storageKey: enquiryPlayer.photo.storageKey,
+                      contentType: enquiryPlayer.photo.contentType ?? null,
+                      crop: {
+                        x: enquiryPlayer.photo.crop?.x ?? 0,
+                        y: enquiryPlayer.photo.crop?.y ?? 0,
+                        scale: enquiryPlayer.photo.crop?.scale ?? 1,
+                      },
+                      bgRemoved: enquiryPlayer.photo.bgRemoved ?? false,
+                    }
+                  : null,
+                stats: enquiryPlayer.stats ?? null,
+                order_id: order.id,
+                player_id: player.id,
+              })
+              .select()
+              .single();
+
+            if (definitionError || !definition) {
+              console.warn('Could not create card_definitions row', definitionError?.message);
+            } else {
+              // withUniqueCodeRetry's generic combined with the untyped
+              // Supabase client (no Database schema generic here) resolves
+              // .data's type to `never` — same known quirk documented
+              // elsewhere in this codebase (see os-data.ts). Cast past it
+              // rather than the wrong inferred type; cardResult.data is
+              // confirmed non-null by the enclosing `else if` branch.
+              const cardId = (cardResult.data as { id: string }).id;
+              const { error: linkError } = await serviceRole
+                .from('cards')
+                .update({ card_definition_id: definition.id })
+                .eq('id', cardId);
+              if (linkError) {
+                console.warn('Could not link card to its card_definitions row', linkError.message);
+              }
+
+              // Milestone 4B — seed Collection with a real card_created
+              // moment the instant this Card Definition is approved, so
+              // Collection is never empty before any parent media exists.
+              // Idempotent at the database level (see migration
+              // 0020_moments_card_created.sql's partial unique index) — a
+              // 23505 here means it already exists, which is success, not
+              // an error, exactly like withUniqueCodeRetry's own handling
+              // of the same class of race above.
+              const { error: momentError } = await serviceRole
+                .from('moments')
+                .insert({
+                  player_id: player.id,
+                  title: 'Card Created',
+                  occurred_on: definition.created_at ? String(definition.created_at).slice(0, 10) : null,
+                  trust: 'club',
+                  verification_status: 'system_generated',
+                  card_definition_id: definition.id,
+                  source: 'system',
+                });
+              if (momentError && momentError.code !== '23505') {
+                console.warn('Could not create card_created moment', momentError.message);
+              }
+            }
+          }
         }
       }
     }

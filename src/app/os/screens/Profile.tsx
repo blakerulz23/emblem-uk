@@ -7,10 +7,13 @@ import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 import type { SeasonTarget } from '../playerProfile';
 
+// Position, foot, and squad number are deliberately not repeated here —
+// position/foot are already what's printed on the player's own Card (its
+// present-tense identity face), and squad number already lives in this
+// screen's own header stat-strip. Football Identity holds only facts that
+// don't already have a home elsewhere (Collection OS Product Specification
+// v1.0's overlap table — Milestone 5).
 const DEMO_IDENTITY: [string, string][] = [
-  ['Preferred position', 'Midfielder'],
-  ['Strong foot', 'Right'],
-  ['Squad number', '7'],
   ['Football age group', 'U10'],
   ['Favourite player', 'Kevin De Bruyne'],
   ['Football ambition', 'Play academy football'],
@@ -30,9 +33,6 @@ export default function Profile({ actions }: { actions: OsActions }) {
   const isReal = mode !== 'demo';
   const identityRows: [string, string][] = isReal
     ? [
-        ['Preferred position', playerProfile.position || 'Not set'],
-        ['Strong foot', playerProfile.preferredFoot],
-        ['Squad number', playerProfile.squadNumber != null ? String(playerProfile.squadNumber) : 'Not set'],
         ['Football age group', playerProfile.ageGroup ?? 'Not set'],
         ['Favourite player', playerProfile.favouritePlayer ?? 'Not set'],
         ['Football ambition', playerProfile.footballAmbition ?? 'Not set'],
@@ -234,9 +234,6 @@ export default function Profile({ actions }: { actions: OsActions }) {
             <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>{playerProfile.club || 'No club yet'}</div>
             <div style={{ fontSize: 12.5, color: '#6B6357', marginTop: 2 }}>{playerProfile.position}{playerProfile.squadNumber != null ? ` · Number ${playerProfile.squadNumber}` : ''}</div>
           </div>
-        </div>
-        <div onClick={actions.goTeam} role="button" aria-label="View Club" tabIndex={0} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 14, padding: 12, borderRadius: 12, border: '1px solid var(--os-border)', cursor: 'pointer', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: '#E97435' }}>
-          View Club<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#E97435" strokeWidth={2.4} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
         </div>
       </div>
 

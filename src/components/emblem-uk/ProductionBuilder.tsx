@@ -3,8 +3,8 @@
 import { type FormEvent, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import CardArt from '@/components/builder/emblem/CardArt';
-import { CARD_TEMPLATES } from '@/components/builder/emblem/data';
+import { CardFace } from '@/lib/card-definition';
+import type { CardFaceData } from '@/lib/card-definition';
 import { isCustomCollectionTemplateId } from '@/lib/custom-collection-manifest';
 import { DEFAULT_EMJFL_CLUB, EAST_MANCHESTER_LEAGUE, EMJFL_CLUBS, getEmjflClub, preferredTemplateForClub } from '@/lib/emjfl-clubs';
 import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
@@ -71,13 +71,6 @@ function money(value: number) {
 
 function statusClass(status: string) {
   return `builder-status builder-status-${status}`;
-}
-
-const emjflTemplate = CARD_TEMPLATES.find((template) => template.id === 'emjfl-official') || CARD_TEMPLATES[0];
-const cardArtTemplatesById = new Map(CARD_TEMPLATES.map((template) => [template.id, template]));
-
-function cardArtTemplate(templateId: TemplateId) {
-  return cardArtTemplatesById.get(templateId) || emjflTemplate;
 }
 
 function canAddPlayer(order: OrderDraft) {
@@ -1707,6 +1700,28 @@ function PlayerEditor({
   );
 }
 
+/**
+ * Maps live wizard state to the same normalized CardFaceData shape
+ * Collection OS derives from a persisted card_definitions row
+ * (src/lib/card-definition.tsx) — the only thing that's Builder-specific
+ * here is *where the values come from*; how they get rendered is the one
+ * shared CardFace component, not a second implementation of it.
+ */
+function orderPlayerToFaceData(order: OrderDraft, player: PlayerDraft): CardFaceData {
+  const template = selectedTemplate(order, player);
+  return {
+    templateId: template.id,
+    sport: 'soccer',
+    name: player.name || 'Player 1',
+    number: player.kitNo || null,
+    team: playerClubName(order, player) || 'Club Name',
+    position: player.position || 'Position',
+    logo: playerBadge(order, player),
+    photoCrop: player.photo ? { x: player.photo.crop.x || 0, y: player.photo.crop.y || 0, scale: player.photo.crop.scale || 1 } : null,
+    stats: player.stats,
+  };
+}
+
 function PlayerCard({
   order,
   player,
@@ -1726,26 +1741,13 @@ function PlayerCard({
 
   if (useRealBuilderArt) {
     return (
-      <div className={`uk-real-card ${compact ? 'compact' : ''}`}>
-        <CardArt
-          template={cardArtTemplate(template.id)}
-          photo={player.photo?.srcUrl || null}
-          details={{
-            name: player.name || 'Player 1',
-            number: player.kitNo || '--',
-            team: playerClubName(order, player) || 'Club Name',
-            position: player.position || 'Position',
-          }}
-          logo={playerBadge(order, player)}
-          stats={player.stats}
-          sport="soccer"
-          side={side}
-          size={compact ? 170 : 340}
-          photoScale={player.photo?.crop.scale || 1}
-          photoOffsetX={player.photo?.crop.x || 0}
-          photoOffsetY={player.photo?.crop.y || 0}
-        />
-      </div>
+      <CardFace
+        className={`uk-real-card ${compact ? 'compact' : ''}`}
+        data={orderPlayerToFaceData(order, player)}
+        side={side}
+        size={compact ? 170 : 340}
+        photoUrl={player.photo?.srcUrl || null}
+      />
     );
   }
 

@@ -32,18 +32,3 @@ export function computeOverallScore(
   const weighted = entries.reduce((sum, [id, w]) => sum + (categoryScores[id] ?? 0) * w, 0);
   return Math.round(weighted / totalWeight);
 }
-
-/**
- * Documents (rather than computes — the data model stores one final score
- * per skill, not raw sub-scores) the methodology behind an individual
- * skill's score. This is intentionally not surfaced prominently in the UI;
- * it backs the small "How scores work" info action instead.
- */
-export const SKILL_SCORE_METHOD = {
-  coachAssessment: 0.6,
-  verifiedMatchEvidence: 0.3,
-  developmentTrend: 0.1,
-} as const;
-
-export const HOW_SCORES_WORK_COPY =
-  'Scores are coaching assessments supported by verified match evidence and development over time. They are designed to show progress, not rank children unfairly.';

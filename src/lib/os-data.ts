@@ -4,8 +4,40 @@ import type { OsData, RealMoment, RealConnection, CoachTeamSummary } from '@/app
 import type { SkillCategory, CoachSummary, DevelopmentSeason, SeasonTarget, PlayerProfile } from '@/app/os/playerProfile';
 import { extractAgeGroup } from '@/app/os/playerProfile';
 import { computeOverallScore, MIDFIELDER_WEIGHTS } from '@/app/os/scoring';
+import { cardDefinitionToFaceData } from '@/lib/card-definition';
+import type { CardDefinitionRow, CardFaceData } from '@/lib/card-definition';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import type { SquadPlayer, VerifyItem, GuardianStatus } from '@/app/os/types';
+
+type CardDefinitionDbRow = {
+  id: string;
+  status: 'draft' | 'approved';
+  template_id: string;
+  sport: CardDefinitionRow['sport'];
+  name: string;
+  number: string | null;
+  team: string;
+  position: string | null;
+  logo: string | null;
+  photo: CardDefinitionRow['photo'];
+  stats: CardDefinitionRow['stats'];
+};
+
+function toCardDefinitionRow(row: CardDefinitionDbRow): CardDefinitionRow {
+  return {
+    id: row.id,
+    status: row.status,
+    templateId: row.template_id,
+    sport: row.sport,
+    name: row.name,
+    number: row.number,
+    team: row.team,
+    position: row.position,
+    logo: row.logo,
+    photo: row.photo,
+    stats: row.stats,
+  };
+}
 
 /**
  * Derives the coach-facing guardian status from counts/dates only —
@@ -44,6 +76,81 @@ function deriveGuardianStatus(
   if (guardianCount === 1) return 'connected';
   if (!latestInvite) return 'none';
   return new Date(latestInvite.expiresAt) > new Date() ? 'pending' : 'expired';
+}
+
+type SeasonRangeRow = { label: string; starts_on: string | null; ends_on: string | null; status: string };
+
+/**
+ * Matches a moment's date against the real seasons table by range —
+ * computed here, never stored. `dateStr` should already be a plain
+ * YYYY-MM-DD string (occurred_on, or created_at truncated to its date
+ * portion as a fallback for moments with no occurred_on, e.g. coach
+ * recognitions via /api/os/celebrate never set it).
+ */
+function resolveSeason(dateStr: string | null, seasons: SeasonRangeRow[]): { label: string | null; status: 'active' | 'closed' | null } {
+  if (!dateStr) return { label: null, status: null };
+  const match = seasons.find((s) => s.starts_on && s.ends_on && dateStr >= s.starts_on && dateStr <= s.ends_on);
+  if (!match) return { label: null, status: null };
+  return { label: match.label, status: match.status === 'closed' ? 'closed' : 'active' };
+}
+
+type RarityTier = 'milestone' | 'recognized' | 'standard';
+type RarityInput = {
+  id: string;
+  title: string;
+  effectiveDate: string | null;
+  status: 'family_memory' | 'pending_verification' | 'coach_verified' | 'system_generated';
+  seasonLabel: string | null;
+};
+
+/**
+ * Structural rarity + chronological ordinals, computed from real facts —
+ * never a random tier, never relative to a fixed deck size. A moment is
+ * 'milestone' the first time this exact title appears in this player's
+ * whole history (a real, unfakeable first — it can only happen once),
+ * 'recognized' if coach-verified but not a first, otherwise 'standard'.
+ * Ordinals count up forever from real chronological position — no
+ * denominator, so this is identically correct at 3 moments or 300.
+ *
+ * Known, accepted limitation: "first of type" is grouped by exact title
+ * string (the same client convention ADD_ACH/CELEBRATE_CATS already
+ * constrains most submissions to), not an enforced category column — a
+ * typo'd or "Custom" title could fragment the grouping. Real and shippable
+ * today; a moments.category enum would harden it, left as optional future
+ * work rather than blocking this.
+ */
+function computeRarityAndOrdinals(entries: RarityInput[]): Map<string, { rarity: RarityTier; careerOrdinal: number; seasonOrdinal: number }> {
+  const ascending = [...entries].sort((a, b) => {
+    if (a.effectiveDate && b.effectiveDate) return a.effectiveDate.localeCompare(b.effectiveDate);
+    if (a.effectiveDate && !b.effectiveDate) return -1;
+    if (!a.effectiveDate && b.effectiveDate) return 1;
+    return 0;
+  });
+
+  const seenTitles = new Set<string>();
+  const seasonCounters = new Map<string, number>();
+  const result = new Map<string, { rarity: RarityTier; careerOrdinal: number; seasonOrdinal: number }>();
+
+  ascending.forEach((entry, i) => {
+    const careerOrdinal = i + 1;
+    const seasonKey = entry.seasonLabel ?? 'Earlier';
+    const seasonOrdinal = (seasonCounters.get(seasonKey) ?? 0) + 1;
+    seasonCounters.set(seasonKey, seasonOrdinal);
+
+    let rarity: RarityTier;
+    if (!seenTitles.has(entry.title)) {
+      rarity = 'milestone';
+      seenTitles.add(entry.title);
+    } else if (entry.status === 'coach_verified') {
+      rarity = 'recognized';
+    } else {
+      rarity = 'standard';
+    }
+
+    result.set(entry.id, { rarity, careerOrdinal, seasonOrdinal });
+  });
+
+  return result;
 }
 
 export type OsSession = {
@@ -171,10 +278,13 @@ async function getParentOsData(
       teamId: null,
       playerId: null,
       claimedPlayers: [],
+      currentSeasonStatus: null,
+      cardDefinition: null,
+      cardPhotoUrl: null,
     };
   }
 
-  const [{ data: player }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }] = await Promise.all([
+  const [{ data: player }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }, { data: seasonRows }, { data: cardRow }] = await Promise.all([
     supabase
       .from('players')
       .select('*, teams ( name, clubs ( name ), seasons ( label ) )')
@@ -190,9 +300,12 @@ async function getParentOsData(
     // fixed at submission/approval time (see migration 0011) and read
     // straight through below, never re-derived from current team/coach
     // state.
+    // card_definitions embed only ever populates for a system-generated
+    // card_created moment (Milestone 4B) — never duplicated data, always a
+    // fresh reference resolved at read time via card_definition_id.
     supabase
       .from('moments')
-      .select('*, moment_media (*)')
+      .select('*, moment_media (*), card_definitions ( * )')
       .eq('player_id', playerId)
       .order('created_at', { ascending: false }),
     supabase
@@ -210,7 +323,35 @@ async function getParentOsData(
       .from('players')
       .select('id, name')
       .in('id', linkedIds),
+    // Every real season, global (not scoped to this player's team) — small
+    // table, used only to bucket moments into season chapters by date
+    // range client-side. No new column on moments, no migration.
+    supabase
+      .from('seasons')
+      .select('label, starts_on, ends_on, status')
+      .order('starts_on', { ascending: false }),
+    // The Card Definition Builder authored for this player's most recent
+    // card, if one has been linked (see migration 0019_card_definitions.sql
+    // and src/lib/card-definition.tsx). Null for every card claimed before
+    // that integration existed — Card.tsx falls back to today's raw-photo
+    // rendering in that case, never a fabricated design.
+    supabase
+      .from('cards')
+      .select('card_definitions ( * )')
+      .eq('player_id', playerId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
+
+  const seasonRanges: SeasonRangeRow[] = (seasonRows ?? []) as unknown as SeasonRangeRow[];
+
+  // Same untyped-client many-to-one quirk documented throughout this file —
+  // cards.card_definition_id is a single FK, so the embed is one object at
+  // runtime despite how the client infers it.
+  const cardDefinitionDbRow = (cardRow as unknown as { card_definitions: CardDefinitionDbRow | null } | null)?.card_definitions ?? null;
+  const cardDefinition: CardFaceData | null = cardDefinitionDbRow ? cardDefinitionToFaceData(toCardDefinitionRow(cardDefinitionDbRow)) : null;
+  const cardPhotoUrl = cardDefinitionDbRow?.photo?.storageKey ? await getSignedDownloadUrl(cardDefinitionDbRow.photo.storageKey) : null;
 
   // Sorted client-side rather than via `.order(col, { foreignTable })` —
   // that PostgREST option orders rows *within* a one-to-many embed, not a
@@ -242,6 +383,9 @@ async function getParentOsData(
       teamId: null,
       playerId: null,
       claimedPlayers,
+      currentSeasonStatus: null,
+      cardDefinition: null,
+      cardPhotoUrl: null,
     };
   }
 
@@ -313,23 +457,66 @@ async function getParentOsData(
           }))
       : [];
 
-  const moments: RealMoment[] = await Promise.all(
-    (momentRows ?? []).map(async (m) => ({
-      id: m.id,
-      title: m.title,
-      occurredOn: m.occurred_on,
-      trust: m.trust,
-      status: m.verification_status,
-      note: m.note,
-      media: await Promise.all(
-        (m.moment_media ?? []).map(async (mm: { id: string; kind: 'photo' | 'video'; s3_key: string }) => ({
-          id: mm.id,
-          kind: mm.kind,
-          url: await getSignedDownloadUrl(mm.s3_key),
-        }))
-      ),
+  // Coach recognitions (via /api/os/celebrate) never set occurred_on —
+  // created_at is the honest fallback for those, truncated to a plain
+  // date so it compares correctly against seasons.starts_on/ends_on.
+  // Computed as its own synchronous pass (season match + rarity/ordinals
+  // both need every moment's date/season up front, before the async
+  // per-moment media-signing pass below runs).
+  const enrichedMomentRows = (momentRows ?? []).map((m) => {
+    const effectiveDate = m.occurred_on ?? (m.created_at as string | undefined)?.slice(0, 10) ?? null;
+    const { label: seasonLabel, status: seasonStatus } = resolveSeason(effectiveDate, seasonRanges);
+    return { raw: m, effectiveDate, seasonLabel, seasonStatus };
+  });
+
+  const rarityAndOrdinals = computeRarityAndOrdinals(
+    enrichedMomentRows.map((e) => ({
+      id: e.raw.id as string,
+      title: e.raw.title as string,
+      effectiveDate: e.effectiveDate,
+      status: e.raw.verification_status as 'family_memory' | 'pending_verification' | 'coach_verified' | 'system_generated',
+      seasonLabel: e.seasonLabel,
     }))
   );
+
+  const moments: RealMoment[] = await Promise.all(
+    enrichedMomentRows.map(async ({ raw: m, seasonLabel, seasonStatus }) => {
+      const computed = rarityAndOrdinals.get(m.id as string)!;
+      // Same untyped-client many-to-one quirk documented throughout this
+      // file — a moment references at most one card_definitions row.
+      const linkedDefinitionDbRow = (m as unknown as { card_definitions: CardDefinitionDbRow | null }).card_definitions;
+      const cardDefinition: CardFaceData | null = linkedDefinitionDbRow ? cardDefinitionToFaceData(toCardDefinitionRow(linkedDefinitionDbRow)) : null;
+      const cardPhotoUrl = linkedDefinitionDbRow?.photo?.storageKey ? await getSignedDownloadUrl(linkedDefinitionDbRow.photo.storageKey) : null;
+      return {
+        id: m.id,
+        title: m.title,
+        occurredOn: m.occurred_on,
+        trust: m.trust,
+        status: m.verification_status,
+        note: m.note,
+        media: await Promise.all(
+          (m.moment_media ?? []).map(async (mm: { id: string; kind: 'photo' | 'video'; s3_key: string }) => ({
+            id: mm.id,
+            kind: mm.kind,
+            url: await getSignedDownloadUrl(mm.s3_key),
+          }))
+        ),
+        seasonLabel,
+        seasonStatus,
+        rarity: computed.rarity,
+        careerOrdinal: computed.careerOrdinal,
+        seasonOrdinal: computed.seasonOrdinal,
+        cardDefinition,
+        cardPhotoUrl,
+      };
+    })
+  );
+
+  const currentSeasonLabel = player.teams?.seasons?.label ?? null;
+  const matchedCurrentSeason = currentSeasonLabel ? seasonRanges.find((s) => s.label === currentSeasonLabel) : undefined;
+  const currentSeasonStatus: 'active' | 'closed' | null = matchedCurrentSeason
+    ? (matchedCurrentSeason.status === 'closed' ? 'closed' : 'active')
+    : null;
 
   return {
     mode: 'real',
@@ -366,6 +553,9 @@ async function getParentOsData(
     coachTeamsManaged: [],
     goals,
     claimedPlayers,
+    currentSeasonStatus,
+    cardDefinition,
+    cardPhotoUrl,
   };
 }
 

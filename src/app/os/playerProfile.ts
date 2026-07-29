@@ -426,33 +426,3 @@ export const COACH_SUMMARY: CoachSummary = {
   lastReviewed: '12 March 2026',
 };
 
-/**
- * The season's biggest movers across every category, most-improved first.
- * Feeds both the Skills-tab "Driven by" line and the Development-tab
- * "Biggest improvements" list, so the two are always derived from one place.
- *
- * Ties are broken by this fixed category order (independent of the category
- * rail's display order) so the result is stable rather than depending on
- * incidental array position.
- */
-const IMPROVEMENT_TIEBREAK_ORDER: SkillCategoryId[] = ['mental', 'attacking', 'technical', 'tactical', 'physical'];
-
-export function getTopImprovements(
-  categories: SkillCategory[],
-  count: number
-): { label: string; seasonalChange: number }[] {
-  const byId = new Map(categories.map((c) => [c.id, c]));
-  const all = IMPROVEMENT_TIEBREAK_ORDER.flatMap((id) => byId.get(id)?.skills ?? []);
-  return [...all]
-    .sort((a, b) => b.seasonalChange - a.seasonalChange)
-    .slice(0, count)
-    .map((s) => ({ label: s.label, seasonalChange: s.seasonalChange }));
-}
-
-export function findSkill(categories: SkillCategory[], skillId: string): { skill: Skill; category: SkillCategory } | null {
-  for (const category of categories) {
-    const skill = category.skills.find((s) => s.id === skillId);
-    if (skill) return { skill, category };
-  }
-  return null;
-}

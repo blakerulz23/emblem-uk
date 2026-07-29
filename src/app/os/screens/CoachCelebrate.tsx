@@ -9,7 +9,7 @@ export default function CoachCelebrate({ actions }: { actions: OsActions }) {
     <>
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 22, color: 'var(--os-ink)', lineHeight: 1.1 }}>Celebrate a player</div>
-        <div style={{ fontSize: 13, color: 'var(--os-muted)', marginTop: 4 }}>Recognition takes seconds and lives on their journey forever.</div>
+        <div style={{ fontSize: 13, color: 'var(--os-muted)', marginTop: 4 }}>Recognition takes seconds and lives in their Collection forever.</div>
       </div>
       <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', margin: '0 0 10px 2px' }}>CHOOSE A PLAYER</div>
       {SQUAD.map((p) => {
