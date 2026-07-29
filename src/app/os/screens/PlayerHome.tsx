@@ -2,6 +2,7 @@ import { useOsData } from '../OsDataContext';
 import { onActivateKey } from '../a11y';
 import { ICN, MOMENT_STATUS_BADGE } from '../data';
 import { CardFace } from '@/lib/card-definition';
+import EmptyState from './EmptyState';
 import type { OsActions } from '../OsApp';
 import type { RealMoment } from '../osData';
 
@@ -178,9 +179,10 @@ export default function PlayerHome({ actions }: { actions: OsActions }) {
           This Season
         </div>
         {!currentSeason ? (
-          <div style={{ fontFamily: 'Roboto', fontSize: 14.5, color: 'var(--os-muted)', lineHeight: 1.5 }}>
-            No season on record yet.
-          </div>
+          <EmptyState
+            title="Season not assigned yet."
+            body="Season summaries will appear here once the player joins a team."
+          />
         ) : momentsThisSeason.length > 0 ? (
             <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: '16px 8px', boxShadow: '0 8px 20px -16px rgba(0,0,0,.2)', display: 'flex', alignItems: 'flex-start' }}>
               <div style={{ flex: 1, textAlign: 'center', padding: '0 6px' }}>
