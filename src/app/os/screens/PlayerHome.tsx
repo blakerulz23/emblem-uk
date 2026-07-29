@@ -1,5 +1,6 @@
 import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
+import type { RealMoment } from '../osData';
 
 /**
  * Home is a lean orientation glance, not a container for the other three
@@ -9,20 +10,41 @@ import type { OsActions } from '../OsApp';
  *
  * Every number shown here is real — a count of actual moments, matched to
  * a real season by date range (src/lib/os-data.ts's resolveSeason). Never
- * a percentage, never an invented statistic.
+ * a percentage, never an invented statistic. Deliberately does not surface
+ * "Awards"/"Recognitions" as counted stats — milestone rarity includes
+ * things like "First Goal" that aren't awards, and coach verification is a
+ * separate concept from moment significance; inventing a count that
+ * conflates either would be exactly the kind of manufactured-looking
+ * number this product exists to avoid.
  */
+
+/** Same rarity vocabulary/colors as Collection (RealCollection.tsx) — reused, not reinvented. */
+const RARITY_LABEL: Record<RealMoment['rarity'], string> = {
+  milestone: 'Milestone',
+  recognized: 'Recognized',
+  standard: 'Standard',
+};
+const RARITY_COLOR: Record<RealMoment['rarity'], string> = {
+  milestone: '#E8B23A',
+  recognized: '#E97435',
+  standard: '#8A8378',
+};
+
+function formatMomentDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 export default function PlayerHome({ actions }: { actions: OsActions }) {
-  const { playerProfile, moments, currentSeasonStatus, cardPhotoUrl } = useOsData();
+  const { playerProfile, moments, currentSeasonStatus } = useOsData();
   const currentSeason = playerProfile.season;
   const isSeasonOpen = currentSeasonStatus === 'active';
 
-  const momentsThisSeason = currentSeason ? moments.filter((m) => m.seasonLabel === currentSeason).length : 0;
-  const recent = moments.slice(0, 3);
-  // Prefer the Card Definition's own photo — a family whose card came
-  // entirely through Builder may never have separately uploaded a guardian
-  // photo (players.photo_key), so falling back to only that would show a
-  // bare initial where a real photo already exists.
-  const glancePhotoUrl = cardPhotoUrl ?? playerProfile.photoUrl;
+  const momentsThisSeason = currentSeason ? moments.filter((m) => m.seasonLabel === currentSeason) : [];
+  const latestThisSeason = momentsThisSeason[0] ?? null;
+  const coachVerifiedThisSeason = momentsThisSeason.filter((m) => m.status === 'coach_verified').length;
+  const latestOverall = moments[0] ?? null;
 
   return (
     <>
@@ -31,77 +53,78 @@ export default function PlayerHome({ actions }: { actions: OsActions }) {
           onClick={actions.goCard}
           role="button"
           tabIndex={0}
-          style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 2px 0', padding: '10px 12px', borderRadius: 14, background: 'var(--os-card)', boxShadow: '0 6px 16px -12px rgba(0,0,0,.2)', cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '4px 2px 0', padding: '2px 2px', cursor: 'pointer' }}
         >
-          <div style={{ width: 40, height: 40, borderRadius: '50%', overflow: 'hidden', flex: '0 0 auto', background: '#100E0C', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {glancePhotoUrl ? (
-              <img src={glancePhotoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <span style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: '#F4F1EC' }}>{playerProfile.name.charAt(0).toUpperCase()}</span>
+          <div>
+            <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 21, color: 'var(--os-ink)', lineHeight: 1.15 }}>{playerProfile.name}</div>
+            {(playerProfile.position || playerProfile.ageGroup) && (
+              <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.04em', fontSize: 13, color: '#E97435', marginTop: 2 }}>
+                {[playerProfile.position, playerProfile.ageGroup].filter(Boolean).join(' • ')}
+              </div>
             )}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.name}</div>
-            <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 12, color: 'var(--os-muted)' }}>{playerProfile.position || 'View card'}</div>
           </div>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--os-muted)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M9 5l7 7-7 7" /></svg>
         </div>
       )}
 
-      {currentSeason && (
-        <div style={{ margin: '22px 2px 0' }}>
-          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435', marginBottom: 6, textTransform: 'uppercase' }}>
-            Their season so far
+      {latestOverall && (
+        <div style={{ margin: '24px 2px 0' }}>
+          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435', marginBottom: 8, textTransform: 'uppercase' }}>
+            Latest Moment
           </div>
-          {momentsThisSeason > 0 ? (
-            <div style={{ fontFamily: 'Roboto', fontSize: 14.5, color: 'var(--os-ink)', lineHeight: 1.5 }}>
-              <b>{currentSeason}</b> — {momentsThisSeason} {momentsThisSeason === 1 ? 'memory' : 'memories'}{' '}
-              {isSeasonOpen ? 'written so far this season.' : 'were written this season.'}
+          <div
+            onClick={actions.goCollection}
+            role="button"
+            tabIndex={0}
+            style={{ background: 'var(--os-card)', borderRadius: 16, padding: '14px 16px', cursor: 'pointer', boxShadow: '0 6px 16px -12px rgba(0,0,0,.2)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: RARITY_COLOR[latestOverall.rarity] }} />
+              <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 10.5, letterSpacing: '.1em', color: RARITY_COLOR[latestOverall.rarity], textTransform: 'uppercase' }}>
+                {RARITY_LABEL[latestOverall.rarity]}
+              </span>
+            </div>
+            <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15.5, color: 'var(--os-ink)' }}>{latestOverall.title}</div>
+            {latestOverall.occurredOn && (
+              <div style={{ fontSize: 12.5, color: 'var(--os-muted)', marginTop: 3 }}>{formatMomentDate(latestOverall.occurredOn)}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {currentSeason && (
+        <div style={{ margin: '24px 2px 0' }}>
+          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435', marginBottom: 6, textTransform: 'uppercase' }}>
+            This Season
+          </div>
+          {momentsThisSeason.length > 0 ? (
+            <div style={{ fontFamily: 'Roboto', fontSize: 14.5, color: 'var(--os-ink)', lineHeight: 1.7 }}>
+              <div><b>{momentsThisSeason.length}</b> {momentsThisSeason.length === 1 ? 'Moment' : 'Moments'}</div>
+              {latestThisSeason && <div>Latest: <b>{latestThisSeason.title}</b></div>}
+              <div>
+                <b>{coachVerifiedThisSeason}</b> {coachVerifiedThisSeason === 1 ? 'Coach-verified moment' : 'Coach-verified moments'}
+              </div>
             </div>
           ) : (
             <div style={{ fontFamily: 'Roboto', fontSize: 14.5, color: 'var(--os-muted)', lineHeight: 1.5 }}>
               <b style={{ color: 'var(--os-ink)' }}>{currentSeason}</b> — this season is just getting started.
             </div>
           )}
+          {!isSeasonOpen && momentsThisSeason.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--os-muted)', marginTop: 4 }}>This season has closed.</div>
+          )}
         </div>
       )}
 
-      {recent.length > 0 && (
-        <div style={{ margin: '26px 2px 4px' }}>
-          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435', marginBottom: 10, textTransform: 'uppercase' }}>
-            Continue the story
-          </div>
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
-            {recent.map((m) => {
-              const photo = m.media.find((med) => med.kind === 'photo');
-              return (
-                <div
-                  key={m.id}
-                  onClick={actions.goCollection}
-                  role="button"
-                  tabIndex={0}
-                  style={{
-                    flex: '0 0 auto', width: 84, height: 84, borderRadius: 12, overflow: 'hidden', cursor: 'pointer',
-                    background: photo ? '#100E0C' : 'var(--os-card)',
-                    border: photo ? 'none' : '1px solid var(--os-border)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: photo ? 0 : 8,
-                  }}
-                >
-                  {photo ? (
-                    <img src={photo.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 11, color: 'var(--os-ink)', textAlign: 'center', lineHeight: 1.3 }}>{m.title}</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <div onClick={actions.goCollection} role="button" tabIndex={0} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 12, cursor: 'pointer', fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: '#E97435' }}>
-            See every chapter in Collection
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E97435" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M9 5l7 7-7 7" /></svg>
-          </div>
-        </div>
-      )}
+      <div
+        onClick={actions.goCollection}
+        role="button"
+        tabIndex={0}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 22, cursor: 'pointer', fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: '#E97435' }}
+      >
+        See every chapter in Collection
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E97435" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M9 5l7 7-7 7" /></svg>
+      </div>
     </>
   );
 }
