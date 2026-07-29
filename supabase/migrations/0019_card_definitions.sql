@@ -47,6 +47,11 @@ alter table card_definitions enable row level security;
 
 grant select on card_definitions to authenticated;
 
+-- Added before the policies below, since both reference it.
+alter table cards add column card_definition_id uuid references card_definitions (id);
+
+create index cards_card_definition_id_idx on cards (card_definition_id);
+
 -- No insert/update/delete policy — matches cards' own "secure by default"
 -- convention exactly. Every write goes through Builder's submit flow using
 -- the service-role client.
@@ -70,7 +75,3 @@ create policy "card_definitions: visible to coaches of the linked player's team"
       where c.card_definition_id = card_definitions.id and ct.profile_id = auth.uid()
     )
   );
-
-alter table cards add column card_definition_id uuid references card_definitions (id);
-
-create index cards_card_definition_id_idx on cards (card_definition_id);

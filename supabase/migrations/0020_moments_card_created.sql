@@ -17,17 +17,41 @@ create unique index moments_one_system_moment_per_definition
 -- no human verifier to name, so it gets its own honest status rather than
 -- a fabricated coach_verified/family_memory claim.
 --
--- NOTE: this assumes the base verification_status CHECK constraint still
--- carries Postgres's default auto-generated name from when it was first
--- added via a single `ADD COLUMN ... CHECK(...)` statement in migration
--- 0011 (moments_verification_status_check). If this DROP fails, query
--- information_schema.check_constraints for the real name and adjust
--- before re-running.
-alter table moments drop constraint moments_verification_status_check;
+-- Finds each existing CHECK constraint by what it actually constrains
+-- (its definition text) rather than assuming Postgres's auto-generated
+-- name from migration 0011 — that name isn't guaranteed, and guessing
+-- wrong here would abort the whole migration (this file runs as one
+-- transaction).
+do $$
+declare
+  status_check_name text;
+  consistency_check_name text;
+begin
+  select conname into status_check_name
+  from pg_constraint
+  where conrelid = 'moments'::regclass
+    and contype = 'c'
+    and pg_get_constraintdef(oid) like '%pending_verification%'
+    and pg_get_constraintdef(oid) not like '%verified_by%';
+
+  select conname into consistency_check_name
+  from pg_constraint
+  where conrelid = 'moments'::regclass
+    and contype = 'c'
+    and pg_get_constraintdef(oid) like '%verified_by%';
+
+  if status_check_name is not null then
+    execute format('alter table moments drop constraint %I', status_check_name);
+  end if;
+
+  if consistency_check_name is not null then
+    execute format('alter table moments drop constraint %I', consistency_check_name);
+  end if;
+end $$;
+
 alter table moments add constraint moments_verification_status_check
   check (verification_status in ('family_memory', 'pending_verification', 'coach_verified', 'system_generated'));
 
-alter table moments drop constraint moments_verification_status_consistency;
 alter table moments add constraint moments_verification_status_consistency
   check (
     (verification_status = 'coach_verified' and verified_at is not null and verified_by is not null)
