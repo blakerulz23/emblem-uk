@@ -81,6 +81,28 @@ export type UploadedFile = {
  */
 export type GuardianStatus = 'none' | 'pending' | 'expired' | 'connected' | 'multiple';
 
+/**
+ * Shared with attribution: either a guardian or a coach can create one,
+ * but every entry records its own real author + role — never merged into
+ * one anonymous value. Capped at 3 active per player, enforced by
+ * create_season_focus (0023_player_season_focus.sql), not client-side.
+ */
+export type SeasonFocusEntry = {
+  id: string;
+  label: string;
+  createdBy: string;
+  authorName: string | null;
+  authorRole: 'guardian' | 'coach';
+  createdAt: string;
+  status: 'active' | 'completed' | 'archived';
+};
+
+/** Coach-authored only, append-only — no author shown, just a growing record of coach feedback. */
+export type StrengthEntry = { id: string; label: string; createdAt: string };
+
+/** Coach-authored history, never overwritten — Card/Coach Player Detail show the most recent ([0], since fetched newest-first). */
+export type AssessmentEntry = { id: string; body: string; authorName: string | null; createdAt: string };
+
 export type SquadPlayer = {
   id: string;
   name: string;
@@ -101,9 +123,14 @@ export type SquadPlayer = {
    * point rather than handing every code out on every Team-screen load.
    */
   hasManageableInvite: boolean;
+  /** A coach's own football judgement, not a family fact — coach-only to set (see update_secondary_position), guardian can only view. Null until a coach sets one. */
+  secondaryPosition: string | null;
+  seasonFocus: SeasonFocusEntry[];
+  strengths: StrengthEntry[];
+  assessments: AssessmentEntry[];
 };
 
-export type VerifyItem = { id: string; player: string; moment: string; thumb: string; by: string; date: string };
+export type VerifyItem = { id: string; player: string; playerId: string; moment: string; thumb: string; by: string; date: string };
 export type CoachActivityItem = { text: string; when: string; ic: string };
 export type CelebrateGroup = { group: string; items: [string, string][] };
 
@@ -137,6 +164,8 @@ export type OsState = {
   sent: boolean;
   activated: boolean;
   dark: boolean;
+  /** Coach sessions only — a squad player drilled into from Team; null shows the Team list instead. */
+  coachPlayerId: string | null;
 };
 
 export const initialOsState: OsState = {
@@ -166,4 +195,5 @@ export const initialOsState: OsState = {
   sent: false,
   activated: false,
   dark: false,
+  coachPlayerId: null,
 };

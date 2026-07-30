@@ -22,6 +22,7 @@ import CardScreen from './screens/Card';
 import Profile from './screens/Profile';
 import CoachHome from './screens/CoachHome';
 import CoachTeam from './screens/CoachTeam';
+import CoachPlayerDetail from './screens/CoachPlayerDetail';
 import CoachCelebrate from './screens/CoachCelebrate';
 import CoachVerify from './screens/CoachVerify';
 import CoachProfile from './screens/CoachProfile';
@@ -71,6 +72,8 @@ export type OsActions = {
   sendRecognition: () => void;
   goCoachVerify: () => void;
   goCoachCelebrate: () => void;
+  openCoachPlayer: (id: string) => void;
+  closeCoachPlayer: () => void;
 };
 
 export type OsAppProps = {
@@ -176,7 +179,7 @@ export default function OsApp({
   const actions: OsActions = {
     activate: () => patch({ activated: true }),
     toggleDark: () => patch((s) => ({ dark: !s.dark })),
-    setTab: (t) => patch({ tab: t, moment: null }),
+    setTab: (t) => patch({ tab: t, moment: null, coachPlayerId: null }),
     goCollection: () => patch({ tab: 'journey', moment: null }),
     goCard: () => patch({ tab: 'card', moment: null }),
     toggleRole: () => patch((s) => ({ role: s.role === 'owner' ? 'coach' : 'owner', tab: 'home', moment: null, celeb: null, award: null })),
@@ -315,8 +318,10 @@ export default function OsApp({
       clearTimeout(sentTimerRef.current);
       sentTimerRef.current = setTimeout(() => patch({ sent: false }), 2600);
     },
-    goCoachVerify: () => patch({ tab: 'verify', moment: null }),
-    goCoachCelebrate: () => patch({ tab: 'celebrate', moment: null }),
+    goCoachVerify: () => patch({ tab: 'verify', moment: null, coachPlayerId: null }),
+    goCoachCelebrate: () => patch({ tab: 'celebrate', moment: null, coachPlayerId: null }),
+    openCoachPlayer: (id) => patch({ coachPlayerId: id }),
+    closeCoachPlayer: () => patch({ coachPlayerId: null }),
   };
 
   const isCoach = state.role === 'coach';
@@ -340,6 +345,11 @@ export default function OsApp({
   // just now keys off the 'card' tab instead of 'home'.
   const showOwnerCardBack = isOwner && state.tab === 'card' && state.flipped;
 
+  // A drill-in within the existing 'team' tab (not a 6th coach nav tab),
+  // reusing Card's flip-chrome (back-chevron + centered title) rather than
+  // introducing a second overlay mechanism.
+  const showCoachPlayerDetail = isCoach && state.tab === 'team' && !!state.coachPlayerId;
+
   const titles: Record<string, string> = isCoach
     ? { home: 'HOME', team: 'MY TEAM', celebrate: 'CELEBRATE', verify: 'VERIFY', profile: 'PROFILE' }
     : { home: '', card: 'CARD', journey: 'COLLECTION', profile: 'PROFILE' };
@@ -349,9 +359,9 @@ export default function OsApp({
     : [['home', 'Home', 'home'], ['card', 'Card', 'card'], ['journey', 'Collection', 'flag'], ['profile', 'Profile', 'user']];
 
   const showFab = isOwner && state.activated && (state.tab === 'home' || state.tab === 'journey') && state.addStep === 0 && !state.addOpen && !state.addUnlock && !state.moment && !state.celeb;
-  const showBack = showOwnerCardBack;
+  const showBack = showOwnerCardBack || showCoachPlayerDetail;
   const showLogo = state.tab === 'home';
-  const currentTitle = showOwnerCardBack ? 'ABOUT' : (titles[state.tab] || '');
+  const currentTitle = showOwnerCardBack ? 'ABOUT' : showCoachPlayerDetail ? 'PLAYER' : (titles[state.tab] || '');
 
   return (
     <OsDataProvider value={initialData ?? DEMO_OS_DATA}>
@@ -371,7 +381,7 @@ export default function OsApp({
           {/* top bar */}
           <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px 12px' }}>
             {showBack ? (
-              <div onClick={actions.flipCard} style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid var(--os-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <div onClick={showCoachPlayerDetail ? actions.closeCoachPlayer : actions.flipCard} style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid var(--os-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
               </div>
             ) : <div style={{ width: 34 }} />}
@@ -432,7 +442,11 @@ export default function OsApp({
             {isCoach ? (
               <>
                 {state.tab === 'home' && <CoachHome actions={actions} />}
-                {state.tab === 'team' && <CoachTeam actions={actions} />}
+                {state.tab === 'team' && (
+                  showCoachPlayerDetail
+                    ? <CoachPlayerDetail playerId={state.coachPlayerId as string} actions={actions} />
+                    : <CoachTeam actions={actions} />
+                )}
                 {state.tab === 'celebrate' && <CoachCelebrate actions={actions} />}
                 {state.tab === 'verify' && <CoachVerify />}
                 {state.tab === 'profile' && <CoachProfile />}

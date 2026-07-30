@@ -7,7 +7,7 @@ import { computeOverallScore, MIDFIELDER_WEIGHTS } from '@/app/os/scoring';
 import { cardDefinitionToFaceData } from '@/lib/card-definition';
 import type { CardDefinitionRow, CardFaceData } from '@/lib/card-definition';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
-import type { SquadPlayer, VerifyItem, GuardianStatus } from '@/app/os/types';
+import type { SquadPlayer, VerifyItem, GuardianStatus, SeasonFocusEntry, StrengthEntry, AssessmentEntry } from '@/app/os/types';
 
 type CardDefinitionDbRow = {
   id: string;
@@ -66,6 +66,7 @@ const EMPTY_PLAYER_PROFILE: PlayerProfile = {
   season: null,
   favouritePlayer: null,
   footballAmbition: null,
+  secondaryPosition: null,
 };
 
 function deriveGuardianStatus(
@@ -278,7 +279,7 @@ async function getParentOsData(
   // fallback, not the security boundary.
   const playerId = requestedPlayerId && linkedIdSet.has(requestedPlayerId) ? requestedPlayerId : linkedIds[0];
 
-  const emptyConnections = { connections: [], viewerId: userId, coachDisplayName: null, coachClub: null, coachTeamsManaged: [], goals: [] };
+  const emptyConnections = { connections: [], viewerId: userId, coachDisplayName: null, coachClub: null, coachTeamsManaged: [], goals: [], seasonFocus: [], strengths: [], assessments: [] };
 
   if (!playerId) {
     return {
@@ -301,7 +302,7 @@ async function getParentOsData(
     };
   }
 
-  const [{ data: player }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }, { data: seasonRows }, { data: cardRow }] = await Promise.all([
+  const [{ data: player }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }, { data: seasonRows }, { data: cardRow }, { data: seasonFocusRows }, { data: strengthRows }, { data: assessmentRows }] = await Promise.all([
     supabase
       .from('players')
       .select('*, teams ( name, clubs ( name ), seasons ( label ) )')
@@ -359,6 +360,29 @@ async function getParentOsData(
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+    // Season Focus — shared with attribution; the profiles embed resolves
+    // the real author name regardless of whether they're a guardian or
+    // coach (0023_player_season_focus.sql's new coach-side profiles
+    // policies cover the coach-authored case).
+    supabase
+      .from('player_season_focus')
+      .select('*, profiles ( display_name )')
+      .eq('player_id', playerId)
+      .order('created_at', { ascending: false }),
+    // Recognised Strengths — coach-authored, append-only, no author shown.
+    supabase
+      .from('player_strengths')
+      .select('*')
+      .eq('player_id', playerId)
+      .order('created_at', { ascending: false }),
+    // Coach's Assessment history — newest first; the UI only ever shows
+    // assessments[0], but the full history is carried through rather than
+    // discarded, consistent with never destructively overwriting a record.
+    supabase
+      .from('player_assessments')
+      .select('*, profiles ( display_name )')
+      .eq('player_id', playerId)
+      .order('created_at', { ascending: false }),
   ]);
 
   const seasonRanges: SeasonRangeRow[] = (seasonRows ?? []) as unknown as SeasonRangeRow[];
@@ -414,6 +438,37 @@ async function getParentOsData(
     target: g.target,
     unit: g.unit ?? undefined,
     status: g.status,
+  }));
+
+  // Same untyped-client many-to-one embed quirk as guardianRows/coachRows
+  // above — one player_season_focus/player_assessments row references at
+  // most one profiles row via created_by.
+  type ProfileNameEmbed = { display_name: string | null } | null;
+  type SeasonFocusDbRow = {
+    id: string; label: string; created_by: string; author_role: 'guardian' | 'coach';
+    status: 'active' | 'completed' | 'archived'; created_at: string; profiles: ProfileNameEmbed;
+  };
+  type AssessmentDbRow = { id: string; body: string; created_at: string; profiles: ProfileNameEmbed };
+
+  const seasonFocus: SeasonFocusEntry[] = ((seasonFocusRows ?? []) as unknown as SeasonFocusDbRow[]).map((f) => ({
+    id: f.id,
+    label: f.label,
+    createdBy: f.created_by,
+    authorName: f.profiles?.display_name ?? null,
+    authorRole: f.author_role,
+    createdAt: f.created_at,
+    status: f.status,
+  }));
+  const strengths: StrengthEntry[] = (strengthRows ?? []).map((s) => ({
+    id: s.id,
+    label: s.label,
+    createdAt: s.created_at,
+  }));
+  const assessments: AssessmentEntry[] = ((assessmentRows ?? []) as unknown as AssessmentDbRow[]).map((a) => ({
+    id: a.id,
+    body: a.body,
+    authorName: a.profiles?.display_name ?? null,
+    createdAt: a.created_at,
   }));
 
   // coach_team lookup depends on player.team_id, so it can't join the
@@ -557,6 +612,7 @@ async function getParentOsData(
       season: player.teams?.seasons?.label ?? null,
       favouritePlayer: player.favourite_player ?? null,
       footballAmbition: player.football_ambition ?? null,
+      secondaryPosition: player.secondary_position ?? null,
     },
     skillCategories,
     developmentSeasons,
@@ -570,6 +626,9 @@ async function getParentOsData(
     coachClub: null,
     coachTeamsManaged: [],
     goals,
+    seasonFocus,
+    strengths,
+    assessments,
     claimedPlayers,
     currentSeasonStatus,
     cardDefinition,
@@ -578,7 +637,21 @@ async function getParentOsData(
 }
 
 async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId: string): Promise<OsData> {
-  const emptyConnections = { connections: [] as RealConnection[], viewerId: userId, coachDisplayName: null, coachClub: null, coachTeamsManaged: [] as CoachTeamSummary[], goals: [] as SeasonTarget[] };
+  const emptyConnections = {
+    connections: [] as RealConnection[],
+    viewerId: userId,
+    coachDisplayName: null,
+    coachClub: null,
+    coachTeamsManaged: [] as CoachTeamSummary[],
+    goals: [] as SeasonTarget[],
+    // Overrides DEMO_OS_DATA's demo content in the "coach with no team yet"
+    // early return below, which spreads ...DEMO_OS_DATA first — without
+    // these, fake Season Focus/Strengths/Assessments would leak into what
+    // must be a genuinely empty real state (Core Product Principle #6).
+    seasonFocus: [] as SeasonFocusEntry[],
+    strengths: [] as StrengthEntry[],
+    assessments: [] as AssessmentEntry[],
+  };
 
   const { data: teamLinks } = await supabase
     .from('coach_team')
@@ -594,7 +667,7 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
 
   const { data: players } = await supabase
     .from('players')
-    .select('id, name, position, squad_number, team_id')
+    .select('id, name, position, squad_number, team_id, secondary_position')
     .in('team_id', teamIds);
 
   const playerIds = (players ?? []).map((p) => p.id);
@@ -632,6 +705,68 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
     }
   });
 
+  // Season Focus / Recognised Strengths / Coach's Assessment for every
+  // player on this coach's teams, batch-fetched the same way
+  // guardianRows/inviteRows are above, then grouped per player_id — one
+  // query each rather than one per squad row.
+  const { data: seasonFocusRows } = playerIds.length
+    ? await supabase
+        .from('player_season_focus')
+        .select('*, profiles ( display_name )')
+        .in('player_id', playerIds)
+        .order('created_at', { ascending: false })
+    : { data: [] as never[] };
+  const { data: strengthRows } = playerIds.length
+    ? await supabase
+        .from('player_strengths')
+        .select('*')
+        .in('player_id', playerIds)
+        .order('created_at', { ascending: false })
+    : { data: [] as never[] };
+  const { data: assessmentRows } = playerIds.length
+    ? await supabase
+        .from('player_assessments')
+        .select('*, profiles ( display_name )')
+        .in('player_id', playerIds)
+        .order('created_at', { ascending: false })
+    : { data: [] as never[] };
+
+  type ProfileNameEmbed = { display_name: string | null } | null;
+  type SeasonFocusDbRow = {
+    id: string; player_id: string; label: string; created_by: string; author_role: 'guardian' | 'coach';
+    status: 'active' | 'completed' | 'archived'; created_at: string; profiles: ProfileNameEmbed;
+  };
+  type AssessmentDbRow = { id: string; player_id: string; body: string; created_at: string; profiles: ProfileNameEmbed };
+
+  const seasonFocusByPlayer = new Map<string, SeasonFocusEntry[]>();
+  ((seasonFocusRows ?? []) as unknown as SeasonFocusDbRow[]).forEach((f) => {
+    const list = seasonFocusByPlayer.get(f.player_id) ?? [];
+    list.push({
+      id: f.id,
+      label: f.label,
+      createdBy: f.created_by,
+      authorName: f.profiles?.display_name ?? null,
+      authorRole: f.author_role,
+      createdAt: f.created_at,
+      status: f.status,
+    });
+    seasonFocusByPlayer.set(f.player_id, list);
+  });
+
+  const strengthsByPlayer = new Map<string, StrengthEntry[]>();
+  (strengthRows ?? []).forEach((s) => {
+    const list = strengthsByPlayer.get(s.player_id) ?? [];
+    list.push({ id: s.id, label: s.label, createdAt: s.created_at });
+    strengthsByPlayer.set(s.player_id, list);
+  });
+
+  const assessmentsByPlayer = new Map<string, AssessmentEntry[]>();
+  ((assessmentRows ?? []) as unknown as AssessmentDbRow[]).forEach((a) => {
+    const list = assessmentsByPlayer.get(a.player_id) ?? [];
+    list.push({ id: a.id, body: a.body, authorName: a.profiles?.display_name ?? null, createdAt: a.created_at });
+    assessmentsByPlayer.set(a.player_id, list);
+  });
+
   const squad: SquadPlayer[] = (players ?? []).map((p) => {
     const guardianCount = guardianCounts.get(p.id) ?? 0;
     const latestInvite = latestInviteByPlayer.get(p.id);
@@ -646,6 +781,10 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
       guardianCount,
       latestInviteExpiresAt: guardianStatus === 'pending' || guardianStatus === 'expired' ? latestInvite?.expiresAt ?? null : null,
       hasManageableInvite: guardianStatus === 'pending',
+      secondaryPosition: p.secondary_position ?? null,
+      seasonFocus: seasonFocusByPlayer.get(p.id) ?? [],
+      strengths: strengthsByPlayer.get(p.id) ?? [],
+      assessments: assessmentsByPlayer.get(p.id) ?? [],
     };
   });
   const { data: pendingMoments } = playerIds.length
@@ -663,6 +802,7 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
       return {
         id: m.id,
         player: m.players?.name ?? '',
+        playerId: m.player_id,
         moment: m.title,
         thumb: firstMedia ? await getSignedDownloadUrl(firstMedia.s3_key) : '',
         by: 'Parent',
@@ -706,6 +846,13 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
     coachClub,
     coachTeamsManaged,
     goals: [],
+    // Coach sessions carry Season Focus/Strengths/Assessments per-player on
+    // `squad[].seasonFocus` etc. (already populated above), never at this
+    // top level — zeroed here for the same reason `goals` is, so
+    // DEMO_OS_DATA's demo content can't leak into a real coach session.
+    seasonFocus: [],
+    strengths: [],
+    assessments: [],
     claimedPlayers: [],
   };
 }

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOsData } from '../OsDataContext';
+import { onActivateKey } from '../a11y';
 import type { OsActions } from '../OsApp';
 import type { SquadPlayer } from '../types';
 import GuardianInviteSheet, { daysLeftLabel } from '../overlays/GuardianInviteSheet';
@@ -12,10 +13,17 @@ import GuardianInviteSheet, { daysLeftLabel } from '../overlays/GuardianInviteSh
 // sent · 3 days left") gets long, since the label and action are fighting
 // the avatar + Celebrate button for the same narrow column. Stacking
 // keeps both fully legible regardless of label length or card width.
-function GuardianStatusRow({ player, onAction }: { player: SquadPlayer; onAction: () => void }) {
+// Exported for reuse on Coach Player Detail (Milestone 4) — same status
+// vocabulary and invite-sheet trigger, not a second implementation.
+export function GuardianStatusRow({ player, onAction }: { player: SquadPlayer; onAction: () => void }) {
   const wrapStyle = { marginTop: 4 };
   const labelStyle = { fontSize: 12, color: 'var(--os-muted)' };
   const actionStyle = { fontSize: 12, fontWeight: 700, color: '#E97435', cursor: 'pointer', marginTop: 2 };
+  // Stops propagation because this row commonly sits inside a larger
+  // clickable card (Team's row opens Coach Player Detail) — without this,
+  // tapping "Invite guardian"/"Manage invite" would also fire the parent's
+  // click and open the detail screen underneath the invite sheet.
+  const fireAction = (e: React.MouseEvent) => { e.stopPropagation(); onAction(); };
 
   switch (player.guardianStatus) {
     case 'connected':
@@ -26,7 +34,7 @@ function GuardianStatusRow({ player, onAction }: { player: SquadPlayer; onAction
       return (
         <div style={wrapStyle}>
           <div style={labelStyle}>○ No guardian connected</div>
-          <div onClick={onAction} style={actionStyle}>Invite guardian</div>
+          <div onClick={fireAction} style={actionStyle}>Invite guardian</div>
         </div>
       );
     case 'pending': {
@@ -34,7 +42,7 @@ function GuardianStatusRow({ player, onAction }: { player: SquadPlayer; onAction
       return (
         <div style={wrapStyle}>
           <div style={labelStyle}>○ {label}</div>
-          <div onClick={onAction} style={actionStyle}>Manage invite</div>
+          <div onClick={fireAction} style={actionStyle}>Manage invite</div>
         </div>
       );
     }
@@ -42,7 +50,7 @@ function GuardianStatusRow({ player, onAction }: { player: SquadPlayer; onAction
       return (
         <div style={wrapStyle}>
           <div style={labelStyle}>○ Invite expired</div>
-          <div onClick={onAction} style={actionStyle}>Invite guardian</div>
+          <div onClick={fireAction} style={actionStyle}>Invite guardian</div>
         </div>
       );
     default:
@@ -194,15 +202,32 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
 
       {SQUAD.map((p) => {
         const initials = p.name.split(' ').map((w) => w[0]).join('');
+        const openDetail = () => actions.openCoachPlayer(p.id);
+        const celebrate = (e: React.MouseEvent | React.KeyboardEvent) => { e.stopPropagation(); actions.openCeleb(p.id); };
         return (
-          <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'var(--os-card)', borderRadius: 16, padding: 12, boxShadow: '0 6px 18px -14px rgba(0,0,0,.2)', marginBottom: 11 }}>
+          <div
+            key={p.id}
+            onClick={openDetail}
+            role="button"
+            tabIndex={0}
+            aria-label={`View ${p.name}'s player detail`}
+            onKeyDown={onActivateKey(openDetail)}
+            style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'var(--os-card)', borderRadius: 16, padding: 12, boxShadow: '0 6px 18px -14px rgba(0,0,0,.2)', marginBottom: 11, cursor: 'pointer' }}
+          >
             <div style={{ width: 46, height: 46, borderRadius: '50%', background: 'linear-gradient(150deg,#E9C46A,#C98B3A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto', fontFamily: 'Roboto', fontWeight: 900, fontSize: 15, color: '#fff' }}>{initials}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>{p.name}</div>
               <div style={{ fontSize: 12, color: 'var(--os-muted)' }}>#{p.num} · {p.pos}</div>
               <GuardianStatusRow player={p} onAction={() => setSheetPlayer(p)} />
             </div>
-            <div onClick={() => actions.openCeleb(p.id)} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 6, background: '#E97435', color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 12.5, padding: '10px 14px', borderRadius: 11, cursor: 'pointer', boxShadow: '0 8px 18px -10px rgba(233,116,53,.7)' }}>
+            <div
+              onClick={celebrate}
+              role="button"
+              tabIndex={0}
+              aria-label={`Celebrate ${p.name}`}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') celebrate(e); }}
+              style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 6, background: '#E97435', color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 12.5, padding: '10px 14px', borderRadius: 11, cursor: 'pointer', boxShadow: '0 8px 18px -10px rgba(233,116,53,.7)' }}
+            >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 18.3 5.9 20.4 7.3 13.6 2.2 8.9l6.9-.8z" /></svg>Celebrate
             </div>
           </div>

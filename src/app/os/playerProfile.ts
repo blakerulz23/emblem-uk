@@ -29,6 +29,8 @@ export type PlayerProfile = {
   season: string | null;
   favouritePlayer: string | null;
   footballAmbition: string | null;
+  /** A coach's own football judgement, not a family fact — coach-only to set (see update_secondary_position). Null until a coach sets one. */
+  secondaryPosition: string | null;
 };
 
 /** Pulls an age-group label like "U10" out of a team name — there's no separate stored field for it. */
@@ -399,6 +401,7 @@ export const PLAYER_PROFILE: PlayerProfile = {
   season: '2026/27',
   favouritePlayer: 'Kevin De Bruyne',
   footballAmbition: 'Play academy football',
+  secondaryPosition: 'Winger',
 };
 
 export const DEVELOPMENT_SEASONS: DevelopmentSeason[] = [

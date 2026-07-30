@@ -44,6 +44,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
   const [showEdit, setShowEdit] = useState(false);
   const [favouritePlayer, setFavouritePlayer] = useState(playerProfile.favouritePlayer ?? '');
   const [footballAmbition, setFootballAmbition] = useState(playerProfile.footballAmbition ?? '');
+  const [position, setPosition] = useState(playerProfile.position ?? '');
   const [editStatus, setEditStatus] = useState<'idle' | 'saving' | 'error'>('idle');
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -64,12 +65,28 @@ export default function Profile({ actions }: { actions: OsActions }) {
     e.preventDefault();
     if (!playerId || editStatus === 'saving') return;
     setEditStatus('saving');
-    const res = await fetch(`/api/os/players/${playerId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ favouritePlayer, footballAmbition }),
-    });
-    if (!res.ok) {
+    const trimmedPosition = position.trim();
+    const requests = [
+      fetch(`/api/os/players/${playerId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ favouritePlayer, footballAmbition }),
+      }),
+    ];
+    // Position has its own route/RLS policy (guardian-only, distinct from
+    // secondary_position's coach-only RPC) — never sent blank, since the
+    // route rejects an empty value and every player has a real position.
+    if (trimmedPosition) {
+      requests.push(
+        fetch(`/api/os/players/${playerId}/position`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ position: trimmedPosition }),
+        })
+      );
+    }
+    const results = await Promise.all(requests);
+    if (results.some((res) => !res.ok)) {
       setEditStatus('error');
       return;
     }
@@ -196,6 +213,13 @@ export default function Profile({ actions }: { actions: OsActions }) {
         </div>
         {isReal && showEdit && (
           <form onSubmit={saveIdentity} style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input
+              type="text"
+              value={position}
+              onChange={(e) => setPosition(e.target.value)}
+              placeholder="Position"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 14 }}
+            />
             <input
               type="text"
               value={favouritePlayer}

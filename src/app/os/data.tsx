@@ -3,11 +3,14 @@ import type {
   AddEvent,
   AddMomentType,
   AddPlayer,
+  AssessmentEntry,
   CelebrateGroup,
   CoachActivityItem,
   Moment,
   RankTier,
+  SeasonFocusEntry,
   SquadPlayer,
+  StrengthEntry,
   TrustSource,
   VerifyItem,
 } from './types';
@@ -90,13 +93,36 @@ export const JIC: Record<string, (color: string) => React.ReactElement> = {
 const inThreeDays = new Date(Date.now() + 3 * 86400000).toISOString();
 const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString();
 
+/** Demo Season Focus — one guardian-authored, one coach-authored, deliberately never merged into one anonymous value. */
+export const DEMO_SEASON_FOCUS: SeasonFocusEntry[] = [
+  { id: 'demo-focus-1', label: 'Improve confidence on the ball', createdBy: 'demo-guardian', authorName: 'Rebecca Penny', authorRole: 'guardian', createdAt: '2026-07-10', status: 'active' },
+  { id: 'demo-focus-2', label: 'Develop first touch under pressure', createdBy: 'demo-coach', authorName: 'Coach Danny', authorRole: 'coach', createdAt: '2026-07-15', status: 'active' },
+];
+
+/** Demo Recognised Strengths — coach-authored, append-only. */
+export const DEMO_STRENGTHS: StrengthEntry[] = [
+  { id: 'demo-strength-1', label: 'Passing', createdAt: '2026-06-01' },
+  { id: 'demo-strength-2', label: 'Vision', createdAt: '2026-06-20' },
+  { id: 'demo-strength-3', label: 'Work rate', createdAt: '2026-07-05' },
+];
+
+/** Demo Coach's Assessment history — one entry; Card shows the latest. */
+export const DEMO_ASSESSMENTS: AssessmentEntry[] = [
+  {
+    id: 'demo-assessment-1',
+    body: "Ollie's reading of the game has really grown this season — he's linking play well between defence and midfield. Keep working on first touch under pressure and he'll be even more of a threat.",
+    authorName: 'Coach Danny',
+    createdAt: '2026-07-20',
+  },
+];
+
 export const SQUAD: SquadPlayer[] = [
-  { id: 'ollie', name: 'Ollie Harrison', num: 7, pos: 'Midfielder', status: 'Recognised today', guardianStatus: 'connected', guardianCount: 1, latestInviteExpiresAt: null, hasManageableInvite: false },
-  { id: 'jack', name: 'Jack Bennett', num: 9, pos: 'Striker', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false },
-  { id: 'leo', name: 'Leo Marsh', num: 4, pos: 'Defender', status: 'Add recognition', guardianStatus: 'pending', guardianCount: 0, latestInviteExpiresAt: inThreeDays, hasManageableInvite: true },
-  { id: 'finn', name: 'Finn Doyle', num: 1, pos: 'Goalkeeper', status: 'Add recognition', guardianStatus: 'expired', guardianCount: 0, latestInviteExpiresAt: twoDaysAgo, hasManageableInvite: false },
-  { id: 'reuben', name: 'Reuben Clarke', num: 8, pos: 'Midfielder', status: 'Recognised today', guardianStatus: 'multiple', guardianCount: 2, latestInviteExpiresAt: null, hasManageableInvite: false },
-  { id: 'theo', name: 'Theo Nkosi', num: 11, pos: 'Winger', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false },
+  { id: 'ollie', name: 'Ollie Harrison', num: 7, pos: 'Midfielder', status: 'Recognised today', guardianStatus: 'connected', guardianCount: 1, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: 'Winger', seasonFocus: DEMO_SEASON_FOCUS, strengths: DEMO_STRENGTHS, assessments: DEMO_ASSESSMENTS },
+  { id: 'jack', name: 'Jack Bennett', num: 9, pos: 'Striker', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [] },
+  { id: 'leo', name: 'Leo Marsh', num: 4, pos: 'Defender', status: 'Add recognition', guardianStatus: 'pending', guardianCount: 0, latestInviteExpiresAt: inThreeDays, hasManageableInvite: true, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [] },
+  { id: 'finn', name: 'Finn Doyle', num: 1, pos: 'Goalkeeper', status: 'Add recognition', guardianStatus: 'expired', guardianCount: 0, latestInviteExpiresAt: twoDaysAgo, hasManageableInvite: false, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [] },
+  { id: 'reuben', name: 'Reuben Clarke', num: 8, pos: 'Midfielder', status: 'Recognised today', guardianStatus: 'multiple', guardianCount: 2, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [] },
+  { id: 'theo', name: 'Theo Nkosi', num: 11, pos: 'Winger', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [] },
 ];
 
 export const CELEBRATE_CATS: CelebrateGroup[] = [
@@ -105,9 +131,9 @@ export const CELEBRATE_CATS: CelebrateGroup[] = [
 ];
 
 export const VERIFY_QUEUE: VerifyItem[] = [
-  { id: 'v1', player: 'Ollie Harrison', moment: 'First Goal', thumb: `${assetPath}/jn-firstgoal.png`, by: 'Rebecca Penny (Parent)', date: '12 March 2026' },
-  { id: 'v2', player: 'Jack Bennett', moment: 'Tournament Winner', thumb: `${assetPath}/jn-trophy.png`, by: 'Mark Bennett (Parent)', date: '7 June 2026' },
-  { id: 'v3', player: 'Leo Marsh', moment: 'Team Photo', thumb: `${assetPath}/jn-teamphoto.png`, by: 'Sara Marsh (Parent)', date: '22 April 2026' },
+  { id: 'v1', player: 'Ollie Harrison', playerId: 'ollie', moment: 'First Goal', thumb: `${assetPath}/jn-firstgoal.png`, by: 'Rebecca Penny (Parent)', date: '12 March 2026' },
+  { id: 'v2', player: 'Jack Bennett', playerId: 'jack', moment: 'Tournament Winner', thumb: `${assetPath}/jn-trophy.png`, by: 'Mark Bennett (Parent)', date: '7 June 2026' },
+  { id: 'v3', player: 'Leo Marsh', playerId: 'leo', moment: 'Team Photo', thumb: `${assetPath}/jn-teamphoto.png`, by: 'Sara Marsh (Parent)', date: '22 April 2026' },
 ];
 
 export const COACH_ACTIVITY: CoachActivityItem[] = [

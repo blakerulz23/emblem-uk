@@ -1,7 +1,7 @@
-import { SQUAD, VERIFY_QUEUE, COACH_ACTIVITY } from './data';
+import { SQUAD, VERIFY_QUEUE, COACH_ACTIVITY, DEMO_SEASON_FOCUS, DEMO_STRENGTHS, DEMO_ASSESSMENTS } from './data';
 import { PLAYER_PROFILE, SKILL_CATEGORIES, DEVELOPMENT_SEASONS, COACH_SUMMARY } from './playerProfile';
 import type { PlayerProfile, SkillCategory, DevelopmentSeason, CoachSummary, SeasonTarget } from './playerProfile';
-import type { SquadPlayer, VerifyItem, CoachActivityItem } from './types';
+import type { SquadPlayer, VerifyItem, CoachActivityItem, SeasonFocusEntry, StrengthEntry, AssessmentEntry } from './types';
 import type { CardFaceData } from '@/lib/card-definition';
 
 export type RealMomentMedia = { id: string; kind: 'photo' | 'video'; url: string };
@@ -104,6 +104,12 @@ export type OsData = {
   coachTeamsManaged: CoachTeamSummary[];
   /** Parent sessions only — this claimed player's season goals. */
   goals: SeasonTarget[];
+  /** Parent sessions only — this claimed player's Season Focus entries (both active and completed/archived). */
+  seasonFocus: SeasonFocusEntry[];
+  /** Parent sessions only — this claimed player's Recognised Strengths, coach-authored. */
+  strengths: StrengthEntry[];
+  /** Parent sessions only — this claimed player's Coach's Assessment history, newest first; Card shows assessments[0]. */
+  assessments: AssessmentEntry[];
   /** Parent sessions only — every child this guardian has claimed, oldest-claimed first. Powers the child switcher (only ever rendered in authenticated parent context, never for coaches or signed-out visitors). */
   claimedPlayers: { id: string; name: string }[];
   /** Parent sessions only — the real status of the claimed player's current season (matches playerProfile.season by label). Drives the player card's open/closed chapter treatment. Null until a season is resolved. */
@@ -152,6 +158,9 @@ export const DEMO_OS_DATA: OsData = {
     { id: 'demo-team-u8', name: 'Curzon Ashton U8', playerCount: 11 },
   ],
   goals: DEMO_GOALS,
+  seasonFocus: DEMO_SEASON_FOCUS,
+  strengths: DEMO_STRENGTHS,
+  assessments: DEMO_ASSESSMENTS,
   claimedPlayers: [],
   currentSeasonStatus: null,
   cardDefinition: null,
