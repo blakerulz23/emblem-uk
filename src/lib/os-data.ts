@@ -594,6 +594,7 @@ async function getParentOsData(
         id: m.id,
         title: m.title,
         occurredOn: m.occurred_on,
+        createdAt: m.created_at,
         trust: m.trust,
         status: m.verification_status,
         note: m.note,

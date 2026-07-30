@@ -1,7 +1,9 @@
-import { useOsData } from '../OsDataContext';
+import { useOsData, useRefreshOsData } from '../OsDataContext';
 import { onActivateKey } from '../a11y';
 import { ICN, MOMENT_STATUS_BADGE } from '../data';
 import { CardFace } from '@/lib/card-definition';
+import { useLiveContent, useJustUpdatedFlag } from '../useLiveContent';
+import { formatRelativeTime } from '../overlays/StoryUpdateCard';
 import EmptyState from './EmptyState';
 import type { OsActions } from '../OsApp';
 import type { RealMoment, StoryUpdate } from '../osData';
@@ -74,7 +76,8 @@ function BookIcon(c: string) {
 }
 
 export default function PlayerHome({ actions, storyUpdates }: { actions: OsActions; storyUpdates: StoryUpdate[] }) {
-  const { playerProfile, moments, currentSeasonStatus, cardPhotoUrl } = useOsData();
+  const { mode, playerId, playerProfile, moments, currentSeasonStatus, cardPhotoUrl } = useOsData();
+  const isReal = mode !== 'demo';
   // The single newest thing this guardian hasn't seen yet — disappears
   // from Home once opened (it becomes read), but stays visible in the full
   // Story Updates history regardless.
@@ -85,14 +88,31 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
   const momentsThisSeason = currentSeason ? moments.filter((m) => m.seasonLabel === currentSeason) : [];
   const latestThisSeason = momentsThisSeason[0] ?? null;
   const coachVerifiedThisSeason = momentsThisSeason.filter((m) => m.status === 'coach_verified').length;
-  const latestOverall = moments[0] ?? null;
+
+  // Featured moment for the Latest Moment card: the newest moment overall
+  // (moments already arrive newest-first from src/lib/os-data.ts), but
+  // preferring one with media since the card design is media-dominant —
+  // falls back to the true newest (using the existing no-media fallback
+  // treatment) only when nothing at all has media yet.
+  const featuredMoment = moments.find((m) => m.media.length > 0) ?? moments[0] ?? null;
+  const featuredPhoto = featuredMoment?.media.find((m) => m.kind === 'photo' || m.kind === 'video') ?? null;
+  const featuredBadge = featuredMoment ? MOMENT_STATUS_BADGE[featuredMoment.status] : null;
+
+  // Live sync: a guardian upload, a coach verification, or a coach
+  // recognition all touch the moments table — while Home is open, the
+  // featured card updates itself in place (a brief highlight, never a
+  // stacked "Updated just now" pill on top of it, per this section's own
+  // spec) rather than requiring router.refresh().
+  const refreshOsData = useRefreshOsData();
+  const [justUpdated, triggerJustUpdated] = useJustUpdatedFlag();
+  useLiveContent('moments', isReal && playerId ? `player_id=eq.${playerId}` : null, () => {
+    refreshOsData();
+    triggerJustUpdated();
+  });
 
   // "Player profile photo first, then card photo, then a plain initial" — deliberately the reverse
   // priority from the Card-tab glance link, per this build's explicit spec.
   const heroPhotoUrl = playerProfile.photoUrl ?? cardPhotoUrl ?? null;
-
-  const latestMedia = latestOverall?.media.find((m) => m.kind === 'photo' || m.kind === 'video') ?? null;
-  const latestBadge = latestOverall ? MOMENT_STATUS_BADGE[latestOverall.status] : null;
 
   return (
     <>
@@ -152,50 +172,90 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
         </div>
       )}
 
-      {latestOverall && (
-        <div style={{ margin: '24px 2px 0' }}>
-          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435', marginBottom: 8, textTransform: 'uppercase' }}>
-            Latest Moment
-          </div>
+      <div style={{ margin: '24px 2px 0' }}>
+        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435', marginBottom: 8, textTransform: 'uppercase' }}>
+          Latest Moment
+        </div>
+        {featuredMoment ? (
           <div
-            onClick={actions.goCollection}
+            onClick={() => actions.openLatestMoment(featuredMoment.id)}
             role="button"
             tabIndex={0}
-            aria-label={`Latest moment: ${latestOverall.title}`}
-            onKeyDown={onActivateKey(actions.goCollection)}
-            style={{ display: 'flex', alignItems: 'stretch', gap: 14, background: 'linear-gradient(155deg,#1A1714,#0C0B0A)', borderRadius: 18, padding: 16, cursor: 'pointer', boxShadow: '0 16px 34px -18px rgba(0,0,0,.55)' }}
+            aria-label={`Open latest moment: ${featuredMoment.title}`}
+            onKeyDown={onActivateKey(() => actions.openLatestMoment(featuredMoment.id))}
+            style={{
+              background: 'var(--os-card)',
+              borderRadius: 20,
+              overflow: 'hidden',
+              cursor: 'pointer',
+              border: '1.5px solid rgba(233,160,59,.35)',
+              boxShadow: justUpdated ? '0 0 0 3px rgba(46,158,91,.4), 0 14px 30px -16px rgba(233,160,59,.45)' : '0 14px 30px -16px rgba(233,160,59,.3)',
+              transition: 'box-shadow .4s ease',
+            }}
           >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: '50%', background: RARITY_COLOR[latestOverall.rarity] }} />
-                <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 10.5, letterSpacing: '.1em', color: RARITY_COLOR[latestOverall.rarity], textTransform: 'uppercase' }}>
-                  {RARITY_LABEL[latestOverall.rarity]}
+            <div style={{ position: 'relative', aspectRatio: '4 / 3', background: '#100E0C' }}>
+              {featuredMoment.cardDefinition ? (
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <CardFace data={featuredMoment.cardDefinition} side="front" size={220} photoUrl={featuredMoment.cardPhotoUrl} />
+                </div>
+              ) : featuredPhoto ? (
+                <img src={featuredPhoto.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : null}
+
+              {featuredMoment.media.length > 1 && (
+                <span aria-hidden="true" style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(11,10,9,.6)', color: '#fff', fontFamily: 'Roboto', fontWeight: 700, fontSize: 10.5, padding: '3px 8px', borderRadius: 999 }}>
+                  1/{featuredMoment.media.length}
+                </span>
+              )}
+
+              <span aria-hidden="true" style={{ position: 'absolute', bottom: 10, left: 10, display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(11,10,9,.62)', padding: '4px 9px', borderRadius: 7 }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: RARITY_COLOR[featuredMoment.rarity] }} />
+                <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, fontSize: 10, letterSpacing: '.08em', color: '#fff', textTransform: 'uppercase' }}>
+                  {RARITY_LABEL[featuredMoment.rarity]}
+                </span>
+              </span>
+            </div>
+
+            <div style={{ padding: '14px 16px 16px' }}>
+              <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 17, color: 'var(--os-ink)', lineHeight: 1.15 }}>{featuredMoment.title}</div>
+              <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 12, color: 'var(--os-muted)', marginTop: 3 }}>Career Moment #{featuredMoment.careerOrdinal}</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, gap: 8 }}>
+                {featuredBadge && (
+                  featuredMoment.status === 'coach_verified' ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(233,160,59,.18)', color: '#8A5B10', fontFamily: 'Roboto', fontWeight: 700, fontSize: 11.5, padding: '5px 10px', borderRadius: 999, flex: '0 0 auto' }}>
+                      {ShieldCheckIcon('#8A5B10')}
+                      {featuredBadge.label}
+                    </span>
+                  ) : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, flex: '0 0 auto' }}>
+                      <span aria-hidden="true" style={{ width: 5, height: 5, borderRadius: '50%', background: featuredBadge.dot }} />
+                      <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 11, color: 'var(--os-muted)' }}>{featuredBadge.label}</span>
+                    </span>
+                  )
+                )}
+                <span style={{ fontSize: 11.5, color: 'var(--os-muted)', whiteSpace: 'nowrap' }}>
+                  {formatRelativeTime(featuredMoment.occurredOn ? `${featuredMoment.occurredOn}T00:00:00` : featuredMoment.createdAt)}
                 </span>
               </div>
-              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 18, color: '#F4F1EC', lineHeight: 1.15 }}>{latestOverall.title}</div>
-              <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 11.5, color: 'rgba(255,255,255,.55)', marginTop: 5 }}>Career Moment #{latestOverall.careerOrdinal}</div>
-              {latestOverall.occurredOn && (
-                <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,.4)', marginTop: 2 }}>{formatMomentDate(latestOverall.occurredOn)}</div>
-              )}
-              {latestBadge && (
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 10, padding: '4px 9px', borderRadius: 999, background: 'rgba(255,255,255,.08)' }}>
-                  <span aria-hidden="true" style={{ width: 5, height: 5, borderRadius: '50%', background: latestBadge.dot }} />
-                  <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 10, letterSpacing: '.04em', color: 'rgba(255,255,255,.8)' }}>{latestBadge.label}</span>
-                </div>
-              )}
             </div>
-            {latestOverall.cardDefinition ? (
-              <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center' }}>
-                <CardFace data={latestOverall.cardDefinition} side="front" size={104} photoUrl={latestOverall.cardPhotoUrl} />
-              </div>
-            ) : latestMedia ? (
-              <div style={{ flex: '0 0 auto', width: 96, borderRadius: 12, overflow: 'hidden', alignSelf: 'stretch' }}>
-                <img src={latestMedia.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              </div>
-            ) : null}
           </div>
-        </div>
-      )}
+        ) : (
+          <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: '26px 20px', textAlign: 'center', boxShadow: '0 8px 20px -16px rgba(0,0,0,.2)' }}>
+            <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)', marginBottom: 6 }}>No moments yet.</div>
+            <div style={{ fontSize: 13, color: 'var(--os-muted)', lineHeight: 1.5, marginBottom: 14 }}>Add the first memory to begin their Collection.</div>
+            <div
+              onClick={actions.openAdd}
+              role="button"
+              tabIndex={0}
+              aria-label="Add the first memory"
+              onKeyDown={onActivateKey(actions.openAdd)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#E97435', color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, padding: '10px 18px', borderRadius: 11, cursor: 'pointer' }}
+            >
+              + Add first memory
+            </div>
+          </div>
+        )}
+      </div>
 
       <div style={{ margin: '24px 2px 0' }}>
         <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435', marginBottom: 8, textTransform: 'uppercase' }}>

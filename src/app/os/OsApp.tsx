@@ -82,6 +82,7 @@ export type OsActions = {
   closeStoryUpdates: () => void;
   clearHighlightMoment: () => void;
   openStoryUpdate: (update: StoryUpdate) => void;
+  openLatestMoment: (momentId: string) => void;
 };
 
 export type OsAppProps = {
@@ -383,6 +384,10 @@ export default function OsApp({
       }
       markStoryUpdateRead(update.id);
     },
+    // Home's Latest Moment card deep-links straight into Collection with
+    // the same scroll+highlight mechanism as a Story Update's
+    // recognition/moment_verified branch above — reused, not reinvented.
+    openLatestMoment: (momentId) => patch({ tab: 'journey', moment: null, coachPlayerId: null, highlightMomentId: momentId, storyUpdatesOpen: false }),
   };
 
   const isCoach = state.role === 'coach';

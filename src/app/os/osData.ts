@@ -38,6 +38,15 @@ export type RealMoment = {
   id: string;
   title: string;
   occurredOn: string | null;
+  /**
+   * The real row-insert timestamp — already fetched server-side for every
+   * moment (used internally for season/rarity matching's own effectiveDate
+   * fallback) but not previously exposed to the client. Home's Latest
+   * Moment card uses this as the relative-date fallback for moments with no
+   * occurredOn (e.g. coach recognitions via /api/os/celebrate never set
+   * occurred_on) — never a fabricated or estimated date.
+   */
+  createdAt: string;
   trust: 'club' | 'league' | 'coach' | 'parent' | 'player';
   /**
    * Fixed at submission/approval time (see migration 0011) — never
