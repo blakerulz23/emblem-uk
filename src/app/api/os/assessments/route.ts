@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { generateStoryUpdate } from '@/lib/story-updates';
 
 export const runtime = 'nodejs';
 
@@ -38,6 +39,22 @@ export async function POST(request: NextRequest) {
   if (!assessment) {
     return NextResponse.json({ error: 'Could not save assessment' }, { status: 500 });
   }
+
+  const [{ data: guardianRows }, { data: player }, { data: actor }] = await Promise.all([
+    supabase.from('guardians').select('profile_id').eq('player_id', playerId),
+    supabase.from('players').select('name').eq('id', playerId).maybeSingle(),
+    supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
+  ]);
+  const actorName = actor?.display_name ?? 'Your coach';
+  const excerpt = trimmed.length > 140 ? `${trimmed.slice(0, 140)}…` : trimmed;
+  await generateStoryUpdate({
+    eventType: 'assessment_shared',
+    playerId,
+    actorProfileId: user.id,
+    recipients: (guardianRows ?? []).map((g) => ({ profileId: g.profile_id, presenceScope: `about:${playerId}` })),
+    title: 'Coach Assessment',
+    body: `${actorName} shared new feedback on ${player?.name ?? 'your player'}: "${excerpt}"`,
+  });
 
   return NextResponse.json({ ok: true, assessmentId: assessment.id });
 }

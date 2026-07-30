@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { normalizeClaimCode } from '@/lib/claim-code';
 import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
+import { generateStoryUpdate } from '@/lib/story-updates';
 
 export const runtime = 'nodejs';
 
@@ -116,6 +117,28 @@ export async function POST(request: NextRequest) {
   if (inviteUpdateError) {
     return NextResponse.json({ error: inviteUpdateError.message }, { status: 500 });
   }
+
+  // One story_updates row per player_id (the schema is per-player, not
+  // per-team), so a coach joining a team notifies every one of that team's
+  // players' guardians individually.
+  const [{ data: teamPlayers }, { data: actor }] = await Promise.all([
+    serviceRole.from('players').select('id, name').eq('team_id', invite.team_id),
+    serviceRole.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
+  ]);
+  const actorName = actor?.display_name ?? 'A new coach';
+  await Promise.all(
+    (teamPlayers ?? []).map(async (p) => {
+      const { data: guardianRows } = await serviceRole.from('guardians').select('profile_id').eq('player_id', p.id);
+      await generateStoryUpdate({
+        eventType: 'coach_connected',
+        playerId: p.id,
+        actorProfileId: user.id,
+        recipients: (guardianRows ?? []).map((g) => ({ profileId: g.profile_id, presenceScope: `coach-player:${p.id}` })),
+        title: 'Coach Connected',
+        body: `${actorName} is now coaching ${p.name}'s team.`,
+      });
+    })
+  );
 
   return NextResponse.json({ ok: true, teamId: invite.team_id });
 }

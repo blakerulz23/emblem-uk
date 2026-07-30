@@ -3,9 +3,11 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { osAssetPath } from '../data';
-import { useOsData } from '../OsDataContext';
+import { useOsData, useRefreshOsData } from '../OsDataContext';
 import { CardFace } from '@/lib/card-definition';
 import { onActivateKey } from '../a11y';
+import { usePresenceHeartbeat } from '../usePresenceHeartbeat';
+import { useLiveContent, useJustUpdatedFlag } from '../useLiveContent';
 import EmptyState from './EmptyState';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
@@ -43,6 +45,24 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
   const [focusBusy, setFocusBusy] = useState(false);
   const [focusError, setFocusError] = useState('');
   const activeFocusCount = seasonFocus.filter((f) => f.status === 'active').length;
+
+  // Live sync: while a guardian is actually looking at About, an assessment
+  // or season-focus change from the coach's side appears here immediately
+  // via refreshOsData() — never a badge, never router.refresh(). The
+  // presence heartbeat this mounts is exactly what src/lib/story-updates.ts
+  // checks to decide the resulting Story Update should be born already-read.
+  const refreshOsData = useRefreshOsData();
+  const [justUpdated, triggerJustUpdated] = useJustUpdatedFlag();
+  const viewingAbout = isReal && state.flipped && !!playerId;
+  usePresenceHeartbeat(viewingAbout ? `about:${playerId}` : null);
+  useLiveContent('player_assessments', viewingAbout ? `player_id=eq.${playerId}` : null, () => {
+    refreshOsData();
+    triggerJustUpdated();
+  });
+  useLiveContent('player_season_focus', viewingAbout ? `player_id=eq.${playerId}` : null, () => {
+    refreshOsData();
+    triggerJustUpdated();
+  });
 
   const addFocus = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,6 +170,13 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
           </div>
         </div>
       </div>
+
+      {justUpdated && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', marginBottom: 10, animation: 'faceIn .3s ease' }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2E9E5B' }} />
+          <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 12, color: '#2E9E5B' }}>Updated just now</span>
+        </div>
+      )}
 
       {/* A trusted coach's current read of this player — present tense, honest empty state until a real assessment exists. Never fabricated, never a placeholder score. Read-only here — a coach shares from Coach Player Detail, never from here. */}
       <div style={sectionCard}>

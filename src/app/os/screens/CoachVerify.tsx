@@ -1,13 +1,38 @@
 'use client';
 
-import { useState } from 'react';
-import { useOsData } from '../OsDataContext';
+import { useEffect, useState } from 'react';
+import { useOsData, useRefreshOsData } from '../OsDataContext';
+import { usePresenceHeartbeat } from '../usePresenceHeartbeat';
+import { useLiveContent, useJustUpdatedFlag } from '../useLiveContent';
 import type { VerifyItem } from '../types';
 
 export default function CoachVerify() {
   const { mode, verifyQueue } = useOsData();
+  const isReal = mode !== 'demo';
   const [items, setItems] = useState<VerifyItem[]>(verifyQueue);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Keeps this screen's list in step with any live refresh of the wider
+  // OsData snapshot (see below) — demo mode never refreshes, so this is a
+  // no-op there.
+  useEffect(() => {
+    setItems(verifyQueue);
+  }, [verifyQueue]);
+
+  // A guardian uploading a moment that needs verification appears here
+  // immediately while a coach is already on this screen — no badge, no
+  // router.refresh(). Scoped by verification_status rather than a
+  // team/player id (postgres_changes filters are single-column equality
+  // only) — RLS ("moments: coaches can verify/update for their team")
+  // already ensures this coach's subscription only ever receives moments
+  // for their own team regardless.
+  const refreshOsData = useRefreshOsData();
+  const [justUpdated, triggerJustUpdated] = useJustUpdatedFlag();
+  usePresenceHeartbeat(isReal ? 'verify' : null);
+  useLiveContent('moments', isReal ? 'verification_status=eq.pending_verification' : null, () => {
+    refreshOsData();
+    triggerJustUpdated();
+  });
 
   const decide = async (id: string, decision: 'approve' | 'reject') => {
     if (mode === 'demo') {
@@ -23,6 +48,7 @@ export default function CoachVerify() {
       });
       if (res.ok) {
         setItems((current) => current.filter((v) => v.id !== id));
+        refreshOsData();
       }
     } finally {
       setBusyId(null);
@@ -31,6 +57,12 @@ export default function CoachVerify() {
 
   return (
     <>
+      {justUpdated && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', marginBottom: 12, animation: 'faceIn .3s ease' }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2E9E5B' }} />
+          <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 12, color: '#2E9E5B' }}>Updated just now</span>
+        </div>
+      )}
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 22, color: 'var(--os-ink)', lineHeight: 1.1 }}>Recognition</div>
         <div style={{ fontSize: 13, color: 'var(--os-muted)', marginTop: 4 }}>Moments waiting for your recognition.</div>

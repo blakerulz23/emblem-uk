@@ -1,7 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { generateStoryUpdate } from '@/lib/story-updates';
 
 export const runtime = 'nodejs';
+
+/**
+ * Notifies the *other* party — a coach-authored focus tells the guardians,
+ * a guardian-authored one tells the player's coaches. Reads author_role
+ * back from the row the RPC just created rather than re-deriving the
+ * guardian/coach relationship a second time in this route.
+ */
+async function notifyOtherParty(
+  supabase: ReturnType<typeof createClient>,
+  actorId: string,
+  playerId: string,
+  focusId: string
+) {
+  const { data: focus } = await supabase
+    .from('player_season_focus')
+    .select('author_role, label')
+    .eq('id', focusId)
+    .maybeSingle();
+  if (!focus) return;
+
+  const [{ data: player }, { data: actor }] = await Promise.all([
+    supabase.from('players').select('name, team_id').eq('id', playerId).maybeSingle(),
+    supabase.from('profiles').select('display_name').eq('id', actorId).maybeSingle(),
+  ]);
+
+  if (focus.author_role === 'coach') {
+    const { data: guardianRows } = await supabase.from('guardians').select('profile_id').eq('player_id', playerId);
+    await generateStoryUpdate({
+      eventType: 'season_focus_added',
+      playerId,
+      actorProfileId: actorId,
+      recipients: (guardianRows ?? []).map((g) => ({ profileId: g.profile_id, presenceScope: `about:${playerId}` })),
+      title: 'Season Focus',
+      body: `${actor?.display_name ?? 'Their coach'} added a new focus: "${focus.label}"`,
+    });
+  } else {
+    const teamId = player?.team_id;
+    if (!teamId) return;
+    const { data: coachRows } = await supabase.from('coach_team').select('profile_id').eq('team_id', teamId);
+    await generateStoryUpdate({
+      eventType: 'season_focus_added',
+      playerId,
+      actorProfileId: actorId,
+      recipients: (coachRows ?? []).map((c) => ({ profileId: c.profile_id, presenceScope: `coach-player:${playerId}` })),
+      title: 'Season Focus',
+      body: `${actor?.display_name ?? 'A guardian'} added a new focus for ${player?.name ?? 'their player'}: "${focus.label}"`,
+    });
+  }
+}
 
 /**
  * Creates a Season Focus entry — either a guardian or a coach of the
@@ -43,6 +93,8 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  await notifyOtherParty(supabase, user.id, playerId, focusId);
 
   return NextResponse.json({ ok: true, focusId });
 }

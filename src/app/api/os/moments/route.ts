@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import { createClient } from '@/lib/supabase/server';
+import { generateStoryUpdate } from '@/lib/story-updates';
 
 export const runtime = 'nodejs';
 
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
 
   const { data: player } = await supabase
     .from('players')
-    .select('team_id')
+    .select('name, team_id')
     .eq('id', playerId)
     .maybeSingle();
 
@@ -81,6 +82,35 @@ export async function POST(request: NextRequest) {
     if (mediaError) {
       return NextResponse.json({ error: mediaError.message }, { status: 500 });
     }
+  }
+
+  // moment_uploaded / verification_required are mutually exclusive — this
+  // upload produces exactly one, branching on the same hasEligibleCoach
+  // check that decided verificationStatus above. No eligible coach means no
+  // recipients, so nothing is generated (never both, never neither when a
+  // coach does exist).
+  if (player?.team_id) {
+    const [{ data: coachRows }, { data: actor }] = await Promise.all([
+      supabase.from('coach_team').select('profile_id').eq('team_id', player.team_id),
+      supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
+    ]);
+    const actorName = actor?.display_name ?? 'A guardian';
+    const recipients = (coachRows ?? []).map((c) => ({
+      profileId: c.profile_id,
+      presenceScope: verificationStatus === 'pending_verification' ? 'verify' : `coach-player:${playerId}`,
+    }));
+    await generateStoryUpdate({
+      eventType: verificationStatus === 'pending_verification' ? 'verification_required' : 'moment_uploaded',
+      playerId,
+      actorProfileId: user.id,
+      recipients,
+      title: verificationStatus === 'pending_verification' ? 'Verification Needed' : 'Guardian Upload',
+      body:
+        verificationStatus === 'pending_verification'
+          ? `${actorName} submitted a moment for ${player?.name ?? 'their player'} — waiting for your verification.`
+          : `${actorName} uploaded a new moment for ${player?.name ?? 'their player'}.`,
+      relatedMomentId: moment.id,
+    });
   }
 
   return NextResponse.json({ ok: true, momentId: moment.id, status: verificationStatus });

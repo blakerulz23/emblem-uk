@@ -4,7 +4,7 @@ import { ICN, MOMENT_STATUS_BADGE } from '../data';
 import { CardFace } from '@/lib/card-definition';
 import EmptyState from './EmptyState';
 import type { OsActions } from '../OsApp';
-import type { RealMoment } from '../osData';
+import type { RealMoment, StoryUpdate } from '../osData';
 
 /**
  * Home v1.2 — an orientation glance, not a container for the other three
@@ -73,8 +73,12 @@ function BookIcon(c: string) {
   );
 }
 
-export default function PlayerHome({ actions }: { actions: OsActions }) {
+export default function PlayerHome({ actions, storyUpdates }: { actions: OsActions; storyUpdates: StoryUpdate[] }) {
   const { playerProfile, moments, currentSeasonStatus, cardPhotoUrl } = useOsData();
+  // The single newest thing this guardian hasn't seen yet — disappears
+  // from Home once opened (it becomes read), but stays visible in the full
+  // Story Updates history regardless.
+  const newestUnread = storyUpdates.find((u) => !u.readAt) ?? null;
   const currentSeason = playerProfile.season;
   const isSeasonOpen = currentSeasonStatus === 'active';
 
@@ -125,6 +129,25 @@ export default function PlayerHome({ actions }: { actions: OsActions }) {
             <div><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)', textTransform: 'uppercase' }}>Member Since</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.memberSinceYear ?? '—'}</div></div>
             <div style={{ textAlign: 'center' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)', textTransform: 'uppercase' }}>Squad Number</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.squadNumber ?? '—'}</div></div>
             <div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)', textTransform: 'uppercase' }}>Season</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.season ?? '—'}</div></div>
+          </div>
+        </div>
+      )}
+
+      {newestUnread && (
+        <div style={{ margin: '18px 2px 0' }}>
+          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435', marginBottom: 8, textTransform: 'uppercase' }}>
+            What&apos;s New
+          </div>
+          <div
+            onClick={() => actions.openStoryUpdate(newestUnread)}
+            role="button"
+            tabIndex={0}
+            aria-label={newestUnread.title}
+            onKeyDown={onActivateKey(() => actions.openStoryUpdate(newestUnread))}
+            style={{ background: 'var(--os-card)', borderRadius: 16, padding: 14, cursor: 'pointer', boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', borderLeft: '3px solid #E97435' }}
+          >
+            <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)', marginBottom: 3 }}>{newestUnread.title}</div>
+            <div style={{ fontSize: 13, color: 'var(--os-muted)', lineHeight: 1.4 }}>{newestUnread.body}</div>
           </div>
         </div>
       )}

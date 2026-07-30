@@ -166,6 +166,10 @@ export type OsState = {
   dark: boolean;
   /** Coach sessions only — a squad player drilled into from Team; null shows the Team list instead. */
   coachPlayerId: string | null;
+  /** Whether the Story Updates overlay is open. */
+  storyUpdatesOpen: boolean;
+  /** A real moment id to scroll-to and briefly highlight in Collection — set by openStoryUpdate for recognition/moment_verified updates, self-clearing via actions.clearHighlightMoment(). Never a demo MomentId. */
+  highlightMomentId: string | null;
 };
 
 export const initialOsState: OsState = {
@@ -196,4 +200,6 @@ export const initialOsState: OsState = {
   activated: false,
   dark: false,
   coachPlayerId: null,
+  storyUpdatesOpen: false,
+  highlightMomentId: null,
 };

@@ -4,16 +4,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent, SyntheticEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { ADD_ACH, ICN, MOMENT_ORDER, fmtFileSize, osAssetPath } from './data';
+import { onActivateKey } from './a11y';
 import { initialOsState } from './types';
 import type { OsState, Tab } from './types';
 import { OsDataProvider, DEMO_OS_DATA } from './OsDataContext';
 import type { OsData } from './OsDataContext';
+import type { StoryUpdate } from './osData';
+import { useStoryUpdates } from './useStoryUpdates';
 
 import ActivationGate from './overlays/ActivationGate';
 import MomentStage from './overlays/MomentStage';
 import CollectibleViewer from './overlays/CollectibleViewer';
 import AddMomentFlow from './overlays/AddMomentFlow';
 import CelebrateSheet from './overlays/CelebrateSheet';
+import StoryUpdates from './overlays/StoryUpdates';
 
 import PlayerHome from './screens/PlayerHome';
 import DemoCollection from './screens/DemoCollection';
@@ -74,6 +78,10 @@ export type OsActions = {
   goCoachCelebrate: () => void;
   openCoachPlayer: (id: string) => void;
   closeCoachPlayer: () => void;
+  openStoryUpdates: () => void;
+  closeStoryUpdates: () => void;
+  clearHighlightMoment: () => void;
+  openStoryUpdate: (update: StoryUpdate) => void;
 };
 
 export type OsAppProps = {
@@ -176,12 +184,24 @@ export default function OsApp({
     patch({ addOpen: false, addStep: 0, addType: null, aEvent: null, aAch: null, aDesc: '', aScore: '', addUnlock: false, addSubmitError: false, files: [], dragging: false });
   }, [patch, state.files]);
 
+  // Moved above `actions` (was further down, right before render) so
+  // openStoryUpdate below can close over it. Story Updates are kept live by
+  // their own dedicated subscription (filtered to this viewer), entirely
+  // separate from OsDataContext's refreshOsData() — an update landing here
+  // never needs the rest of OsData to also refresh.
+  const osData = initialData ?? DEMO_OS_DATA;
+  const { storyUpdates, unreadCount: unreadStoryUpdateCount, markRead: markStoryUpdateRead } = useStoryUpdates(
+    osData.storyUpdates,
+    osData.unreadStoryUpdateCount,
+    osData.viewerId
+  );
+
   const actions: OsActions = {
     activate: () => patch({ activated: true }),
     toggleDark: () => patch((s) => ({ dark: !s.dark })),
-    setTab: (t) => patch({ tab: t, moment: null, coachPlayerId: null }),
-    goCollection: () => patch({ tab: 'journey', moment: null }),
-    goCard: () => patch({ tab: 'card', moment: null }),
+    setTab: (t) => patch({ tab: t, moment: null, coachPlayerId: null, highlightMomentId: null }),
+    goCollection: () => patch({ tab: 'journey', moment: null, highlightMomentId: null }),
+    goCard: () => patch({ tab: 'card', moment: null, highlightMomentId: null }),
     toggleRole: () => patch((s) => ({ role: s.role === 'owner' ? 'coach' : 'owner', tab: 'home', moment: null, celeb: null, award: null })),
     flipCard: () => patch((s) => ({ flipped: !s.flipped })),
     // The chronologically most recent demo moment — never hardcoded to
@@ -318,15 +338,55 @@ export default function OsApp({
       clearTimeout(sentTimerRef.current);
       sentTimerRef.current = setTimeout(() => patch({ sent: false }), 2600);
     },
-    goCoachVerify: () => patch({ tab: 'verify', moment: null, coachPlayerId: null }),
-    goCoachCelebrate: () => patch({ tab: 'celebrate', moment: null, coachPlayerId: null }),
-    openCoachPlayer: (id) => patch({ coachPlayerId: id }),
+    goCoachVerify: () => patch({ tab: 'verify', moment: null, coachPlayerId: null, highlightMomentId: null }),
+    goCoachCelebrate: () => patch({ tab: 'celebrate', moment: null, coachPlayerId: null, highlightMomentId: null }),
+    openCoachPlayer: (id) => patch({ coachPlayerId: id, highlightMomentId: null }),
     closeCoachPlayer: () => patch({ coachPlayerId: null }),
+    openStoryUpdates: () => patch({ storyUpdatesOpen: true }),
+    closeStoryUpdates: () => patch({ storyUpdatesOpen: false }),
+    clearHighlightMoment: () => patch({ highlightMomentId: null }),
+    // Deep-links per the roadmap's Locked Decision 4/8 routing table.
+    // season_focus_added is the only event type genuinely received by
+    // either role (coach-authored -> guardian recipient; guardian-authored
+    // -> coach recipient) — every other event type has one fixed recipient
+    // role, so no role check is needed for those.
+    openStoryUpdate: (update) => {
+      const isCoachViewer = state.role === 'coach';
+      switch (update.eventType) {
+        case 'assessment_shared':
+          patch({ tab: 'card', flipped: true, moment: null, coachPlayerId: null, highlightMomentId: null, storyUpdatesOpen: false });
+          break;
+        case 'season_focus_added':
+          if (isCoachViewer) {
+            patch({ tab: 'team', coachPlayerId: update.playerId, moment: null, highlightMomentId: null, storyUpdatesOpen: false });
+          } else {
+            patch({ tab: 'card', flipped: true, moment: null, coachPlayerId: null, highlightMomentId: null, storyUpdatesOpen: false });
+          }
+          break;
+        case 'recognition':
+        case 'moment_verified':
+          patch({ tab: 'journey', moment: null, coachPlayerId: null, highlightMomentId: update.relatedMomentId, storyUpdatesOpen: false });
+          break;
+        case 'verification_required':
+          patch({ tab: 'verify', moment: null, coachPlayerId: null, highlightMomentId: null, storyUpdatesOpen: false });
+          break;
+        case 'moment_uploaded':
+        case 'guardian_connected':
+          patch({ tab: 'team', coachPlayerId: update.playerId, moment: null, highlightMomentId: null, storyUpdatesOpen: false });
+          break;
+        case 'coach_connected':
+          // Guardians have no working 'team' screen (only coaches do) —
+          // the natural guardian-side home for "a new coach connected" is
+          // Profile's own Connections & Privacy section.
+          patch({ tab: 'profile', moment: null, coachPlayerId: null, highlightMomentId: null, storyUpdatesOpen: false });
+          break;
+      }
+      markStoryUpdateRead(update.id);
+    },
   };
 
   const isCoach = state.role === 'coach';
   const isOwner = !isCoach;
-  const osData = initialData ?? DEMO_OS_DATA;
   const isDemo = osData.mode === 'demo';
   const OR = '#E97435';
 
@@ -400,9 +460,18 @@ export default function OsApp({
                   ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4.2" /><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8" /></svg>
                   : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>}
               </div>
-              <div style={{ position: 'relative' }}>
+              <div
+                onClick={actions.openStoryUpdates}
+                role="button"
+                tabIndex={0}
+                aria-label={unreadStoryUpdateCount > 0 ? `Story Updates, ${unreadStoryUpdateCount} unread` : 'Story Updates'}
+                onKeyDown={onActivateKey(actions.openStoryUpdates)}
+                style={{ position: 'relative', cursor: 'pointer' }}
+              >
                 <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0" /></svg>
-                <span style={{ position: 'absolute', top: -1, right: 0, width: 8, height: 8, borderRadius: '50%', background: '#E97435', border: '1.5px solid var(--os-screen)' }} />
+                {unreadStoryUpdateCount > 0 && (
+                  <span style={{ position: 'absolute', top: -1, right: 0, width: 8, height: 8, borderRadius: '50%', background: '#E97435', border: '1.5px solid var(--os-screen)' }} />
+                )}
               </div>
               {/* Demo-preview only — a real, authenticated session's nav is
                   determined entirely by the server-known profileRole; this
@@ -441,7 +510,7 @@ export default function OsApp({
           <div id="os-scroll" style={{ flex: '1 1 auto', overflowY: 'auto', padding: '4px 18px 96px' }}>
             {isCoach ? (
               <>
-                {state.tab === 'home' && <CoachHome actions={actions} />}
+                {state.tab === 'home' && <CoachHome actions={actions} storyUpdates={storyUpdates} />}
                 {state.tab === 'team' && (
                   showCoachPlayerDetail
                     ? <CoachPlayerDetail playerId={state.coachPlayerId as string} actions={actions} />
@@ -453,9 +522,9 @@ export default function OsApp({
               </>
             ) : (
               <>
-                {state.tab === 'home' && <PlayerHome actions={actions} />}
+                {state.tab === 'home' && <PlayerHome actions={actions} storyUpdates={storyUpdates} />}
                 {state.tab === 'card' && <CardScreen state={state} actions={actions} />}
-                {state.tab === 'journey' && (isDemo ? <DemoCollection actions={actions} /> : <RealCollection />)}
+                {state.tab === 'journey' && (isDemo ? <DemoCollection actions={actions} /> : <RealCollection highlightMomentId={state.highlightMomentId} onHighlightDone={actions.clearHighlightMoment} />)}
                 {state.tab === 'profile' && <Profile actions={actions} />}
               </>
             )}
@@ -467,6 +536,10 @@ export default function OsApp({
           <AddMomentFlow state={state} actions={actions} fileInputRef={fileInputRef} />
 
           {state.celeb && <CelebrateSheet state={state} actions={actions} />}
+
+          {state.storyUpdatesOpen && (
+            <StoryUpdates updates={storyUpdates} onOpen={actions.openStoryUpdate} onClose={actions.closeStoryUpdates} />
+          )}
 
           {state.sent && (
             <div style={{ position: 'absolute', left: '50%', bottom: 92, transform: 'translateX(-50%)', zIndex: 60, display: 'flex', alignItems: 'center', gap: 9, background: '#15130F', color: '#fff', borderRadius: 14, padding: '12px 18px', boxShadow: '0 14px 30px -12px rgba(0,0,0,.5)', animation: 'faceIn .3s ease', whiteSpace: 'nowrap' }}>

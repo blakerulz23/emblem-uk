@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { generateStoryUpdate } from '@/lib/story-updates';
 
 export const runtime = 'nodejs';
 
@@ -30,13 +31,45 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     .from('player_season_focus')
     .update({ status, updated_at: new Date().toISOString() })
     .eq('id', params.id)
-    .select();
+    .select('id, player_id, label, author_role')
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  if (!data || data.length === 0) {
+  if (!data) {
     return NextResponse.json({ error: 'You can only update entries you created' }, { status: 403 });
+  }
+
+  // Notify the *other* party that this focus's status changed — reusing
+  // season_focus_added's event_type/schema (no separate "status changed"
+  // event exists), with body text that reflects what actually happened
+  // rather than reusing the creation copy verbatim.
+  const [{ data: player }, { data: actor }] = await Promise.all([
+    supabase.from('players').select('name, team_id').eq('id', data.player_id).maybeSingle(),
+    supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
+  ]);
+  const statusWord = status === 'completed' ? 'completed' : 'archived';
+  if (data.author_role === 'coach') {
+    const { data: guardianRows } = await supabase.from('guardians').select('profile_id').eq('player_id', data.player_id);
+    await generateStoryUpdate({
+      eventType: 'season_focus_added',
+      playerId: data.player_id,
+      actorProfileId: user.id,
+      recipients: (guardianRows ?? []).map((g) => ({ profileId: g.profile_id, presenceScope: `about:${data.player_id}` })),
+      title: 'Season Focus',
+      body: `${actor?.display_name ?? 'Their coach'} marked "${data.label}" as ${statusWord}`,
+    });
+  } else if (player?.team_id) {
+    const { data: coachRows } = await supabase.from('coach_team').select('profile_id').eq('team_id', player.team_id);
+    await generateStoryUpdate({
+      eventType: 'season_focus_added',
+      playerId: data.player_id,
+      actorProfileId: user.id,
+      recipients: (coachRows ?? []).map((c) => ({ profileId: c.profile_id, presenceScope: `coach-player:${data.player_id}` })),
+      title: 'Season Focus',
+      body: `${actor?.display_name ?? 'A guardian'} marked "${data.label}" as ${statusWord} for ${player?.name ?? 'their player'}`,
+    });
   }
 
   return NextResponse.json({ ok: true });

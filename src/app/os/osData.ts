@@ -3,6 +3,23 @@ import { PLAYER_PROFILE, SKILL_CATEGORIES, DEVELOPMENT_SEASONS, COACH_SUMMARY } 
 import type { PlayerProfile, SkillCategory, DevelopmentSeason, CoachSummary, SeasonTarget } from './playerProfile';
 import type { SquadPlayer, VerifyItem, CoachActivityItem, SeasonFocusEntry, StrengthEntry, AssessmentEntry } from './types';
 import type { CardFaceData } from '@/lib/card-definition';
+// Type-only import — fully erased at build time, so this never pulls
+// src/lib/story-updates.ts's server-only createServiceRoleClient into any
+// client bundle that imports osData.ts (e.g. OsDataContext.tsx).
+import type { StoryUpdateEventType, StoryUpdateCategory } from '@/lib/story-updates';
+
+/** The client-facing shape of one story_updates row — see supabase/migrations/0025_story_updates.sql. */
+export type StoryUpdate = {
+  id: string;
+  eventType: StoryUpdateEventType;
+  category: StoryUpdateCategory;
+  title: string;
+  body: string;
+  playerId: string;
+  relatedMomentId: string | null;
+  readAt: string | null;
+  createdAt: string;
+};
 
 export type RealMomentMedia = { id: string; kind: 'photo' | 'video'; url: string };
 
@@ -124,6 +141,10 @@ export type OsData = {
   cardDefinition: CardFaceData | null;
   /** A freshly signed URL for cardDefinition's photo, resolved server-side — never a stored/public link. Null alongside cardDefinition. */
   cardPhotoUrl: string | null;
+  /** This viewer's own Story Updates, newest first — real for both parent and coach sessions; always empty in demo mode (no fabricated notification history). */
+  storyUpdates: StoryUpdate[];
+  /** Derived from storyUpdates (readAt === null) — never independently stored. */
+  unreadStoryUpdateCount: number;
 };
 
 /** Demo-mode goals, moved here from Profile.tsx so DEMO_OS_DATA is the one source of truth for demo content. */
@@ -165,4 +186,6 @@ export const DEMO_OS_DATA: OsData = {
   currentSeasonStatus: null,
   cardDefinition: null,
   cardPhotoUrl: null,
+  storyUpdates: [],
+  unreadStoryUpdateCount: 0,
 };

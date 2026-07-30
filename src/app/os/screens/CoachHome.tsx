@@ -1,10 +1,12 @@
 'use client';
 
+import { onActivateKey } from '../a11y';
 import { JIC, osAssetPath } from '../data';
 import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
+import type { StoryUpdate } from '../osData';
 
-export default function CoachHome({ actions }: { actions: OsActions }) {
+export default function CoachHome({ actions, storyUpdates }: { actions: OsActions; storyUpdates: StoryUpdate[] }) {
   const {
     mode,
     coachActivity: COACH_ACTIVITY,
@@ -14,6 +16,10 @@ export default function CoachHome({ actions }: { actions: OsActions }) {
     coachTeamsManaged,
   } = useOsData();
   const isReal = mode !== 'demo';
+  // The single newest thing this coach hasn't seen yet — disappears from
+  // Home once opened (it becomes read), stays visible in the full Story
+  // Updates history regardless.
+  const newestUnread = storyUpdates.find((u) => !u.readAt) ?? null;
   const totalPlayers = coachTeamsManaged.reduce((sum, t) => sum + t.playerCount, 0);
   const teamsLabel = coachTeamsManaged.length === 1
     ? coachTeamsManaged[0].name
@@ -31,6 +37,25 @@ export default function CoachHome({ actions }: { actions: OsActions }) {
           <div style={{ fontSize: 12, color: '#9A9082' }}>{isReal ? `${totalPlayers} players · ${teamsLabel}` : '14 players · 2026/27 season'}</div>
         </div>
       </div>
+
+      {newestUnread && (
+        <div style={{ margin: '0 2px 20px' }}>
+          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435', marginBottom: 8, textTransform: 'uppercase' }}>
+            What&apos;s New
+          </div>
+          <div
+            onClick={() => actions.openStoryUpdate(newestUnread)}
+            role="button"
+            tabIndex={0}
+            aria-label={newestUnread.title}
+            onKeyDown={onActivateKey(() => actions.openStoryUpdate(newestUnread))}
+            style={{ background: 'var(--os-card)', borderRadius: 16, padding: 14, cursor: 'pointer', boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', borderLeft: '3px solid #E97435' }}
+          >
+            <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)', marginBottom: 3 }}>{newestUnread.title}</div>
+            <div style={{ fontSize: 13, color: 'var(--os-muted)', lineHeight: 1.4 }}>{newestUnread.body}</div>
+          </div>
+        </div>
+      )}
 
       {!isReal && (
         <>

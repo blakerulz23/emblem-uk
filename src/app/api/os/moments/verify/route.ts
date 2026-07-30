@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { generateStoryUpdate } from '@/lib/story-updates';
 
 export const runtime = 'nodejs';
 
@@ -38,13 +39,34 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (decision === 'approve') {
-    const { error } = await supabase
+    const { data: moment, error } = await supabase
       .from('moments')
       .update({ verified_by: user.id, verified_at: new Date().toISOString(), verification_status: 'coach_verified' })
-      .eq('id', momentId);
+      .eq('id', momentId)
+      .select('id, player_id, title')
+      .maybeSingle();
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    if (moment) {
+      const [{ data: guardianRows }, { data: player }, { data: actor }] = await Promise.all([
+        supabase.from('guardians').select('profile_id').eq('player_id', moment.player_id),
+        supabase.from('players').select('name').eq('id', moment.player_id).maybeSingle(),
+        supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
+      ]);
+      const actorName = actor?.display_name ?? 'Their coach';
+      await generateStoryUpdate({
+        eventType: 'moment_verified',
+        playerId: moment.player_id,
+        actorProfileId: user.id,
+        recipients: (guardianRows ?? []).map((g) => ({ profileId: g.profile_id, presenceScope: `collection:${moment.player_id}` })),
+        title: 'Moment Verified',
+        body: `${actorName} verified ${player?.name ?? 'your player'}'s moment: "${moment.title}"`,
+        relatedMomentId: moment.id,
+      });
+    }
+
     return NextResponse.json({ ok: true });
   }
 

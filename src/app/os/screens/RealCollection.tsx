@@ -1,6 +1,9 @@
-import { useOsData } from '../OsDataContext';
+import { useEffect, useRef, useState } from 'react';
+import { useOsData, useRefreshOsData } from '../OsDataContext';
 import { MOMENT_STATUS_BADGE } from '../data';
 import { CardFace } from '@/lib/card-definition';
+import { usePresenceHeartbeat } from '../usePresenceHeartbeat';
+import { useLiveContent, useJustUpdatedFlag } from '../useLiveContent';
 import type { RealMoment } from '../osData';
 
 type SeasonGroup = { label: string; status: 'active' | 'closed' | null; items: RealMoment[] };
@@ -57,12 +60,52 @@ function groupBySeason(moments: RealMoment[]): SeasonGroup[] {
  * not a completion percentage — it seals into a permanent volume on the
  * shelf, it doesn't "finish" at some target count.
  */
-export default function RealCollection() {
-  const { moments, playerProfile } = useOsData();
+export default function RealCollection({
+  highlightMomentId,
+  onHighlightDone,
+}: { highlightMomentId?: string | null; onHighlightDone?: () => void } = {}) {
+  const { moments, playerProfile, playerId } = useOsData();
   const groups = groupBySeason(moments);
+
+  // A Story Update deep-link (recognition/moment_verified) lands on this
+  // tab and asks for one real moment's card to be scrolled-to and briefly
+  // highlighted — Collection stays the single destination for football
+  // memories, never a second per-moment detail screen.
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [activeHighlight, setActiveHighlight] = useState<string | null>(null);
+  useEffect(() => {
+    if (!highlightMomentId) return;
+    cardRefs.current.get(highlightMomentId)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setActiveHighlight(highlightMomentId);
+    const timeout = setTimeout(() => {
+      setActiveHighlight(null);
+      onHighlightDone?.();
+    }, 2500);
+    return () => clearTimeout(timeout);
+  }, [highlightMomentId, onHighlightDone]);
+
+  // Being mounted here IS being on the Collection tab — Recognition and
+  // Coach-Verified events happening right now appear in this grid
+  // immediately (via refreshOsData(), never router.refresh()), and the
+  // presence heartbeat this keeps alive is what tells
+  // src/lib/story-updates.ts the resulting Story Update was already seen
+  // live, not missed.
+  const refreshOsData = useRefreshOsData();
+  const [justUpdated, triggerJustUpdated] = useJustUpdatedFlag();
+  usePresenceHeartbeat(playerId ? `collection:${playerId}` : null);
+  useLiveContent('moments', playerId ? `player_id=eq.${playerId}` : null, () => {
+    refreshOsData();
+    triggerJustUpdated();
+  });
 
   return (
     <>
+      {justUpdated && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', marginBottom: 12, animation: 'faceIn .3s ease' }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2E9E5B' }} />
+          <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 12, color: '#2E9E5B' }}>Updated just now</span>
+        </div>
+      )}
       <div style={{ marginBottom: 18 }}>
         <div style={{ fontSize: 13, color: 'var(--os-muted)' }}>
           {moments.length > 0
@@ -105,23 +148,33 @@ export default function RealCollection() {
                 const photo = m.media.find((med) => med.kind === 'photo');
                 const isMilestone = m.rarity === 'milestone';
                 const isRecognized = m.rarity === 'recognized';
+                const isHighlighted = activeHighlight === m.id;
                 return (
                   <div
                     key={m.id}
+                    ref={(el) => {
+                      if (el) cardRefs.current.set(m.id, el);
+                      else cardRefs.current.delete(m.id);
+                    }}
                     style={{
                       background: 'var(--os-card)',
                       borderRadius: 16,
                       overflow: 'hidden',
-                      boxShadow: isMilestone
-                        ? '0 12px 28px -12px rgba(232,177,76,.55)'
-                        : isRecognized
-                          ? '0 10px 26px -14px rgba(233,160,59,.45)'
-                          : '0 8px 22px -16px rgba(0,0,0,.2)',
-                      border: isMilestone
-                        ? '1.5px solid rgba(232,177,76,.6)'
-                        : isRecognized
-                          ? '1.5px solid rgba(233,160,59,.4)'
-                          : 'none',
+                      boxShadow: isHighlighted
+                        ? '0 0 0 3px rgba(46,158,91,.5), 0 12px 28px -12px rgba(46,158,91,.5)'
+                        : isMilestone
+                          ? '0 12px 28px -12px rgba(232,177,76,.55)'
+                          : isRecognized
+                            ? '0 10px 26px -14px rgba(233,160,59,.45)'
+                            : '0 8px 22px -16px rgba(0,0,0,.2)',
+                      border: isHighlighted
+                        ? '1.5px solid rgba(46,158,91,.7)'
+                        : isMilestone
+                          ? '1.5px solid rgba(232,177,76,.6)'
+                          : isRecognized
+                            ? '1.5px solid rgba(233,160,59,.4)'
+                            : 'none',
+                      transition: 'box-shadow .4s ease, border-color .4s ease',
                     }}
                   >
                     <div style={{ aspectRatio: '1', background: '#100E0C', position: 'relative' }}>

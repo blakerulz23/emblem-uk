@@ -1,6 +1,6 @@
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { DEMO_OS_DATA } from '@/app/os/osData';
-import type { OsData, RealMoment, RealConnection, CoachTeamSummary } from '@/app/os/osData';
+import type { OsData, RealMoment, RealConnection, CoachTeamSummary, StoryUpdate } from '@/app/os/osData';
 import type { SkillCategory, CoachSummary, DevelopmentSeason, SeasonTarget, PlayerProfile } from '@/app/os/playerProfile';
 import { extractAgeGroup } from '@/app/os/playerProfile';
 import { computeOverallScore, MIDFIELDER_WEIGHTS } from '@/app/os/scoring';
@@ -248,10 +248,37 @@ export async function getOsData(
 
   const supabase = createClient();
 
-  if (profileRole === 'coach') {
-    return getCoachOsData(supabase, userId);
-  }
-  return getParentOsData(supabase, userId, requestedPlayerId ?? undefined);
+  // Fetched once here rather than duplicated inside getParentOsData/
+  // getCoachOsData — recipient_profile_id = auth.uid() is identical for
+  // both roles, so there's nothing role-specific about this query. RLS
+  // ("story_updates: recipient can select their own") is the only
+  // authorization needed; the ordinary session client already scopes this
+  // correctly with no service-role client involved.
+  const { data: storyUpdateRows } = await supabase
+    .from('story_updates')
+    .select('*')
+    .eq('recipient_profile_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  const storyUpdates: StoryUpdate[] = (storyUpdateRows ?? []).map((r) => ({
+    id: r.id,
+    eventType: r.event_type,
+    category: r.category,
+    title: r.title,
+    body: r.body,
+    playerId: r.player_id,
+    relatedMomentId: r.related_moment_id,
+    readAt: r.read_at,
+    createdAt: r.created_at,
+  }));
+  const unreadStoryUpdateCount = storyUpdates.filter((u) => !u.readAt).length;
+
+  const base =
+    profileRole === 'coach'
+      ? await getCoachOsData(supabase, userId)
+      : await getParentOsData(supabase, userId, requestedPlayerId ?? undefined);
+
+  return { ...base, storyUpdates, unreadStoryUpdateCount };
 }
 
 async function getParentOsData(
@@ -279,7 +306,10 @@ async function getParentOsData(
   // fallback, not the security boundary.
   const playerId = requestedPlayerId && linkedIdSet.has(requestedPlayerId) ? requestedPlayerId : linkedIds[0];
 
-  const emptyConnections = { connections: [], viewerId: userId, coachDisplayName: null, coachClub: null, coachTeamsManaged: [], goals: [], seasonFocus: [], strengths: [], assessments: [] };
+  // storyUpdates/unreadStoryUpdateCount are always overridden by the outer
+  // getOsData() wrapper's spread — these are inert placeholders that only
+  // exist to satisfy OsData's type here.
+  const emptyConnections = { connections: [], viewerId: userId, coachDisplayName: null, coachClub: null, coachTeamsManaged: [], goals: [], seasonFocus: [], strengths: [], assessments: [], storyUpdates: [] as StoryUpdate[], unreadStoryUpdateCount: 0 };
 
   if (!playerId) {
     return {
@@ -633,6 +663,9 @@ async function getParentOsData(
     currentSeasonStatus,
     cardDefinition,
     cardPhotoUrl,
+    // Overridden by getOsData()'s outer spread, same as emptyConnections above.
+    storyUpdates: [],
+    unreadStoryUpdateCount: 0,
   };
 }
 

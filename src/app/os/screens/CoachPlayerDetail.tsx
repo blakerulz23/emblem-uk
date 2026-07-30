@@ -2,8 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useOsData } from '../OsDataContext';
+import { useOsData, useRefreshOsData } from '../OsDataContext';
 import { onActivateKey } from '../a11y';
+import { usePresenceHeartbeat } from '../usePresenceHeartbeat';
+import { useLiveContent, useJustUpdatedFlag } from '../useLiveContent';
 import type { OsActions } from '../OsApp';
 import { GuardianStatusRow } from './CoachTeam';
 import GuardianInviteSheet from '../overlays/GuardianInviteSheet';
@@ -30,6 +32,27 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
   const { mode, squad, verifyQueue } = useOsData();
   const isReal = mode !== 'demo';
   const player = squad.find((p) => p.id === playerId);
+
+  // A guardian adding/updating a Season Focus, or a fresh assessment
+  // resolved elsewhere, appears here immediately while a coach is already
+  // on this exact player's detail — no badge, no router.refresh(). `player`
+  // above is re-derived from context on every render, so a refresh alone
+  // is enough here (no local state to resync, unlike Card.tsx).
+  const refreshOsData = useRefreshOsData();
+  const [justUpdated, triggerJustUpdated] = useJustUpdatedFlag();
+  // Gated on isReal — a demo player id isn't a real players.id, and demo
+  // mode has no real session for the presence heartbeat to authenticate
+  // with anyway (matches Card.tsx/RealCollection.tsx/CoachVerify.tsx's
+  // identical isReal-gating of these same two hooks).
+  usePresenceHeartbeat(isReal ? `coach-player:${playerId}` : null);
+  useLiveContent('player_assessments', isReal ? `player_id=eq.${playerId}` : null, () => {
+    refreshOsData();
+    triggerJustUpdated();
+  });
+  useLiveContent('player_season_focus', isReal ? `player_id=eq.${playerId}` : null, () => {
+    refreshOsData();
+    triggerJustUpdated();
+  });
 
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -159,6 +182,12 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
 
   return (
     <>
+      {justUpdated && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', marginBottom: 12, animation: 'faceIn .3s ease' }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2E9E5B' }} />
+          <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 12, color: '#2E9E5B' }}>Updated just now</span>
+        </div>
+      )}
       {/* Identity */}
       <div style={sectionCard}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>

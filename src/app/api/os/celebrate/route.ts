@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { generateStoryUpdate } from '@/lib/story-updates';
 
 export const runtime = 'nodejs';
 
@@ -42,6 +43,22 @@ export async function POST(request: NextRequest) {
   if (error || !moment) {
     return NextResponse.json({ error: error?.message ?? 'Could not send recognition' }, { status: 500 });
   }
+
+  const [{ data: guardianRows }, { data: player }, { data: actor }] = await Promise.all([
+    supabase.from('guardians').select('profile_id').eq('player_id', playerId),
+    supabase.from('players').select('name').eq('id', playerId).maybeSingle(),
+    supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
+  ]);
+  const actorName = actor?.display_name ?? 'Their coach';
+  await generateStoryUpdate({
+    eventType: 'recognition',
+    playerId,
+    actorProfileId: user.id,
+    recipients: (guardianRows ?? []).map((g) => ({ profileId: g.profile_id, presenceScope: `collection:${playerId}` })),
+    title: 'Coach Recognition',
+    body: `${actorName} recognised ${player?.name ?? 'your player'} — ${award}`,
+    relatedMomentId: moment.id,
+  });
 
   return NextResponse.json({ ok: true, momentId: moment.id });
 }

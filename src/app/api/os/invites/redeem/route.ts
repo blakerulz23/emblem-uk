@@ -3,6 +3,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { normalizeClaimCode } from '@/lib/claim-code';
 import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 import { maskEmail } from '@/lib/mask-email';
+import { generateStoryUpdate } from '@/lib/story-updates';
 
 export const runtime = 'nodejs';
 
@@ -149,6 +150,22 @@ export async function POST(request: NextRequest) {
     .update({ status: 'claimed' })
     .eq('player_id', invite.player_id)
     .neq('status', 'claimed');
+
+  const [{ data: player }, { data: actor }] = await Promise.all([
+    serviceRole.from('players').select('name, team_id').eq('id', invite.player_id).maybeSingle(),
+    serviceRole.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
+  ]);
+  if (player?.team_id) {
+    const { data: coachRows } = await serviceRole.from('coach_team').select('profile_id').eq('team_id', player.team_id);
+    await generateStoryUpdate({
+      eventType: 'guardian_connected',
+      playerId: invite.player_id,
+      actorProfileId: user.id,
+      recipients: (coachRows ?? []).map((c) => ({ profileId: c.profile_id, presenceScope: `coach-player:${invite.player_id}` })),
+      title: 'Guardian Connected',
+      body: `${actor?.display_name ?? 'A guardian'} is now connected to ${player?.name ?? 'your player'}.`,
+    });
+  }
 
   return NextResponse.json({ ok: true, playerId: invite.player_id });
 }
