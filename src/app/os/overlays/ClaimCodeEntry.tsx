@@ -76,11 +76,14 @@ export default function ClaimCodeEntry({
     }
   };
 
-  // A post-approval or coach-invite email links here as /os?invite=CODE —
-  // auto-run the same lookup used for manual entry instead of making the
-  // recipient re-type a code they just clicked a link for.
+  // A post-approval or coach-invite email links here as /os?invite=CODE,
+  // and a physical/NFC Emblem card taps in as /os?card=CODE — auto-run the
+  // same lookup used for manual entry instead of making the visitor re-type
+  // a code they just tapped/clicked their way to. attemptLookup already
+  // tries the cards table before player_invites regardless of which param
+  // supplied the code, so either name resolves correctly here.
   useEffect(() => {
-    const fromLink = searchParams?.get('invite')?.trim();
+    const fromLink = searchParams?.get('card')?.trim() || searchParams?.get('invite')?.trim();
     if (fromLink) {
       setCode(fromLink);
       attemptLookup(fromLink);

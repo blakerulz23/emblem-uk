@@ -70,13 +70,20 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   // resolving the invite. Skip straight to the code step so the mounted
   // ClaimCodeEntry's own ?invite= auto-lookup actually runs.
   const currentInviteCode = searchParams?.get('invite')?.trim() || null;
+  // A physical/NFC card taps here as /os?card=CODE — same "skip straight
+  // past the fork" reasoning as ?invite= above. ClaimCodeEntry's own
+  // ?card=/?invite= auto-lookup already resolves either one against the
+  // same claim_token/invite-code lookup (attemptLookup tries the cards
+  // table first regardless of which param supplied the code), so no
+  // separate resolution path is needed here beyond skipping to 'code'.
+  const currentCardCode = searchParams?.get('card')?.trim() || null;
   // A team-order approval email links here as /os?teaminvite=CODE — same
   // "skip straight past the fork" reasoning as ?invite= above, but this
   // code has no manual-entry UI in this phase (link-only), so its lookup
   // is a plain effect below rather than something ClaimCodeEntry handles.
   const currentTeamInviteCode = searchParams?.get('teaminvite')?.trim() || null;
   const [preAuthStep, setPreAuthStep] = useState<'fork' | 'code' | 'confirm' | 'verifyEmail' | 'recover' | 'auth' | 'teamInvite'>(
-    currentTeamInviteCode ? 'teamInvite' : currentInviteCode ? 'code' : 'fork'
+    currentTeamInviteCode ? 'teamInvite' : (currentInviteCode || currentCardCode) ? 'code' : 'fork'
   );
   const [pendingResult, setPendingResult] = useState<ClaimLookupResult | null>(null);
   const [teamInviteResult, setTeamInviteResult] = useState<TeamInviteLookupResult | null>(null);
@@ -88,6 +95,7 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   // the same tab/session (e.g. a second child's invite after the first
   // was claimed) instead of showing it.
   const [resolvedInviteCode, setResolvedInviteCode] = useState<string | null>(null);
+  const [resolvedCardCode, setResolvedCardCode] = useState<string | null>(null);
   const [resolvedTeamInviteCode, setResolvedTeamInviteCode] = useState<string | null>(null);
 
   const intent = readIntent();
@@ -263,6 +271,14 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   // redemption, but still fires again for a genuinely different code.
   if (currentInviteCode && currentInviteCode !== resolvedInviteCode) {
     return <AuthenticatedInviteResolve onResolved={() => setResolvedInviteCode(currentInviteCode)} />;
+  }
+  // Same reasoning as the ?invite= branch above, for a physical card tap
+  // landing on an already-signed-in browser (e.g. a coach or another
+  // guardian tapping a card that isn't theirs). AuthenticatedInviteResolve
+  // is reused as-is — it mounts ClaimCodeEntry, which resolves ?card= via
+  // the same effect as ?invite=, so no separate component is needed.
+  if (currentCardCode && currentCardCode !== resolvedCardCode) {
+    return <AuthenticatedInviteResolve onResolved={() => setResolvedCardCode(currentCardCode)} />;
   }
   if (currentTeamInviteCode && currentTeamInviteCode !== resolvedTeamInviteCode) {
     return <AuthenticatedTeamInviteResolve onResolved={() => setResolvedTeamInviteCode(currentTeamInviteCode)} />;
