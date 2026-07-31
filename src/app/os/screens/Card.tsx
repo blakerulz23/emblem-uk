@@ -31,6 +31,15 @@ function formatDate(iso: string): string {
 const sectionLabel = { fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', marginBottom: 12 };
 const sectionCard = { background: 'var(--os-card)', borderRadius: 18, padding: 18, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 14 };
 
+/** Same glyph as StoryUpdateCard.tsx's season_focus_added icon — a local copy, matching this app's existing convention of small per-file icon helpers rather than a cross-file import between unrelated screens/overlays. */
+function TargetIcon(c: string) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.8}>
+      <circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4.2" /><circle cx="12" cy="12" r="1" fill={c} stroke="none" />
+    </svg>
+  );
+}
+
 export default function CardScreen({ state, actions }: { state: OsState; actions: OsActions }) {
   const { mode, playerId, playerProfile: PLAYER_PROFILE, cardDefinition, cardPhotoUrl, seasonFocus, strengths, assessments } = useOsData();
   const isReal = mode !== 'demo';
@@ -178,13 +187,18 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
         </div>
       )}
 
-      {/* A trusted coach's current read of this player — present tense, honest empty state until a real assessment exists. Never fabricated, never a placeholder score. Read-only here — a coach shares from Coach Player Detail, never from here. */}
+      {/* A trusted coach's current read of this player — present tense, honest empty state until a real assessment exists. Never fabricated, never a placeholder score. Read-only here — a coach shares from Coach Player Detail, never from here.
+          Attribution reads first, small and quiet — the assessment itself is the hero: largest type, boldest weight, most whitespace on the card. The quote mark is decorative texture behind the text, never competing with it. */}
       <div style={sectionCard}>
         <div style={sectionLabel}>COACH&apos;S ASSESSMENT</div>
         {assessments[0] ? (
           <div>
-            <p style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--os-ink)', margin: '0 0 6px' }}>{assessments[0].body}</p>
-            <div style={{ fontSize: 12, color: 'var(--os-muted)' }}>{assessments[0].authorName ?? 'Coach'} · {formatDate(assessments[0].createdAt)}</div>
+            <div style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 12.5, color: 'var(--os-ink)' }}>{assessments[0].authorName ?? 'Coach'}</div>
+            <div style={{ fontSize: 11, color: 'var(--os-muted)', marginBottom: 16 }}>{formatDate(assessments[0].createdAt)}</div>
+            <div style={{ position: 'relative', paddingLeft: 4 }}>
+              <span aria-hidden="true" style={{ position: 'absolute', top: -16, left: -4, fontFamily: 'Georgia, serif', fontSize: 46, fontWeight: 700, color: 'rgba(233,160,59,.22)', lineHeight: 1, userSelect: 'none' }}>&ldquo;</span>
+              <p style={{ position: 'relative', fontFamily: 'Roboto', fontWeight: 700, fontSize: 17, lineHeight: 1.4, color: 'var(--os-ink)', margin: 0 }}>{assessments[0].body}</p>
+            </div>
           </div>
         ) : (
           <EmptyState
@@ -211,21 +225,32 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
         )}
       </div>
 
-      {/* Shared, with attribution — the one write affordance on this face: a guardian can add a Season Focus, same as a coach can from their own screen. */}
+      {/* Shared, with attribution — the one write affordance on this face: a guardian can add a Season Focus, same as a coach can from their own screen.
+          Empty state reads label → icon → hero title → supporting copy → the (unchanged) CTA below it, which reads as dominant simply because everything above it is now quiet. Populated rows read label(above) → focus text as hero → status as a small "progress" pill → author/date as the smallest supporting line. */}
       <div style={sectionCard}>
         <div style={sectionLabel}>SEASON FOCUS {seasonFocus.length > 0 ? `(${activeFocusCount}/3 active)` : ''}</div>
         {seasonFocus.length === 0 ? (
-          <EmptyState
-            title="No Season Focus yet."
-            body={`Set what ${firstName || 'this player'} is working on this season — their coach can see it too.`}
-          />
+          <div style={{ textAlign: 'center', padding: '6px 4px 2px' }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(233,116,53,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+              {TargetIcon('#E97435')}
+            </div>
+            <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)', marginBottom: 6 }}>No Season Focus yet.</div>
+            <div style={{ fontSize: 13, color: 'var(--os-muted)', lineHeight: 1.5 }}>{`Set what ${firstName || 'this player'} is working on this season — their coach can see it too.`}</div>
+          </div>
         ) : (
           seasonFocus.map((f) => (
-            <div key={f.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--os-border)' }}>
-              <div style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 14, color: 'var(--os-ink)' }}>{f.label}</div>
-              <div style={{ fontSize: 12, color: 'var(--os-muted)', marginTop: 2 }}>
+            <div key={f.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--os-border)' }}>
+              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)', marginBottom: 6 }}>{f.label}</div>
+              <span style={{
+                display: 'inline-block', fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase',
+                color: f.status === 'active' ? '#2E9E5B' : 'var(--os-muted)',
+                background: f.status === 'active' ? 'rgba(46,158,91,.12)' : 'rgba(0,0,0,.06)',
+                padding: '3px 8px', borderRadius: 999, marginBottom: 5,
+              }}>
+                {f.status === 'active' ? 'Active' : f.status === 'completed' ? 'Completed' : 'Archived'}
+              </span>
+              <div style={{ fontSize: 11.5, color: 'var(--os-muted)' }}>
                 {f.authorName ?? (f.authorRole === 'coach' ? 'Coach' : 'Guardian')} · {formatDate(f.createdAt)}
-                {f.status !== 'active' && ` · ${f.status === 'completed' ? 'Completed' : 'Archived'}`}
               </div>
             </div>
           ))

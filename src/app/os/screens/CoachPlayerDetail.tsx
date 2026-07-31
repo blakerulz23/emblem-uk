@@ -27,6 +27,15 @@ const addButtonStyle = (disabled: boolean) => ({
   fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: disabled ? 'default' : 'pointer', marginTop: 8,
 });
 
+/** Same glyph as StoryUpdateCard.tsx's season_focus_added icon — a local copy, matching this app's existing convention of small per-file icon helpers rather than a cross-file import between unrelated screens/overlays. */
+function TargetIcon(c: string) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.8}>
+      <circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4.2" /><circle cx="12" cy="12" r="1" fill={c} stroke="none" />
+    </svg>
+  );
+}
+
 export default function CoachPlayerDetail({ playerId, actions }: { playerId: string; actions: OsActions }) {
   const router = useRouter();
   const { mode, squad, verifyQueue } = useOsData();
@@ -248,13 +257,20 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
         </div>
       )}
 
-      {/* Coach's Assessment */}
+      {/* Coach's Assessment — attribution reads first, small and quiet; the
+          assessment itself is the hero (largest type, boldest weight, most
+          whitespace). The Share button below is unstyled/untouched — it
+          reads as secondary purely because the quote above it now dominates. */}
       <div style={sectionCard}>
         <div style={sectionTitle}>Coach&apos;s Assessment</div>
         {latestAssessment ? (
           <div>
-            <p style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--os-ink)', margin: '0 0 6px' }}>{latestAssessment.body}</p>
-            <div style={{ fontSize: 12, color: 'var(--os-muted)' }}>{latestAssessment.authorName ?? 'Coach'} · {formatDate(latestAssessment.createdAt)}</div>
+            <div style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 12.5, color: 'var(--os-ink)' }}>{latestAssessment.authorName ?? 'Coach'}</div>
+            <div style={{ fontSize: 11, color: 'var(--os-muted)', marginBottom: 16 }}>{formatDate(latestAssessment.createdAt)}</div>
+            <div style={{ position: 'relative', paddingLeft: 4 }}>
+              <span aria-hidden="true" style={{ position: 'absolute', top: -16, left: -4, fontFamily: 'Georgia, serif', fontSize: 46, fontWeight: 700, color: 'rgba(233,160,59,.22)', lineHeight: 1, userSelect: 'none' }}>&ldquo;</span>
+              <p style={{ position: 'relative', fontFamily: 'Roboto', fontWeight: 700, fontSize: 17, lineHeight: 1.4, color: 'var(--os-ink)', margin: 0 }}>{latestAssessment.body}</p>
+            </div>
           </div>
         ) : (
           <EmptyState title="No assessment yet" body="Share your assessment of this player's development so far." />
@@ -309,18 +325,35 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
         {strengthError && <p role="alert" style={{ color: '#C0392B', fontSize: 12.5, marginTop: 6 }}>{strengthError}</p>}
       </div>
 
-      {/* Season Focus */}
+      {/* Season Focus — empty state reads label → icon → hero title →
+          supporting copy → the (unchanged) add control below, which reads
+          as dominant simply because everything above it is quiet. Populated
+          rows read focus text as hero → status as a small "progress" pill →
+          author/date as the smallest supporting line. */}
       <div style={sectionCard}>
         <div style={sectionTitle}>Season Focus <span style={{ color: 'var(--os-muted)', fontWeight: 600 }}>({activeFocusCount}/3 active)</span></div>
         {player.seasonFocus.length === 0 ? (
-          <EmptyState title="No Season Focus yet" body="Set what this player is working on this season — you and their guardian can both contribute." />
+          <div style={{ textAlign: 'center', padding: '6px 4px 2px' }}>
+            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(233,116,53,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
+              {TargetIcon('#E97435')}
+            </div>
+            <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)', marginBottom: 6 }}>No Season Focus yet</div>
+            <div style={{ fontSize: 13, color: 'var(--os-muted)', lineHeight: 1.5 }}>Set what this player is working on this season — you and their guardian can both contribute.</div>
+          </div>
         ) : (
           player.seasonFocus.map((f) => (
-            <div key={f.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--os-border)' }}>
-              <div style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 14, color: 'var(--os-ink)' }}>{f.label}</div>
-              <div style={{ fontSize: 12, color: 'var(--os-muted)', marginTop: 2 }}>
+            <div key={f.id} style={{ padding: '12px 0', borderBottom: '1px solid var(--os-border)' }}>
+              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)', marginBottom: 6 }}>{f.label}</div>
+              <span style={{
+                display: 'inline-block', fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase',
+                color: f.status === 'active' ? '#2E9E5B' : 'var(--os-muted)',
+                background: f.status === 'active' ? 'rgba(46,158,91,.12)' : 'rgba(0,0,0,.06)',
+                padding: '3px 8px', borderRadius: 999, marginBottom: 5,
+              }}>
+                {f.status === 'active' ? 'Active' : f.status === 'completed' ? 'Completed' : 'Archived'}
+              </span>
+              <div style={{ fontSize: 11.5, color: 'var(--os-muted)' }}>
                 {f.authorName ?? (f.authorRole === 'coach' ? 'Coach' : 'Guardian')} · {formatDate(f.createdAt)}
-                {f.status !== 'active' && ` · ${f.status === 'completed' ? 'Completed' : 'Archived'}`}
               </div>
             </div>
           ))
