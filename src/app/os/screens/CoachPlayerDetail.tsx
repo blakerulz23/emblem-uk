@@ -257,20 +257,22 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
         </div>
       )}
 
-      {/* Coach's Assessment — attribution reads first, small and quiet; the
-          assessment itself is the hero (largest type, boldest weight, most
-          whitespace). The Share button below is unstyled/untouched — it
-          reads as secondary purely because the quote above it now dominates. */}
+      {/* Coach's Assessment — the quote reads first (hero weight/size, a
+          solid quote-mark icon beside it, not a faint background
+          watermark), with attribution and date following as quiet
+          supporting context. This is where a coach shares a new
+          assessment — Card.tsx's About face shows the same content
+          read-only, never with a write affordance. */}
       <div style={sectionCard}>
         <div style={sectionTitle}>Coach&apos;s Assessment</div>
         {latestAssessment ? (
           <div>
-            <div style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 12.5, color: 'var(--os-ink)' }}>{latestAssessment.authorName ?? 'Coach'}</div>
-            <div style={{ fontSize: 11, color: 'var(--os-muted)', marginBottom: 16 }}>{formatDate(latestAssessment.createdAt)}</div>
-            <div style={{ position: 'relative', paddingLeft: 4 }}>
-              <span aria-hidden="true" style={{ position: 'absolute', top: -16, left: -4, fontFamily: 'Georgia, serif', fontSize: 46, fontWeight: 700, color: 'rgba(233,160,59,.22)', lineHeight: 1, userSelect: 'none' }}>&ldquo;</span>
-              <p style={{ position: 'relative', fontFamily: 'Roboto', fontWeight: 700, fontSize: 17, lineHeight: 1.4, color: 'var(--os-ink)', margin: 0 }}>{latestAssessment.body}</p>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <span aria-hidden="true" style={{ flex: '0 0 auto', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 34, lineHeight: 0.5, color: '#E97435', marginTop: 10 }}>&ldquo;</span>
+              <p style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 17, lineHeight: 1.4, color: 'var(--os-ink)', margin: 0 }}>{latestAssessment.body}</p>
             </div>
+            <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--os-muted)' }}>— {latestAssessment.authorName ?? 'Coach'}</div>
+            <div style={{ fontSize: 11, color: 'var(--os-muted)', marginTop: 1 }}>{formatDate(latestAssessment.createdAt)}</div>
           </div>
         ) : (
           <EmptyState title="No assessment yet" body="Share your assessment of this player's development so far." />

@@ -188,17 +188,17 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
       )}
 
       {/* A trusted coach's current read of this player — present tense, honest empty state until a real assessment exists. Never fabricated, never a placeholder score. Read-only here — a coach shares from Coach Player Detail, never from here.
-          Attribution reads first, small and quiet — the assessment itself is the hero: largest type, boldest weight, most whitespace on the card. The quote mark is decorative texture behind the text, never competing with it. */}
+          The quote itself reads first — hero weight/size, a solid quote-mark icon beside it (not a faint background watermark) — with attribution and date following underneath as quiet supporting context. */}
       <div style={sectionCard}>
         <div style={sectionLabel}>COACH&apos;S ASSESSMENT</div>
         {assessments[0] ? (
           <div>
-            <div style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 12.5, color: 'var(--os-ink)' }}>{assessments[0].authorName ?? 'Coach'}</div>
-            <div style={{ fontSize: 11, color: 'var(--os-muted)', marginBottom: 16 }}>{formatDate(assessments[0].createdAt)}</div>
-            <div style={{ position: 'relative', paddingLeft: 4 }}>
-              <span aria-hidden="true" style={{ position: 'absolute', top: -16, left: -4, fontFamily: 'Georgia, serif', fontSize: 46, fontWeight: 700, color: 'rgba(233,160,59,.22)', lineHeight: 1, userSelect: 'none' }}>&ldquo;</span>
-              <p style={{ position: 'relative', fontFamily: 'Roboto', fontWeight: 700, fontSize: 17, lineHeight: 1.4, color: 'var(--os-ink)', margin: 0 }}>{assessments[0].body}</p>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <span aria-hidden="true" style={{ flex: '0 0 auto', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 34, lineHeight: 0.5, color: '#E97435', marginTop: 10 }}>&ldquo;</span>
+              <p style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 17, lineHeight: 1.4, color: 'var(--os-ink)', margin: 0 }}>{assessments[0].body}</p>
             </div>
+            <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--os-muted)' }}>— {assessments[0].authorName ?? 'Coach'}</div>
+            <div style={{ fontSize: 11, color: 'var(--os-muted)', marginTop: 1 }}>{formatDate(assessments[0].createdAt)}</div>
           </div>
         ) : (
           <EmptyState
