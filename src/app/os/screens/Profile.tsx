@@ -7,13 +7,16 @@ import { useOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 import type { SeasonTarget } from '../playerProfile';
 
-// Position, foot, and squad number are deliberately not repeated here —
-// position/foot are already what's printed on the player's own Card (its
-// present-tense identity face), and squad number already lives in this
-// screen's own header stat-strip. Football Identity holds only facts that
-// don't already have a home elsewhere (Collection OS Product Specification
-// v1.0's overlap table — Milestone 5).
+// Foot and squad number are deliberately not repeated here — foot is
+// already what's printed on the player's own Card (its present-tense
+// identity face), and squad number already lives in the header stat-strip.
+// Primary Position DOES belong here (unlike foot) — About owns *displaying*
+// football identity, but Profile is the only place a guardian actually
+// *edits* it, so it needs a home in Player Preferences alongside the other
+// editable/preference facts (Collection OS Product Specification v1.0's
+// overlap table, revised in the Profile/About duplication audit).
 const DEMO_IDENTITY: [string, string][] = [
+  ['Primary position', 'Midfielder'],
   ['Football age group', 'U10'],
   ['Favourite player', 'Kevin De Bruyne'],
   ['Football ambition', 'Play academy football'],
@@ -33,6 +36,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
   const isReal = mode !== 'demo';
   const identityRows: [string, string][] = isReal
     ? [
+        ['Primary position', playerProfile.position || 'Not set'],
         ['Football age group', playerProfile.ageGroup ?? 'Not set'],
         ['Favourite player', playerProfile.favouritePlayer ?? 'Not set'],
         ['Football ambition', playerProfile.footballAmbition ?? 'Not set'],
@@ -183,15 +187,10 @@ export default function Profile({ actions }: { actions: OsActions }) {
               />
             </div>
           )}
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 19, color: 'var(--os-ink)' }}>{playerProfile.name.toUpperCase()}</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="#E97435"><path d="M12 1l2.5 2.2 3.3-.4 1 3.2 3 1.5-1.2 3.1 1.2 3.1-3 1.5-1 3.2-3.3-.4L12 23l-2.5-2.2-3.3.4-1-3.2-3-1.5 1.2-3.1L2.2 10l3-1.5 1-3.2 3.3.4z" /><path d="M9.5 12.5l1.8 1.8 3.5-3.8" stroke="#fff" strokeWidth={1.6} fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </div>
-            <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 13, color: '#E97435', margin: '2px 0 8px' }}>{playerProfile.position}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              {!isReal && <img src={`${osAssetPath}/club-badge.png`} alt={playerProfile.club} style={{ width: 26, height: 26, objectFit: 'contain', flex: '0 0 auto' }} />}
-              <div><div style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 12.5, color: 'var(--os-ink)' }}>{playerProfile.club}</div>{!isReal && <div style={{ fontSize: 11, color: 'var(--os-muted)' }}>Manchester, England</div>}</div>
             </div>
           </div>
         </div>
@@ -200,17 +199,29 @@ export default function Profile({ actions }: { actions: OsActions }) {
           <div style={{ textAlign: 'center' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>SQUAD NUMBER</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.squadNumber ?? '—'}</div></div>
           <div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>SEASON</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.season ?? '—'}</div></div>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <div style={{ flex: 1, textAlign: 'center', padding: 11, borderRadius: 11, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: 'var(--os-ink)' }}>Share</div>
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={isReal ? () => setShowEdit((v) => !v) : undefined}
-            style={{ flex: 1, textAlign: 'center', padding: 11, borderRadius: 11, background: '#E97435', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: '#fff', cursor: isReal ? 'pointer' : 'default' }}
-          >
-            Edit
-          </div>
+        <div style={{ textAlign: 'center', padding: 11, borderRadius: 11, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: 'var(--os-ink)' }}>Share Profile</div>
+      </div>
+
+      <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: 18, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)' }}>PLAYER PREFERENCES</div>
+          {isReal && (
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setShowEdit((v) => !v)}
+              style={{ fontSize: 12.5, fontWeight: 700, color: '#E97435', cursor: 'pointer' }}
+            >
+              {showEdit ? 'Close' : 'Edit'}
+            </div>
+          )}
         </div>
+        {identityRows.map(([k, v]) => (
+          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
+            <span style={{ fontSize: 13.5, color: '#6B6357' }}>{k}</span>
+            <span style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, color: '#E97435' }}>{v}</span>
+          </div>
+        ))}
         {isReal && showEdit && (
           <form onSubmit={saveIdentity} style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <input
@@ -244,31 +255,6 @@ export default function Profile({ actions }: { actions: OsActions }) {
             {editStatus === 'error' && <p style={{ fontSize: 12.5, color: '#C0392B', margin: 0 }}>Could not save — try again.</p>}
           </form>
         )}
-      </div>
-
-      <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: 18, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 16 }}>
-        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', marginBottom: 14 }}>CURRENT CLUB</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          {!isReal && (
-            <div style={{ width: 54, height: 54, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto', boxShadow: '0 4px 12px -4px rgba(0,0,0,.25)' }}>
-              <img src={`${osAssetPath}/club-badge.png`} alt={playerProfile.club} style={{ width: 50, height: 50, objectFit: 'contain' }} />
-            </div>
-          )}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>{playerProfile.club || 'No club yet'}</div>
-            <div style={{ fontSize: 12.5, color: '#6B6357', marginTop: 2 }}>{playerProfile.position}{playerProfile.squadNumber != null ? ` · Number ${playerProfile.squadNumber}` : ''}</div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: 18, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 16 }}>
-        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', marginBottom: 12 }}>FOOTBALL IDENTITY</div>
-        {identityRows.map(([k, v]) => (
-          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
-            <span style={{ fontSize: 13.5, color: '#6B6357' }}>{k}</span>
-            <span style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, color: '#E97435' }}>{v}</span>
-          </div>
-        ))}
       </div>
 
       <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: 18, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 16 }}>
@@ -374,8 +360,8 @@ export default function Profile({ actions }: { actions: OsActions }) {
         )}
       </div>
 
-      <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: 16, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)' }}>
-        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', marginBottom: 12 }}>CONNECTIONS &amp; PRIVACY</div>
+      <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: 16, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 16 }}>
+        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', marginBottom: 12 }}>CONNECTIONS</div>
         {connections.filter((c) => c.kind === 'guardian').map((c) => (
           <div key={c.profileId} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
             <span style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(150deg,#d9a679,#b07344)', flex: '0 0 auto' }} />
@@ -390,13 +376,6 @@ export default function Profile({ actions }: { actions: OsActions }) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
           </div>
         ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0' }}>
-          <span style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid rgba(0,0,0,.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B6357" strokeWidth={1.8}><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
-          </span>
-          <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: 'var(--os-muted)' }}>Profile visibility</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: 'var(--os-ink)' }}>Private</div><div style={{ fontSize: 11, color: 'var(--os-muted)' }}>Approved family &amp; team only</div></div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
-        </div>
         {mode === 'demo' || !showInvite ? (
           <div
             role="button"
@@ -433,6 +412,25 @@ export default function Profile({ actions }: { actions: OsActions }) {
             )}
           </form>
         )}
+      </div>
+
+      <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: 16, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 16 }}>
+        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', marginBottom: 12 }}>PRIVACY AND NOTIFICATIONS</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0' }}>
+          <span style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid rgba(0,0,0,.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B6357" strokeWidth={1.8}><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
+          </span>
+          <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: 'var(--os-muted)' }}>Profile visibility</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: 'var(--os-ink)' }}>Private</div><div style={{ fontSize: 11, color: 'var(--os-muted)' }}>Approved family &amp; team only</div></div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
+        </div>
+      </div>
+
+      <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: 16, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)' }}>
+        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', marginBottom: 12 }}>ACCOUNT MANAGEMENT</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', cursor: 'pointer' }}>
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--os-ink)' }}>Account Settings</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
+        </div>
       </div>
     </>
   );
