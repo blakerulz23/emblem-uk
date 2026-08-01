@@ -96,6 +96,14 @@ export type OsAppProps = {
   hasClaimedPlayer?: boolean;
   /** Coach: has at least one coach_team row (a real team created). */
   hasTeam?: boolean;
+  /** True only when src/app/os/page.tsx has already resolved a ?card=
+   * claim_token server-side and confirmed the current session is that
+   * player's guardian — tells ActivationGate not to re-run its own
+   * ?card= resolution for the same code (it would otherwise redirect to
+   * the public profile a moment later, undoing the server's decision).
+   * Never set for any other outcome (anonymous, unrelated, coach) —
+   * those still go through the normal server redirect. */
+  cardAlreadyResolved?: boolean;
 };
 
 export default function OsApp({
@@ -104,6 +112,7 @@ export default function OsApp({
   profileRole = null,
   hasClaimedPlayer = false,
   hasTeam = false,
+  cardAlreadyResolved = false,
 }: OsAppProps) {
   const router = useRouter();
   const [state, setState] = useState<OsState>(() => ({
@@ -440,6 +449,7 @@ export default function OsApp({
               profileRole={profileRole}
               hasClaimedPlayer={hasClaimedPlayer}
               hasTeam={hasTeam}
+              cardAlreadyResolved={cardAlreadyResolved}
             />
           )}
 

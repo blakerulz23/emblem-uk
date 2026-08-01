@@ -23,6 +23,14 @@ export type ActivationGateProps = {
   profileRole: 'parent' | 'coach' | null;
   hasClaimedPlayer: boolean;
   hasTeam: boolean;
+  /** True only when src/app/os/page.tsx already resolved this exact
+   * ?card= claim_token server-side as a match for the current guardian —
+   * suppresses the authenticated ?card= re-check below so it doesn't
+   * independently redirect to the public profile a moment after the
+   * server already rendered the personalised OS. Still runs normally for
+   * every other case (unclaimed cards, manually typed codes, a session
+   * whose card wasn't already resolved server-side). */
+  cardAlreadyResolved?: boolean;
 };
 
 const INTENT_KEY = 'emblem_pending_intent';
@@ -60,7 +68,7 @@ function clearIntent() {
  * cross-origin redirect to preserve anything across). Once authenticated,
  * ActivationGate's branching is purely server-known facts, same as before.
  */
-export default function ActivationGate({ onActivate, hasSession, profileRole, hasClaimedPlayer, hasTeam }: ActivationGateProps) {
+export default function ActivationGate({ onActivate, hasSession, profileRole, hasClaimedPlayer, hasTeam, cardAlreadyResolved = false }: ActivationGateProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // A post-approval or coach-invite email links here as /os?invite=CODE.
@@ -277,7 +285,14 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   // guardian tapping a card that isn't theirs). AuthenticatedInviteResolve
   // is reused as-is — it mounts ClaimCodeEntry, which resolves ?card= via
   // the same effect as ?invite=, so no separate component is needed.
-  if (currentCardCode && currentCardCode !== resolvedCardCode) {
+  //
+  // Skipped entirely when cardAlreadyResolved is true: page.tsx has
+  // already resolved this exact code server-side and confirmed the
+  // current session is that player's guardian, rendering the OS directly
+  // in the same response. Without this guard, this check would run again
+  // here, get the same "claimed" answer, and redirect to the public
+  // profile a moment later — quietly undoing what the server just did.
+  if (currentCardCode && currentCardCode !== resolvedCardCode && !cardAlreadyResolved) {
     return <AuthenticatedInviteResolve onResolved={() => setResolvedCardCode(currentCardCode)} />;
   }
   if (currentTeamInviteCode && currentTeamInviteCode !== resolvedTeamInviteCode) {

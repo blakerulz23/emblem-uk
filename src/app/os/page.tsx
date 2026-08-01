@@ -5,22 +5,29 @@ import { getOsAccount, getOsData } from '@/lib/os-data';
 import { normalizeClaimCode } from '@/lib/claim-code';
 import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 import { resolveCardCode } from '@/lib/card-lookup';
+import { resolvePlayerCapabilities } from '@/lib/player-capabilities';
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 
 export default async function OsPage({
   searchParams,
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const requestedPlayerId = typeof searchParams?.player === 'string' ? searchParams.player : null;
+  let requestedPlayerId = typeof searchParams?.player === 'string' ? searchParams.player : null;
+  // Set true only in the authorised-guardian branch below. Threaded down to
+  // ActivationGate so its own (still-needed, for unclaimed cards and
+  // manually typed codes) ?card= handling doesn't re-resolve a code this
+  // function already resolved and rendered for — see OsApp.tsx/
+  // ActivationGate.tsx for why that matters.
+  let cardAlreadyResolved = false;
 
-  // A physical Emblem card taps in as /os?card=CODE. For an already-claimed
-  // card this is a genuine redirect, resolved and issued server-side,
-  // before ActivationGate (or any client JS) ever mounts — "no intermediate
-  // screens" for an existing guardian/coach means literally zero paint of
-  // anything else, not just a fast client-side one. An unclaimed card (or
-  // one not found at all) falls straight through to the existing
-  // ActivationGate flow below, completely unchanged. The claim_token is
-  // never referenced again after this redirect fires.
+  // A physical Emblem card taps in as /os?card=CODE. Resolved and decided
+  // entirely server-side, before ActivationGate (or any client JS) ever
+  // mounts — no intermediate screens, no client-side redirect hop, for any
+  // outcome. An unclaimed card (or one not found at all) falls straight
+  // through to the existing ActivationGate flow below, completely
+  // unchanged. The claim_token is never referenced again once a claimed
+  // card's branch below has made its decision.
   const rawCardCode = typeof searchParams?.card === 'string' ? searchParams.card : null;
   if (rawCardCode) {
     const code = normalizeClaimCode(rawCardCode);
@@ -29,7 +36,28 @@ export default async function OsPage({
       const result = await resolveCardCode(code);
       await logClaimAttempt(identifier, code, result.status !== 'not_found');
       if (result.status === 'claimed') {
-        redirect(`/player/${result.publicPlayerId}`);
+        // The one place this decision is made: is the caller tapping their
+        // own card? Resolved from the session, never a client-supplied
+        // value. Guardian-only for now (coaches still land on the public
+        // profile and use its existing "Open Coach tools" link) — same
+        // resolvePlayerCapabilities function the public profile page uses,
+        // not a second implementation of the same check.
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const capabilities = await resolvePlayerCapabilities(createServiceRoleClient(), result.playerId, user?.id ?? null);
+
+        if (capabilities.isGuardian) {
+          // No redirect — render the personalised OS directly in this same
+          // response. Overrides whatever ?player= said (there wasn't one,
+          // in the real tap case) so a guardian with multiple children
+          // lands on the one this specific card belongs to.
+          requestedPlayerId = result.playerId;
+          cardAlreadyResolved = true;
+        } else {
+          redirect(`/player/${result.publicPlayerId}`);
+        }
       }
     }
     // Rate-limited, unclaimed, not found, or claimed-but-unavailable all
@@ -48,6 +76,7 @@ export default async function OsPage({
       profileRole={profileRole}
       hasClaimedPlayer={hasClaimedPlayer}
       hasTeam={hasTeam}
+      cardAlreadyResolved={cardAlreadyResolved}
     />
   );
 }

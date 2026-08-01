@@ -22,7 +22,7 @@ type CardLookupRow = {
 export type CardLookupResult =
   | { status: 'not_found' }
   | { status: 'unclaimed'; claimToken: string; player: { firstName: string; lastInitial: string; team: { name: string; season?: string } | null; club: { name: string; badgeUrl: string | null } | null } }
-  | { status: 'claimed'; publicPlayerId: string }
+  | { status: 'claimed'; playerId: string; publicPlayerId: string }
   | { status: 'claimed_unavailable' };
 
 /**
@@ -33,11 +33,12 @@ export type CardLookupResult =
  * own that (the API route rate-limits by IP via claim_attempts; page.tsx
  * does the same with its own identifier).
  *
- * The claimed branch no longer resolves capabilities or a guardian
- * relationship at all — that question moved entirely to
- * /player/[publicPlayerId] (see player-capabilities.ts). This function's
- * only job for an already-claimed card is: is there a live public identity
- * to send the caller to, or not.
+ * This function itself still resolves no capability/guardian relationship —
+ * it only answers "is this card claimed, and if so, what's its player and
+ * public identity." page.tsx is the one place that combines this with the
+ * caller's session to decide whether to render the OS directly or redirect
+ * to the public profile (see resolvePlayerCapabilities in
+ * player-capabilities.ts).
  */
 export async function resolveCardCode(code: string): Promise<CardLookupResult> {
   const serviceRole = createServiceRoleClient();
@@ -64,10 +65,10 @@ export async function resolveCardCode(code: string): Promise<CardLookupResult> {
   }
 
   if (data.status === 'claimed') {
-    if (!data.players?.public_player_id || !data.players.public_id_enabled) {
+    if (!data.player_id || !data.players?.public_player_id || !data.players.public_id_enabled) {
       return { status: 'claimed_unavailable' };
     }
-    return { status: 'claimed', publicPlayerId: data.players.public_player_id };
+    return { status: 'claimed', playerId: data.player_id, publicPlayerId: data.players.public_player_id };
   }
 
   const player = data.players;
