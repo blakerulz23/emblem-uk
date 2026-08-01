@@ -25,7 +25,7 @@ type TeamInviteLookupRow = {
  * claim_attempts rate-limit log with every other code type.
  */
 export async function GET(request: NextRequest) {
-  const identifier = getRequestIdentifier(request);
+  const identifier = getRequestIdentifier(request.headers);
   if (!(await isWithinRateLimit(identifier))) {
     return NextResponse.json({ error: 'Too many attempts — try again later' }, { status: 429 });
   }

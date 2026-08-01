@@ -3,10 +3,16 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 const WINDOW_MINUTES = 15;
 const MAX_ATTEMPTS_PER_WINDOW = 10;
 
-/** Best-effort caller identifier — a claim code lookup has no session yet, so IP is what's available. */
-export function getRequestIdentifier(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  return forwarded?.split(',')[0]?.trim() || request.headers.get('x-real-ip') || 'unknown';
+/**
+ * Best-effort caller identifier — a claim code lookup has no session yet, so
+ * IP is what's available. Typed structurally (not as the full Request) so
+ * both an API route's NextRequest and a Server Component's next/headers()
+ * result satisfy it — src/app/os/page.tsx's server-side card-tap redirect
+ * needs the same identifier without a Request object to hand.
+ */
+export function getRequestIdentifier(headersLike: { get(name: string): string | null }): string {
+  const forwarded = headersLike.get('x-forwarded-for');
+  return forwarded?.split(',')[0]?.trim() || headersLike.get('x-real-ip') || 'unknown';
 }
 
 /** True if this identifier is still under the attempt limit for the current window. */

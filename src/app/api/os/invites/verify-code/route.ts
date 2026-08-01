@@ -27,7 +27,7 @@ export const runtime = 'nodejs';
  * called afterward once the client has confirmed the session took.
  */
 export async function POST(request: NextRequest) {
-  const identifier = getRequestIdentifier(request);
+  const identifier = getRequestIdentifier(request.headers);
   if (!(await isWithinRateLimit(identifier))) {
     return NextResponse.json({ error: 'Too many attempts — try again later' }, { status: 429 });
   }

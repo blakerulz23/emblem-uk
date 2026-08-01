@@ -3,37 +3,24 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { normalizeClaimCode } from '@/lib/claim-code';
 import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 import { claimPlayerForCard } from '@/lib/claim-player';
+import { ensurePublicPlayerId } from '@/lib/public-player-id';
+import { resolveCardCode } from '@/lib/card-lookup';
 import { generateStoryUpdate } from '@/lib/story-updates';
 
 export const runtime = 'nodejs';
 
-type CardLookupRow = {
-  id: string;
-  status: 'unassigned' | 'assigned' | 'claimed';
-  player_id: string | null;
-  order_id: string | null;
-  orders: { payment_status: string } | null;
-  players: {
-    name: string;
-    position: string | null;
-    teams: {
-      name: string;
-      clubs: { name: string; badge_url: string | null } | null;
-      seasons: { label: string } | null;
-    } | null;
-  } | null;
-};
-
 /**
- * Looks up a card by its claim_token — service-role client, since an
- * unclaimed card is invisible to everyone under normal RLS (the requester
- * has no relationship to the player yet; that's the whole point of a claim
- * code). No session required to call this: it matches "look up before
- * auth," and this route's own rate limiting is the abuse control, not
- * authentication.
+ * Looks up a card by its claim_token via the shared resolver (card-lookup.ts
+ * — also used by src/app/os/page.tsx's server-side redirect for a physical
+ * tap). No session required to call this: it matches "look up before auth,"
+ * and this route's own rate limiting is the abuse control, not
+ * authentication. Still used for the unclaimed flow's manual/auto code
+ * entry (ClaimCodeEntry) — an already-claimed card's *capabilities* are
+ * never resolved here anymore; that question belongs entirely to
+ * /player/[publicPlayerId] now.
  */
 export async function GET(request: NextRequest) {
-  const identifier = getRequestIdentifier(request);
+  const identifier = getRequestIdentifier(request.headers);
   if (!(await isWithinRateLimit(identifier))) {
     return NextResponse.json({ error: 'Too many attempts — try again later' }, { status: 429 });
   }
@@ -44,55 +31,25 @@ export async function GET(request: NextRequest) {
   }
   const code = normalizeClaimCode(rawCode);
 
-  const serviceRole = createServiceRoleClient();
-  const { data } = await serviceRole
-    .from('cards')
-    .select(
-      `id, status, player_id, order_id,
-       orders ( payment_status ),
-       players ( name, position,
-         teams ( name, clubs ( name, badge_url ), seasons ( label ) )
-       )`
-    )
-    .eq('claim_token', code)
-    .neq('status', 'unassigned')
-    .maybeSingle<CardLookupRow>();
+  const result = await resolveCardCode(code);
+  await logClaimAttempt(identifier, code, result.status !== 'not_found');
 
-  // A card produced by a team/squad order isn't claimable until staff
-  // approves that order on /staff/queue ("team enquiries create
-  // provisional records that aren't claimable until approved") — a card
-  // with no order_id at all (e.g. a coach's manual "+Add Player") has
-  // nothing to approve and is claimable immediately.
-  const orderApproved = !data?.order_id || data.orders?.payment_status === 'fulfilled';
-  const found = !!data && orderApproved;
-
-  await logClaimAttempt(identifier, code, found);
-
-  if (!found || !data) {
+  if (result.status === 'not_found') {
     return NextResponse.json({ found: false });
   }
-
-  if (data.status === 'claimed') {
-    // Tightened multi-guardian rule: a second attempt with the same
-    // permanent claim_token never re-discloses player identity — only an
-    // existing guardian's invite can add another guardian from here.
-    return NextResponse.json({ found: true, alreadyClaimed: true });
+  if (result.status === 'claimed_unavailable') {
+    return NextResponse.json({ found: true, alreadyClaimed: true, status: 'claimed_unavailable' });
   }
-
-  const player = data.players;
-  const [firstName, ...rest] = (player?.name ?? '').trim().split(/\s+/);
-  const lastInitial = rest.length ? rest[rest.length - 1][0] : '';
+  if (result.status === 'claimed') {
+    return NextResponse.json({ found: true, alreadyClaimed: true, status: 'claimed', publicPlayerId: result.publicPlayerId });
+  }
 
   return NextResponse.json({
     found: true,
     alreadyClaimed: false,
-    claimToken: code,
-    player: {
-      firstName,
-      lastInitial,
-      team: player?.teams ? { name: player.teams.name, season: player.teams.seasons?.label } : null,
-      club: player?.teams?.clubs ? { name: player.teams.clubs.name, badgeUrl: player.teams.clubs.badge_url } : null,
-    },
+    status: 'unclaimed',
+    claimToken: result.claimToken,
+    player: result.player,
   });
 }
 
@@ -151,6 +108,12 @@ export async function POST(request: NextRequest) {
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
+
+  // Generated in the same claim transaction, per the locked decision that
+  // a public identity is a property of the claim itself, never a later
+  // read — immediately after the guardian link succeeds, before anything
+  // else in this handler.
+  await ensurePublicPlayerId(serviceRole, result.playerId);
 
   const [{ data: player }, { data: actor }] = await Promise.all([
     serviceRole.from('players').select('name, team_id').eq('id', result.playerId).maybeSingle(),

@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
   }
 
-  const identifier = getRequestIdentifier(request);
+  const identifier = getRequestIdentifier(request.headers);
   if (!(await isWithinRateLimit(identifier))) {
     return NextResponse.json({ error: 'Too many attempts — try again later' }, { status: 429 });
   }

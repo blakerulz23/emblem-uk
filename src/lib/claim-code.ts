@@ -14,6 +14,17 @@ export function generateClaimCode(): string {
   return code;
 }
 
+/**
+ * Generates a players.public_player_id — deliberately not the same shape as
+ * generateClaimCode's output: this is never typed by a human, only tapped/
+ * linked, and it lives for the player's entire public lifetime rather than
+ * a brief claim window, so it needs real entropy (128 bits) rather than a
+ * short human-safe alphabet. base64url keeps it URL-safe with no padding.
+ */
+export function generatePublicPlayerId(): string {
+  return randomBytes(16).toString('base64url');
+}
+
 export function normalizeClaimCode(input: string): string {
   return input.toUpperCase().trim();
 }
@@ -29,14 +40,20 @@ type InsertResult<T> = { data: T | null; error: { code?: string; message: string
  * collision on the code column itself. At 7 chars from a 32-symbol alphabet
  * collisions are vanishingly rare, but a serverless insert shouldn't assume
  * zero chance of one. Returns the code that succeeded alongside the result.
+ *
+ * `generate` defaults to generateClaimCode (both existing call sites — coach
+ * add-player, Builder order — are unaffected); public_player_id generation
+ * passes generatePublicPlayerId instead, reusing the same retry-on-collision
+ * shape rather than duplicating it.
  */
 export async function withUniqueCodeRetry<T>(
   insertOnce: (code: string) => PromiseLike<InsertResult<T>>,
-  maxAttempts = 3
+  maxAttempts = 3,
+  generate: () => string = generateClaimCode
 ): Promise<InsertResult<T> & { code: string | null }> {
   let lastResult: InsertResult<T> = { data: null, error: { message: 'Could not generate a unique code' } };
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const code = generateClaimCode();
+    const code = generate();
     const result = await insertOnce(code);
     if (!result.error || result.error.code !== UNIQUE_VIOLATION) {
       return { ...result, code: result.error ? null : code };

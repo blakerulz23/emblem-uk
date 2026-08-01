@@ -11,9 +11,16 @@ const RELATIONSHIPS = ['Mother', 'Father', 'Guardian', 'Other'];
 /**
  * Shows only the minimum necessary identity before authentication — first
  * name + surname initial, team/club — never age, date of birth, or private
- * media. An already-claimed card discloses nothing at all: the tightened
- * multi-guardian rule means a second person with the same physical code
- * can't see who it belongs to, only that it's already active.
+ * media.
+ *
+ * The alreadyClaimed branch below is now the rare "claimed_unavailable"
+ * case only (see card-lookup.ts) — an administratively disabled public
+ * profile, not the everyday repeat-tap path, which src/app/os/page.tsx
+ * redirects server-side straight to /player/[publicPlayerId] before this
+ * component ever mounts. Copy is deliberately neutral, not "already
+ * active" — it must never imply anything about whether this player has
+ * been claimed, disclose anything about a guardian, or offer an invite
+ * path that no longer exists.
  *
  * Also collects the guardian's own name + relationship here — the one
  * place both the card-claim and invite-redeem paths already converge —
@@ -55,10 +62,10 @@ export default function ClaimConfirm({
       {result.alreadyClaimed ? (
         <>
           <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 22, color: '#F4F1EC', marginBottom: 10 }}>
-            This card&apos;s already active
+            This profile isn&apos;t available right now
           </div>
           <p style={{ fontSize: 14, lineHeight: 1.55, color: '#B8AE9F', maxWidth: 280, margin: '0 0 24px' }}>
-            Ask the existing guardian to invite you from inside the app instead.
+            Please try again later, or get in touch if this doesn&apos;t resolve.
           </p>
           <button
             type="button"

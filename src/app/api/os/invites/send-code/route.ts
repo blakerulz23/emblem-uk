@@ -18,7 +18,7 @@ export const runtime = 'nodejs';
  * "invalid/expired/no email" from the response alone.
  */
 export async function POST(request: NextRequest) {
-  const identifier = getRequestIdentifier(request);
+  const identifier = getRequestIdentifier(request.headers);
   if (!(await isWithinRateLimit(identifier))) {
     return NextResponse.json({ error: 'Too many attempts — try again later' }, { status: 429 });
   }

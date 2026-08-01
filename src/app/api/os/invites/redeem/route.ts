@@ -4,6 +4,7 @@ import { normalizeClaimCode } from '@/lib/claim-code';
 import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 import { maskEmail } from '@/lib/mask-email';
 import { generateStoryUpdate } from '@/lib/story-updates';
+import { ensurePublicPlayerId } from '@/lib/public-player-id';
 
 export const runtime = 'nodejs';
 
@@ -30,7 +31,7 @@ type InviteLookupRow = {
  * claim_attempts rate-limit log with card codes.
  */
 export async function GET(request: NextRequest) {
-  const identifier = getRequestIdentifier(request);
+  const identifier = getRequestIdentifier(request.headers);
   if (!(await isWithinRateLimit(identifier))) {
     return NextResponse.json({ error: 'Too many attempts — try again later' }, { status: 429 });
   }
@@ -150,6 +151,13 @@ export async function POST(request: NextRequest) {
     .update({ status: 'claimed' })
     .eq('player_id', invite.player_id)
     .neq('status', 'claimed');
+
+  // This is the other of the two genuine "first guardian ever" paths
+  // (alongside POST /api/os/claim's card-token path) — a player claimed
+  // purely via an order-approval invite, with the physical card never
+  // tapped, still needs a public identity. Idempotent: a no-op if this
+  // player was already claimed via the card path first.
+  await ensurePublicPlayerId(serviceRole, invite.player_id);
 
   const [{ data: player }, { data: actor }] = await Promise.all([
     serviceRole.from('players').select('name, team_id').eq('id', invite.player_id).maybeSingle(),

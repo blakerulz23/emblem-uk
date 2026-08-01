@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { osAssetPath } from '../data';
 
 export type ClaimIdentity = {
@@ -37,6 +37,7 @@ export default function ClaimCodeEntry({
   onFound: (result: ClaimLookupResult) => void;
   onBack?: () => void;
 }) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [code, setCode] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -48,6 +49,15 @@ export default function ClaimCodeEntry({
       const cardRes = await fetch(`/api/os/claim?code=${encodeURIComponent(trimmed)}`);
       const cardData = await cardRes.json();
       if (cardData.found) {
+        // Manually typing an already-claimed card's code (the physical-tap
+        // path never reaches this component at all for a claimed card —
+        // src/app/os/page.tsx redirects server-side before ActivationGate
+        // ever mounts). The claim_token is never referenced again after
+        // this — everything from here on works off publicPlayerId.
+        if (cardData.status === 'claimed' && cardData.publicPlayerId) {
+          router.push(`/player/${cardData.publicPlayerId}`);
+          return;
+        }
         onFound(
           cardData.alreadyClaimed
             ? { source: 'card', code: trimmed, alreadyClaimed: true }
