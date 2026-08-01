@@ -128,6 +128,14 @@ export type SquadPlayer = {
   seasonFocus: SeasonFocusEntry[];
   strengths: StrengthEntry[];
   assessments: AssessmentEntry[];
+  /**
+   * The real team this player belongs to, or null for a player reached
+   * only through a direct coach_players connection (coach-connection
+   * milestone plan) — never a database-terminology leak, just enough for
+   * Coach OS to group "my team rosters" apart from "players connected to
+   * me directly" without inventing a fake team assignment.
+   */
+  teamId: string | null;
 };
 
 export type VerifyItem = { id: string; player: string; playerId: string; moment: string; thumb: string; by: string; date: string };

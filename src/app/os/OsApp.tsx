@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent, SyntheticEvent } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ADD_ACH, ICN, MOMENT_ORDER, fmtFileSize, osAssetPath } from './data';
 import { onActivateKey } from './a11y';
 import { initialOsState } from './types';
@@ -115,6 +115,21 @@ export default function OsApp({
   cardAlreadyResolved = false,
 }: OsAppProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // A coach landing here right after redeeming a direct-connection invite
+  // (ActivationGate's AuthenticatedCoachInviteResolve / post-auth resolve
+  // effect) arrives as /os?openPlayer=<id> — jump straight to that
+  // player's Coach Player Detail rather than leaving the coach to hunt
+  // for them under Individual Players. Read fresh on every render (not
+  // baked into the initial useState below) deliberately: the invite flow
+  // resolves via router.push, a *soft* client-side navigation, and OsApp
+  // is already mounted as ActivationGate's parent by that point — a
+  // one-time useState initializer would never re-run just because new
+  // props/search params arrived, only a genuine remount. A useEffect
+  // below (after `patch` exists) reacts to this value however it
+  // changes, mount or not — same reasoning as the existing profileRole
+  // resync effect further down.
+  const openPlayerId = searchParams?.get('openPlayer')?.trim() || null;
   const [state, setState] = useState<OsState>(() => ({
     ...initialOsState,
     role: profileRole === 'coach' ? 'coach' : 'owner',
@@ -147,6 +162,21 @@ export default function OsApp({
       setState((s) => ({ ...s, role: profileRole === 'coach' ? 'coach' : 'owner' }));
     }
   }, [profileRole]);
+
+  // Reacts to ?openPlayer= however it arrives — a genuinely fresh mount
+  // (e.g. AuthenticatedCoachInviteResolve's window.location-style hard
+  // navigation isn't used here; router.push is) or a soft navigation onto
+  // an already-mounted OsApp. router.replace('/os') strips the param
+  // once consumed — cosmetic only (this effect itself won't re-fire from
+  // its own cleanup, since openPlayerId becomes null right after), but
+  // otherwise a refreshed/shared/bookmarked URL would carry a
+  // now-meaningless player id forever.
+  useEffect(() => {
+    if (profileRole === 'coach' && openPlayerId) {
+      patch({ tab: 'team', coachPlayerId: openPlayerId });
+      router.replace('/os');
+    }
+  }, [profileRole, openPlayerId, patch, router]);
 
   const addFiles = useCallback((list: FileList | null) => {
     const incoming = Array.from(list || []);
@@ -385,9 +415,22 @@ export default function OsApp({
           patch({ tab: 'team', coachPlayerId: update.playerId, moment: null, highlightMomentId: null, storyUpdatesOpen: false });
           break;
         case 'coach_connected':
+        case 'coach_removed':
           // Guardians have no working 'team' screen (only coaches do) —
-          // the natural guardian-side home for "a new coach connected" is
-          // Profile's own Connections & Privacy section.
+          // the natural guardian-side home for a coach connecting or
+          // disconnecting is Profile's own Connections section.
+          // router.refresh() (OsApp's own top-level resync mechanism,
+          // same one used elsewhere in this file — child screens use the
+          // context-based refreshOsData() instead, since they sit below
+          // OsDataProvider and OsApp doesn't) re-fetches Connections
+          // before landing there, so a guardian who was viewing a stale
+          // Connections list before opening this update sees the
+          // current state immediately, not what was true when the page
+          // first loaded. The Story Update itself already arrived live
+          // via the existing story_updates realtime subscription — this
+          // is only about the destination screen's own data being fresh
+          // once tapped, not a new subscription.
+          router.refresh();
           patch({ tab: 'profile', moment: null, coachPlayerId: null, highlightMomentId: null, storyUpdatesOpen: false });
           break;
       }

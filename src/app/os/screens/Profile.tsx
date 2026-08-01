@@ -3,9 +3,31 @@
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { osAssetPath } from '../data';
-import { useOsData } from '../OsDataContext';
+import { useOsData, useRefreshOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 import type { SeasonTarget } from '../playerProfile';
+import { onActivateKey } from '../a11y';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * The four outcomes the milestone spec requires be distinguished — never
+ * collapsed into a single "invite created" message. The copyable link
+ * below this text is shown regardless of emailStatus in every case
+ * (email delivery is never a requirement for the invite to exist), so
+ * the copy only ever needs to set the right expectation about whether
+ * an email is also on its way.
+ */
+function coachInviteSuccessCopy(reused: boolean, emailStatus: 'sent' | 'failed' | 'skipped_no_email'): string {
+  if (reused) {
+    if (emailStatus === 'sent') return "An active invite already exists — we've resent the email. You can also copy the link below.";
+    if (emailStatus === 'failed') return "An active invite already exists, but we couldn't resend the email. Copy the link below and send it yourself.";
+    return 'An active invite already exists. You can resend this link.';
+  }
+  if (emailStatus === 'sent') return 'Invite created and emailed to the coach. You can also copy the link below.';
+  if (emailStatus === 'failed') return "Invite created, but we couldn't send the email. Copy the link below and send it yourself.";
+  return 'Invite created. Copy the link and send it to the coach.';
+}
 
 // Foot and squad number are deliberately not repeated here — foot is
 // already what's printed on the player's own Card (its present-tense
@@ -42,9 +64,107 @@ export default function Profile({ actions }: { actions: OsActions }) {
         ['Football ambition', playerProfile.footballAmbition ?? 'Not set'],
       ]
     : DEMO_IDENTITY;
+  const refreshOsData = useRefreshOsData();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteStatus, setInviteStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+
+  // Add Coach — a separate flow from Add Guardian (see sendInvite below),
+  // deliberately not sharing state or a submit handler with it even
+  // though the visual shape is similar, per the product requirement that
+  // "family or coach" is no longer presented as one combined action.
+  const [showCoachInvite, setShowCoachInvite] = useState(false);
+  const [coachEmail, setCoachEmail] = useState('');
+  const [coachInviteStatus, setCoachInviteStatus] = useState<'idle' | 'sending' | 'created' | 'error'>('idle');
+  const [coachInviteResult, setCoachInviteResult] = useState<{ url: string; reused: boolean; emailStatus: 'sent' | 'failed' | 'skipped_no_email' } | null>(null);
+  const [coachInviteError, setCoachInviteError] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const resetCoachInvite = () => {
+    setShowCoachInvite(false);
+    setCoachEmail('');
+    setCoachInviteStatus('idle');
+    setCoachInviteResult(null);
+    setCoachInviteError(null);
+    setLinkCopied(false);
+  };
+
+  const sendCoachInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!playerId || coachInviteStatus === 'sending') return;
+    const normalized = coachEmail.trim().toLowerCase();
+    if (!normalized || !EMAIL_RE.test(normalized)) {
+      setCoachInviteError('Enter a valid email address.');
+      return;
+    }
+    setCoachInviteError(null);
+    setCoachInviteStatus('sending');
+    try {
+      const res = await fetch('/api/os/coach-invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId, invitedEmail: normalized }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        setCoachInviteStatus('error');
+        setCoachInviteError(json?.error ?? 'Could not create the invite — try again.');
+        return;
+      }
+      setCoachInviteResult({ url: json.url as string, reused: !!json.reused, emailStatus: json.emailStatus });
+      setCoachInviteStatus('created');
+    } catch {
+      setCoachInviteStatus('error');
+      setCoachInviteError('Could not create the invite — try again.');
+    }
+  };
+
+  const copyCoachInviteLink = async () => {
+    if (!coachInviteResult) return;
+    try {
+      await navigator.clipboard.writeText(coachInviteResult.url);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      // Clipboard API unavailable — the link is still visible and
+      // selectable in the field itself, so this is a soft failure only.
+    }
+  };
+
+  // Revoke — direct coach connections only (see the Connections render
+  // below, gated on c.teamContext === null). Calls the existing
+  // Milestone 2 route directly; refreshOsData() re-fetches the whole
+  // OsData snapshot afterward, the same resync pattern already
+  // established for moment visibility (RealCollection.tsx) rather than
+  // patching local state or a full page reload.
+  const [confirmingRevokeId, setConfirmingRevokeId] = useState<string | null>(null);
+  const [revokingCoachId, setRevokingCoachId] = useState<string | null>(null);
+  const [revokeErrorId, setRevokeErrorId] = useState<string | null>(null);
+
+  const revokeCoach = async (coachProfileId: string) => {
+    if (!playerId || revokingCoachId) return;
+    setRevokingCoachId(coachProfileId);
+    setRevokeErrorId(null);
+    try {
+      const res = await fetch(`/api/os/players/${playerId}/coach-connections/${coachProfileId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        setRevokeErrorId(coachProfileId);
+        return;
+      }
+      // Refresh BEFORE clearing confirmingRevokeId — otherwise the
+      // confirm UI closes immediately using the still-stale connections
+      // snapshot, briefly re-showing the just-revoked coach as a normal,
+      // still-connected row until the refetch below resolves a moment
+      // later. Same ordering fix already applied to Coach Player
+      // Detail's leaveConnection for the identical reason.
+      await refreshOsData();
+      setConfirmingRevokeId(null);
+    } catch {
+      setRevokeErrorId(coachProfileId);
+    } finally {
+      setRevokingCoachId(null);
+    }
+  };
   const [showEdit, setShowEdit] = useState(false);
   const [favouritePlayer, setFavouritePlayer] = useState(playerProfile.favouritePlayer ?? '');
   const [footballAmbition, setFootballAmbition] = useState(playerProfile.footballAmbition ?? '');
@@ -369,24 +489,88 @@ export default function Profile({ actions }: { actions: OsActions }) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
           </div>
         ))}
-        {connections.filter((c) => c.kind === 'coach').map((c) => (
-          <div key={c.profileId} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
-            <span style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(150deg,#3a3a3a,#111)', flex: '0 0 auto' }} />
-            <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: 'var(--os-muted)' }}>Coach access</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: 'var(--os-ink)' }}>{c.displayName ?? 'Coach'}</div><div style={{ fontSize: 11, color: 'var(--os-muted)' }}>Coach</div></div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
+        {connections.filter((c) => c.kind === 'coach').map((c) => {
+          const isDirect = c.teamContext === null;
+          return (
+            <div key={c.profileId} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
+              <span style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(150deg,#3a3a3a,#111)', flex: '0 0 auto' }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: 'var(--os-muted)' }}>{isDirect ? 'Private Coach' : 'Coach'}</div>
+                <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: 'var(--os-ink)' }}>{c.displayName ?? 'Coach'}</div>
+                {c.teamContext && <div style={{ fontSize: 11, color: 'var(--os-muted)' }}>{c.teamContext}</div>}
+              </div>
+              {/* Only a direct-only connection is revocable here — a team-
+                  derived coach (or one who has both) keeps access through
+                  the team regardless, so no revoke affordance is offered
+                  for that row at all. */}
+              {isReal && isDirect && (
+                confirmingRevokeId === c.profileId ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flex: '0 0 auto' }}>
+                    <span style={{ fontSize: 10, color: 'var(--os-muted)', textAlign: 'right', maxWidth: 120 }}>Access ends; history stays.</span>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => revokeCoach(c.profileId)}
+                        disabled={revokingCoachId === c.profileId}
+                        style={{ background: '#C0392B', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 10px', fontFamily: 'Roboto', fontWeight: 700, fontSize: 11.5, cursor: revokingCoachId === c.profileId ? 'default' : 'pointer' }}
+                      >
+                        {revokingCoachId === c.profileId ? 'Removing…' : 'Confirm'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingRevokeId(null)}
+                        disabled={revokingCoachId === c.profileId}
+                        style={{ background: 'none', border: '1px solid var(--os-border)', borderRadius: 8, padding: '6px 10px', fontFamily: 'Roboto', fontWeight: 700, fontSize: 11.5, color: 'var(--os-ink)', cursor: 'pointer' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    {revokeErrorId === c.profileId && <span style={{ fontSize: 10, color: '#C0392B' }}>Couldn&apos;t remove — try again.</span>}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingRevokeId(c.profileId)}
+                    style={{ background: 'none', border: 'none', padding: 0, fontFamily: 'Roboto', fontWeight: 700, fontSize: 12, color: '#C0392B', textDecoration: 'underline', cursor: 'pointer', flex: '0 0 auto' }}
+                  >
+                    Remove coach
+                  </button>
+                )
+              )}
+            </div>
+          );
+        })}
+        {isReal && connections.filter((c) => c.kind === 'coach').length === 0 && (
+          <p style={{ fontSize: 12.5, color: 'var(--os-muted)', margin: '10px 0 0' }}>No coach connected yet.</p>
+        )}
+
+        {!showInvite && !showCoachInvite && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setShowInvite(true)}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 13, borderRadius: 12, background: 'rgba(233,116,53,.1)', border: '1px solid rgba(233,116,53,.3)', color: '#C4501C', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4501C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="8" r="3.2" /><path d="M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 3 1M18 8v6M21 11h-6" /></svg>
+              Add Guardian
+            </div>
+            {isReal && (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setShowCoachInvite(true)}
+                onKeyDown={onActivateKey(() => setShowCoachInvite(true))}
+                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 13, borderRadius: 12, background: 'rgba(233,116,53,.1)', border: '1px solid rgba(233,116,53,.3)', color: '#C4501C', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C4501C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="8" r="3.2" /><path d="M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 3 1M18 8v6M21 11h-6" /></svg>
+                Add Coach
+              </div>
+            )}
           </div>
-        ))}
-        {mode === 'demo' || !showInvite ? (
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => setShowInvite(true)}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, marginTop: 14, padding: 13, borderRadius: 12, background: 'rgba(233,116,53,.1)', border: '1px solid rgba(233,116,53,.3)', color: '#C4501C', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, cursor: 'pointer' }}
-          >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#C4501C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="8" r="3.2" /><path d="M3 20v-1a5 5 0 0 1 5-5h2a5 5 0 0 1 3 1M18 8v6M21 11h-6" /></svg>
-            Invite family or coach
-          </div>
-        ) : (
+        )}
+
+        {showInvite && (
           <form onSubmit={sendInvite} style={{ marginTop: 14 }}>
             {inviteStatus === 'sent' ? (
               <p style={{ fontSize: 13, color: '#2E9E5B', textAlign: 'center' }}>Invite sent to {inviteEmail}.</p>
@@ -412,17 +596,72 @@ export default function Profile({ actions }: { actions: OsActions }) {
             )}
           </form>
         )}
-      </div>
 
-      <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: 16, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 16 }}>
-        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', marginBottom: 12 }}>PRIVACY AND NOTIFICATIONS</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '9px 0' }}>
-          <span style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid rgba(0,0,0,.14)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B6357" strokeWidth={1.8}><rect x="4" y="10" width="16" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></svg>
-          </span>
-          <div style={{ flex: 1 }}><div style={{ fontSize: 11, color: 'var(--os-muted)' }}>Profile visibility</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: 'var(--os-ink)' }}>Private</div><div style={{ fontSize: 11, color: 'var(--os-muted)' }}>Approved family &amp; team only</div></div>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
-        </div>
+        {isReal && showCoachInvite && (
+          <div style={{ marginTop: 14 }}>
+            {coachInviteStatus === 'created' && coachInviteResult ? (
+              <>
+                <p style={{ fontSize: 13, color: coachInviteResult.emailStatus === 'failed' ? '#C4501C' : '#2E9E5B', textAlign: 'center', margin: '0 0 10px' }}>
+                  {coachInviteSuccessCopy(coachInviteResult.reused, coachInviteResult.emailStatus)}
+                </p>
+                <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                  <input
+                    readOnly
+                    value={coachInviteResult.url}
+                    onFocus={(e) => e.target.select()}
+                    style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 12.5, color: 'var(--os-ink)' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={copyCoachInviteLink}
+                    style={{ flex: '0 0 auto', padding: '0 16px', borderRadius: 10, background: linkCopied ? '#2E9E5B' : '#E97435', color: '#fff', border: 'none', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}
+                  >
+                    {linkCopied ? 'Copied!' : 'Copy link'}
+                  </button>
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--os-muted)', margin: '0 0 10px' }}>This link expires in 7 days.</p>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={resetCoachInvite}
+                  style={{ textAlign: 'center', fontSize: 12.5, fontWeight: 700, color: 'var(--os-muted)', cursor: 'pointer' }}
+                >
+                  Done
+                </div>
+              </>
+            ) : (
+              <form onSubmit={sendCoachInvite}>
+                <p style={{ fontSize: 12.5, color: 'var(--os-muted)', margin: '0 0 8px' }}>Invite a coach to follow this player&apos;s development.</p>
+                <input
+                  type="email"
+                  required
+                  value={coachEmail}
+                  onChange={(e) => setCoachEmail(e.target.value)}
+                  placeholder="Coach's email address"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 14, marginBottom: 8 }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="submit"
+                    disabled={coachInviteStatus === 'sending'}
+                    style={{ flex: 1, padding: 12, borderRadius: 11, background: '#E97435', color: '#fff', border: 'none', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, cursor: coachInviteStatus === 'sending' ? 'default' : 'pointer' }}
+                  >
+                    {coachInviteStatus === 'sending' ? 'Creating…' : 'Create invite'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetCoachInvite}
+                    disabled={coachInviteStatus === 'sending'}
+                    style={{ padding: '0 16px', borderRadius: 11, background: 'none', border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: 'var(--os-ink)', cursor: 'pointer' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {coachInviteError && <p style={{ fontSize: 12.5, color: '#C0392B', marginTop: 6 }}>{coachInviteError}</p>}
+              </form>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: 16, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)' }}>

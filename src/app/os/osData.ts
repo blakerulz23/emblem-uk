@@ -30,6 +30,18 @@ export type RealConnection = {
   /** Guardians only ("Mother"/"Father"/etc.) — null for coach entries. */
   relationship: string | null;
   kind: 'guardian' | 'coach';
+  /**
+   * Present only for a coach reached via the player's real team (e.g.
+   * "Ashton FC U11") — null for a coach reached only through a direct
+   * coach_players connection. This alone decides whether the Connections
+   * UI offers a revoke action: null means the row exists purely via the
+   * direct path, so removing it ends all access; a present teamContext
+   * means team membership alone keeps this coach connected regardless,
+   * so no revoke is offered. A coach connected both ways is merged into
+   * one row (see getParentOsData) and always carries teamContext, never
+   * appearing twice.
+   */
+  teamContext: string | null;
 };
 
 export type CoachTeamSummary = { id: string; name: string; playerCount: number };
@@ -88,6 +100,14 @@ export type RealMoment = {
   cardDefinition: CardFaceData | null;
   /** A freshly signed URL for cardDefinition's photo, resolved server-side. Null alongside cardDefinition. */
   cardPhotoUrl: string | null;
+  /**
+   * Guardian-controlled, defaults to 'private' (migration 0029). Only
+   * 'private' and 'public' are ever set by the app today — 'family'/'club'
+   * are reserved schema values with no enforcement yet (see
+   * src/app/api/os/moments/[id]/visibility/route.ts), so this type stays
+   * narrowed to the two real states rather than claiming to support all four.
+   */
+  visibility: 'private' | 'public';
 };
 
 /**
@@ -178,8 +198,8 @@ export const DEMO_OS_DATA: OsData = {
   playerId: null,
   viewerId: null,
   connections: [
-    { profileId: 'demo-guardian', displayName: 'Rebecca Penny', relationship: 'Mother', kind: 'guardian' },
-    { profileId: 'demo-coach', displayName: 'James Walker', relationship: null, kind: 'coach' },
+    { profileId: 'demo-guardian', displayName: 'Rebecca Penny', relationship: 'Mother', kind: 'guardian', teamContext: null },
+    { profileId: 'demo-coach', displayName: 'James Walker', relationship: null, kind: 'coach', teamContext: 'Curzon Ashton Juniors' },
   ],
   coachDisplayName: 'Coach Danny',
   coachClub: { name: 'Curzon Ashton Juniors', location: 'Manchester, England' },

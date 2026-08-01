@@ -117,12 +117,12 @@ export const DEMO_ASSESSMENTS: AssessmentEntry[] = [
 ];
 
 export const SQUAD: SquadPlayer[] = [
-  { id: 'ollie', name: 'Ollie Harrison', num: 7, pos: 'Midfielder', status: 'Recognised today', guardianStatus: 'connected', guardianCount: 1, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: 'Winger', seasonFocus: DEMO_SEASON_FOCUS, strengths: DEMO_STRENGTHS, assessments: DEMO_ASSESSMENTS },
-  { id: 'jack', name: 'Jack Bennett', num: 9, pos: 'Striker', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [] },
-  { id: 'leo', name: 'Leo Marsh', num: 4, pos: 'Defender', status: 'Add recognition', guardianStatus: 'pending', guardianCount: 0, latestInviteExpiresAt: inThreeDays, hasManageableInvite: true, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [] },
-  { id: 'finn', name: 'Finn Doyle', num: 1, pos: 'Goalkeeper', status: 'Add recognition', guardianStatus: 'expired', guardianCount: 0, latestInviteExpiresAt: twoDaysAgo, hasManageableInvite: false, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [] },
-  { id: 'reuben', name: 'Reuben Clarke', num: 8, pos: 'Midfielder', status: 'Recognised today', guardianStatus: 'multiple', guardianCount: 2, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [] },
-  { id: 'theo', name: 'Theo Nkosi', num: 11, pos: 'Winger', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [] },
+  { id: 'ollie', name: 'Ollie Harrison', num: 7, pos: 'Midfielder', status: 'Recognised today', guardianStatus: 'connected', guardianCount: 1, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: 'Winger', seasonFocus: DEMO_SEASON_FOCUS, strengths: DEMO_STRENGTHS, assessments: DEMO_ASSESSMENTS, teamId: 'demo-team-u10' },
+  { id: 'jack', name: 'Jack Bennett', num: 9, pos: 'Striker', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [], teamId: 'demo-team-u10' },
+  { id: 'leo', name: 'Leo Marsh', num: 4, pos: 'Defender', status: 'Add recognition', guardianStatus: 'pending', guardianCount: 0, latestInviteExpiresAt: inThreeDays, hasManageableInvite: true, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [], teamId: 'demo-team-u10' },
+  { id: 'finn', name: 'Finn Doyle', num: 1, pos: 'Goalkeeper', status: 'Add recognition', guardianStatus: 'expired', guardianCount: 0, latestInviteExpiresAt: twoDaysAgo, hasManageableInvite: false, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [], teamId: 'demo-team-u10' },
+  { id: 'reuben', name: 'Reuben Clarke', num: 8, pos: 'Midfielder', status: 'Recognised today', guardianStatus: 'multiple', guardianCount: 2, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [], teamId: 'demo-team-u10' },
+  { id: 'theo', name: 'Theo Nkosi', num: 11, pos: 'Winger', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, seasonFocus: [], strengths: [], assessments: [], teamId: 'demo-team-u10' },
 ];
 
 export const CELEBRATE_CATS: CelebrateGroup[] = [

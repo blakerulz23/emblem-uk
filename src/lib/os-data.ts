@@ -213,11 +213,19 @@ export async function getOsAccount(): Promise<OsAccount> {
       .eq('profile_id', user.id);
     hasClaimedPlayer = (count ?? 0) > 0;
   } else if (profileRole === 'coach') {
-    const { count } = await supabase
-      .from('coach_team')
-      .select('team_id', { count: 'exact', head: true })
-      .eq('profile_id', user.id);
-    hasTeam = (count ?? 0) > 0;
+    // Despite its name (kept to avoid a rename ripple across
+    // ActivationGate/page.tsx/OsApp — its only consumer is the single
+    // "coach with no coaching access yet -> CreateTeamOnboarding" check),
+    // this now means "has any real coaching access, team or direct" —
+    // a coach reachable only via coach_players (Milestone 2's direct
+    // connection) must still reach Coach OS and see Individual Players,
+    // not get stuck at team-creation onboarding for a team they were
+    // never going to need.
+    const [{ count: teamCount }, { count: directCount }] = await Promise.all([
+      supabase.from('coach_team').select('team_id', { count: 'exact', head: true }).eq('profile_id', user.id),
+      supabase.from('coach_players').select('player_id', { count: 'exact', head: true }).eq('profile_id', user.id),
+    ]);
+    hasTeam = (teamCount ?? 0) > 0 || (directCount ?? 0) > 0;
   }
 
   return {
@@ -510,6 +518,22 @@ async function getParentOsData(
         .eq('team_id', player.team_id)
     : { data: [] as never[] };
 
+  // Direct (team-independent) coach connections — coach_players.player_id
+  // is readable by this guardian via "coach_players: guardians can see
+  // their player's connections" (0030_coach_players.sql). There is,
+  // however, no "guardians can view their direct coach's profile" RLS
+  // policy yet (the mirror-image gap to the one Milestone 3.1 fixed in
+  // the other direction) — resolving display_name here goes through
+  // service-role for just this lookup, the exact same narrow workaround
+  // getCoachOsData already uses below for guardian counts, rather than
+  // opening a new migration in a UI-focused milestone.
+  const { data: directCoachRows } = await supabase.from('coach_players').select('profile_id').eq('player_id', playerId);
+  const directCoachProfileIds = (directCoachRows ?? []).map((d) => d.profile_id as string);
+  const { data: directCoachProfiles } = directCoachProfileIds.length
+    ? await createServiceRoleClient().from('profiles').select('id, display_name').in('id', directCoachProfileIds)
+    : { data: [] as { id: string; display_name: string | null }[] };
+  const directCoachNameById = new Map((directCoachProfiles ?? []).map((p) => [p.id as string, p.display_name as string | null]));
+
   // Supabase's untyped client (no generated Database schema here)
   // mis-infers embedded-resource joins on a multi-row select as arrays in
   // its TypeScript types — but PostgREST's actual runtime response for a
@@ -518,19 +542,41 @@ async function getParentOsData(
   // wrong inferred type rather than indexing [0] into something that was
   // never really a list.
   type ProfileNameRow = { profile_id: string; profiles: { display_name: string | null } | null };
+  const teamCoachRows = (coachRows ?? []) as unknown as ProfileNameRow[];
+  const teamCoachProfileIds = new Set(teamCoachRows.map((c) => c.profile_id));
+  // Club + team name joined (e.g. "Ashton FC U11") — null when the player
+  // has no team at all, which is the only time every coach on this list
+  // is necessarily direct-only.
+  const teamContext = player.teams
+    ? [player.teams.clubs?.name, player.teams.name].filter(Boolean).join(' ') || null
+    : null;
+
   const connections: RealConnection[] = [
     ...((guardianRows ?? []) as unknown as (ProfileNameRow & { relationship: string | null })[]).map((g) => ({
       profileId: g.profile_id,
       displayName: g.profiles?.display_name ?? null,
       relationship: g.relationship,
       kind: 'guardian' as const,
+      teamContext: null,
     })),
-    ...((coachRows ?? []) as unknown as ProfileNameRow[]).map((c) => ({
+    ...teamCoachRows.map((c) => ({
       profileId: c.profile_id,
       displayName: c.profiles?.display_name ?? null,
       relationship: null,
       kind: 'coach' as const,
+      teamContext,
     })),
+    // Deduped against the team list above — a coach connected both ways
+    // is represented once, with team context, never as two rows.
+    ...directCoachProfileIds
+      .filter((id) => !teamCoachProfileIds.has(id))
+      .map((id) => ({
+        profileId: id,
+        displayName: directCoachNameById.get(id) ?? null,
+        relationship: null,
+        kind: 'coach' as const,
+        teamContext: null,
+      })),
   ];
 
   const latestSnapshot = orderedSnapshots[0];
@@ -612,6 +658,12 @@ async function getParentOsData(
         seasonOrdinal: computed.seasonOrdinal,
         cardDefinition,
         cardPhotoUrl,
+        // Already selected via this query's select('*') — migration 0029
+        // added the column, this just exposes it to the client for the
+        // first time. Narrowed to 'private'/'public' at the type level
+        // (see RealMoment) since no code path ever writes the two reserved
+        // schema values.
+        visibility: m.visibility === 'public' ? 'public' : 'private',
       };
     })
   );
@@ -693,18 +745,43 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
     .eq('profile_id', userId);
   const teamIds = (teamLinks ?? []).map((t) => t.team_id);
 
-  if (!teamIds.length) {
+  // Direct (team-independent) connections — coach_players.profile_id is
+  // scoped to exactly this coach's own rows by RLS ("coach_players: a
+  // coach can see their own connections", 0030_coach_players.sql). A
+  // player reached only this way carries no team_id and is never folded
+  // into teamIds/coachTeamsManaged/playerCounts below.
+  const { data: directLinks } = await supabase.from('coach_players').select('player_id').eq('profile_id', userId);
+  const directPlayerIds = (directLinks ?? []).map((d) => d.player_id as string);
+
+  if (!teamIds.length && !directPlayerIds.length) {
     return { ...DEMO_OS_DATA, ...emptyConnections, mode: 'real', squad: [], verifyQueue: [], coachActivity: [], moments: [], teamId: null, claimedPlayers: [] };
   }
 
   const { data: profile } = await supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle();
 
-  const { data: players } = await supabase
-    .from('players')
-    .select('id, name, position, squad_number, team_id, secondary_position')
-    .in('team_id', teamIds);
+  const [{ data: teamPlayers }, { data: directPlayersRaw }] = await Promise.all([
+    teamIds.length
+      ? supabase.from('players').select('id, name, position, squad_number, team_id, secondary_position').in('team_id', teamIds)
+      : Promise.resolve({ data: [] as { id: string; name: string; position: string | null; squad_number: number | null; team_id: string | null; secondary_position: string | null }[] }),
+    directPlayerIds.length
+      ? supabase.from('players').select('id, name, position, squad_number, team_id, secondary_position').in('id', directPlayerIds)
+      : Promise.resolve({ data: [] as { id: string; name: string; position: string | null; squad_number: number | null; team_id: string | null; secondary_position: string | null }[] }),
+  ]);
 
-  const playerIds = (players ?? []).map((p) => p.id);
+  // De-duplicated by id — a player connected to this coach both ways
+  // (real team membership AND a separate direct connection) still
+  // appears exactly once. Team membership is kept when both exist (it's
+  // the richer, roster-scoped copy); the direct connection grants the
+  // same capabilities regardless of which copy is kept, so this is a
+  // display choice, not an authorization one.
+  const seenPlayerIds = new Set<string>();
+  const players = [...(teamPlayers ?? []), ...(directPlayersRaw ?? [])].filter((p) => {
+    if (seenPlayerIds.has(p.id)) return false;
+    seenPlayerIds.add(p.id);
+    return true;
+  });
+
+  const playerIds = players.map((p) => p.id);
 
   // guardians has no coach-select RLS policy (only "a parent can see
   // their own links") — rather than add one, this reads via service-role
@@ -801,7 +878,7 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
     assessmentsByPlayer.set(a.player_id, list);
   });
 
-  const squad: SquadPlayer[] = (players ?? []).map((p) => {
+  const squad: SquadPlayer[] = players.map((p) => {
     const guardianCount = guardianCounts.get(p.id) ?? 0;
     const latestInvite = latestInviteByPlayer.get(p.id);
     const guardianStatus = deriveGuardianStatus(guardianCount, latestInvite);
@@ -819,6 +896,7 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
       seasonFocus: seasonFocusByPlayer.get(p.id) ?? [],
       strengths: strengthsByPlayer.get(p.id) ?? [],
       assessments: assessmentsByPlayer.get(p.id) ?? [],
+      teamId: p.team_id ?? null,
     };
   });
   const { data: pendingMoments } = playerIds.length
@@ -845,8 +923,14 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
     })
   );
 
+  // Team-linked players only — a direct connection never inflates a
+  // team's displayed roster count (coachTeamsManaged[].playerCount below
+  // reads this map only by real team_id, but the filter keeps a stray
+  // null-keyed entry out entirely rather than relying on that).
   const playerCounts = new Map<string, number>();
-  (players ?? []).forEach((p) => playerCounts.set(p.team_id, (playerCounts.get(p.team_id) ?? 0) + 1));
+  players.forEach((p) => {
+    if (p.team_id) playerCounts.set(p.team_id, (playerCounts.get(p.team_id) ?? 0) + 1);
+  });
 
   // Same wrong-array-inference quirk as the guardians/coach_team join
   // above — teams and clubs are genuinely single objects per coach_team

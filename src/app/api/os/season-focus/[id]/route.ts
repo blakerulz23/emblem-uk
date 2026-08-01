@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateStoryUpdate } from '@/lib/story-updates';
+import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
 
 export const runtime = 'nodejs';
 
@@ -46,7 +47,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   // event exists), with body text that reflects what actually happened
   // rather than reusing the creation copy verbatim.
   const [{ data: player }, { data: actor }] = await Promise.all([
-    supabase.from('players').select('name, team_id').eq('id', data.player_id).maybeSingle(),
+    supabase.from('players').select('name').eq('id', data.player_id).maybeSingle(),
     supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
   ]);
   const statusWord = status === 'completed' ? 'completed' : 'archived';
@@ -60,16 +61,18 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       title: 'Season Focus',
       body: `${actor?.display_name ?? 'Their coach'} marked "${data.label}" as ${statusWord}`,
     });
-  } else if (player?.team_id) {
-    const { data: coachRows } = await supabase.from('coach_team').select('profile_id').eq('team_id', player.team_id);
-    await generateStoryUpdate({
-      eventType: 'season_focus_added',
-      playerId: data.player_id,
-      actorProfileId: user.id,
-      recipients: (coachRows ?? []).map((c) => ({ profileId: c.profile_id, presenceScope: `coach-player:${data.player_id}` })),
-      title: 'Season Focus',
-      body: `${actor?.display_name ?? 'A guardian'} marked "${data.label}" as ${statusWord} for ${player?.name ?? 'their player'}`,
-    });
+  } else {
+    const eligibleCoachIds = await getEligibleCoachProfileIds(supabase, data.player_id);
+    if (eligibleCoachIds.length) {
+      await generateStoryUpdate({
+        eventType: 'season_focus_added',
+        playerId: data.player_id,
+        actorProfileId: user.id,
+        recipients: eligibleCoachIds.map((profileId) => ({ profileId, presenceScope: `coach-player:${data.player_id}` })),
+        title: 'Season Focus',
+        body: `${actor?.display_name ?? 'A guardian'} marked "${data.label}" as ${statusWord} for ${player?.name ?? 'their player'}`,
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });

@@ -58,10 +58,61 @@ export function GuardianStatusRow({ player, onAction }: { player: SquadPlayer; o
   }
 }
 
+/**
+ * The one row implementation shared by both the team roster and
+ * Individual Players sections — same visual language, same tap target
+ * (actions.openCoachPlayer), same Celebrate action, regardless of which
+ * section a player is grouped under. Celebrate stops propagation so
+ * tapping it never also opens the detail screen beneath it, for a
+ * direct player exactly as it already did for a team one.
+ */
+function renderPlayerRow(p: SquadPlayer, actions: OsActions, setSheetPlayer: (p: SquadPlayer) => void) {
+  const initials = p.name.split(' ').map((w) => w[0]).join('');
+  const openDetail = () => actions.openCoachPlayer(p.id);
+  const celebrate = (e: React.MouseEvent | React.KeyboardEvent) => { e.stopPropagation(); actions.openCeleb(p.id); };
+  return (
+    <div
+      key={p.id}
+      onClick={openDetail}
+      role="button"
+      tabIndex={0}
+      aria-label={`View ${p.name}'s player detail`}
+      onKeyDown={onActivateKey(openDetail)}
+      style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'var(--os-card)', borderRadius: 16, padding: 12, boxShadow: '0 6px 18px -14px rgba(0,0,0,.2)', marginBottom: 11, cursor: 'pointer' }}
+    >
+      <div style={{ width: 46, height: 46, borderRadius: '50%', background: 'linear-gradient(150deg,#E9C46A,#C98B3A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto', fontFamily: 'Roboto', fontWeight: 900, fontSize: 15, color: '#fff' }}>{initials}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>{p.name}</div>
+        <div style={{ fontSize: 12, color: 'var(--os-muted)' }}>#{p.num} · {p.pos}</div>
+        <GuardianStatusRow player={p} onAction={() => setSheetPlayer(p)} />
+      </div>
+      <div
+        onClick={celebrate}
+        role="button"
+        tabIndex={0}
+        aria-label={`Celebrate ${p.name}`}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') celebrate(e); }}
+        style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 6, background: '#E97435', color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 12.5, padding: '10px 14px', borderRadius: 11, cursor: 'pointer', boxShadow: '0 8px 18px -10px rgba(233,116,53,.7)' }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 18.3 5.9 20.4 7.3 13.6 2.2 8.9l6.9-.8z" /></svg>Celebrate
+      </div>
+    </div>
+  );
+}
+
 export default function CoachTeam({ actions }: { actions: OsActions }) {
   const router = useRouter();
   const { mode, squad: SQUAD, teamId } = useOsData();
   const isReal = mode !== 'demo';
+  // Team rosters stay exactly as they were — a direct (coach_players)
+  // connection never counts toward a team's roster total or sits inside
+  // a fake team, and a team-linked player never appears twice just
+  // because this coach also happens to have a stray direct row to them
+  // (getParentOsData's own dedup already keeps that from existing in the
+  // first place, but filtering by teamId here costs nothing and doesn't
+  // rely on that invariant holding elsewhere).
+  const teamPlayers = SQUAD.filter((p) => p.teamId !== null);
+  const directPlayers = SQUAD.filter((p) => p.teamId === null);
   const [showAdd, setShowAdd] = useState(false);
   const [sheetPlayer, setSheetPlayer] = useState<SquadPlayer | null>(null);
   const [name, setName] = useState('');
@@ -143,7 +194,7 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
             {isReal ? 'Your team' : 'Curzon Ashton U10'}
           </div>
           <div style={{ fontSize: 13, color: 'var(--os-muted)', marginTop: 4 }}>
-            {SQUAD.length} player{SQUAD.length === 1 ? '' : 's'}
+            {teamPlayers.length} player{teamPlayers.length === 1 ? '' : 's'}
           </div>
         </div>
         {isReal && (
@@ -200,39 +251,25 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
         </div>
       )}
 
-      {SQUAD.map((p) => {
-        const initials = p.name.split(' ').map((w) => w[0]).join('');
-        const openDetail = () => actions.openCoachPlayer(p.id);
-        const celebrate = (e: React.MouseEvent | React.KeyboardEvent) => { e.stopPropagation(); actions.openCeleb(p.id); };
-        return (
-          <div
-            key={p.id}
-            onClick={openDetail}
-            role="button"
-            tabIndex={0}
-            aria-label={`View ${p.name}'s player detail`}
-            onKeyDown={onActivateKey(openDetail)}
-            style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'var(--os-card)', borderRadius: 16, padding: 12, boxShadow: '0 6px 18px -14px rgba(0,0,0,.2)', marginBottom: 11, cursor: 'pointer' }}
-          >
-            <div style={{ width: 46, height: 46, borderRadius: '50%', background: 'linear-gradient(150deg,#E9C46A,#C98B3A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto', fontFamily: 'Roboto', fontWeight: 900, fontSize: 15, color: '#fff' }}>{initials}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>{p.name}</div>
-              <div style={{ fontSize: 12, color: 'var(--os-muted)' }}>#{p.num} · {p.pos}</div>
-              <GuardianStatusRow player={p} onAction={() => setSheetPlayer(p)} />
-            </div>
-            <div
-              onClick={celebrate}
-              role="button"
-              tabIndex={0}
-              aria-label={`Celebrate ${p.name}`}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') celebrate(e); }}
-              style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 6, background: '#E97435', color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 12.5, padding: '10px 14px', borderRadius: 11, cursor: 'pointer', boxShadow: '0 8px 18px -10px rgba(233,116,53,.7)' }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 18.3 5.9 20.4 7.3 13.6 2.2 8.9l6.9-.8z" /></svg>Celebrate
-            </div>
+      {teamPlayers.map((p) => renderPlayerRow(p, actions, setSheetPlayer))}
+
+      {/* Direct (team-independent) connections — never inside a fake
+          team, never counted in the roster total above. Same row visual
+          language as team players (renderPlayerRow is shared, not
+          duplicated), so a coach sees one consistent list style whether
+          a player is a team roster spot or a direct connection; the only
+          difference is which section it's grouped under. Hidden
+          entirely when there are none — an empty "Individual Players"
+          section a coach with no direct connections will ever see isn't
+          a genuinely useful empty state, just noise. */}
+      {directPlayers.length > 0 && (
+        <>
+          <div style={{ marginTop: 22, marginBottom: 12, fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', textTransform: 'uppercase' }}>
+            Individual Players
           </div>
-        );
-      })}
+          {directPlayers.map((p) => renderPlayerRow(p, actions, setSheetPlayer))}
+        </>
+      )}
 
       {sheetPlayer && <GuardianInviteSheet player={sheetPlayer} onClose={() => setSheetPlayer(null)} />}
     </>

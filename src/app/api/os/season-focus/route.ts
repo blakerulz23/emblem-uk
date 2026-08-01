@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateStoryUpdate } from '@/lib/story-updates';
+import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
 
 export const runtime = 'nodejs';
 
@@ -24,7 +25,7 @@ async function notifyOtherParty(
   if (!focus) return;
 
   const [{ data: player }, { data: actor }] = await Promise.all([
-    supabase.from('players').select('name, team_id').eq('id', playerId).maybeSingle(),
+    supabase.from('players').select('name').eq('id', playerId).maybeSingle(),
     supabase.from('profiles').select('display_name').eq('id', actorId).maybeSingle(),
   ]);
 
@@ -39,14 +40,13 @@ async function notifyOtherParty(
       body: `${actor?.display_name ?? 'Their coach'} added a new focus: "${focus.label}"`,
     });
   } else {
-    const teamId = player?.team_id;
-    if (!teamId) return;
-    const { data: coachRows } = await supabase.from('coach_team').select('profile_id').eq('team_id', teamId);
+    const eligibleCoachIds = await getEligibleCoachProfileIds(supabase, playerId);
+    if (!eligibleCoachIds.length) return;
     await generateStoryUpdate({
       eventType: 'season_focus_added',
       playerId,
       actorProfileId: actorId,
-      recipients: (coachRows ?? []).map((c) => ({ profileId: c.profile_id, presenceScope: `coach-player:${playerId}` })),
+      recipients: eligibleCoachIds.map((profileId) => ({ profileId, presenceScope: `coach-player:${playerId}` })),
       title: 'Season Focus',
       body: `${actor?.display_name ?? 'A guardian'} added a new focus for ${player?.name ?? 'their player'}: "${focus.label}"`,
     });

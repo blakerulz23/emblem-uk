@@ -5,6 +5,7 @@ import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/
 import { maskEmail } from '@/lib/mask-email';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { ensurePublicPlayerId } from '@/lib/public-player-id';
+import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
 
 export const runtime = 'nodejs';
 
@@ -160,16 +161,16 @@ export async function POST(request: NextRequest) {
   await ensurePublicPlayerId(serviceRole, invite.player_id);
 
   const [{ data: player }, { data: actor }] = await Promise.all([
-    serviceRole.from('players').select('name, team_id').eq('id', invite.player_id).maybeSingle(),
+    serviceRole.from('players').select('name').eq('id', invite.player_id).maybeSingle(),
     serviceRole.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
   ]);
-  if (player?.team_id) {
-    const { data: coachRows } = await serviceRole.from('coach_team').select('profile_id').eq('team_id', player.team_id);
+  const eligibleCoachIds = await getEligibleCoachProfileIds(serviceRole, invite.player_id);
+  if (eligibleCoachIds.length) {
     await generateStoryUpdate({
       eventType: 'guardian_connected',
       playerId: invite.player_id,
       actorProfileId: user.id,
-      recipients: (coachRows ?? []).map((c) => ({ profileId: c.profile_id, presenceScope: `coach-player:${invite.player_id}` })),
+      recipients: eligibleCoachIds.map((profileId) => ({ profileId, presenceScope: `coach-player:${invite.player_id}` })),
       title: 'Guardian Connected',
       body: `${actor?.display_name ?? 'A guardian'} is now connected to ${player?.name ?? 'your player'}.`,
     });

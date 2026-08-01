@@ -38,7 +38,7 @@ function TargetIcon(c: string) {
 
 export default function CoachPlayerDetail({ playerId, actions }: { playerId: string; actions: OsActions }) {
   const router = useRouter();
-  const { mode, squad, verifyQueue } = useOsData();
+  const { mode, squad, verifyQueue, coachTeamsManaged, viewerId } = useOsData();
   const isReal = mode !== 'demo';
   const player = squad.find((p) => p.id === playerId);
 
@@ -82,6 +82,45 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
   const [focusDraft, setFocusDraft] = useState('');
   const [focusBusy, setFocusBusy] = useState(false);
   const [focusError, setFocusError] = useState('');
+
+  // Leave (self) — only ever meaningful when this coach's own access to
+  // this exact player isn't also backed by real team membership. A
+  // player having *a* team (player.teamId) doesn't by itself mean this
+  // coach is on it — coachTeamsManaged is the signed-in coach's own team
+  // list, so checking against that (not just player.teamId) is what
+  // correctly covers "team-linked player, but I'm a separate direct/
+  // private coach, not one of their team coaches" as well as "no team at
+  // all." Team-derived access must never show this action — removing a
+  // stray direct row alongside it would have no real effect, and would
+  // be confusing to offer.
+  const isDirectAccessOnly = !player?.teamId || !coachTeamsManaged.some((t) => t.id === player.teamId);
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
+  const [leaveBusy, setLeaveBusy] = useState(false);
+  const [leaveError, setLeaveError] = useState(false);
+
+  const leaveConnection = async () => {
+    if (!viewerId || leaveBusy) return;
+    setLeaveBusy(true);
+    setLeaveError(false);
+    try {
+      const res = await fetch(`/api/os/players/${playerId}/coach-connections/${viewerId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        setLeaveError(true);
+        return;
+      }
+      // Refresh BEFORE closing — otherwise closeCoachPlayer() reveals
+      // Individual Players immediately using the still-stale squad
+      // snapshot (this player briefly flashing back into a list they
+      // were just removed from), only correcting itself once the
+      // refetch below resolves a moment later.
+      await refreshOsData();
+      actions.closeCoachPlayer();
+    } catch {
+      setLeaveError(true);
+    } finally {
+      setLeaveBusy(false);
+    }
+  };
 
   if (!player) {
     return <EmptyState title="Player not found" body="This player may have been removed from your team." />;
@@ -376,6 +415,47 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
         )}
         {focusError && <p role="alert" style={{ color: '#C0392B', fontSize: 12.5, marginTop: 6 }}>{focusError}</p>}
       </div>
+
+      {isReal && isDirectAccessOnly && (
+        <div style={sectionCard}>
+          {confirmingLeave ? (
+            <div>
+              <p style={{ fontSize: 12.5, color: 'var(--os-muted)', margin: '0 0 10px' }}>
+                You&apos;ll lose access to this player. Existing assessments and history will remain.
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={leaveConnection}
+                  disabled={leaveBusy}
+                  style={{ background: '#C0392B', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 16px', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: leaveBusy ? 'default' : 'pointer' }}
+                >
+                  {leaveBusy ? 'Leaving…' : 'Confirm'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingLeave(false)}
+                  disabled={leaveBusy}
+                  style={{ background: 'none', border: '1px solid var(--os-border)', borderRadius: 10, padding: '10px 16px', fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: 'var(--os-ink)', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
+              {leaveError && <p role="alert" style={{ color: '#C0392B', fontSize: 12.5, marginTop: 8 }}>Couldn&apos;t leave — try again.</p>}
+            </div>
+          ) : (
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setConfirmingLeave(true)}
+              onKeyDown={onActivateKey(() => setConfirmingLeave(true))}
+              style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: '#C0392B', cursor: 'pointer' }}
+            >
+              Leave player connection
+            </div>
+          )}
+        </div>
+      )}
 
       {sheetOpen && <GuardianInviteSheet player={player} onClose={() => setSheetOpen(false)} />}
     </>

@@ -115,6 +115,13 @@ export async function POST(request: NextRequest) {
   // else in this handler.
   await ensurePublicPlayerId(serviceRole, result.playerId);
 
+  // Deliberately still team_id-only, not widened to
+  // getEligibleCoachProfileIds (coach-connection milestone plan) — this
+  // is the *first-ever* guardian claim for this player. A coach_players
+  // row requires an existing guardian to have created the invite that
+  // produced it (see coach_invites' RLS), so at this exact moment no
+  // direct connection can possibly exist yet. Widening this check would
+  // be a permanently-dead branch, not a fix.
   const [{ data: player }, { data: actor }] = await Promise.all([
     serviceRole.from('players').select('name, team_id').eq('id', result.playerId).maybeSingle(),
     serviceRole.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),

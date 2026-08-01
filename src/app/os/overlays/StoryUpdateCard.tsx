@@ -28,6 +28,7 @@ const ACTION_LABEL: Record<StoryUpdate['eventType'], string> = {
   season_focus_added: 'View Focus',
   coach_connected: 'View Player',
   guardian_connected: 'View Player',
+  coach_removed: 'View Connections',
 };
 
 function SpeechBubbleIcon(c: string) {
@@ -82,6 +83,7 @@ const ICON_BY_EVENT: Record<StoryUpdate['eventType'], (c: string) => JSX.Element
   season_focus_added: TargetIcon,
   coach_connected: LinkIcon,
   guardian_connected: LinkIcon,
+  coach_removed: LinkIcon,
 };
 
 /** "Coach Assessment" style eyebrow — the category label shown per card, matching the product spec's examples. */

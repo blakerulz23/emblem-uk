@@ -8,7 +8,8 @@ export type StoryUpdateEventType =
   | 'coach_connected'
   | 'moment_uploaded'
   | 'verification_required'
-  | 'guardian_connected';
+  | 'guardian_connected'
+  | 'coach_removed';
 
 export type StoryUpdateCategory = 'coach' | 'collection' | 'family';
 
@@ -21,6 +22,7 @@ const CATEGORY_BY_EVENT: Record<StoryUpdateEventType, StoryUpdateCategory> = {
   verification_required: 'collection',
   coach_connected: 'family',
   guardian_connected: 'family',
+  coach_removed: 'family',
 };
 
 /** How long a heartbeat (src/app/os/usePresenceHeartbeat.ts, ~10s interval) stays "present" for. */

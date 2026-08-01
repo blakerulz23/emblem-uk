@@ -13,9 +13,11 @@ import VerifyIntendedEmail from './VerifyIntendedEmail';
 import RecoverByEmail from './RecoverByEmail';
 import CreateTeamOnboarding from './CreateTeamOnboarding';
 import TeamInviteConfirm from './TeamInviteConfirm';
+import CoachInviteConfirm from './CoachInviteConfirm';
 import type { ClaimLookupResult } from './ClaimCodeEntry';
 import type { ClaimConfirmFields } from './ClaimConfirm';
 import type { TeamInviteLookupResult, TeamInviteConfirmFields } from './TeamInviteConfirm';
+import type { CoachInviteLookupResult, CoachInviteConfirmFields } from './CoachInviteConfirm';
 
 export type ActivationGateProps = {
   onActivate: () => void;
@@ -39,7 +41,8 @@ type PendingIntent =
   | { kind: 'claim'; source: 'card' | 'invite'; code: string; displayName: string; relationship: string }
   | { kind: 'coach' }
   | { kind: 'recover' }
-  | { kind: 'teamInvite'; code: string; displayName: string };
+  | { kind: 'teamInvite'; code: string; displayName: string }
+  | { kind: 'coachInvite'; code: string; displayName: string };
 
 function readIntent(): PendingIntent | null {
   if (typeof window === 'undefined') return null;
@@ -90,11 +93,17 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   // code has no manual-entry UI in this phase (link-only), so its lookup
   // is a plain effect below rather than something ClaimCodeEntry handles.
   const currentTeamInviteCode = searchParams?.get('teaminvite')?.trim() || null;
-  const [preAuthStep, setPreAuthStep] = useState<'fork' | 'code' | 'confirm' | 'verifyEmail' | 'recover' | 'auth' | 'teamInvite'>(
-    currentTeamInviteCode ? 'teamInvite' : (currentInviteCode || currentCardCode) ? 'code' : 'fork'
+  // A guardian's "Add Coach" link lands here as /os?coachinvite=CODE —
+  // same "skip straight past the fork" reasoning as ?teaminvite= above.
+  // No manual-entry UI for this code either (link/copy-paste only, same
+  // as team invites), so its lookup is a plain effect below.
+  const currentCoachInviteCode = searchParams?.get('coachinvite')?.trim() || null;
+  const [preAuthStep, setPreAuthStep] = useState<'fork' | 'code' | 'confirm' | 'verifyEmail' | 'recover' | 'auth' | 'teamInvite' | 'coachInvite'>(
+    currentCoachInviteCode ? 'coachInvite' : currentTeamInviteCode ? 'teamInvite' : (currentInviteCode || currentCardCode) ? 'code' : 'fork'
   );
   const [pendingResult, setPendingResult] = useState<ClaimLookupResult | null>(null);
   const [teamInviteResult, setTeamInviteResult] = useState<TeamInviteLookupResult | null>(null);
+  const [coachInviteResult, setCoachInviteResult] = useState<CoachInviteLookupResult | null>(null);
   const [resolving, setResolving] = useState(false);
   // Tracks the specific code already handled this session, not just
   // "an invite was resolved at some point" — a plain boolean would keep a
@@ -105,6 +114,7 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   const [resolvedInviteCode, setResolvedInviteCode] = useState<string | null>(null);
   const [resolvedCardCode, setResolvedCardCode] = useState<string | null>(null);
   const [resolvedTeamInviteCode, setResolvedTeamInviteCode] = useState<string | null>(null);
+  const [resolvedCoachInviteCode, setResolvedCoachInviteCode] = useState<string | null>(null);
 
   const intent = readIntent();
 
@@ -125,6 +135,23 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
       .catch(() => setPreAuthStep('fork'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasSession, currentTeamInviteCode, preAuthStep, teamInviteResult]);
+
+  // Pre-auth coach-invite lookup — mirrors the team-invite effect above
+  // exactly, one table over.
+  useEffect(() => {
+    if (hasSession || !currentCoachInviteCode || preAuthStep !== 'coachInvite' || coachInviteResult) return;
+    fetch(`/api/os/coach-invites/redeem?code=${encodeURIComponent(currentCoachInviteCode)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.found) {
+          setCoachInviteResult({ code: currentCoachInviteCode, player: data.player });
+        } else {
+          setPreAuthStep('fork');
+        }
+      })
+      .catch(() => setPreAuthStep('fork'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasSession, currentCoachInviteCode, preAuthStep, coachInviteResult]);
 
   // Post-auth auto-resolve: finalizes whatever was chosen before sign-in.
   useEffect(() => {
@@ -171,6 +198,29 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
           body: JSON.stringify({ inviteCode: intent.code, displayName: intent.displayName }),
         });
         clearIntent();
+      } else if (intent.kind === 'coachInvite') {
+        const res = await fetch('/api/os/coach-invites/redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inviteCode: intent.code, displayName: intent.displayName }),
+        });
+        clearIntent();
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}) as { playerId?: string });
+          if (data.playerId) {
+            // OsApp.tsx reacts to ?openPlayer= (a useEffect watching
+            // useSearchParams(), not a one-time mount read — this is a
+            // *soft* client navigation onto an OsApp that's typically
+            // already mounted as this component's own parent) to land
+            // directly on this player's Coach Player Detail — the same
+            // "resolve then jump straight to the right screen" shape the
+            // parent-claim branch above already uses via ?player=, just
+            // a different param name (?player= already means something
+            // else there: which claimed child to view).
+            router.push(`/os?openPlayer=${data.playerId}`);
+            return;
+          }
+        }
       }
       // 'recover' is intentionally left in storage and NOT auto-resolved —
       // RecoverByEmail handles the interactive self/handoff decision once
@@ -252,6 +302,22 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
         />
       );
     }
+    if (preAuthStep === 'coachInvite') {
+      if (!coachInviteResult) {
+        return <ResolvingScreen />;
+      }
+      return (
+        <CoachInviteConfirm
+          result={coachInviteResult}
+          onConfirm={(fields: CoachInviteConfirmFields) => {
+            storeIntent({ kind: 'coachInvite', code: coachInviteResult.code, ...fields });
+            setResolvedCoachInviteCode(coachInviteResult.code);
+            setPreAuthStep('auth');
+          }}
+          onBack={() => setPreAuthStep('fork')}
+        />
+      );
+    }
     return (
       <RoleFork
         onPickCard={() => setPreAuthStep('code')}
@@ -297,6 +363,9 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   }
   if (currentTeamInviteCode && currentTeamInviteCode !== resolvedTeamInviteCode) {
     return <AuthenticatedTeamInviteResolve onResolved={() => setResolvedTeamInviteCode(currentTeamInviteCode)} />;
+  }
+  if (currentCoachInviteCode && currentCoachInviteCode !== resolvedCoachInviteCode) {
+    return <AuthenticatedCoachInviteResolve onResolved={() => setResolvedCoachInviteCode(currentCoachInviteCode)} />;
   }
 
   // Authenticated from here on — branching is purely server-known facts.
@@ -493,6 +562,66 @@ function AuthenticatedTeamInviteResolve({ onResolved }: { onResolved: () => void
           body: JSON.stringify({ inviteCode: result.code, displayName: fields.displayName }),
         });
         onResolved();
+        router.refresh();
+      }}
+      onBack={() => onResolved()}
+    />
+  );
+}
+
+/**
+ * An already-authenticated session landing on /os?coachinvite=CODE — same
+ * priority-over-normal-routing reasoning as AuthenticatedTeamInviteResolve,
+ * for a direct coach connection instead of a team. On success, jumps
+ * straight to the newly connected player's Coach Player Detail via
+ * ?openPlayer= (OsApp.tsx's own reactive useEffect on that param) rather
+ * than a bare refresh — "clearly surface the newly connected player."
+ */
+function AuthenticatedCoachInviteResolve({ onResolved }: { onResolved: () => void }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const code = searchParams?.get('coachinvite')?.trim() || '';
+  const [result, setResult] = useState<CoachInviteLookupResult | null>(null);
+
+  useEffect(() => {
+    if (!code) {
+      onResolved();
+      return;
+    }
+    fetch(`/api/os/coach-invites/redeem?code=${encodeURIComponent(code)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.found) {
+          setResult({ code, player: data.player });
+        } else {
+          onResolved();
+        }
+      })
+      .catch(() => onResolved());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
+
+  if (!result) {
+    return <ResolvingScreen />;
+  }
+
+  return (
+    <CoachInviteConfirm
+      result={result}
+      onConfirm={async (fields: CoachInviteConfirmFields) => {
+        const res = await fetch('/api/os/coach-invites/redeem', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inviteCode: result.code, displayName: fields.displayName }),
+        });
+        onResolved();
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}) as { playerId?: string });
+          if (data.playerId) {
+            router.push(`/os?openPlayer=${data.playerId}`);
+            return;
+          }
+        }
         router.refresh();
       }}
       onBack={() => onResolved()}

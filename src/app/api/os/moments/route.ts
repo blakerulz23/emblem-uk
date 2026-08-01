@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import { createClient } from '@/lib/supabase/server';
 import { generateStoryUpdate } from '@/lib/story-updates';
+import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
 
 export const runtime = 'nodejs';
 
@@ -47,14 +48,12 @@ export async function POST(request: NextRequest) {
     .eq('id', playerId)
     .maybeSingle();
 
-  let hasEligibleCoach = false;
-  if (player?.team_id) {
-    const { count } = await supabase
-      .from('coach_team')
-      .select('profile_id', { count: 'exact', head: true })
-      .eq('team_id', player.team_id);
-    hasEligibleCoach = (count ?? 0) > 0;
-  }
+  // eligible coach = team coach OR direct coach — centralised in
+  // getEligibleCoachProfileIds (src/lib/player-capabilities.ts) rather
+  // than re-derived here, so this route and the recipient computation
+  // below always agree on the same set.
+  const eligibleCoachIds = await getEligibleCoachProfileIds(supabase, playerId);
+  const hasEligibleCoach = eligibleCoachIds.length > 0;
   const verificationStatus = hasEligibleCoach ? 'pending_verification' : 'family_memory';
 
   const { data: moment, error: momentError } = await supabase
@@ -89,14 +88,11 @@ export async function POST(request: NextRequest) {
   // check that decided verificationStatus above. No eligible coach means no
   // recipients, so nothing is generated (never both, never neither when a
   // coach does exist).
-  if (player?.team_id) {
-    const [{ data: coachRows }, { data: actor }] = await Promise.all([
-      supabase.from('coach_team').select('profile_id').eq('team_id', player.team_id),
-      supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
-    ]);
+  if (eligibleCoachIds.length) {
+    const { data: actor } = await supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle();
     const actorName = actor?.display_name ?? 'A guardian';
-    const recipients = (coachRows ?? []).map((c) => ({
-      profileId: c.profile_id,
+    const recipients = eligibleCoachIds.map((profileId) => ({
+      profileId,
       presenceScope: verificationStatus === 'pending_verification' ? 'verify' : `coach-player:${playerId}`,
     }));
     await generateStoryUpdate({

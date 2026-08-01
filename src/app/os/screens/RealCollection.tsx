@@ -98,6 +98,36 @@ export default function RealCollection({
     triggerJustUpdated();
   });
 
+  // Guardian-only control over an individual moment's public visibility —
+  // the one missing piece identified by the public-visibility audit. Calls
+  // the existing, already-authorized PATCH /api/os/moments/[id]/visibility
+  // route unchanged; refreshOsData() (the same helper the live-content
+  // subscription above already uses) re-fetches the full OsData snapshot on
+  // success so the flipped badge appears immediately, without a page
+  // reload — no new client-side data-fetching pattern introduced.
+  const [visibilityBusyId, setVisibilityBusyId] = useState<string | null>(null);
+  const [visibilityErrorId, setVisibilityErrorId] = useState<string | null>(null);
+  const setMomentVisibility = async (momentId: string, visibility: 'private' | 'public') => {
+    setVisibilityBusyId(momentId);
+    setVisibilityErrorId(null);
+    try {
+      const res = await fetch(`/api/os/moments/${momentId}/visibility`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ visibility }),
+      });
+      if (!res.ok) {
+        setVisibilityErrorId(momentId);
+        return;
+      }
+      await refreshOsData();
+    } catch {
+      setVisibilityErrorId(momentId);
+    } finally {
+      setVisibilityBusyId(null);
+    }
+  };
+
   return (
     <>
       {justUpdated && (
@@ -211,6 +241,43 @@ export default function RealCollection({
                             <span style={{ width: 6, height: 6, borderRadius: '50%', background: badge.dot }} />
                             <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10.5, color: 'var(--os-muted)' }}>{badge.label}</span>
                           </span>
+                        )}
+                      </div>
+
+                      {/* Public visibility — deliberately a separate row,
+                          separate copy, and separate colour from the
+                          verification badge above: coach-verified and
+                          public are unrelated facts about a moment, and
+                          this control must never imply otherwise. */}
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--os-border)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 10, letterSpacing: '.05em', textTransform: 'uppercase', color: m.visibility === 'public' ? '#2E9E5B' : 'var(--os-muted)' }}>
+                            <span style={{ width: 5, height: 5, borderRadius: '50%', background: m.visibility === 'public' ? '#2E9E5B' : 'var(--os-muted)' }} />
+                            {m.visibility === 'public' ? 'Public' : 'Private'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setMomentVisibility(m.id, m.visibility === 'public' ? 'private' : 'public')}
+                            disabled={visibilityBusyId === m.id}
+                            style={{
+                              background: 'none', border: 'none', padding: 0,
+                              fontFamily: 'Roboto', fontWeight: 700, fontSize: 11,
+                              color: visibilityBusyId === m.id ? 'var(--os-muted)' : m.visibility === 'public' ? 'var(--os-muted)' : '#E97435',
+                              textDecoration: 'underline', cursor: visibilityBusyId === m.id ? 'default' : 'pointer',
+                            }}
+                          >
+                            {visibilityBusyId === m.id ? 'Updating…' : m.visibility === 'public' ? 'Make private' : 'Make public'}
+                          </button>
+                        </div>
+                        {m.visibility === 'private' && (
+                          <p style={{ fontSize: 9.5, lineHeight: 1.35, color: 'var(--os-muted)', margin: '4px 0 0' }}>
+                            Public moments can be seen by anyone who taps the card.
+                          </p>
+                        )}
+                        {visibilityErrorId === m.id && (
+                          <p role="alert" style={{ fontSize: 10, color: '#C0392B', margin: '4px 0 0' }}>
+                            Couldn&apos;t update — try again.
+                          </p>
                         )}
                       </div>
                     </div>
