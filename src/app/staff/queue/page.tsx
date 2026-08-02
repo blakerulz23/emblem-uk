@@ -1,12 +1,15 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { SAMPLE_CARDS } from '../../card/[id]/sample-data';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
+import { buildNfcCardUrl } from '@/lib/nfc-link';
 import ApproveOrderButton from './ApproveOrderButton';
 import ApproveTeamOrderButton from './ApproveTeamOrderButton';
 import ResendInviteButton from './ResendInviteButton';
+import BuildProfileButton from './BuildProfileButton';
+import RejectCardButton from './RejectCardButton';
+import DeleteCardButton from './DeleteCardButton';
+import CopyLinkButton from './CopyLinkButton';
 
 // This reads live pending orders on every request — without this, Next
 // would statically prerender the page at build time (its data fetch has
@@ -14,10 +17,17 @@ import ResendInviteButton from './ResendInviteButton';
 // own), freezing the queue at whatever orders existed at the last deploy.
 export const dynamic = 'force-dynamic';
 
-const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
-  draft: { bg: 'var(--surface)', color: 'var(--ink-faint)', label: 'Self-serve' },
-  pending_staff_review: { bg: '#fff7ed', color: '#c2410c', label: 'Needs staff setup' },
+const PRODUCTION_STATUS_LABEL: Record<string, { bg: string; color: string; label: string }> = {
+  needs_setup: { bg: 'var(--surface)', color: 'var(--ink-faint)', label: 'Needs setup' },
+  ready_for_programming: { bg: '#fff7ed', color: '#c2410c', label: 'Ready for programming' },
+  programmed: { bg: '#eff6ff', color: '#1d4ed8', label: 'Programmed' },
+  verified: { bg: '#f5f3ff', color: '#6d28d9', label: 'Verified' },
+  completed: { bg: '#ecfdf5', color: '#047857', label: 'Completed' },
+};
+
+const PUBLISHED_BADGE: Record<'published' | 'unpublished', { bg: string; color: string; label: string }> = {
   published: { bg: '#ecfdf5', color: '#047857', label: 'Published' },
+  unpublished: { bg: 'var(--surface)', color: 'var(--ink-faint)', label: 'Unpublished' },
 };
 
 const INVITE_BADGE: Record<string, { bg: string; color: string; label: string }> = {
@@ -133,6 +143,84 @@ async function getRecentlyApprovedSingleCardOrders() {
   return singleCardOrders.map((order) => ({ ...order, invite: inviteByOrder.get(order.id) ?? null }));
 }
 
+/**
+ * The real "Profile Setup Queue" — one item per physical card (cards
+ * row), not per order or per abstract player, since a card is the actual
+ * unit that carries a claim_token/NFC destination and can be in its own
+ * independent production stage even within a squad order. Scoped to
+ * cards linked to a fulfilled order — cards created outside the queue
+ * entirely (e.g. a coach's "+Add Player") never had a physical print
+ * step to track, so they're excluded here, same as they always were from
+ * the old sample-only section this replaces.
+ */
+async function getProductionQueueCards() {
+  const empty = { waiting: [], submitted: [] };
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return empty;
+  const supabase = createServiceRoleClient();
+
+  const { data: fulfilledOrders } = await supabase.from('orders').select('id, order_ref, purchaser_email').eq('payment_status', 'fulfilled');
+  if (!fulfilledOrders?.length) return empty;
+  const orderById = new Map(fulfilledOrders.map((o) => [o.id, o]));
+
+  const { data: cardRows } = await supabase
+    .from('cards')
+    .select(
+      `id, order_id, claim_token, production_status, production_submitted_at, player_id,
+       players ( name, public_player_id, public_id_enabled, teams ( clubs ( name ) ) ),
+       card_definitions ( team )`
+    )
+    .in(
+      'order_id',
+      fulfilledOrders.map((o) => o.id)
+    )
+    .not('player_id', 'is', null)
+    .is('production_dismissed_at', null);
+
+  type CardRow = {
+    id: string;
+    order_id: string;
+    claim_token: string;
+    production_status: string;
+    production_submitted_at: string | null;
+    players: { name: string; public_player_id: string | null; public_id_enabled: boolean; teams: { clubs: { name: string } | null } | null } | null;
+    card_definitions: { team: string } | null;
+  };
+
+  // Two same-named "Jacob Thompson" test rows in this exact dataset proved
+  // player name alone isn't a safe row identifier for staff — every row
+  // also carries purchaser email + short order/card refs + the claim
+  // token itself, so a row can always be disambiguated without ever
+  // showing a full UUID.
+  const rows = ((cardRows ?? []) as unknown as CardRow[]).map((c) => {
+    const order = orderById.get(c.order_id);
+    const shortOrderRef = order?.order_ref?.split('-').pop() ?? order?.order_ref ?? '—';
+    return {
+      id: c.id,
+      shortCardRef: c.id.slice(0, 8),
+      claimToken: c.claim_token,
+      purchaserEmail: order?.purchaser_email ?? '—',
+      shortOrderRef,
+      productionStatus: c.production_status,
+      productionSubmittedAt: c.production_submitted_at,
+      playerName: c.players?.name ?? 'Player',
+      // card_definitions.team is the frozen design-time club label; falls
+      // back to the player's live club via team_id when no card artwork
+      // was ever produced for this card (see the "no artwork" cases below).
+      clubTeamLabel: c.card_definitions?.team ?? c.players?.teams?.clubs?.name ?? null,
+      hasArtwork: !!c.card_definitions,
+      publicPlayerId: c.players?.public_player_id ?? null,
+      publicIdEnabled: c.players?.public_id_enabled ?? false,
+    };
+  });
+
+  return {
+    waiting: rows.filter((c) => c.productionStatus === 'needs_setup'),
+    submitted: rows
+      .filter((c) => c.productionStatus !== 'needs_setup')
+      .sort((a, b) => new Date(b.productionSubmittedAt ?? 0).getTime() - new Date(a.productionSubmittedAt ?? 0).getTime()),
+  };
+}
+
 export default async function StaffQueuePage() {
   const supabase = createClient();
   const staffCheck = await requireStaff(supabase);
@@ -140,9 +228,9 @@ export default async function StaffQueuePage() {
     redirect('/staff/login?next=/staff/queue');
   }
 
-  const cards = Object.values(SAMPLE_CARDS);
   const pendingOrders = await getPendingOrders();
   const approvedOrders = await getRecentlyApprovedSingleCardOrders();
+  const productionQueue = await getProductionQueueCards();
 
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-14">
@@ -300,58 +388,168 @@ export default async function StaffQueuePage() {
           fontSize: 22, letterSpacing: '-0.01em', color: 'var(--ink)', margin: '40px 0 6px',
         }}
       >
-        Profile setup queue
+        Profile Setup Queue
       </h2>
       <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 15, color: 'var(--ink-soft)', margin: 0 }}>
-        Orders where the customer chose &ldquo;Let Emblem build my profile&rdquo; show up here until a staff member sets them up and verifies the chip.
+        Approved cards waiting for NFC programming. Open or copy the browser link to verify the correct Player OS, public profile and guardian behaviour before writing a physical chip.
       </p>
 
-      <div style={{ marginTop: 28, display: 'grid', gap: 12 }}>
-        {cards.map((c) => {
-          const s = STATUS_STYLE[c.status];
+      <h3
+        style={{
+          fontFamily: 'var(--font-sora), system-ui', fontWeight: 700,
+          fontSize: 15, letterSpacing: '0.02em', textTransform: 'uppercase',
+          color: 'var(--ink-faint)', margin: '28px 0 6px',
+        }}
+      >
+        Waiting for Setup
+      </h3>
+
+      <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+        {productionQueue.waiting.length === 0 && (
+          <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
+            Nothing waiting on setup right now.
+          </p>
+        )}
+        {productionQueue.waiting.map((c) => {
+          const nfcUrl = buildNfcCardUrl(c.claimToken);
           return (
             <div
               key={c.id}
               style={{
-                display: 'flex', alignItems: 'center', gap: 16,
+                display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
                 padding: '16px 18px', borderRadius: 16,
                 background: '#fff', boxShadow: 'inset 0 0 0 1px var(--line)',
               }}
             >
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 180 }}>
                 <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>
-                  {c.name} <span style={{ color: 'var(--ink-faint)', fontWeight: 500 }}>· {c.subtitle}</span>
+                  {c.playerName}
+                  {c.clubTeamLabel && <span style={{ color: 'var(--ink-faint)', fontWeight: 500 }}> · {c.clubTeamLabel}</span>}
                 </div>
-                <div style={{ marginTop: 4, display: 'flex', gap: 10, alignItems: 'center' }}>
+                <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
+                  {c.purchaserEmail} · order {c.shortOrderRef} · card {c.shortCardRef} · {c.claimToken}
+                </div>
+                {!c.hasArtwork && (
+                  <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 11.5, color: 'var(--ink-faint)' }}>
+                    No card artwork on file
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <a
+                  href={nfcUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
+                    color: 'var(--accent)', background: 'var(--accent-tint)',
+                    padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
+                  }}
+                >
+                  Open NFC Link
+                </a>
+                <CopyLinkButton url={nfcUrl} label="Copy NFC" />
+                <BuildProfileButton cardId={c.id} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <h3
+        style={{
+          fontFamily: 'var(--font-sora), system-ui', fontWeight: 700,
+          fontSize: 15, letterSpacing: '0.02em', textTransform: 'uppercase',
+          color: 'var(--ink-faint)', margin: '32px 0 6px',
+        }}
+      >
+        Ready for Programming
+      </h3>
+
+      <div style={{ marginTop: 12, display: 'grid', gap: 12 }}>
+        {productionQueue.submitted.length === 0 && (
+          <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
+            Nothing submitted to production yet.
+          </p>
+        )}
+        {productionQueue.submitted.map((c) => {
+          const nfcUrl = buildNfcCardUrl(c.claimToken);
+          const statusBadge = PRODUCTION_STATUS_LABEL[c.productionStatus] ?? PRODUCTION_STATUS_LABEL.needs_setup;
+          const publishedBadge = c.publicIdEnabled ? PUBLISHED_BADGE.published : PUBLISHED_BADGE.unpublished;
+          return (
+            <div
+              key={c.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+                padding: '16px 18px', borderRadius: 16,
+                background: '#fff', boxShadow: 'inset 0 0 0 1px var(--line)',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>
+                  {c.playerName}
+                  {c.clubTeamLabel && <span style={{ color: 'var(--ink-faint)', fontWeight: 500 }}> · {c.clubTeamLabel}</span>}
+                </div>
+                <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
+                  {c.purchaserEmail} · order {c.shortOrderRef} · card {c.shortCardRef} · {c.claimToken}
+                </div>
+                <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span
                     style={{
-                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, fontWeight: 600,
-                      letterSpacing: '0.05em', textTransform: 'uppercase',
-                      padding: '3px 8px', borderRadius: 999, background: s.bg, color: s.color,
+                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 600,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      padding: '4px 10px', borderRadius: 999, background: publishedBadge.bg, color: publishedBadge.color,
                     }}
                   >
-                    {s.label}
+                    {publishedBadge.label}
                   </span>
                   <span
                     style={{
-                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 12,
-                      color: c.chipProgrammed ? '#047857' : '#c2410c',
+                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 600,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      padding: '4px 10px', borderRadius: 999, background: statusBadge.bg, color: statusBadge.color,
                     }}
                   >
-                    {c.chipProgrammed ? '✓ chip programmed' : '✗ chip not programmed'}
+                    {statusBadge.label}
                   </span>
+                  {!c.hasArtwork && (
+                    <span style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 11.5, color: 'var(--ink-faint)' }}>
+                      No card artwork on file
+                    </span>
+                  )}
                 </div>
               </div>
-              <Link
-                href={`/card/${c.id}`}
-                style={{
-                  fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 13,
-                  color: '#fff', background: 'var(--ink)', padding: '10px 16px', borderRadius: 10,
-                  textDecoration: 'none', whiteSpace: 'nowrap',
-                }}
-              >
-                {c.status === 'pending_staff_review' ? 'Build profile →' : 'View profile →'}
-              </Link>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {c.publicIdEnabled && c.publicPlayerId && (
+                  <a
+                    href={`/player/${c.publicPlayerId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
+                      color: 'var(--ink)', background: 'var(--surface)',
+                      padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Open Profile
+                  </a>
+                )}
+                <a
+                  href={nfcUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
+                    color: 'var(--accent)', background: 'var(--accent-tint)',
+                    padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
+                  }}
+                >
+                  Open NFC Link
+                </a>
+                <CopyLinkButton url={nfcUrl} label="Copy NFC" />
+                <RejectCardButton cardId={c.id} />
+                <DeleteCardButton cardId={c.id} />
+              </div>
             </div>
           );
         })}
