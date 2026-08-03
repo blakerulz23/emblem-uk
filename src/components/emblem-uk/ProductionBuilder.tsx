@@ -186,7 +186,13 @@ export default function ProductionBuilder() {
     }
     return draft;
   });
-  const [activeStep, setActiveStep] = useState(0);
+  // Marketing entry points (e.g. the homepage hero's "Upload a Photo" CTA)
+  // can skip straight to the photo-upload step via ?step=upload — the
+  // "Choose club" step ahead of it is never a required gate (every field
+  // on it already has a sensible default from defaultOrder()), so this
+  // reuses the same initial-state-from-searchParams pattern as `mode`
+  // above rather than adding a second entry flow.
+  const [activeStep, setActiveStep] = useState(() => (searchParams.get('step') === 'upload' ? 1 : 0));
   const [selectedId, setSelectedId] = useState(order.players[0]?.id || '');
   const [showPayload, setShowPayload] = useState(false);
   const [cardSide, setCardSide] = useState<CardSide>('front');

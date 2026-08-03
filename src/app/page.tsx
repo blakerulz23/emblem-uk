@@ -77,10 +77,13 @@ export default function Home() {
           <HeroCardShowcase />
 
           <div className="emh-hero-footer">
-            <div className="emh-actions">
-              <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Create My Card</Link>
-              <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
+            <div className="emh-actions emh-hero-actions-single">
+              <Link className="emh-btn emh-btn-primary emh-hero-cta" href="/builder?mode=single&step=upload">
+                <span aria-hidden="true" className="emh-hero-cta-icon">+</span>
+                Upload a Photo
+              </Link>
             </div>
+            <p className="emh-hero-reassurance">No account required &middot; Preview before ordering</p>
 
             <div className="emh-trust-strip">
               {trust.map(([label, detail]) => (
