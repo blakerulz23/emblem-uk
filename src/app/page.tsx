@@ -1,10 +1,12 @@
 ﻿import Link from 'next/link';
+import Icon from '@/components/builder/emblem/Icon';
 import {
   BuiltForEveryoneSection,
   DigitalProfileSection,
   FaqAccordion,
   HeroCardShowcase,
   HowItWorksSection,
+  TapVideo,
 } from './HomeEffects';
 
 const trust = [
@@ -96,6 +98,35 @@ export default function Home() {
                 </span>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tap" style={{ maxWidth: 'none', padding: 0 }}>
+        <div style={{ maxWidth: 1140, margin: 'clamp(20px, 4vw, 40px) auto', padding: 'clamp(40px, 6vw, 72px) clamp(28px, 5vw, 72px)', background: 'var(--ink)', borderRadius: 'clamp(24px, 4vw, 40px)', display: 'grid', gridTemplateColumns: '1.1fr 1fr', alignItems: 'center', gap: 48, position: 'relative', overflow: 'hidden' }} className="tap-grid">
+          <div aria-hidden style={{ position: 'absolute', inset: 0, background: 'radial-gradient(120% 90% at 100% 0%, var(--accent), transparent 45%)', opacity: 0.35, pointerEvents: 'none' }} />
+          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 20, alignItems: 'flex-start' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, fontFamily: 'var(--font-jbmono), monospace', fontSize: 11.5, fontWeight: 600, letterSpacing: '0.12em', color: 'var(--accent)' }}>
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--accent)' }} />
+              THE TAP
+            </span>
+            <h2 style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 'clamp(26px, 3.6vw, 40px)', lineHeight: 1.08, letterSpacing: '-0.025em', margin: 0, color: '#fff', textWrap: 'balance' as const }}>
+              Merch with a hidden surprise.
+            </h2>
+            <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 'clamp(16px, 1.5vw, 18.5px)', lineHeight: 1.5, color: 'rgba(255,255,255,.72)', margin: 0, maxWidth: '46ch', textWrap: 'pretty' as const }}>
+              Tap any piece with a phone and a digital profile comes up instantly. Stats, highlights, social links, the whole story. No app needed &mdash; set it up yourself, or let our team do it for you.
+            </p>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Link href="/builder?mode=single" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 9, fontFamily: 'var(--font-manrope), system-ui', fontWeight: 700, borderRadius: 14, height: 52, padding: '0 22px', fontSize: 16, background: 'var(--accent)', color: '#fff', boxShadow: '0 8px 24px var(--accent-glow)' }}>
+                Make yours <Icon name="chevR" size={18} />
+              </Link>
+              <Link href="/card-setup-preview" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-manrope), system-ui', fontWeight: 600, fontSize: 14, color: 'rgba(255,255,255,.7)', textDecoration: 'underline' }}>
+                Want it done for you? &rarr;
+              </Link>
+            </div>
+          </div>
+          <div style={{ position: 'relative', display: 'grid', placeItems: 'center', minHeight: 300 }}>
+            <TapVideo poster="/videos/emblem-tap-poster.jpg" />
           </div>
         </div>
       </section>

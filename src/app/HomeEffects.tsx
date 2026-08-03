@@ -1380,3 +1380,55 @@ export function FaqAccordion() {
     </div>
   );
 }
+
+/**
+ * The Tap section's video needs one bit of client behaviour the rest of
+ * that section doesn't: honouring prefers-reduced-motion. Autoplay/loop
+ * are otherwise plain HTML attributes (no JS needed), so this stays a
+ * small isolated client component rather than making the whole homepage
+ * a client component — same pattern as every other export in this file.
+ */
+export function TapVideo({ poster }: { poster: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const applyMotionPreference = () => {
+      if (query.matches) {
+        video.pause();
+        video.currentTime = 0;
+      } else {
+        video.play().catch(() => {});
+      }
+    };
+    applyMotionPreference();
+    query.addEventListener('change', applyMotionPreference);
+    return () => query.removeEventListener('change', applyMotionPreference);
+  }, []);
+
+  return (
+    <video
+      ref={videoRef}
+      src="/videos/emblem-tap.mp4"
+      poster={poster}
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="metadata"
+      controls={false}
+      style={{
+        width: '100%',
+        height: '100%',
+        maxWidth: 360,
+        aspectRatio: '1 / 1',
+        objectFit: 'cover',
+        borderRadius: 20,
+        boxShadow: '0 26px 50px rgba(0,0,0,.4)',
+        display: 'block',
+      }}
+    />
+  );
+}
