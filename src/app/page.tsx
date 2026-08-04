@@ -74,7 +74,7 @@ export default function Home() {
             </h1>
           </div>
 
-          <p className="emh-hero-subline">More than a football card.</p>
+          <p className="emh-hero-subline">Designed for grassroots football.</p>
           <HeroCardShowcase />
 
           <div className="emh-hero-footer">
@@ -110,17 +110,14 @@ export default function Home() {
               THE TAP
             </span>
             <h2 style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 'clamp(26px, 3.6vw, 40px)', lineHeight: 1.08, letterSpacing: '-0.025em', margin: 0, color: '#fff', textWrap: 'balance' as const }}>
-              Merch with a hidden surprise.
+              More than a football card.
             </h2>
             <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 'clamp(16px, 1.5vw, 18.5px)', lineHeight: 1.5, color: 'rgba(255,255,255,.72)', margin: 0, maxWidth: '46ch', textWrap: 'pretty' as const }}>
-              Tap any piece with a phone and a digital profile comes up instantly. Stats, highlights, social links, the whole story. No app needed &mdash; set it up yourself, or let our team do it for you.
+              Tap any Emblem card with your phone and their football profile opens instantly. No app required. Every match, achievement and memory is only a tap away.
             </p>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               <Link href="/builder?mode=single" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 9, fontFamily: 'var(--font-manrope), system-ui', fontWeight: 700, borderRadius: 14, height: 52, padding: '0 22px', fontSize: 16, background: 'var(--accent)', color: '#fff', boxShadow: '0 8px 24px var(--accent-glow)' }}>
                 Make yours <Icon name="chevR" size={18} />
-              </Link>
-              <Link href="/card-setup-preview" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--font-manrope), system-ui', fontWeight: 600, fontSize: 14, color: 'rgba(255,255,255,.7)', textDecoration: 'underline' }}>
-                Want it done for you? &rarr;
               </Link>
             </div>
           </div>
