@@ -3733,7 +3733,7 @@ a { text-decoration: none; color: inherit; }
   margin: 0 auto 4px;
   max-width: 620px;
   color: #16130f;
-  font-family: var(--font-cinematografica);
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(28px, 3.6vw, 46px);
   font-weight: 800;
   line-height: 0.86;
@@ -6773,7 +6773,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-faq-head h2 {
   margin: 0;
-  font-family: var(--font-cinematografica);
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(48px, 7vw, 86px);
   font-weight: 900;
   line-height: 0.9;
@@ -6811,7 +6811,7 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-faq-question span {
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(21px, 2.4vw, 28px);
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -8504,7 +8504,7 @@ a { text-decoration: none; color: inherit; }
 
 /* Homepage typography pass: clean condensed headings, practical retail sizes. */
 .emh-page :is(h1, h2, h3) {
-  font-family: var(--font-barlow-condensed), "Arial Narrow", Impact, sans-serif;
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-weight: 800;
   letter-spacing: 0;
 }

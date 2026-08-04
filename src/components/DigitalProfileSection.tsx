@@ -75,7 +75,7 @@ const BEATS: Beat[] = [
 
 const font = {
   cond: "'Barlow Condensed', system-ui, sans-serif",
-  display: "'Cinematografica', 'Archivo', system-ui, sans-serif",
+  display: "'Archivo', system-ui, sans-serif",
   body: "'Archivo', system-ui, sans-serif",
 };
 
