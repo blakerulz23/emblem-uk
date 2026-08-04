@@ -4428,7 +4428,7 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-profile-section {
-  contain-intrinsic-size: auto 1180px;
+  contain-intrinsic-size: auto 5100px;
 }
 
 .emh-section {
@@ -8387,11 +8387,6 @@ a { text-decoration: none; color: inherit; }
   box-shadow: 0 30px 60px -30px rgba(20, 17, 15, 0.55);
 }
 
-.emh-hiw-card-button {
-  width: 100%;
-  cursor: pointer;
-}
-
 .emh-hiw-number,
 .emh-dp2-label,
 .emh-dp2-eyebrow {
@@ -8419,12 +8414,6 @@ a { text-decoration: none; color: inherit; }
   color: #5a5248;
   font-size: 14px;
   line-height: 1.55;
-}
-
-.emh-hiw-card p span {
-  color: #ef6c2f;
-  font-weight: 800;
-  white-space: nowrap;
 }
 
 .emh-hiw-visual {
@@ -9918,114 +9907,6 @@ a { text-decoration: none; color: inherit; }
   border-radius: 30px;
 }
 
-/* ---- Built for everyone involved ---- */
-
-.emh-everyone {
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 78px 26px 92px;
-  text-align: center;
-}
-
-.emh-everyone-eyebrow {
-  margin: 0 0 16px;
-  color: #ef6c2f;
-  font-family: var(--font-barlow-condensed);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.26em;
-}
-
-.emh-everyone h2 {
-  max-width: 900px;
-  margin: 0 auto 26px;
-  color: #f6f3ee;
-  font-size: clamp(34px, 5.4vw, 64px);
-  line-height: 1.04;
-}
-
-.emh-everyone-sub {
-  max-width: 560px;
-  margin: 0 auto 52px;
-  color: #9a9184;
-  font-family: Georgia, "Times New Roman", Times, serif;
-  font-size: 19px;
-  font-style: italic;
-  line-height: 1.6;
-}
-
-.emh-everyone-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-  text-align: left;
-}
-
-.emh-everyone-grid article {
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 20px;
-  background: #131110;
-  overflow: hidden;
-}
-
-.emh-everyone-photo {
-  position: relative;
-  height: 230px;
-  overflow: hidden;
-}
-
-.emh-everyone-photo img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.emh-everyone-body {
-  padding: 26px 24px 30px;
-  text-align: center;
-}
-
-.emh-everyone-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  margin-bottom: 16px;
-  border: 1.6px solid #ef6c2f;
-  border-radius: 50%;
-  color: #ef8b3f;
-}
-
-.emh-everyone-icon svg {
-  width: 26px;
-  height: 26px;
-}
-
-.emh-everyone-body h3 {
-  margin: 0 0 14px;
-  color: #f6f3ee;
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-}
-
-.emh-everyone-body i {
-  display: block;
-  width: 38px;
-  height: 2px;
-  margin: 0 auto 14px;
-  background: #ef6c2f;
-}
-
-.emh-everyone-body p {
-  margin: 0;
-  color: #9a9184;
-  font-size: 14.5px;
-  line-height: 1.5;
-}
 
 @media (max-width: 980px) {
   .emh-hiw-grid,
@@ -10099,21 +9980,9 @@ a { text-decoration: none; color: inherit; }
   .emh-dp2-stage-card {
     height: 220px;
   }
-
-  .emh-everyone-grid {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 
 @media (max-width: 620px) {
-  .emh-everyone-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .emh-everyone {
-    padding: 48px 18px 60px;
-  }
-
   .emh-forever-section {
     padding: 30px 16px;
   }

@@ -1,7 +1,6 @@
 ﻿import Link from 'next/link';
 import Icon from '@/components/builder/emblem/Icon';
 import {
-  BuiltForEveryoneSection,
   DigitalProfileSection,
   FaqAccordion,
   HeroCardShowcase,
@@ -131,16 +130,12 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="journey" className="emh-forever-section">
-        <HowItWorksSection />
-      </section>
-
       <section id="card" className="emh-profile-section">
         <DigitalProfileSection />
       </section>
 
-      <section id="everyone" className="emh-everyone-section">
-        <BuiltForEveryoneSection />
+      <section id="journey" className="emh-forever-section">
+        <HowItWorksSection />
       </section>
 
       <section id="squad" className="emh-section emh-squad">

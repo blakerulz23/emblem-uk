@@ -693,28 +693,20 @@ const stepCards = [
     number: '1',
     title: 'Upload',
     body: 'Choose your favourite photo and personalise your card.',
-    action: undefined,
   },
   {
     number: '2',
     title: 'Print',
     body: 'We professionally print your collectible with premium finishes and a real NFC chip.',
-    action: undefined,
   },
   {
     number: '3',
     title: 'Tap',
     body: 'Touch your card to your phone to instantly unlock their digital profile and collection.',
-    action: 'Try it ->',
   },
 ] as const;
 
 export function HowItWorksSection() {
-  const goToDigital = () => {
-    window.dispatchEvent(new CustomEvent('emblem-dp-hint'));
-    document.getElementById('card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
   return (
     <div className="emh-hiw-inner">
       <div className="emh-hiw-head">
@@ -723,28 +715,19 @@ export function HowItWorksSection() {
       </div>
       <div className="emh-hiw-grid">
         {stepCards.map((step) => (
-          <StepCard key={step.number} step={step} onTry={step.number === '3' ? goToDigital : undefined} />
+          <StepCard key={step.number} step={step} />
         ))}
       </div>
     </div>
   );
 }
 
-function StepCard({
-  step,
-  onTry,
-}: {
-  step: (typeof stepCards)[number];
-  onTry?: () => void;
-}) {
-  const content = (
-    <>
+function StepCard({ step }: { step: (typeof stepCards)[number] }) {
+  return (
+    <article className="emh-hiw-card">
       <span className="emh-hiw-number">{step.number}</span>
       <h3>{step.title}</h3>
-      <p>
-        {step.body}
-        {step.action && <span> {step.action}</span>}
-      </p>
+      <p>{step.body}</p>
       <div className={`emh-hiw-visual emh-hiw-visual-${step.number}`} aria-hidden="true">
         {step.number === '1' && (
           <span className="emh-hiw-upload-mark">
@@ -764,18 +747,8 @@ function StepCard({
           </>
         )}
       </div>
-    </>
+    </article>
   );
-
-  if (onTry) {
-    return (
-      <button type="button" className="emh-hiw-card emh-hiw-card-button" onClick={onTry}>
-        {content}
-      </button>
-    );
-  }
-
-  return <article className="emh-hiw-card">{content}</article>;
 }
 
 export function DigitalProfileSection() {
@@ -825,10 +798,20 @@ export function DigitalProfileSection() {
   // Hard gate: while locked, clamp scroll so the drag/tap-to-unlock UI stays
   // centred in view. Never engages under reduced-motion, so those visitors
   // are never trapped (no-JS/no-motion accessibility fallback).
+  // Briefly stands down when navigation is explicitly headed to #journey
+  // (nav link / direct URL) — #journey now sits after this section, so the
+  // gate would otherwise trap that anchor scroll before it arrives.
   useEffect(() => {
     if (unlocked || reducedMotion) return;
     let raf = 0;
+    let bypassArmedAt = 0;
     const onScroll = () => {
+      if (window.location.hash === '#journey') {
+        if (!bypassArmedAt) bypassArmedAt = Date.now();
+        if (Date.now() - bypassArmedAt < 2000) return;
+      } else {
+        bypassArmedAt = 0;
+      }
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
@@ -1302,38 +1285,6 @@ function DigitalProfileStage({ armed, reducedMotion }: { armed: boolean; reduced
             </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-const everyoneCards = [
-  { photo: '/assets/everyone/oc-parents.png', alt: 'Family sharing an Emblem card', label: 'PARENTS', body: 'Keep every football memory.', iconIndex: 5 },
-  { photo: '/assets/everyone/oc-players.png', alt: 'Player and stats', label: 'PLAYERS', body: 'Watch yourself improve.', iconIndex: 2 },
-  { photo: '/assets/everyone/oc-coaches.png', alt: 'Coach and player', label: 'COACHES', body: 'Celebrate moments forever.', iconIndex: 4 },
-  { photo: '/assets/everyone/oc-clubs.png', alt: 'Club pitch and moments collected', label: 'CLUBS', body: 'Create a living history.', iconIndex: 0 },
-] as const;
-
-export function BuiltForEveryoneSection() {
-  return (
-    <div className="emh-everyone">
-      <p className="emh-everyone-eyebrow">Built for everyone involved</p>
-      <h2>One card. Everyone connected.</h2>
-      <p className="emh-everyone-sub">Emblem brings every part of the football journey together.<br />One card. Endless value.</p>
-      <div className="emh-everyone-grid">
-        {everyoneCards.map((card) => (
-          <article key={card.label}>
-            <div className="emh-everyone-photo">
-              <img src={card.photo} alt={card.alt} loading="lazy" decoding="async" />
-            </div>
-            <div className="emh-everyone-body">
-              <span className="emh-everyone-icon"><ProfileIcon index={card.iconIndex} /></span>
-              <h3>{card.label}</h3>
-              <i />
-              <p>{card.body}</p>
-            </div>
-          </article>
-        ))}
       </div>
     </div>
   );
