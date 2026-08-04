@@ -1,7 +1,7 @@
 ﻿import Link from 'next/link';
 import Icon from '@/components/builder/emblem/Icon';
+import DigitalProfileSection from '@/components/DigitalProfileSection';
 import {
-  DigitalProfileSection,
   FaqAccordion,
   HeroCardShowcase,
   HowItWorksSection,
@@ -130,9 +130,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="card" className="emh-profile-section">
-        <DigitalProfileSection />
-      </section>
+      <DigitalProfileSection />
 
       <section id="journey" className="emh-forever-section">
         <HowItWorksSection />
