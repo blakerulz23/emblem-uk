@@ -3803,8 +3803,7 @@ a { text-decoration: none; color: inherit; }
   color: rgba(255, 255, 255, 0.72);
   font-size: 16px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
   transition: color 160ms ease;
 }
 
@@ -3816,10 +3815,9 @@ a { text-decoration: none; color: inherit; }
   color: #fff;
   font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   line-height: 1;
   padding: 13px 22px;
-  text-transform: uppercase;
   transition: background 160ms ease;
 }
 
@@ -3901,8 +3899,7 @@ a { text-decoration: none; color: inherit; }
   font-family: var(--font-jbmono), monospace;
   font-size: clamp(12px, 1vw, 13px);
   font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .emh-eyebrow {
@@ -4478,6 +4475,7 @@ a { text-decoration: none; color: inherit; }
   max-width: 340px;
   padding: 12px 24px;
   font-size: 16px;
+  text-transform: none;
 }
 
 .emh-hero-cta-icon {
@@ -7295,7 +7293,7 @@ a { text-decoration: none; color: inherit; }
   .emh-hero-subline {
     margin-bottom: 6px;
     font-size: 12px;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.02em;
   }
 
   .emh-lede {

@@ -370,11 +370,6 @@ export function HeroCardShowcase() {
           ))}
         </div>
       </div>
-
-      <p className="emh-hero-edition-note">
-        <span />
-        {fanCards[centered].name} edition - tap to shuffle, hover to unlock
-      </p>
     </div>
   );
 }

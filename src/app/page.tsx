@@ -81,7 +81,7 @@ export default function Home() {
             <div className="emh-actions emh-hero-actions-single">
               <Link className="emh-btn emh-btn-primary emh-hero-cta" href="/builder?mode=single&step=upload">
                 <span aria-hidden="true" className="emh-hero-cta-icon">+</span>
-                Upload a Photo
+                Build Your Card
               </Link>
             </div>
             <p className="emh-hero-reassurance">No account required &middot; Preview before ordering</p>

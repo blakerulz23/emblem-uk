@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 
 const links = [
-  { href: '/#collection', label: 'The cards' },
-  { href: '/#journey', label: 'How it works' },
+  { href: '/#collection', label: 'The Cards' },
+  { href: '/#journey', label: 'How It Works' },
   { href: '/#squad', label: 'Teams' },
   { href: '/#pricing', label: 'Pricing' },
 ];
@@ -43,7 +43,7 @@ export default function Navbar() {
               href="/builder?mode=single"
               className="emh-nav-cta"
             >
-              Build your card
+              Build Your Card
             </Link>
           </div>
 
@@ -89,7 +89,7 @@ export default function Navbar() {
                 href={link.href}
                 onClick={() => setMobileOpen(false)}
                 className="rounded-xl px-3 py-3 text-base font-semibold transition-colors"
-                style={{ color: 'rgba(255,255,255,0.82)', fontFamily: 'var(--font-manrope), system-ui', textTransform: 'uppercase', letterSpacing: '0.04em' }}
+                style={{ color: 'rgba(255,255,255,0.82)', fontFamily: 'var(--font-manrope), system-ui', letterSpacing: '0.02em' }}
               >
                 {link.label}
               </Link>
@@ -99,7 +99,7 @@ export default function Navbar() {
               onClick={() => setMobileOpen(false)}
               className="emh-nav-cta mt-2 inline-flex items-center justify-center"
             >
-              Build your card
+              Build Your Card
             </Link>
           </div>
         </div>
