@@ -3957,9 +3957,8 @@ a { text-decoration: none; color: inherit; }
   border-radius: 7px;
   font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   padding: 10px 18px;
-  text-transform: uppercase;
   transition: background 160ms ease, border-color 160ms ease;
 }
 
@@ -6791,10 +6790,9 @@ a { text-decoration: none; color: inherit; }
   color: #2b2621;
   font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   padding: 12px;
   text-align: center;
-  text-transform: uppercase;
 }
 
 .emh-roster-actions span:last-child {
@@ -6879,10 +6877,9 @@ a { text-decoration: none; color: inherit; }
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   padding: 14px;
   text-align: center;
-  text-transform: uppercase;
 }
 
 .emh-tier-featured a {
@@ -7058,9 +7055,8 @@ a { text-decoration: none; color: inherit; }
   font-family: var(--font-manrope), system-ui, sans-serif;
   font-size: 17px;
   font-weight: 900;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   padding: 15px 24px;
-  text-transform: uppercase;
   box-shadow: 0 18px 38px -22px rgba(239, 108, 47, 0.8);
 }
 

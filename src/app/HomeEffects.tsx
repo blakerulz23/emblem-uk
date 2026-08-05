@@ -148,56 +148,38 @@ const whyProfileMatters: ProfileFeature[] = [
 const faqItems: FaqItem[] = [
   {
     question: 'Is this just a football card?',
-    lead: 'No.',
     answer:
-      'Every Emblem card includes a real NFC chip that unlocks a private digital profile. As your child plays, new photos, milestones, videos and achievements are added to the same profile, season after season.',
+      'No. Every Emblem card includes a built-in NFC chip that opens a private digital profile. As they play, new photos, matches, milestones, videos and achievements can be added to the same football story, season after season.',
   },
   {
     question: 'Do I need an app?',
-    lead: 'No.',
-    answer: 'Simply tap the card with any compatible smartphone to open the digital profile instantly.',
+    answer: 'No app is required. Tap the Emblem card with a compatible smartphone and the player’s digital profile opens in the browser.',
   },
   {
     question: 'What happens next season?',
-    lead: 'The journey continues.',
     answer:
-      'You do not start again. New seasons are simply added to the same player profile, building one complete football story over time.',
+      'Their existing profile continues into the next season, so new teams, matches, memories and milestones can be added without replacing their football story.',
   },
   {
     question: 'What can I add?',
-    lead: 'Everything that tells their story.',
-    chips: [
-      'Match photos',
-      'Goals',
-      'Highlights',
-      'Awards',
-      'Team photos',
-      'Tournament wins',
-      'Player of the Match',
-      'Season statistics',
-      'New clubs',
-      'Every new season',
-    ],
+    answer: 'You can add photos, videos, match moments, awards, achievements, coach recognition and season memories to their Collection.',
   },
   {
     question: 'Is it private?',
-    lead: 'You decide.',
-    answer: 'Profiles are private by default and only shared with the people you choose.',
+    answer: 'Yes. Guardians control the player’s profile and decide which moments stay private and which can be shared with people who tap the card.',
   },
   {
     question: 'How long does shipping take?',
-    answer: 'Most cards are printed and dispatched within 5-7 working days.',
+    answer: 'Most cards are printed and dispatched within 3-5 working days.',
   },
   {
     question: 'Can I order a whole team?',
-    lead: 'Absolutely.',
-    answer: 'We create individual cards for entire squads, academies and football clubs.',
+    answer: 'Yes. Coaches and team organisers can build a full squad in one session, upload multiple player photos, apply one design and review every card together.',
   },
   {
     question: 'What if they become a professional?',
-    lead: 'Their story has already begun.',
     answer:
-      'Their first season, first goal, first trophy and first team are already preserved forever. Every new chapter simply builds on the same journey.',
+      'Their Emblem story remains theirs. The same profile can continue growing as they move through new teams, seasons and levels of the game.',
   },
 ];
 

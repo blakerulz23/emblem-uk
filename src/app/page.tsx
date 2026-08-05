@@ -143,7 +143,7 @@ export default function Home() {
           <ul>
             {squadPoints.map((point) => <li key={point}>{point}</li>)}
           </ul>
-          <Link className="emh-btn emh-btn-primary" href="/builder?mode=squad">Build a team pack</Link>
+          <Link className="emh-btn emh-btn-primary" href="/builder?mode=squad">Build a Team Pack</Link>
         </div>
         <div className="emh-roster-card">
           <div className="emh-roster-head">
@@ -165,8 +165,8 @@ export default function Home() {
               </div>
             ))}
             <div className="emh-roster-actions">
-              <span>Apply to all</span>
-              <span>Approve 14 ready</span>
+              <span>Apply to All</span>
+              <span>Approve 14 Ready</span>
             </div>
           </div>
         </div>
@@ -202,7 +202,7 @@ export default function Home() {
           <FaqAccordion />
           <div className="emh-faq-cta">
             <h3>Still have questions?</h3>
-            <Link href="/builder?mode=single">Start your card</Link>
+            <Link href="/builder?mode=single">Start Your Card</Link>
           </div>
         </div>
       </section>
@@ -213,7 +213,7 @@ export default function Home() {
         <p>Every football journey begins somewhere. Give them one worth keeping.</p>
         <div className="emh-actions">
           <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Order a Card</Link>
-          <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
+          <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a Team Pack</Link>
         </div>
         <p className="emh-final-note">Ships in 3-5 days · First season free · Made in the UK</p>
       </section>
