@@ -691,7 +691,7 @@ const stepCards = [
   {
     number: '1',
     title: 'Upload',
-    body: 'Choose your favourite photo and personalise your card.',
+    body: 'Choose your favourite photo and personalise your card with 100s of templates.',
   },
   {
     number: '2',

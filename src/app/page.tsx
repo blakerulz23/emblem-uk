@@ -135,7 +135,7 @@ export default function Home() {
 
       <section id="squad" className="emh-section emh-squad">
         <div className="emh-squad-copy">
-          <p className="emh-eyebrow">For clubs & teams</p>
+          <p className="emh-eyebrow">For coaches & teams</p>
           <h2>One session. The whole squad.</h2>
           <p>
             The builder works like a squad sheet, not a repeated checkout. Add siblings, friends or all sixteen players, bulk-upload photos, apply one design across every card, then approve them together.
