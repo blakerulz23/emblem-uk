@@ -83,9 +83,44 @@ function rectsOverlap(a: DOMRect, b: DOMRect, pad = 0) {
   return !(a.right < b.left - pad || a.left > b.right + pad || a.bottom < b.top - pad || a.top > b.bottom + pad);
 }
 
+type LockScreenClock = { time: string; date: string; iso: string };
+
+// Live HH:mm + weekday/day/month for the lock-screen mockup, in the visitor's
+// own timezone. Starts null so server render and first client render match
+// (no baked-in fake time to hydrate against) — the real value is filled in
+// by the effect right after mount, then re-scheduled to the next minute
+// boundary rather than polling every second.
+function useLockScreenClock(): LockScreenClock | null {
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      const current = new Date();
+      setNow(current);
+      const msUntilNextMinute = 60000 - (current.getSeconds() * 1000 + current.getMilliseconds());
+      timeoutId = setTimeout(tick, msUntilNextMinute);
+    };
+    tick();
+    return () => clearTimeout(timeoutId);
+  }, []);
+
+  if (!now) return null;
+
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  const weekday = now.toLocaleDateString("en-GB", { weekday: "long" });
+  const month = now.toLocaleDateString("en-GB", { month: "long" });
+  const date = `${weekday} ${now.getDate()} ${month}`;
+  const iso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${time}`;
+
+  return { time, date, iso };
+}
+
 export default function DigitalProfileSection() {
   const [unlocked, setUnlocked] = useState(false);
   const [beat, setBeat] = useState(0);
+  const clock = useLockScreenClock();
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLImageElement>(null);
@@ -232,6 +267,23 @@ export default function DigitalProfileSection() {
             onPointerDown={onDown("phone")} onPointerMove={onMove("phone")} onPointerUp={onUp("phone")}
             style={{ position: "relative", zIndex: 3, marginLeft: "auto", cursor: "grab", touchAction: "none", userSelect: "none", filter: "drop-shadow(0 34px 64px rgba(0,0,0,.7))" }}>
             <img ref={screenRef} src="/emblem/dp-lock.png" alt="Emblem card — tap to unlock" draggable={false} style={{ display: "block", height: 500, width: "auto", pointerEvents: "none", borderRadius: 34 }} />
+            {/* Live lock-screen clock. The static screenshots have a baked-in
+                placeholder time/date at this position — this scrim sits over
+                that exact band to keep it legible-but-hidden behind the real,
+                ticking time, the same way iOS itself darkens bright wallpaper
+                behind the lock-screen clock. */}
+            <div style={{ position: "absolute", top: "6%", left: 0, right: 0, height: "23%", borderRadius: 34, background: "linear-gradient(180deg, rgba(3,7,15,0) 0%, rgba(3,7,15,.6) 16%, rgba(3,7,15,.86) 38%, rgba(3,7,15,.86) 64%, rgba(3,7,15,.55) 84%, rgba(3,7,15,0) 100%)", pointerEvents: "none", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              {clock && (
+                <>
+                  <time dateTime={clock.iso} style={{ fontFamily: font.body, fontSize: 14, fontWeight: 500, color: "#F1EFEA", letterSpacing: ".01em" }}>
+                    {clock.date}
+                  </time>
+                  <time dateTime={clock.iso} style={{ fontFamily: font.body, fontSize: 58, fontWeight: 600, letterSpacing: "-.02em", color: "#FDFDFB", lineHeight: 1 }}>
+                    {clock.time}
+                  </time>
+                </>
+              )}
+            </div>
             <div ref={bootRef} style={{ position: "absolute", inset: 0, borderRadius: 34, background: "#050505", opacity: 0, pointerEvents: "none", transition: "opacity .35s ease", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14 }}>
               <img src="/emblem/emblem-wordmark.png" alt="" style={{ height: 22, width: "auto", filter: "brightness(0) invert(1)", opacity: .9 }} />
               <div style={{ width: 26, height: 26, borderRadius: "50%", border: "2.5px solid rgba(239,108,47,.3)", borderTopColor: ORANGE, animation: "emSpin .8s linear infinite" }} />
