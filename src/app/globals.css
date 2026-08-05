@@ -2694,12 +2694,13 @@ a { text-decoration: none; color: inherit; }
 }
 
 .uk-handoff-box {
+  margin-top: 14px;
   border: 1px solid #eadfce;
   border-radius: 8px;
   background: #fffdfa;
   padding: 16px;
   display: grid;
-  gap: 10px;
+  gap: 6px;
 }
 
 .uk-order-summary-card {
@@ -3052,17 +3053,6 @@ a { text-decoration: none; color: inherit; }
   color: var(--wizard-soft);
   font-size: 12px;
   line-height: 1.4;
-}
-
-.uk-payload {
-  margin: 14px 0 0;
-  max-height: 420px;
-  overflow: auto;
-  border-radius: 8px;
-  background: #18130f;
-  color: #cde3ef;
-  padding: 16px;
-  font-size: 12px;
 }
 
 .uk-card-viewer {

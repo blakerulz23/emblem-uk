@@ -197,7 +197,6 @@ export default function ProductionBuilder() {
   // above rather than adding a second entry flow.
   const [activeStepId, setActiveStepId] = useState<StepId>(() => (searchParams.get('step') === 'upload' ? 'upload' : 'order-type'));
   const [selectedId, setSelectedId] = useState(order.players[0]?.id || '');
-  const [showPayload, setShowPayload] = useState(false);
   const [cardSide, setCardSide] = useState<CardSide>('front');
   const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>('idle');
   // Print-capture rig: rendered off-screen only while a submit is in
@@ -595,6 +594,10 @@ export default function ProductionBuilder() {
       });
   };
 
+  // Kept for a future internal/staff view — no longer exposed on the public
+  // confirmation screen, but the download-a-JSON-summary capability itself
+  // is intentionally retained rather than deleted.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const exportPayload = () => {
     const blob = new Blob([JSON.stringify({ contact: enquiry, ...productionPayload(order) }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1400,12 +1403,10 @@ export default function ProductionBuilder() {
               </div>
               <div className="uk-handoff-box">
                 <h3>Order summary</h3>
-                <p>{summary.approvedPlayers.length} cards &middot; {summary.approvedPrints} prints &middot; {money(summary.subtotal)}</p>
-                <button type="button" onClick={exportPayload} disabled={!summary.checkoutEligible}>Download summary</button>
-                {canEditOrder ? <button type="button" onClick={() => setActiveStepId(stepOrder.includes('approve') ? 'approve' : 'personalise')}>Edit order</button> : null}
-                <button type="button" onClick={() => setShowPayload((value) => !value)}>{showPayload ? 'Hide technical details' : 'Technical details'}</button>
+                <p>
+                  {summary.approvedPlayers.length} card{summary.approvedPlayers.length === 1 ? '' : 's'} &middot; {summary.approvedPrints} print{summary.approvedPrints === 1 ? '' : 's'} &middot; {money(summary.subtotal)}
+                </p>
               </div>
-              {showPayload && <pre className="uk-payload">{JSON.stringify(productionPayload(order), null, 2)}</pre>}
             </section>
           )}
         </main>
