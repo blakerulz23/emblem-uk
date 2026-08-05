@@ -189,12 +189,14 @@ export default function ProductionBuilder() {
     }
     return draft;
   });
-  // Marketing entry points (e.g. the homepage hero's "Upload a Photo" CTA)
-  // can skip straight to the photo-upload step via ?step=upload — the
-  // order-type/collection steps ahead of it are never a required gate
-  // (every field already has a sensible default from defaultOrder()), so
-  // this reuses the same initial-state-from-searchParams pattern as `mode`
-  // above rather than adding a second entry flow.
+  // A marketing entry point can still skip straight to the photo-upload
+  // step via ?step=upload if one is ever added — the order-type/collection
+  // steps ahead of it are never a required gate (every field already has a
+  // sensible default from defaultOrder()), so this reuses the same
+  // initial-state-from-searchParams pattern as `mode` above rather than
+  // adding a second entry flow. No current CTA uses it: the homepage hero
+  // link now points at plain /builder so every marketing entry point lands
+  // on Step 1 (order-type) consistently.
   const [activeStepId, setActiveStepId] = useState<StepId>(() => (searchParams.get('step') === 'upload' ? 'upload' : 'order-type'));
   const [selectedId, setSelectedId] = useState(order.players[0]?.id || '');
   const [cardSide, setCardSide] = useState<CardSide>('front');
