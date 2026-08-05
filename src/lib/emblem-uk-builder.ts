@@ -8,6 +8,27 @@ export type Sport = 'football';
 export type PlayerStatus = 'approved' | 'needs-photo' | 'needs-details' | 'ready';
 export type TemplateId = 'emjfl-official' | HollinwoodTemplateId | CustomCollectionTemplateId;
 
+// Guided builder flow. `approve` is a team-only gate (siblings/squad — more
+// than one card genuinely benefits from a review-and-approve pass before the
+// final order screen); single-player orders skip straight from Personalise
+// to Review, keeping the flow to 6 steps as specified.
+export type StepId = 'order-type' | 'collection' | 'upload' | 'bg-removal' | 'personalise' | 'approve' | 'review';
+
+export const STEP_LABEL: Record<StepId, string> = {
+  'order-type': 'Choose order type',
+  collection: 'Choose collection',
+  upload: 'Upload photos',
+  'bg-removal': 'Remove background',
+  personalise: 'Personalise cards',
+  approve: 'Approve cards',
+  review: 'Review order',
+};
+
+export function stepsFor(orderType: OrderType): StepId[] {
+  const base: StepId[] = ['order-type', 'collection', 'upload', 'bg-removal', 'personalise'];
+  return orderType === 'single' ? [...base, 'review'] : [...base, 'approve', 'review'];
+}
+
 export type CropTransform = {
   x: number;
   y: number;

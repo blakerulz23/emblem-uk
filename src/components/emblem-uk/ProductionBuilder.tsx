@@ -19,14 +19,18 @@ import {
   productionPayload,
   selectedTemplate,
   sportConfig,
+  STEP_LABEL,
   statusCopy,
+  stepsFor,
   summarizeOrder,
   templates,
   type OrderDraft,
   type OrderType,
   type PlayerDraft,
+  type StepId,
   type TemplateId,
 } from '@/lib/emblem-uk-builder';
+import BackgroundRemovalStep from './builder-steps/BackgroundRemovalStep';
 
 const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'person' | 'group' }> = [
   { id: 'single', title: 'One player', copy: 'Create one card from one football photo.', icon: 'person' },
@@ -54,7 +58,6 @@ const orderModeLimits: Record<OrderType, { maxPlayers: number; rosterCopy: strin
   squad: { maxPlayers: 40, rosterCopy: 'Squad orders support bulk photo upload and team-level approval.' },
 };
 
-const steps = ['Choose club', 'Upload photos', 'Personalise cards', 'Approve cards', 'Review order'];
 type CardSide = 'front' | 'back';
 type EnquiryStatus = 'idle' | 'sending' | 'sent' | 'error';
 type UploadedOrderAsset = {
@@ -188,11 +191,11 @@ export default function ProductionBuilder() {
   });
   // Marketing entry points (e.g. the homepage hero's "Upload a Photo" CTA)
   // can skip straight to the photo-upload step via ?step=upload — the
-  // "Choose club" step ahead of it is never a required gate (every field
-  // on it already has a sensible default from defaultOrder()), so this
-  // reuses the same initial-state-from-searchParams pattern as `mode`
+  // order-type/collection steps ahead of it are never a required gate
+  // (every field already has a sensible default from defaultOrder()), so
+  // this reuses the same initial-state-from-searchParams pattern as `mode`
   // above rather than adding a second entry flow.
-  const [activeStep, setActiveStep] = useState(() => (searchParams.get('step') === 'upload' ? 1 : 0));
+  const [activeStepId, setActiveStepId] = useState<StepId>(() => (searchParams.get('step') === 'upload' ? 'upload' : 'order-type'));
   const [selectedId, setSelectedId] = useState(order.players[0]?.id || '');
   const [showPayload, setShowPayload] = useState(false);
   const [cardSide, setCardSide] = useState<CardSide>('front');
@@ -213,6 +216,10 @@ export default function ProductionBuilder() {
   });
 
   const selectedPlayer = order.players.find((player) => player.id === selectedId) || order.players[0];
+  // Single-player orders skip the team-only "approve" gate (6 steps total);
+  // set/squad orders keep it (7 steps) — see stepsFor() in emblem-uk-builder.
+  const stepOrder = useMemo(() => stepsFor(order.type), [order.type]);
+  const activeIndex = stepOrder.indexOf(activeStepId);
   const summary = useMemo(() => summarizeOrder(order), [order]);
   const reviewGroups = useMemo(() => groupPlayersByClub(order, order.players), [order]);
   const approvedGroups = useMemo(() => groupPlayersByClub(order, summary.approvedPlayers), [order, summary.approvedPlayers]);
@@ -344,7 +351,7 @@ export default function ProductionBuilder() {
     }));
   };
 
-  const addPlayer = (seed?: Partial<PlayerDraft>, options?: { step?: number; promoteSingle?: boolean }) => {
+  const addPlayer = (seed?: Partial<PlayerDraft>, options?: { step?: StepId; promoteSingle?: boolean }) => {
     const nextType: OrderType = options?.promoteSingle && order.type === 'single' ? 'set' : order.type;
     if (order.players.length >= orderModeLimits[nextType].maxPlayers) return;
     const player = createPlayer({
@@ -356,10 +363,10 @@ export default function ProductionBuilder() {
     });
     setOrder((current) => ({ ...current, type: nextType, players: [...current.players, player] }));
     setSelectedId(player.id);
-    setActiveStep(options?.step ?? 1);
+    setActiveStepId(options?.step ?? 'upload');
   };
 
-  const addPlayerToClub = (clubId: string, step = 1) => {
+  const addPlayerToClub = (clubId: string, step: StepId = 'upload') => {
     const club = getEmjflClub(clubId);
     addPlayer({
       club: club.name,
@@ -369,7 +376,7 @@ export default function ProductionBuilder() {
     }, { step, promoteSingle: true });
   };
 
-  const addPlayerToCurrentTeam = (step = 1) => {
+  const addPlayerToCurrentTeam = (step: StepId = 'upload') => {
     if (order.collectionType === 'custom') {
       addPlayer({
         club: order.club,
@@ -389,18 +396,29 @@ export default function ProductionBuilder() {
         badgeUrl: undefined,
         clubEdited: true,
         templateId: order.templateDefault,
-      }, { step: 0, promoteSingle: true });
+      }, { step: 'personalise', promoteSingle: true });
       return;
     }
-    addPlayerToClub(nextClubId(order), 1);
+    addPlayerToClub(nextClubId(order), 'upload');
   };
 
   const handleReviewPrimary = () => {
     if (summary.checkoutEligible) {
-      setActiveStep(4);
+      setActiveStepId('review');
       return;
     }
     if (summary.counts.ready > 0) approveAllReady();
+  };
+
+  const handleBgRemovalContinue = () => {
+    if (order.type !== 'single' && selectedIndex < order.players.length - 1) {
+      selectAdjacentPlayer(1);
+      return;
+    }
+    // The squad walk through bg-removal ends on the last player — hand off to
+    // Personalise starting back at the first player, not mid/end of roster.
+    if (order.type !== 'single' && order.players[0]) setSelectedId(order.players[0].id);
+    setActiveStepId('personalise');
   };
 
   const removePlayer = (id: string) => {
@@ -461,7 +479,7 @@ export default function ProductionBuilder() {
       },
     });
     setSelectedId(id);
-    setActiveStep(2);
+    setActiveStepId('bg-removal');
   };
 
   const assignPlayerBadge = (id: string, file?: File) => {
@@ -572,7 +590,7 @@ export default function ProductionBuilder() {
       }
 
       setSelectedId(players[players.length - 1]?.id || selectedId);
-      setActiveStep(current.type !== 'single' ? 1 : 2);
+      setActiveStepId(current.type !== 'single' ? 'upload' : 'bg-removal');
       return { ...current, players };
       });
   };
@@ -689,11 +707,16 @@ export default function ProductionBuilder() {
     }
   };
 
-  const progress = ((activeStep + 1) / steps.length) * 100;
-  const progressLabel = activeStep >= 3
+  const progress = ((activeIndex + 1) / stepOrder.length) * 100;
+  const progressLabel = activeStepId === 'approve' || activeStepId === 'review'
     ? `${order.players.length} player${order.players.length === 1 ? '' : 's'} - ${summary.counts.approved} approved`
-    : steps[activeStep];
-  const goBack = () => setActiveStep((step) => Math.max(0, step - 1));
+    : STEP_LABEL[activeStepId];
+  const goBack = () => {
+    const previous = stepOrder[Math.max(0, activeIndex - 1)];
+    setActiveStepId(previous);
+  };
+  const approveOrReviewStep: StepId = stepOrder.includes('approve') ? 'approve' : 'review';
+  const prePersonaliseSteps: StepId[] = ['order-type', 'collection', 'upload', 'bg-removal'];
   const selectedIndex = selectedPlayer ? order.players.findIndex((player) => player.id === selectedPlayer.id) : -1;
   const selectAdjacentPlayer = (direction: -1 | 1) => {
     if (selectedIndex < 0) return;
@@ -744,7 +767,7 @@ export default function ProductionBuilder() {
       <div className="uk-wizard-phone">
         <header className="uk-wizard-header">
           <div className="uk-wizard-topbar">
-            <button type="button" className="uk-icon-button" onClick={goBack} aria-label="Back" disabled={activeStep === 0}>
+            <button type="button" className="uk-icon-button" onClick={goBack} aria-label="Back" disabled={activeIndex === 0}>
               &lsaquo;
             </button>
             <Link href="/" className="uk-wizard-brand" aria-label="Emblem home">
@@ -754,28 +777,24 @@ export default function ProductionBuilder() {
               type="button"
               className="uk-progress-pill"
               aria-label={progressLabel}
-              onClick={() => setActiveStep(summary.checkoutEligible ? 4 : 3)}
-              disabled={activeStep < 2 && !summary.checkoutEligible}
+              onClick={() => setActiveStepId(summary.checkoutEligible ? 'review' : approveOrReviewStep)}
+              disabled={prePersonaliseSteps.includes(activeStepId) && !summary.checkoutEligible}
             >
               {progressLabel}
             </button>
           </div>
           <div className="uk-wizard-progress">
             <div><span style={{ width: `${progress}%` }} /></div>
-            <b>{String(activeStep + 1).padStart(2, '0')} / {String(steps.length).padStart(2, '0')} &middot; {steps[activeStep]}</b>
+            <b>{String(activeIndex + 1).padStart(2, '0')} / {String(stepOrder.length).padStart(2, '0')} &middot; {STEP_LABEL[activeStepId]}</b>
           </div>
         </header>
 
         <main className="uk-wizard-screen">
-          {activeStep === 0 && (
+          {activeStepId === 'order-type' && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Start order</p>
               <h1>Who are you building for?</h1>
-              <p className="uk-wizard-copy">Two quick choices, then we'll start the card.</p>
-              <div className="uk-choice-step">
-                <span>Step 1</span>
-                <h2>Choose order type</h2>
-              </div>
+              <p className="uk-wizard-copy">Are you creating one card, or a whole team?</p>
               <div className="uk-wizard-choice-list">
                 {orderTypes.map((type) => (
                   <button
@@ -806,11 +825,16 @@ export default function ProductionBuilder() {
                   </button>
                 ))}
               </div>
+              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('collection')}>Continue</button>
+            </section>
+          )}
+
+          {activeStepId === 'collection' && (
+            <section className="uk-wizard-panel">
+              <p className="uk-wizard-kicker">Start order</p>
+              <h1>Choose your collection.</h1>
+              <p className="uk-wizard-copy">Pick the collection this card belongs to.</p>
               <div className="uk-collection-choice">
-                <div className="uk-choice-step">
-                  <span>Step 2</span>
-                  <h2>Choose collection</h2>
-                </div>
                 <div className="uk-collection-options">
                   {collections.map((collection) => (
                     <button
@@ -830,52 +854,11 @@ export default function ProductionBuilder() {
                   ))}
                 </div>
               </div>
-              <div className="uk-wizard-fields">
-                {order.collectionType === 'official' ? (
-                  <>
-                    <label>
-                      Season
-                      <input value={order.season} onChange={(event) => patchOrder({ season: event.target.value })} />
-                    </label>
-                    <label>
-                      Collection
-                      <input value={order.league || EAST_MANCHESTER_LEAGUE} readOnly />
-                    </label>
-                    <div className="uk-wizard-club-row">
-                      <label>
-                        Club
-                        <select
-                          value={order.emjflClubId || DEFAULT_EMJFL_CLUB.id}
-                          onChange={(event) => selectOrderClub(event.target.value)}
-                        >
-                          {EMJFL_CLUBS.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
-                        </select>
-                      </label>
-                      <img src={playerBadge(order)} alt="" />
-                    </div>
-                    <div className="uk-selection-proof">
-                      <strong>Official Partner</strong>
-                      <small>{EAST_MANCHESTER_LEAGUE} approved collection with licensed club badges.</small>
-                    </div>
-                  </>
-                ) : (
-                  <div className="uk-wizard-custom-card">
-                    <label>
-                      Club / team name <em>optional</em>
-                      <input
-                        value={order.club}
-                        onChange={(event) => updateCustomClub(event.target.value)}
-                        placeholder="Enter your club or team name"
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(1)}>Continue</button>
+              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('upload')}>Continue</button>
             </section>
           )}
 
-          {activeStep === 1 && (
+          {activeStepId === 'upload' && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Upload photos</p>
               <h1>{order.type !== 'single' ? 'Upload your squad.' : 'Start with a photo.'}</h1>
@@ -974,16 +957,86 @@ export default function ProductionBuilder() {
               ) : null}
               <div className="uk-wizard-row-actions">
                 {order.type !== 'single' && <button type="button" onClick={() => addPlayer()} disabled={addDisabled}>Add player</button>}
-                <button type="button" className="uk-wizard-primary compact" onClick={() => setActiveStep(2)} disabled={!hasAnyPhoto}>Personalise cards</button>
+                <button
+                  type="button"
+                  className="uk-wizard-primary compact"
+                  onClick={() => {
+                    // Bulk upload leaves selectedId on the last player added; walk
+                    // the squad through bg-removal in roster order, so start over
+                    // from the first player with a photo rather than the last.
+                    const firstWithPhoto = order.players.find((player) => player.photo?.srcUrl);
+                    if (order.type !== 'single' && firstWithPhoto) setSelectedId(firstWithPhoto.id);
+                    setActiveStepId('bg-removal');
+                  }}
+                  disabled={!hasAnyPhoto}
+                >
+                  Continue
+                </button>
               </div>
             </section>
           )}
 
-          {activeStep === 2 && (
+          {activeStepId === 'bg-removal' && selectedPlayer && (
+            <BackgroundRemovalStep
+              player={selectedPlayer}
+              isSquad={order.type !== 'single'}
+              playerIndex={Math.max(0, selectedIndex)}
+              playerCount={order.players.length}
+              canPrev={selectedIndex > 0}
+              canNext={selectedIndex < order.players.length - 1}
+              onPrev={() => selectAdjacentPlayer(-1)}
+              onNext={() => selectAdjacentPlayer(1)}
+              onPatchPlayer={patchPlayer}
+              onContinue={handleBgRemovalContinue}
+            />
+          )}
+
+          {activeStepId === 'personalise' && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Personalise cards</p>
               <h1>Make it yours.</h1>
               <p className="uk-wizard-copy">Choose the look, edit the details and approve each card when it is ready.</p>
+              <div className="uk-wizard-fields">
+                {order.collectionType === 'official' ? (
+                  <>
+                    <label>
+                      Season
+                      <input value={order.season} onChange={(event) => patchOrder({ season: event.target.value })} />
+                    </label>
+                    <label>
+                      Collection
+                      <input value={order.league || EAST_MANCHESTER_LEAGUE} readOnly />
+                    </label>
+                    <div className="uk-wizard-club-row">
+                      <label>
+                        Club
+                        <select
+                          value={order.emjflClubId || DEFAULT_EMJFL_CLUB.id}
+                          onChange={(event) => selectOrderClub(event.target.value)}
+                        >
+                          {EMJFL_CLUBS.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}
+                        </select>
+                      </label>
+                      <img src={playerBadge(order)} alt="" />
+                    </div>
+                    <div className="uk-selection-proof">
+                      <strong>Official Partner</strong>
+                      <small>{EAST_MANCHESTER_LEAGUE} approved collection with licensed club badges.</small>
+                    </div>
+                  </>
+                ) : (
+                  <div className="uk-wizard-custom-card">
+                    <label>
+                      Club / team name <em>optional</em>
+                      <input
+                        value={order.club}
+                        onChange={(event) => updateCustomClub(event.target.value)}
+                        placeholder="Enter your club or team name"
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
               {order.type !== 'single' && (
                 <div className="uk-squad-edit-bar">
                   <button type="button" onClick={() => selectAdjacentPlayer(-1)} disabled={selectedIndex <= 0}>Previous</button>
@@ -1069,11 +1122,23 @@ export default function ProductionBuilder() {
                 <button type="button" className={cardSide === 'back' ? 'active' : ''} onClick={() => setCardSide('back')}>Back</button>
               </div>
               <PlayerEditor order={order} player={selectedPlayer} onPatch={patchPlayer} onPhoto={assignPhoto} onClub={selectPlayerClub} onBadge={assignPlayerBadge} />
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStep(3)}>Approve cards</button>
+              <button
+                type="button"
+                className="uk-wizard-primary"
+                onClick={() => {
+                  // Single-player orders skip the team-only Approve step, so
+                  // there's no separate screen left to approve the one card —
+                  // do it here, same as clicking "Approve card" would have.
+                  if (approveOrReviewStep === 'review') approveAllReady();
+                  setActiveStepId(approveOrReviewStep);
+                }}
+              >
+                {approveOrReviewStep === 'approve' ? 'Approve cards' : 'Review order'}
+              </button>
             </section>
           )}
 
-          {activeStep === 3 && (
+          {activeStepId === 'approve' && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Approve cards</p>
               <h1>Ready for production?</h1>
@@ -1125,13 +1190,13 @@ export default function ProductionBuilder() {
                             {status === 'ready' ? (
                               <button type="button" onClick={() => approvePlayer(player.id)}>Approve card</button>
                             ) : status === 'approved' ? (
-                              <button type="button" className="approved" onClick={() => setActiveStep(4)}>Ready</button>
+                              <button type="button" className="approved" onClick={() => setActiveStepId('review')}>Ready</button>
                             ) : (
                               <button
                                 type="button"
                                 onClick={() => {
                                   setSelectedId(player.id);
-                                  setActiveStep(2);
+                                  setActiveStepId('personalise');
                                 }}
                               >
                                 {reviewActionCopy(player)}
@@ -1142,7 +1207,7 @@ export default function ProductionBuilder() {
                                 type="button"
                                 onClick={() => {
                                   setSelectedId(player.id);
-                                  setActiveStep(2);
+                                  setActiveStepId('personalise');
                                 }}
                               >
                                 Edit card
@@ -1182,7 +1247,7 @@ export default function ProductionBuilder() {
             </section>
           )}
 
-          {activeStep === 4 && (
+          {activeStepId === 'review' && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Review order</p>
               <h1>{enquiryStatus === 'sent' ? 'Order received.' : 'Review your order.'}</h1>
@@ -1234,7 +1299,7 @@ export default function ProductionBuilder() {
                               disabled={!canEditOrder}
                               onClick={() => {
                                 setSelectedId(player.id);
-                                setActiveStep(2);
+                                setActiveStepId('personalise');
                               }}
                             >
                               <span>
@@ -1320,7 +1385,7 @@ export default function ProductionBuilder() {
                 {enquiryStatus === 'error' && <p className="uk-enquiry-error">{enquiryError}</p>}
                 {enquiryStatus !== 'sent' ? (
                   <button type="submit" className="uk-wizard-primary" disabled={!canSendEnquiry || enquiryStatus === 'sending'}>
-                    {enquiryStatus === 'sending' ? 'Preparing your cards...' : 'Continue to secure checkout'}
+                    {enquiryStatus === 'sending' ? 'Preparing your cards...' : 'Continue to checkout'}
                   </button>
                 ) : null}
               </form>
@@ -1337,7 +1402,7 @@ export default function ProductionBuilder() {
                 <h3>Order summary</h3>
                 <p>{summary.approvedPlayers.length} cards &middot; {summary.approvedPrints} prints &middot; {money(summary.subtotal)}</p>
                 <button type="button" onClick={exportPayload} disabled={!summary.checkoutEligible}>Download summary</button>
-                {canEditOrder ? <button type="button" onClick={() => setActiveStep(3)}>Edit order</button> : null}
+                {canEditOrder ? <button type="button" onClick={() => setActiveStepId(stepOrder.includes('approve') ? 'approve' : 'personalise')}>Edit order</button> : null}
                 <button type="button" onClick={() => setShowPayload((value) => !value)}>{showPayload ? 'Hide technical details' : 'Technical details'}</button>
               </div>
               {showPayload && <pre className="uk-payload">{JSON.stringify(productionPayload(order), null, 2)}</pre>}
