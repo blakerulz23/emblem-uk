@@ -11,7 +11,7 @@ import {
 const trust = [
   ['400gsm premium stock', 'Built to last'],
   ['Real NFC chip built in', 'Tap to unlock'],
-  ['Ships in 5-7 days', 'Fast. Tracked. Reliable.'],
+  ['Ships in 3-5 days', 'Fast. Tracked. Reliable.'],
 ];
 
 const squadPoints = [
@@ -196,7 +196,7 @@ export default function Home() {
         <div className="emh-faq-inner">
           <div className="emh-faq-head">
             <p className="emh-eyebrow">Still deciding?</p>
-            <h2>Frequently Asked Questions</h2>
+            <h2>Frequently asked questions</h2>
             <p>Everything you need to know before you create their card.</p>
           </div>
           <FaqAccordion />
@@ -215,7 +215,7 @@ export default function Home() {
           <Link className="emh-btn emh-btn-primary" href="/builder?mode=single">Order a Card</Link>
           <Link className="emh-btn emh-btn-secondary" href="/builder?mode=squad">Build a team pack</Link>
         </div>
-        <p className="emh-final-note">Ships in 5-7 days · First season free · Made in the UK</p>
+        <p className="emh-final-note">Ships in 3-5 days · First season free · Made in the UK</p>
       </section>
     </main>
   );

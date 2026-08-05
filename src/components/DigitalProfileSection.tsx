@@ -239,7 +239,7 @@ export default function DigitalProfileSection() {
       <div id="dp-intro" style={{ maxWidth: 1200, margin: "0 auto", padding: "56px 26px 28px", display: "grid", gridTemplateColumns: ".8fr 1.2fr", gap: 40, alignItems: "center" }}>
         <div>
           <div style={{ fontFamily: font.cond, fontWeight: 700, letterSpacing: ".24em", fontSize: 13, color: ORANGE, marginBottom: 16 }}>THE DIGITAL PROFILE</div>
-          <h2 style={{ fontFamily: font.display, fontWeight: 900, fontSize: "clamp(40px,5.5vw,64px)", lineHeight: .96, letterSpacing: "-.01em", margin: "0 0 20px", textTransform: "uppercase", color: "#F4F0E9" }}>
+          <h2 style={{ fontFamily: font.display, fontWeight: 900, fontSize: "clamp(40px,5.5vw,64px)", lineHeight: .96, letterSpacing: "-.01em", margin: "0 0 20px", textTransform: "none", color: "#F4F0E9" }}>
             Their season<br /><span style={{ color: ORANGE }}>lives here.</span>
           </h2>
           <p style={{ fontFamily: font.body, fontSize: 17, lineHeight: 1.65, color: "#AAA39A", margin: "0 0 26px", maxWidth: 420 }}>
@@ -309,7 +309,7 @@ export default function DigitalProfileSection() {
               {BEATS.map((b, i) => (
                 <div key={i} style={{ position: "absolute", inset: 0, opacity: beat === i ? 1 : 0, transform: beat === i ? "translateY(0)" : "translateY(14px)", transition: "opacity .5s ease, transform .5s ease", pointerEvents: beat === i ? "auto" : "none" }}>
                   <div style={{ fontFamily: font.cond, fontWeight: 700, letterSpacing: ".24em", fontSize: 13, color: ORANGE, marginBottom: 16 }}>{b.eyebrow}</div>
-                  <h3 style={{ fontFamily: font.display, fontWeight: 900, fontSize: "clamp(34px,4.4vw,52px)", lineHeight: .98, letterSpacing: "-.01em", margin: "0 0 18px", textTransform: "uppercase", color: "#F4F0E9" }}>{b.title}</h3>
+                  <h3 style={{ fontFamily: font.display, fontWeight: 900, fontSize: "clamp(34px,4.4vw,52px)", lineHeight: .98, letterSpacing: "-.01em", margin: "0 0 18px", textTransform: "none", color: "#F4F0E9" }}>{b.title}</h3>
                   <p style={{ fontFamily: font.body, fontSize: 17, lineHeight: 1.65, color: "#AAA39A", margin: 0, maxWidth: 400 }}>{b.body}</p>
                 </div>
               ))}

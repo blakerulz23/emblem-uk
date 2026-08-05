@@ -3741,7 +3741,7 @@ a { text-decoration: none; color: inherit; }
   font-weight: 800;
   line-height: 0.86;
   letter-spacing: 0;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .emh-hero-copy h1 span {
@@ -6780,7 +6780,7 @@ a { text-decoration: none; color: inherit; }
   font-size: clamp(48px, 7vw, 86px);
   font-weight: 900;
   line-height: 0.9;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .emh-faq-head > p:last-child {
@@ -8318,7 +8318,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-hiw-head h2 {
   font-weight: 900;
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .emh-hiw-head h2 {
