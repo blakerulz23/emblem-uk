@@ -133,13 +133,22 @@ function useLockScreenClock(): LockScreenClock | null {
 }
 
 export default function DigitalProfileSection() {
-  // Expanded by default on every viewport — this only lets a visitor
-  // manually shorten the section, it never auto-collapses it before
-  // they've seen it (and never re-collapses on resize).
+  // Expanded by default on desktop (>=1024px), collapsed by default below
+  // that — checked once on mount, never reactively on resize. Starts `true`
+  // so server render and the first client render match (no window access
+  // during SSR); a one-time useLayoutEffect corrects it for mobile before
+  // the browser paints, so there's no visible flash and no hydration
+  // mismatch — same pattern as useLockScreenClock below.
   const [expanded, setExpanded] = useState(true);
   const [unlocked, setUnlocked] = useState(false);
   const [beat, setBeat] = useState(0);
   const clock = useLockScreenClock();
+  const defaultExpandDetermined = useRef(false);
+  useLayoutEffect(() => {
+    if (defaultExpandDetermined.current) return;
+    defaultExpandDetermined.current = true;
+    if (window.innerWidth < 1024) setExpanded(false);
+  }, []);
 
   // #dp-collapsible-inner needs overflow:hidden while animating (so a
   // collapsing/expanding section visually clips instead of flashing content
@@ -284,112 +293,18 @@ export default function DigitalProfileSection() {
           #dp-phone{grid-column:1 !important;grid-row:auto !important;min-height:auto !important}
           #dp-phone-bezel{width:min(168px,44vw) !important;height:auto !important;aspect-ratio:296/604 !important;padding:7px !important;border-radius:28px !important}
           #dp-progress{grid-column:1 !important;grid-row:auto !important;justify-content:center !important;margin-top:16px !important}
-          #dp-toggle-row{position:static !important;padding:0 22px !important}
-          #dp-toggle-inner{padding-top:20px !important}
-          #dp-toggle-btn{width:100% !important}
+          /* #dp-intro already contributes 28px of its own bottom padding —
+             this only needs to add a couple more px so the total phone-to-
+             control gap lands in the 24-32px target rather than stacking to
+             56px on top of that existing padding. */
+          #dp-toggle-row{margin-top:2px !important;padding:0 22px !important}
+          #dp-toggle-btn{width:100% !important;padding:18px 20px !important}
         }
       `}</style>
 
-      {/* ---- EXPAND/COLLAPSE CONTROL ----
-          Wrapper-level visibility toggle only: it never mounts into, reads
-          from, or writes to the pinned stage's refs, scroll math or beat
-          state below — see the scroll-listener effect's dependency array
-          and #dp-collapsible for the only two places this control's state
-          actually touches the locked/pinned experience. */}
-      <div
-        id="dp-toggle-row"
-        style={{
-          // Absolute + subtle only while expanded (so it never disturbs the
-          // left-copy/right-phone composition or desktop layout height) —
-          // collapsed, it must become the section's only real content, so it
-          // switches to a normal in-flow, full-width row on every viewport.
-          position: expanded ? "absolute" : "static",
-          top: 18,
-          left: 0,
-          right: 0,
-          zIndex: 5,
-          padding: "0 26px",
-          pointerEvents: expanded ? "none" : "auto",
-        }}
-      >
-        <div id="dp-toggle-inner" style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "flex-end", paddingTop: expanded ? 0 : 20 }}>
-          <button
-            type="button"
-            id="dp-toggle-btn"
-            aria-expanded={expanded}
-            aria-controls="dp-collapsible-inner"
-            onClick={() => setExpanded((value) => !value)}
-            style={
-              expanded
-                ? {
-                    pointerEvents: "auto",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 8,
-                    minHeight: 44,
-                    padding: "10px 18px",
-                    border: "1px solid rgba(255,255,255,.16)",
-                    borderRadius: 999,
-                    background: "rgba(255,255,255,.05)",
-                    color: "#F1EFEA",
-                    fontFamily: font.body,
-                    fontWeight: 700,
-                    fontSize: 14,
-                    cursor: "pointer",
-                  }
-                : {
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 16,
-                    width: "100%",
-                    minHeight: 44,
-                    padding: "20px 24px",
-                    border: "1px solid rgba(255,255,255,.1)",
-                    borderRadius: 14,
-                    background: "#100f0d",
-                    color: "#F1EFEA",
-                    textAlign: "left",
-                    fontFamily: font.body,
-                    cursor: "pointer",
-                  }
-            }
-          >
-            {expanded ? (
-              <>
-                <span>Explore the digital profile</span>
-                <ChevronGlyph pointingUp />
-              </>
-            ) : (
-              <>
-                <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <strong style={{ fontSize: 15, fontWeight: 800 }}>Explore the digital profile</strong>
-                  <small style={{ fontSize: 13, fontWeight: 500, color: "#AAA39A" }}>
-                    See how their football story grows through every season.
-                  </small>
-                </span>
-                <ChevronGlyph />
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* ---- COLLAPSIBLE CONTENT: the existing intro + pinned cinematic
-          stage, entirely unmodified below this point apart from the
-          #dp-sticky id added for the mobile heading-position fix. Animated
-          via CSS grid-template-rows (0fr collapsed / 1fr expanded) so the
-          collapse is content-height-safe rather than a fixed max-height —
-          and, critically, collapsing genuinely removes #dp-stage's 700vh of
-          reserved scroll height (an ancestor at 0fr + overflow:hidden clips
-          it out of the page's scrollable area) rather than merely hiding it
-          on top of that reserved space. */}
-      <div
-        id="dp-collapsible"
-        style={{ display: "grid", gridTemplateRows: expanded ? "1fr" : "0fr", transition: "grid-template-rows .45s cubic-bezier(.4,0,.2,1)" }}
-      >
-        <div id="dp-collapsible-inner" style={{ minHeight: 0, overflow: settled ? "visible" : "hidden" }}>
-
+      {/* ---- A. PERMANENT INTRODUCTION — always rendered, never affected by
+          `expanded`. Its drag-to-unlock mechanics, refs and effects below
+          are completely untouched by the collapse feature. ---- */}
       {/* ---- INTRO / DRAG-TO-UNLOCK ---- */}
       <div id="dp-intro" style={{ maxWidth: 1200, margin: "0 auto", padding: "56px 26px 28px", display: "grid", gridTemplateColumns: ".8fr 1.2fr", gap: 40, alignItems: "center" }}>
         <div>
@@ -454,6 +369,60 @@ export default function DigitalProfileSection() {
           </div>
         </div>
       </div>
+
+      {/* ---- B. EXPAND/COLLAPSE DIVIDER — sits between the permanent intro
+          and the extended walkthrough. Wrapper-level visibility toggle
+          only: it never mounts into, reads from, or writes to the pinned
+          stage's refs, scroll math or beat state below — see the
+          scroll-listener effect's dependency array and #dp-collapsible for
+          the only two places this control's state actually touches the
+          locked/pinned experience. A plain in-flow, centred row — not an
+          absolutely-positioned corner control — so it reads as a
+          continuation prompt between the two slides, not a utility. ---- */}
+      <div id="dp-toggle-row" style={{ maxWidth: 1200, margin: "40px auto 0", padding: "0 26px" }}>
+        <button
+          type="button"
+          id="dp-toggle-btn"
+          aria-expanded={expanded}
+          aria-controls="dp-collapsible-inner"
+          onClick={() => setExpanded((value) => !value)}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 8,
+            width: "100%",
+            minHeight: 44,
+            padding: "20px 24px",
+            border: "none",
+            borderTop: "1px solid rgba(255,255,255,.1)",
+            background: "transparent",
+            color: ORANGE,
+            fontFamily: font.body,
+            fontWeight: 700,
+            fontSize: 15,
+            cursor: "pointer",
+          }}
+        >
+          <span>Explore the digital profile</span>
+          <ChevronGlyph pointingUp={expanded} />
+        </button>
+      </div>
+
+      {/* ---- C. EXTENDED WALKTHROUGH: the pinned cinematic stage, entirely
+          unmodified below this point apart from the #dp-sticky id added for
+          the mobile heading-position fix in an earlier pass. Animated via
+          CSS grid-template-rows (0fr collapsed / 1fr expanded) so the
+          collapse is content-height-safe rather than a fixed max-height —
+          and, critically, collapsing genuinely removes #dp-stage's 700vh of
+          reserved scroll height (an ancestor at 0fr + overflow:hidden clips
+          it out of the page's scrollable area) rather than merely hiding it
+          on top of that reserved space. */}
+      <div
+        id="dp-collapsible"
+        style={{ display: "grid", gridTemplateRows: expanded ? "1fr" : "0fr", transition: "grid-template-rows .45s cubic-bezier(.4,0,.2,1)" }}
+      >
+        <div id="dp-collapsible-inner" style={{ minHeight: 0, overflow: settled ? "visible" : "hidden" }}>
 
       {/* ---- CINEMATIC SCROLL STAGE (locked/hidden until unlocked) ---- */}
       {/* display:none (not just visual clipping) whenever collapsed — the
