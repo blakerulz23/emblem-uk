@@ -200,7 +200,29 @@ export default function DigitalProfileSection() {
     if (badge) badge.style.display = "none";
     if (hint) hint.style.opacity = "0";
     if (boot) { boot.style.opacity = "1"; setTimeout(() => { boot.style.opacity = "0"; }, 900); }
-    setTimeout(() => setUnlocked(true), 700);
+    setTimeout(() => {
+      setUnlocked(true);
+      // #dp-stage only reveals when unlocked AND expanded — on mobile,
+      // expanded defaults to false (previous task's collapsed-by-default),
+      // so without this a successful mobile unlock docked the phone and
+      // then visibly did nothing further, reading exactly like a broken
+      // gesture even though the drag itself worked. Completing the unlock
+      // is a deliberate action, so it opens the walkthrough regardless of
+      // the passive default — matching desktop, which is already expanded
+      // by the time anyone unlocks. Not a resize-driven change, so this
+      // doesn't conflict with "never auto-change state on viewport resize."
+      setExpanded(true);
+    }, 700);
+  };
+
+  // Shared by a missed release (onUp, not over the target) and a cancelled
+  // gesture (onCancel) — both just snap the dragged element back to its
+  // resting transform and restore the hint. Cancelling never docks; only a
+  // genuine pointerup with a valid overlap/tap does.
+  const resetDragVisual = (which: "card" | "phone", el: HTMLElement) => {
+    el.style.transition = "transform .55s cubic-bezier(.2,.7,.2,1)"; el.style.cursor = "grab";
+    el.style.transform = which === "card" ? "translateY(-50%) rotate(-5deg)" : "translate(0,0) rotate(0deg)";
+    if (hintRef.current) hintRef.current.style.opacity = "1";
   };
 
   const onDown = (which: "card" | "phone") => (e: React.PointerEvent<HTMLElement>) => {
@@ -228,16 +250,26 @@ export default function DigitalProfileSection() {
   const onUp = (which: "card" | "phone") => (e: React.PointerEvent<HTMLElement>) => {
     if (dragging.current !== which || !drag.current) return;
     const el = e.currentTarget as HTMLElement;
+    el.releasePointerCapture?.(e.pointerId);
     const moved = Math.hypot(e.clientX - drag.current.x, e.clientY - drag.current.y);
     const other = which === "card" ? phoneRef.current : cardRef.current;
     const overlap = !!other && rectsOverlap(el.getBoundingClientRect(), other.getBoundingClientRect(), 12);
-    el.style.transition = "transform .55s cubic-bezier(.2,.7,.2,1)"; el.style.cursor = "grab";
     drag.current = null; dragging.current = null;
     if (overlap || moved < 16) { doDock(); }
-    else {
-      el.style.transform = which === "card" ? "translateY(-50%) rotate(-5deg)" : "translate(0,0) rotate(0deg)";
-      if (hintRef.current) hintRef.current.style.opacity = "1";
-    }
+    else { resetDragVisual(which, el); }
+  };
+
+  // A real device can cancel a pointer sequence mid-gesture (another touch
+  // starting, the OS reclaiming it for a system gesture, etc.) — without
+  // this, dragging.current/drag.current would stay stuck on whichever
+  // element was mid-drag, silently blocking every future drag attempt on
+  // both the card and the phone until a full page reload.
+  const onCancel = (which: "card" | "phone") => (e: React.PointerEvent<HTMLElement>) => {
+    if (dragging.current !== which || !drag.current) return;
+    const el = e.currentTarget as HTMLElement;
+    el.releasePointerCapture?.(e.pointerId);
+    drag.current = null; dragging.current = null;
+    resetDragVisual(which, el);
   };
 
   // ---- scroll-driven beats (only once unlocked, and only while the
@@ -324,7 +356,7 @@ export default function DigitalProfileSection() {
         <div ref={wrapRef} style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "flex-end", minHeight: 460, paddingRight: 6 }}>
           <img
             ref={cardRef}
-            onPointerDown={onDown("card")} onPointerMove={onMove("card")} onPointerUp={onUp("card")}
+            onPointerDown={onDown("card")} onPointerMove={onMove("card")} onPointerUp={onUp("card")} onPointerCancel={onCancel("card")}
             src="/emblem/card-slab-graded.png" alt="Physical Emblem player card" draggable={false}
             style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%) rotate(-5deg)", height: 262, width: "auto", filter: "drop-shadow(0 24px 44px rgba(0,0,0,.65))", zIndex: 1, cursor: "grab", touchAction: "none", userSelect: "none" }}
           />
@@ -334,7 +366,7 @@ export default function DigitalProfileSection() {
           </div>
 
           <div ref={phoneRef}
-            onPointerDown={onDown("phone")} onPointerMove={onMove("phone")} onPointerUp={onUp("phone")}
+            onPointerDown={onDown("phone")} onPointerMove={onMove("phone")} onPointerUp={onUp("phone")} onPointerCancel={onCancel("phone")}
             style={{ position: "relative", zIndex: 3, marginLeft: "auto", cursor: "grab", touchAction: "none", userSelect: "none", filter: "drop-shadow(0 34px 64px rgba(0,0,0,.7))" }}>
             <img ref={screenRef} src="/emblem/dp-lock.png" alt="Emblem card — tap to unlock" draggable={false} style={{ display: "block", height: 500, width: "auto", pointerEvents: "none", borderRadius: 34 }} />
             {/* Live lock-screen clock. The static screenshots have a baked-in
