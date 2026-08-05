@@ -17,7 +17,7 @@
  * Assets expected under /emblem/ (see /public/emblem).
  */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 const ORANGE = "#EF6C2F";
 
@@ -75,6 +75,29 @@ function rectsOverlap(a: DOMRect, b: DOMRect, pad = 0) {
   return !(a.right < b.left - pad || a.left > b.right + pad || a.bottom < b.top - pad || a.top > b.bottom + pad);
 }
 
+// Decorative only (aria-hidden) — the accessible label lives on the button
+// that wraps it. Same chevron path used by the FAQ accordion elsewhere on
+// the homepage, kept local rather than imported to preserve this file's
+// "no UI deps" self-containment.
+function ChevronGlyph({ pointingUp = false }: { pointingUp?: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0, transform: pointingUp ? "rotate(180deg)" : "none", transition: "transform .3s ease" }}
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 type LockScreenClock = { time: string; date: string; iso: string };
 
 // Live HH:mm + weekday/day/month for the lock-screen mockup, in the visitor's
@@ -110,9 +133,33 @@ function useLockScreenClock(): LockScreenClock | null {
 }
 
 export default function DigitalProfileSection() {
+  // Expanded by default on every viewport — this only lets a visitor
+  // manually shorten the section, it never auto-collapses it before
+  // they've seen it (and never re-collapses on resize).
+  const [expanded, setExpanded] = useState(true);
   const [unlocked, setUnlocked] = useState(false);
   const [beat, setBeat] = useState(0);
   const clock = useLockScreenClock();
+
+  // #dp-collapsible-inner needs overflow:hidden while animating (so a
+  // collapsing/expanding section visually clips instead of flashing content
+  // outside its shrinking box) — but overflow:hidden on any ancestor of the
+  // pinned stage breaks position:sticky, which needs an unobstructed path to
+  // the viewport. So overflow is only "hidden" for the ~duration of the CSS
+  // transition; once fully expanded and settled it switches to "visible" so
+  // the locked/pinned effect works exactly as it always has.
+  const [settled, setSettled] = useState(true);
+  const isFirstRender = useRef(true);
+  const prefersReduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  useLayoutEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    if (expanded) {
+      setSettled(false);
+      const t = setTimeout(() => setSettled(true), prefersReduced ? 0 : 470);
+      return () => clearTimeout(t);
+    }
+    setSettled(false);
+  }, [expanded, prefersReduced]);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLImageElement>(null);
@@ -184,12 +231,19 @@ export default function DigitalProfileSection() {
     }
   };
 
-  // ---- scroll-driven beats (only once unlocked) ------------------------------
+  // ---- scroll-driven beats (only once unlocked, and only while the
+  //      section is expanded — collapsing must leave no scroll listener
+  //      running) ------------------------------------------------------------
   useEffect(() => {
-    if (!unlocked) return;
+    if (!unlocked || !expanded) return;
     const st = stageRef.current;
     if (!st) return;
-    // reveal + scroll into the stage
+    // reveal + scroll into the stage. Also runs on reopen (expanded flips
+    // back to true) — that's a deliberate, unmodified re-run of the exact
+    // same "scroll into the stage" behaviour the first unlock always had,
+    // not new logic. See the component doc comment for why this means the
+    // active slide resets to the first beat on reopen rather than being
+    // preserved.
     requestAnimationFrame(() => {
       const r = st.getBoundingClientRect();
       window.scrollTo({ top: r.top + window.pageYOffset + 12, behavior: "smooth" });
@@ -209,26 +263,132 @@ export default function DigitalProfileSection() {
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
     return () => { window.removeEventListener("scroll", onScroll); if (raf) cancelAnimationFrame(raf); };
-  }, [unlocked]);
-
-  const prefersReduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  }, [unlocked, expanded]);
 
   return (
-    <section id="digital-profile" style={{ background: "#080808", borderTop: "1px solid rgba(255,255,255,.07)" }}>
+    <section id="digital-profile" style={{ position: "relative", background: "#080808", borderTop: "1px solid rgba(255,255,255,.07)" }}>
       <style>{`
         @keyframes emNfcRing{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.9);opacity:0}}
         @keyframes emSpin{to{transform:rotate(360deg)}}
         @keyframes emTapPulse{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.05)}}
+        #dp-toggle-btn:focus-visible{outline:2px solid ${ORANGE};outline-offset:2px}
+        @media (prefers-reduced-motion: reduce){
+          #dp-collapsible{transition:none !important}
+        }
         @media (max-width:820px){
           #dp-intro{grid-template-columns:1fr !important;text-align:center}
-          #dp-pin-inner{grid-template-columns:1fr !important;grid-template-rows:none !important;gap:20px !important;text-align:center}
+          #dp-pin-inner{grid-template-columns:1fr !important;grid-template-rows:none !important;gap:16px !important;text-align:center}
           #dp-stage{height:520vh !important}
+          #dp-sticky{align-items:flex-start !important;padding-top:78px !important;box-sizing:border-box !important}
           #dp-copy{grid-column:1 !important;grid-row:auto !important;min-height:150px !important}
           #dp-phone{grid-column:1 !important;grid-row:auto !important;min-height:auto !important}
-          #dp-phone-bezel{width:min(230px,58vw) !important;height:auto !important;aspect-ratio:296/604 !important;padding:8px !important;border-radius:32px !important}
-          #dp-progress{grid-column:1 !important;grid-row:auto !important;justify-content:center !important;margin-top:20px !important}
+          #dp-phone-bezel{width:min(168px,44vw) !important;height:auto !important;aspect-ratio:296/604 !important;padding:7px !important;border-radius:28px !important}
+          #dp-progress{grid-column:1 !important;grid-row:auto !important;justify-content:center !important;margin-top:16px !important}
+          #dp-toggle-row{position:static !important;padding:0 22px !important}
+          #dp-toggle-inner{padding-top:20px !important}
+          #dp-toggle-btn{width:100% !important}
         }
       `}</style>
+
+      {/* ---- EXPAND/COLLAPSE CONTROL ----
+          Wrapper-level visibility toggle only: it never mounts into, reads
+          from, or writes to the pinned stage's refs, scroll math or beat
+          state below — see the scroll-listener effect's dependency array
+          and #dp-collapsible for the only two places this control's state
+          actually touches the locked/pinned experience. */}
+      <div
+        id="dp-toggle-row"
+        style={{
+          // Absolute + subtle only while expanded (so it never disturbs the
+          // left-copy/right-phone composition or desktop layout height) —
+          // collapsed, it must become the section's only real content, so it
+          // switches to a normal in-flow, full-width row on every viewport.
+          position: expanded ? "absolute" : "static",
+          top: 18,
+          left: 0,
+          right: 0,
+          zIndex: 5,
+          padding: "0 26px",
+          pointerEvents: expanded ? "none" : "auto",
+        }}
+      >
+        <div id="dp-toggle-inner" style={{ maxWidth: 1200, margin: "0 auto", display: "flex", justifyContent: "flex-end", paddingTop: expanded ? 0 : 20 }}>
+          <button
+            type="button"
+            id="dp-toggle-btn"
+            aria-expanded={expanded}
+            aria-controls="dp-collapsible-inner"
+            onClick={() => setExpanded((value) => !value)}
+            style={
+              expanded
+                ? {
+                    pointerEvents: "auto",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    minHeight: 44,
+                    padding: "10px 18px",
+                    border: "1px solid rgba(255,255,255,.16)",
+                    borderRadius: 999,
+                    background: "rgba(255,255,255,.05)",
+                    color: "#F1EFEA",
+                    fontFamily: font.body,
+                    fontWeight: 700,
+                    fontSize: 14,
+                    cursor: "pointer",
+                  }
+                : {
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 16,
+                    width: "100%",
+                    minHeight: 44,
+                    padding: "20px 24px",
+                    border: "1px solid rgba(255,255,255,.1)",
+                    borderRadius: 14,
+                    background: "#100f0d",
+                    color: "#F1EFEA",
+                    textAlign: "left",
+                    fontFamily: font.body,
+                    cursor: "pointer",
+                  }
+            }
+          >
+            {expanded ? (
+              <>
+                <span>Explore the digital profile</span>
+                <ChevronGlyph pointingUp />
+              </>
+            ) : (
+              <>
+                <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <strong style={{ fontSize: 15, fontWeight: 800 }}>Explore the digital profile</strong>
+                  <small style={{ fontSize: 13, fontWeight: 500, color: "#AAA39A" }}>
+                    See how their football story grows through every season.
+                  </small>
+                </span>
+                <ChevronGlyph />
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* ---- COLLAPSIBLE CONTENT: the existing intro + pinned cinematic
+          stage, entirely unmodified below this point apart from the
+          #dp-sticky id added for the mobile heading-position fix. Animated
+          via CSS grid-template-rows (0fr collapsed / 1fr expanded) so the
+          collapse is content-height-safe rather than a fixed max-height —
+          and, critically, collapsing genuinely removes #dp-stage's 700vh of
+          reserved scroll height (an ancestor at 0fr + overflow:hidden clips
+          it out of the page's scrollable area) rather than merely hiding it
+          on top of that reserved space. */}
+      <div
+        id="dp-collapsible"
+        style={{ display: "grid", gridTemplateRows: expanded ? "1fr" : "0fr", transition: "grid-template-rows .45s cubic-bezier(.4,0,.2,1)" }}
+      >
+        <div id="dp-collapsible-inner" style={{ minHeight: 0, overflow: settled ? "visible" : "hidden" }}>
 
       {/* ---- INTRO / DRAG-TO-UNLOCK ---- */}
       <div id="dp-intro" style={{ maxWidth: 1200, margin: "0 auto", padding: "56px 26px 28px", display: "grid", gridTemplateColumns: ".8fr 1.2fr", gap: 40, alignItems: "center" }}>
@@ -296,8 +456,22 @@ export default function DigitalProfileSection() {
       </div>
 
       {/* ---- CINEMATIC SCROLL STAGE (locked/hidden until unlocked) ---- */}
-      <div id="dp-stage" ref={stageRef} style={{ position: "relative", height: "700vh", display: unlocked ? "block" : "none" }}>
-        <div style={{ position: "sticky", top: 0, height: "100vh", display: "flex", alignItems: "center", overflow: "hidden" }}>
+      {/* display:none (not just visual clipping) whenever collapsed — the
+          most definitive way to guarantee the pinned stage's 700vh/520vh
+          truly stops contributing to the page's scrollable height and that
+          its sticky child is fully out of the render tree, rather than
+          depending only on the (fragile, sticky-vs-overflow-ancestor-prone)
+          grid-rows/overflow clipping above. Wrapper-level visibility only —
+          unlocked still independently gates the same style exactly as
+          before; expanded is just ORed onto the identical decision. */}
+      <div id="dp-stage" ref={stageRef} style={{ position: "relative", height: "700vh", display: unlocked && expanded ? "block" : "none" }}>
+        {/* position:sticky computes garbage positions when any ancestor has
+            overflow other than visible (a spec-compliant but easy-to-forget
+            interaction) — #dp-collapsible-inner needs overflow:hidden while
+            collapsed/animating, so sticky is only actually applied once
+            fully expanded and settled; otherwise this behaves as a plain
+            block, which the 0fr/overflow:hidden ancestor clips normally. */}
+        <div id="dp-sticky" style={{ position: settled ? "sticky" : "relative", top: 0, height: "100vh", display: "flex", alignItems: "center", overflow: "hidden" }}>
           <div id="dp-pin-inner" style={{ maxWidth: 1160, width: "100%", margin: "0 auto", padding: "0 26px", display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "auto auto", gap: 40, alignItems: "center" }}>
             {/* COPY — eyebrow + heading only (no paragraph in this carousel) */}
             <div id="dp-copy" style={{ position: "relative", minHeight: 150, gridColumn: 1, gridRow: 1 }}>
@@ -331,6 +505,9 @@ export default function DigitalProfileSection() {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+
         </div>
       </div>
     </section>
