@@ -24,7 +24,6 @@ const ORANGE = "#EF6C2F";
 type Beat = {
   eyebrow: string;
   title: React.ReactNode;
-  body: string;
   screen: string; // image under /emblem/
 };
 
@@ -32,43 +31,36 @@ const BEATS: Beat[] = [
   {
     eyebrow: "YOUR SEASON",
     title: (<>Every season<br/>begins here.</>),
-    body: "Their player card, latest moment and this season's matches, goals and awards — the whole story on their home screen the moment they tap in.",
     screen: "/emblem/dp-home-screen.png",
   },
   {
     eyebrow: "THE COLLECTION",
     title: (<>Every milestone,<br/>a collectible.</>),
-    body: "First goal, team photo, player of the match — each moment becomes a numbered card in their season collection, private or shared.",
     screen: "/emblem/dp-develop-screen.png",
   },
   {
     eyebrow: "COACH'S ASSESSMENT",
     title: (<>A word from<br/>their coach.</>),
-    body: "Verified coach feedback, recognised strengths and a season focus — the encouragement that shapes their development, kept forever.",
     screen: "/emblem/dp-recognition-screen.png",
   },
   {
     eyebrow: "STORY UPDATES",
     title: (<>Never miss<br/>a moment.</>),
-    body: "Coach recognitions, new milestones and family memories all land in one feed — so the whole family stays part of the story.",
     screen: "/emblem/dp-collection-screen.png",
   },
   {
     eyebrow: "COACH RECOGNITION",
     title: (<>Every player<br/>celebrated.</>),
-    body: "In seconds, a coach recognises a moment — and it lives in their Collection forever.",
     screen: "/emblem/dp-celebrate-screen.png",
   },
   {
     eyebrow: "CAPTURE ANYTHING",
     title: (<>Add a moment<br/>in seconds.</>),
-    body: "A photo, a video, an award or a coach's comment — every memory adds a new chapter to their Collection.",
     screen: "/emblem/dp-addmoment-screen.png",
   },
   {
     eyebrow: "A SEASON, GROWN",
     title: (<>Chapters that<br/>keep adding up.</>),
-    body: "Matches, goals, awards and memories gather into one living profile — richer with every week of the season.",
     screen: "/emblem/dp-grown-screen.png",
   },
 ];
@@ -229,9 +221,12 @@ export default function DigitalProfileSection() {
         @keyframes emTapPulse{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.05)}}
         @media (max-width:820px){
           #dp-intro{grid-template-columns:1fr !important;text-align:center}
-          #dp-pin-inner{grid-template-columns:1fr !important;gap:18px !important;text-align:center}
+          #dp-pin-inner{grid-template-columns:1fr !important;grid-template-rows:none !important;gap:20px !important;text-align:center}
           #dp-stage{height:520vh !important}
-          #dp-copy{order:2}
+          #dp-copy{grid-column:1 !important;grid-row:auto !important;min-height:150px !important}
+          #dp-phone{grid-column:1 !important;grid-row:auto !important;min-height:auto !important}
+          #dp-phone-bezel{width:min(230px,58vw) !important;height:auto !important;aspect-ratio:296/604 !important;padding:8px !important;border-radius:32px !important}
+          #dp-progress{grid-column:1 !important;grid-row:auto !important;justify-content:center !important;margin-top:20px !important}
         }
       `}</style>
 
@@ -303,27 +298,20 @@ export default function DigitalProfileSection() {
       {/* ---- CINEMATIC SCROLL STAGE (locked/hidden until unlocked) ---- */}
       <div id="dp-stage" ref={stageRef} style={{ position: "relative", height: "700vh", display: unlocked ? "block" : "none" }}>
         <div style={{ position: "sticky", top: 0, height: "100vh", display: "flex", alignItems: "center", overflow: "hidden" }}>
-          <div id="dp-pin-inner" style={{ maxWidth: 1160, width: "100%", margin: "0 auto", padding: "0 26px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 40, alignItems: "center" }}>
-            {/* COPY */}
-            <div id="dp-copy" style={{ position: "relative", minHeight: 260 }}>
+          <div id="dp-pin-inner" style={{ maxWidth: 1160, width: "100%", margin: "0 auto", padding: "0 26px", display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "auto auto", gap: 40, alignItems: "center" }}>
+            {/* COPY — eyebrow + heading only (no paragraph in this carousel) */}
+            <div id="dp-copy" style={{ position: "relative", minHeight: 150, gridColumn: 1, gridRow: 1 }}>
               {BEATS.map((b, i) => (
                 <div key={i} style={{ position: "absolute", inset: 0, opacity: beat === i ? 1 : 0, transform: beat === i ? "translateY(0)" : "translateY(14px)", transition: "opacity .5s ease, transform .5s ease", pointerEvents: beat === i ? "auto" : "none" }}>
                   <div style={{ fontFamily: font.cond, fontWeight: 700, letterSpacing: ".24em", fontSize: 13, color: ORANGE, marginBottom: 16 }}>{b.eyebrow}</div>
-                  <h3 style={{ fontFamily: font.display, fontWeight: 900, fontSize: "clamp(34px,4.4vw,52px)", lineHeight: .98, letterSpacing: "-.01em", margin: "0 0 18px", textTransform: "none", color: "#F4F0E9" }}>{b.title}</h3>
-                  <p style={{ fontFamily: font.body, fontSize: 17, lineHeight: 1.65, color: "#AAA39A", margin: 0, maxWidth: 400 }}>{b.body}</p>
+                  <h3 style={{ fontFamily: font.display, fontWeight: 900, fontSize: "clamp(34px,4.4vw,52px)", lineHeight: .98, letterSpacing: "-.01em", margin: 0, textTransform: "none", color: "#F4F0E9" }}>{b.title}</h3>
                 </div>
               ))}
-              {/* progress rail */}
-              <div style={{ position: "absolute", left: 0, bottom: -54, display: "flex", gap: 9 }}>
-                {BEATS.map((_, i) => (
-                  <span key={i} style={{ width: 26, height: 4, borderRadius: 3, background: beat === i ? ORANGE : "rgba(255,255,255,.16)", transition: "background .3s ease" }} />
-                ))}
-              </div>
             </div>
 
             {/* PHONE — one shared bezel, screen crossfades */}
-            <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 640 }}>
-              <div style={{ position: "relative", zIndex: 3, width: 296, height: 604, borderRadius: 44, background: "#0a0a0a", border: "1px solid #1e1e1e", padding: 11, boxShadow: "0 40px 80px -30px rgba(0,0,0,.85), inset 0 0 0 2px #000" }}>
+            <div id="dp-phone" style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 640, gridColumn: 2, gridRow: "1 / 3" }}>
+              <div id="dp-phone-bezel" style={{ position: "relative", zIndex: 3, width: 296, height: 604, borderRadius: 44, background: "#0a0a0a", border: "1px solid #1e1e1e", padding: 11, boxShadow: "0 40px 80px -30px rgba(0,0,0,.85), inset 0 0 0 2px #000" }}>
                 <div style={{ position: "absolute", top: 20, left: "50%", transform: "translateX(-50%)", width: 104, height: 26, background: "#000", borderRadius: 16, zIndex: 20 }} />
                 <div style={{ position: "relative", width: "100%", height: "100%", borderRadius: 34, overflow: "hidden", background: "#EDECE7" }}>
                   {BEATS.map((b, i) => (
@@ -331,6 +319,16 @@ export default function DigitalProfileSection() {
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* PROGRESS — its own grid item so it can sit under the phone on mobile
+                instead of overlapping it (it used to be absolutely positioned
+                below #dp-copy, which only worked while the phone was a separate
+                side-by-side column). */}
+            <div id="dp-progress" style={{ display: "flex", gap: 9, gridColumn: 1, gridRow: 2, marginTop: 28 }}>
+              {BEATS.map((_, i) => (
+                <span key={i} style={{ width: 26, height: 4, borderRadius: 3, background: beat === i ? ORANGE : "rgba(255,255,255,.16)", transition: "background .3s ease" }} />
+              ))}
             </div>
           </div>
         </div>
