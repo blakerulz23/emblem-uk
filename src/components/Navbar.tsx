@@ -89,7 +89,7 @@ export default function Navbar() {
                 href={link.href}
                 onClick={() => setMobileOpen(false)}
                 className="rounded-xl px-3 py-3 text-base font-semibold transition-colors"
-                style={{ color: 'rgba(255,255,255,0.82)', fontFamily: 'var(--font-rajdhani), system-ui', textTransform: 'uppercase', letterSpacing: '0.04em' }}
+                style={{ color: 'rgba(255,255,255,0.82)', fontFamily: 'var(--font-manrope), system-ui', textTransform: 'uppercase', letterSpacing: '0.04em' }}
               >
                 {link.label}
               </Link>

@@ -74,9 +74,9 @@ const BEATS: Beat[] = [
 ];
 
 const font = {
-  cond: "'Barlow Condensed', system-ui, sans-serif",
-  display: "'Archivo', system-ui, sans-serif",
-  body: "'Archivo', system-ui, sans-serif",
+  cond: "var(--font-jbmono), monospace",
+  display: "var(--font-sora), system-ui, sans-serif",
+  body: "var(--font-manrope), system-ui, sans-serif",
 };
 
 function rectsOverlap(a: DOMRect, b: DOMRect, pad = 0) {

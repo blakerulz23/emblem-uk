@@ -1,6 +1,31 @@
 import type { Metadata } from 'next';
+import { Sora, Manrope, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import ConditionalChrome from '@/components/ConditionalChrome';
+
+// Marketing typography (emblem.cards). Scoped to the marketing shell via
+// .marketing-shell in globals.css — Builder, Player OS and Staff tools keep
+// their own existing --font-sora/--font-manrope/--font-jbmono bindings.
+const marketingSora = Sora({
+  subsets: ['latin'],
+  weight: ['400', '600', '700', '800'],
+  variable: '--font-marketing-sora',
+  display: 'swap',
+});
+
+const marketingManrope = Manrope({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-marketing-manrope',
+  display: 'swap',
+});
+
+const marketingJbMono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['500', '600'],
+  variable: '--font-marketing-jbmono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Emblem UK | Grassroots player cards',
@@ -21,7 +46,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${marketingSora.variable} ${marketingManrope.variable} ${marketingJbMono.variable}`}>
       <body className="font-body text-[var(--ink)] antialiased">
         <ConditionalChrome>{children}</ConditionalChrome>
       </body>

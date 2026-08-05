@@ -4,14 +4,6 @@
 @tailwind components;
 @tailwind utilities;
 
-@font-face {
-  font-family: "Cinematografica";
-  src: url("/fonts/cinematografica-heavy-trial.ttf") format("truetype");
-  font-weight: 800;
-  font-style: normal;
-  font-display: swap;
-}
-
 :root {
   --ink: #0b0b0f;
   --ink-soft: #5c5e68;
@@ -25,10 +17,18 @@
   --font-manrope: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
   --font-rajdhani: "Rajdhani", "Arial Narrow", system-ui, sans-serif;
   --font-barlow-condensed: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
-  --font-cinematografica: "Cinematografica", "Barlow Condensed", "Arial Narrow", Impact, sans-serif;
   --font-jbmono: "Cascadia Mono", Consolas, monospace;
   --font-oswald: "Arial Narrow", Impact, sans-serif;
   --font-caveat: "Segoe Print", "Comic Sans MS", cursive;
+}
+
+/* emblem.cards typography, scoped to the public marketing shell only.
+   Builder, Player OS and Staff tools keep the --font-sora/--font-manrope/
+   --font-jbmono bindings from :root above — do not widen this scope. */
+.marketing-shell {
+  --font-sora: var(--font-marketing-sora), "Segoe UI", system-ui, sans-serif;
+  --font-manrope: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
+  --font-jbmono: var(--font-marketing-jbmono), Consolas, monospace;
 }
 
 * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
@@ -3639,7 +3639,10 @@ a { text-decoration: none; color: inherit; }
 
 .emh-nav-link,
 .emh-nav-cta,
-.emh-btn,
+.emh-btn {
+  font-family: var(--font-manrope), system-ui, sans-serif;
+}
+
 .emh-eyebrow,
 .emh-micro,
 .emh-trust-strip,
@@ -3650,7 +3653,7 @@ a { text-decoration: none; color: inherit; }
 .emh-tier-flag,
 .emh-footer-col h3,
 .emh-footer-bottom strong {
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
 }
 
 .emh-nav-link {
@@ -3752,7 +3755,7 @@ a { text-decoration: none; color: inherit; }
 .emh-hero-subline {
   margin: 0 0 8px;
   color: #16130f;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: clamp(12px, 1vw, 13px);
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -3846,7 +3849,7 @@ a { text-decoration: none; color: inherit; }
 .emh-micro {
   margin: 0 0 18px;
   color: rgba(20, 17, 15, 0.52);
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -3878,7 +3881,7 @@ a { text-decoration: none; color: inherit; }
   border-radius: 0;
   background: transparent;
   color: #3d352d;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-manrope), system-ui, sans-serif;
   font-size: 0;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -4022,7 +4025,7 @@ a { text-decoration: none; color: inherit; }
   gap: 5px;
   margin-top: 10px;
   color: #8b8272;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -4274,7 +4277,7 @@ a { text-decoration: none; color: inherit; }
 .emh-profile-chip p {
   margin: 0 0 3px;
   color: #f1874f;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -4345,7 +4348,7 @@ a { text-decoration: none; color: inherit; }
 .emh-hero-reassurance {
   margin: 0 0 14px;
   color: rgba(20, 17, 15, 0.55);
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -4371,7 +4374,7 @@ a { text-decoration: none; color: inherit; }
   text-align: left;
   gap: 6px;
   color: rgba(20, 17, 15, 0.66);
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0;
@@ -4467,7 +4470,7 @@ a { text-decoration: none; color: inherit; }
 .emh-moments-head h2 {
   margin: 0;
   color: #f4f1ec;
-  font-family: var(--font-cinematografica);
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(17px, 2.4vw, 30px);
   font-weight: 800;
   line-height: 0.92;
@@ -4524,7 +4527,7 @@ a { text-decoration: none; color: inherit; }
   display: block;
   margin-bottom: 17px;
   color: #e97435;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -4550,7 +4553,7 @@ a { text-decoration: none; color: inherit; }
   display: block;
   margin-top: 9px;
   color: rgba(233, 116, 53, 0.78);
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 10px;
   font-style: normal;
   font-weight: 800;
@@ -4661,7 +4664,7 @@ a { text-decoration: none; color: inherit; }
   border: 1.5px solid rgba(233, 116, 53, 0.65);
   border-radius: 50%;
   color: #e97435;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 6px;
   font-weight: 800;
   letter-spacing: 0.18em;
@@ -4671,7 +4674,7 @@ a { text-decoration: none; color: inherit; }
 .emh-moment-card h3 {
   margin: 132px 0 6px;
   color: #fffaf2;
-  font-family: var(--font-cinematografica);
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(14px, 1.8vw, 21px);
   font-weight: 800;
   line-height: 0.95;
@@ -4692,7 +4695,7 @@ a { text-decoration: none; color: inherit; }
   right: 12px;
   bottom: 11px;
   color: rgba(255, 255, 255, 0.72);
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 12px;
   font-style: normal;
   font-weight: 800;
@@ -4799,7 +4802,7 @@ a { text-decoration: none; color: inherit; }
 .emh-moment-season-line small {
   position: relative;
   color: rgba(255, 250, 242, 0.86);
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.05em;
@@ -4864,7 +4867,7 @@ a { text-decoration: none; color: inherit; }
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.48);
   color: #fffaf2;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-manrope), system-ui, sans-serif;
   font-size: 18px;
   font-weight: 900;
   cursor: pointer;
@@ -4877,7 +4880,7 @@ a { text-decoration: none; color: inherit; }
 .emh-moment-modal-copy > p:first-child {
   margin: 0 0 12px;
   color: #e97435;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 13px;
   font-weight: 900;
   letter-spacing: 0.16em;
@@ -4887,7 +4890,7 @@ a { text-decoration: none; color: inherit; }
 .emh-moment-modal-copy h3 {
   margin: 0 0 18px;
   color: #fffaf2;
-  font-family: var(--font-cinematografica);
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(42px, 7vw, 76px);
   line-height: 0.9;
   text-transform: uppercase;
@@ -4920,7 +4923,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-forever-head h2 {
   margin: 0;
-  font-family: var(--font-cinematografica);
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(22px, 3vw, 34px);
   font-weight: 900;
   line-height: 0.9;
@@ -5010,7 +5013,7 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-step-visual strong {
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 7px;
   font-weight: 800;
   letter-spacing: 0.16em;
@@ -5250,7 +5253,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-club-ticker span {
   padding: 18px 20px;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 17px;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -5277,7 +5280,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-profile-lead h2 {
   margin: 0 0 18px;
-  font-family: var(--font-cinematografica);
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(44px, 6.2vw, 76px);
   font-weight: 800;
   line-height: 0.92;
@@ -5391,7 +5394,7 @@ a { text-decoration: none; color: inherit; }
 .emh-profile-title-row h2 {
   margin: 0;
   color: #f4f1ec;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: clamp(18px, 2.2vw, 28px);
   font-weight: 900;
   letter-spacing: 0.32em;
@@ -5495,7 +5498,7 @@ a { text-decoration: none; color: inherit; }
 .emh-profile-feature-list h3 {
   margin: 0 0 10px;
   color: #f4f1ec;
-  font-family: var(--font-cinematografica);
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(28px, 2.8vw, 38px);
   font-weight: 900;
   letter-spacing: 0.02em;
@@ -5848,7 +5851,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-unlock-media > h3 {
   margin: 24px 0 12px;
-  font-family: var(--font-cinematografica);
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(36px, 3.8vw, 52px);
   line-height: 0.9;
   text-transform: uppercase;
@@ -5963,7 +5966,7 @@ a { text-decoration: none; color: inherit; }
 .emh-dp-intro-copy h2 {
   max-width: 520px;
   margin: 0 0 20px;
-  font-family: var(--font-cinematografica);
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(42px, 5.4vw, 70px);
   font-weight: 900;
   line-height: 0.94;
@@ -6059,7 +6062,7 @@ a { text-decoration: none; color: inherit; }
 .emh-dp-panel-label {
   margin: 0 0 18px;
   color: #e97435;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.2em;
@@ -6218,7 +6221,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-dp-video-card h3 {
   margin: 18px 0 8px;
-  font-family: var(--font-cinematografica);
+  font-family: var(--font-sora), system-ui, sans-serif;
   color: #f4f1ec;
   font-size: 34px;
   letter-spacing: 0.02em;
@@ -6353,7 +6356,7 @@ a { text-decoration: none; color: inherit; }
 
 .emh-colour-grid figcaption {
   margin-top: 12px;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -6387,7 +6390,7 @@ a { text-decoration: none; color: inherit; }
   display: inline-block;
   margin-bottom: 16px;
   color: #f1601d;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -6732,7 +6735,7 @@ a { text-decoration: none; color: inherit; }
   border-radius: 10px;
   background: #fff;
   color: #08090a;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-manrope), system-ui, sans-serif;
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -6884,7 +6887,7 @@ a { text-decoration: none; color: inherit; }
   border-radius: 999px;
   background: rgba(239, 108, 47, 0.08);
   color: #58301f;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 14px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -6911,7 +6914,7 @@ a { text-decoration: none; color: inherit; }
   border-radius: 12px;
   background: #ef6c2f;
   color: #fff;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-manrope), system-ui, sans-serif;
   font-size: 17px;
   font-weight: 900;
   letter-spacing: 0.04em;
@@ -6964,7 +6967,7 @@ a { text-decoration: none; color: inherit; }
 .emh-final-note {
   margin-top: 18px !important;
   color: rgba(244, 241, 236, 0.58) !important;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  font-family: var(--font-jbmono), monospace;
   font-size: 14px !important;
   font-weight: 800;
   letter-spacing: 0.13em;
@@ -8321,7 +8324,7 @@ a { text-decoration: none; color: inherit; }
 .emh-hiw-head h2 {
   margin: 0;
   color: #16130f;
-  font-family: var(--font-barlow-condensed), Impact, sans-serif;
+  font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(36px, 6vw, 76px);
   line-height: 0.95;
 }
@@ -8352,7 +8355,7 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-hiw-number {
-  font-family: var(--font-barlow-condensed);
+  font-family: var(--font-jbmono), monospace;
   font-weight: 700;
   letter-spacing: 0.22em;
   text-transform: uppercase;
