@@ -3,6 +3,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
+import { compareQueueRows, matchesPlayerSearch, normalizePlayerSearch, parseQueueSort, type QueueSort } from '@/lib/staff-queue-search';
 import ApproveOrderButton from './ApproveOrderButton';
 import ApproveTeamOrderButton from './ApproveTeamOrderButton';
 import ResendInviteButton from './ResendInviteButton';
@@ -10,6 +11,8 @@ import BuildProfileButton from './BuildProfileButton';
 import RejectCardButton from './RejectCardButton';
 import DeleteCardButton from './DeleteCardButton';
 import CopyLinkButton from './CopyLinkButton';
+import QueueControls from './QueueControls';
+import QueueSearchEmptyState from './QueueSearchEmptyState';
 
 // This reads live pending orders on every request — without this, Next
 // would statically prerender the page at build time (its data fetch has
@@ -162,7 +165,7 @@ type PrintFileRef = { playerId?: string | null; playerName?: string | null; key:
  * once (some cards waiting, some ready), since group membership never
  * depends on status.
  */
-async function getProductionQueueCards() {
+async function getProductionQueueCards(q: string, sort: QueueSort) {
   const empty = { waiting: [], submitted: [], waitingCount: 0, submittedCount: 0 };
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return empty;
   const supabase = createServiceRoleClient();
@@ -177,7 +180,7 @@ async function getProductionQueueCards() {
   const { data: cardRows } = await supabase
     .from('cards')
     .select(
-      `id, order_id, claim_token, production_status, production_submitted_at, player_id,
+      `id, order_id, claim_token, production_status, production_submitted_at, created_at, player_id,
        players ( name, public_player_id, public_id_enabled, teams ( clubs ( name ) ) ),
        card_definitions ( team )`
     )
@@ -194,6 +197,7 @@ async function getProductionQueueCards() {
     claim_token: string;
     production_status: string;
     production_submitted_at: string | null;
+    created_at: string;
     player_id: string;
     players: { name: string; public_player_id: string | null; public_id_enabled: boolean; teams: { clubs: { name: string } | null } | null } | null;
     card_definitions: { team: string } | null;
@@ -231,6 +235,7 @@ async function getProductionQueueCards() {
         shortOrderRef,
         productionStatus: c.production_status,
         productionSubmittedAt: c.production_submitted_at,
+        createdAt: c.created_at,
         playerName: c.players?.name ?? 'Player',
         // card_definitions.team is the frozen design-time club label; falls
         // back to the player's live club via team_id when no card artwork
@@ -244,58 +249,51 @@ async function getProductionQueueCards() {
     })
   );
 
-  type QueueRow = (typeof rows)[number];
+  const normalizedQuery = normalizePlayerSearch(q);
+  const matching = normalizedQuery ? rows.filter((r) => matchesPlayerSearch(r.playerName, normalizedQuery)) : rows;
 
-  function groupByOrder(list: QueueRow[]) {
-    const byOrder = new Map<string, QueueRow[]>();
-    for (const r of list) {
-      if (!byOrder.has(r.orderId)) byOrder.set(r.orderId, []);
-      byOrder.get(r.orderId)!.push(r);
-    }
-    return Array.from(byOrder.entries()).map(([orderId, cards]) => ({
-      orderId,
-      shortOrderRef: cards[0].shortOrderRef,
-      clubTeamLabel: cards[0].clubTeamLabel,
-      cards: cards.slice().sort((a, b) => a.playerName.localeCompare(b.playerName)),
-    }));
-  }
+  const waitingCards = matching.filter((c) => c.productionStatus === 'needs_setup');
+  const submittedCards = matching.filter((c) => c.productionStatus !== 'needs_setup');
 
-  const waitingCards = rows.filter((c) => c.productionStatus === 'needs_setup');
-  const submittedCards = rows.filter((c) => c.productionStatus !== 'needs_setup');
-
-  const waitingGroups = groupByOrder(waitingCards);
-  // Most-recently-active order first — keeps a squad's cards together as
-  // staff progressively submit them, instead of the old flat per-card
-  // "newest submitted" sort, which actively scattered a squad further
-  // apart the more of it got processed.
-  const submittedGroups = groupByOrder(submittedCards).sort((a, b) => {
-    const aMax = Math.max(...a.cards.map((c) => new Date(c.productionSubmittedAt ?? 0).getTime()));
-    const bMax = Math.max(...b.cards.map((c) => new Date(c.productionSubmittedAt ?? 0).getTime()));
-    return bMax - aMax;
-  });
+  // Flat, sortable per-card lists (each row already shows its own club/team
+  // label and order ref inline) rather than the old order-grouped display —
+  // "newest first" is defined per queue item, not per order/group.
+  const waitingSorted = waitingCards
+    .slice()
+    .sort((a, b) => compareQueueRows(a, b, sort, (r) => r.createdAt, (r) => r.playerName));
+  const submittedSorted = submittedCards
+    .slice()
+    .sort((a, b) => compareQueueRows(a, b, sort, (r) => r.productionSubmittedAt, (r) => r.playerName));
 
   return {
-    waiting: waitingGroups,
-    submitted: submittedGroups,
-    waitingCount: waitingCards.length,
-    submittedCount: submittedCards.length,
+    waiting: waitingSorted,
+    submitted: submittedSorted,
+    waitingCount: waitingSorted.length,
+    submittedCount: submittedSorted.length,
   };
 }
 
-function cardWord(n: number) {
-  return n === 1 ? '1 Card' : `${n} Cards`;
-}
-
-export default async function StaffQueuePage() {
+export default async function StaffQueuePage({
+  searchParams,
+}: {
+  searchParams: { q?: string | string[]; sort?: string | string[] };
+}) {
   const supabase = createClient();
   const staffCheck = await requireStaff(supabase);
   if (!staffCheck.ok) {
     redirect('/staff/login?next=/staff/queue');
   }
 
+  const rawQ = Array.isArray(searchParams?.q) ? searchParams.q[0] : searchParams?.q;
+  const rawSort = Array.isArray(searchParams?.sort) ? searchParams.sort[0] : searchParams?.sort;
+  const q = (rawQ ?? '').trim();
+  const sort = parseQueueSort(rawSort);
+  const hasSearch = q.length > 0;
+
   const pendingOrders = await getPendingOrders();
   const approvedOrders = await getRecentlyApprovedSingleCardOrders();
-  const productionQueue = await getProductionQueueCards();
+  const productionQueue = await getProductionQueueCards(q, sort);
+  const totalQueueResults = productionQueue.waitingCount + productionQueue.submittedCount;
 
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-14">
@@ -459,6 +457,17 @@ export default async function StaffQueuePage() {
         Approved cards waiting for NFC programming. Open or copy the browser link to verify the correct Player OS, public profile and guardian behaviour before writing a physical chip.
       </p>
 
+      <QueueControls initialQuery={q} initialSort={sort} />
+
+      {hasSearch && (
+        <p
+          aria-live="polite"
+          style={{ margin: '2px 0 0', fontFamily: 'var(--font-jbmono), monospace', fontSize: 12.5, color: 'var(--ink-soft)' }}
+        >
+          {totalQueueResults === 1 ? '1 result' : `${totalQueueResults} results`} for &lsquo;{q}&rsquo;
+        </p>
+      )}
+
       <h3
         style={{
           fontFamily: 'var(--font-sora), system-ui', fontWeight: 700,
@@ -469,87 +478,73 @@ export default async function StaffQueuePage() {
         Waiting for Setup ({productionQueue.waitingCount})
       </h3>
 
-      <div style={{ marginTop: 12, display: 'grid', gap: 20 }}>
-        {productionQueue.waiting.length === 0 && (
-          <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
-            Nothing waiting on setup right now.
-          </p>
-        )}
-        {productionQueue.waiting.map((group) => (
-          <div key={group.orderId} style={{ display: 'grid', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', padding: '0 2px' }}>
-              {group.clubTeamLabel && (
-                <span style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>
-                  {group.clubTeamLabel}
-                </span>
-              )}
-              <span style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
-                Order {group.shortOrderRef}
-              </span>
-              <span style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-faint)' }}>
-                {cardWord(group.cards.length)}
-              </span>
-            </div>
-            {group.cards.map((c) => {
-              const nfcUrl = buildNfcCardUrl(c.claimToken);
-              return (
-                <div
-                  key={c.id}
+      <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+        {productionQueue.waiting.length === 0 &&
+          (hasSearch ? (
+            <QueueSearchEmptyState currentSort={sort} />
+          ) : (
+            <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
+              Nothing waiting on setup right now.
+            </p>
+          ))}
+        {productionQueue.waiting.map((c) => {
+          const nfcUrl = buildNfcCardUrl(c.claimToken);
+          return (
+            <div
+              key={c.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+                padding: '16px 18px', borderRadius: 16,
+                background: '#fff', boxShadow: 'inset 0 0 0 1px var(--line)',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>
+                  {c.playerName}
+                  {c.clubTeamLabel && <span style={{ color: 'var(--ink-faint)', fontWeight: 500 }}> · {c.clubTeamLabel}</span>}
+                </div>
+                <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
+                  {c.purchaserEmail} · order {c.shortOrderRef} · card {c.shortCardRef} · {c.claimToken}
+                </div>
+                {!c.hasArtwork && (
+                  <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 11.5, color: 'var(--ink-faint)' }}>
+                    No card artwork on file
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {c.printUrl && (
+                  <a
+                    href={c.printUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
+                      color: 'var(--ink)', background: 'var(--surface)',
+                      padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Print PDF
+                  </a>
+                )}
+                <a
+                  href={nfcUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-                    padding: '16px 18px', borderRadius: 16,
-                    background: '#fff', boxShadow: 'inset 0 0 0 1px var(--line)',
+                    fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
+                    color: 'var(--ink)', background: 'var(--surface)',
+                    padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
                   }}
                 >
-                  <div style={{ flex: 1, minWidth: 180 }}>
-                    <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>
-                      {c.playerName}
-                      {c.clubTeamLabel && <span style={{ color: 'var(--ink-faint)', fontWeight: 500 }}> · {c.clubTeamLabel}</span>}
-                    </div>
-                    <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
-                      {c.purchaserEmail} · order {c.shortOrderRef} · card {c.shortCardRef} · {c.claimToken}
-                    </div>
-                    {!c.hasArtwork && (
-                      <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 11.5, color: 'var(--ink-faint)' }}>
-                        No card artwork on file
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    {c.printUrl && (
-                      <a
-                        href={c.printUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
-                          color: 'var(--ink)', background: 'var(--surface)',
-                          padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Print PDF
-                      </a>
-                    )}
-                    <a
-                      href={nfcUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
-                        color: 'var(--ink)', background: 'var(--surface)',
-                        padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Open NFC Link
-                    </a>
-                    <CopyLinkButton url={nfcUrl} label="Copy NFC" />
-                    <BuildProfileButton cardId={c.id} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ))}
+                  Open NFC Link
+                </a>
+                <CopyLinkButton url={nfcUrl} label="Copy NFC" />
+                <BuildProfileButton cardId={c.id} />
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <h3
@@ -562,124 +557,110 @@ export default async function StaffQueuePage() {
         Ready for Programming ({productionQueue.submittedCount})
       </h3>
 
-      <div style={{ marginTop: 12, display: 'grid', gap: 20 }}>
-        {productionQueue.submitted.length === 0 && (
-          <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
-            Nothing submitted to production yet.
-          </p>
-        )}
-        {productionQueue.submitted.map((group) => (
-          <div key={group.orderId} style={{ display: 'grid', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', padding: '0 2px' }}>
-              {group.clubTeamLabel && (
-                <span style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>
-                  {group.clubTeamLabel}
-                </span>
-              )}
-              <span style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
-                Order {group.shortOrderRef}
-              </span>
-              <span style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-faint)' }}>
-                {cardWord(group.cards.length)}
-              </span>
-            </div>
-            {group.cards.map((c) => {
-              const nfcUrl = buildNfcCardUrl(c.claimToken);
-              const statusBadge = PRODUCTION_STATUS_LABEL[c.productionStatus] ?? PRODUCTION_STATUS_LABEL.needs_setup;
-              const publishedBadge = c.publicIdEnabled ? PUBLISHED_BADGE.published : PUBLISHED_BADGE.unpublished;
-              return (
-                <div
-                  key={c.id}
+      <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+        {productionQueue.submitted.length === 0 &&
+          (hasSearch ? (
+            <QueueSearchEmptyState currentSort={sort} />
+          ) : (
+            <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
+              Nothing submitted to production yet.
+            </p>
+          ))}
+        {productionQueue.submitted.map((c) => {
+          const nfcUrl = buildNfcCardUrl(c.claimToken);
+          const statusBadge = PRODUCTION_STATUS_LABEL[c.productionStatus] ?? PRODUCTION_STATUS_LABEL.needs_setup;
+          const publishedBadge = c.publicIdEnabled ? PUBLISHED_BADGE.published : PUBLISHED_BADGE.unpublished;
+          return (
+            <div
+              key={c.id}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
+                padding: '16px 18px', borderRadius: 16,
+                background: '#fff', boxShadow: 'inset 0 0 0 1px var(--line)',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 180 }}>
+                <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>
+                  {c.playerName}
+                  {c.clubTeamLabel && <span style={{ color: 'var(--ink-faint)', fontWeight: 500 }}> · {c.clubTeamLabel}</span>}
+                </div>
+                <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
+                  {c.purchaserEmail} · order {c.shortOrderRef} · card {c.shortCardRef} · {c.claimToken}
+                </div>
+                <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 600,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      padding: '4px 10px', borderRadius: 999, background: publishedBadge.bg, color: publishedBadge.color,
+                    }}
+                  >
+                    {publishedBadge.label}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 600,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      padding: '4px 10px', borderRadius: 999, background: statusBadge.bg, color: statusBadge.color,
+                    }}
+                  >
+                    {statusBadge.label}
+                  </span>
+                  {!c.hasArtwork && (
+                    <span style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 11.5, color: 'var(--ink-faint)' }}>
+                      No card artwork on file
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                {c.printUrl && (
+                  <a
+                    href={c.printUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
+                      color: 'var(--ink)', background: 'var(--surface)',
+                      padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Print PDF
+                  </a>
+                )}
+                {c.publicIdEnabled && c.publicPlayerId && (
+                  <a
+                    href={`/player/${c.publicPlayerId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
+                      color: 'var(--ink)', background: 'var(--surface)',
+                      padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Open Profile
+                  </a>
+                )}
+                <a
+                  href={nfcUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
-                    padding: '16px 18px', borderRadius: 16,
-                    background: '#fff', boxShadow: 'inset 0 0 0 1px var(--line)',
+                    fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
+                    color: 'var(--ink)', background: 'var(--surface)',
+                    padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
                   }}
                 >
-                  <div style={{ flex: 1, minWidth: 180 }}>
-                    <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>
-                      {c.playerName}
-                      {c.clubTeamLabel && <span style={{ color: 'var(--ink-faint)', fontWeight: 500 }}> · {c.clubTeamLabel}</span>}
-                    </div>
-                    <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
-                      {c.purchaserEmail} · order {c.shortOrderRef} · card {c.shortCardRef} · {c.claimToken}
-                    </div>
-                    <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      <span
-                        style={{
-                          fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 600,
-                          letterSpacing: '0.04em', textTransform: 'uppercase',
-                          padding: '4px 10px', borderRadius: 999, background: publishedBadge.bg, color: publishedBadge.color,
-                        }}
-                      >
-                        {publishedBadge.label}
-                      </span>
-                      <span
-                        style={{
-                          fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 600,
-                          letterSpacing: '0.04em', textTransform: 'uppercase',
-                          padding: '4px 10px', borderRadius: 999, background: statusBadge.bg, color: statusBadge.color,
-                        }}
-                      >
-                        {statusBadge.label}
-                      </span>
-                      {!c.hasArtwork && (
-                        <span style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 11.5, color: 'var(--ink-faint)' }}>
-                          No card artwork on file
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    {c.printUrl && (
-                      <a
-                        href={c.printUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
-                          color: 'var(--ink)', background: 'var(--surface)',
-                          padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Print PDF
-                      </a>
-                    )}
-                    {c.publicIdEnabled && c.publicPlayerId && (
-                      <a
-                        href={`/player/${c.publicPlayerId}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
-                          color: 'var(--ink)', background: 'var(--surface)',
-                          padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Open Profile
-                      </a>
-                    )}
-                    <a
-                      href={nfcUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
-                        color: 'var(--ink)', background: 'var(--surface)',
-                        padding: '8px 14px', borderRadius: 10, textDecoration: 'none', whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Open NFC Link
-                    </a>
-                    <CopyLinkButton url={nfcUrl} label="Copy NFC" />
-                    <RejectCardButton cardId={c.id} playerName={c.playerName} />
-                    <DeleteCardButton cardId={c.id} playerName={c.playerName} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ))}
+                  Open NFC Link
+                </a>
+                <CopyLinkButton url={nfcUrl} label="Copy NFC" />
+                <RejectCardButton cardId={c.id} playerName={c.playerName} />
+                <DeleteCardButton cardId={c.id} playerName={c.playerName} />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
