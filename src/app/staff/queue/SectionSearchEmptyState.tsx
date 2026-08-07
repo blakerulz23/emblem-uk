@@ -1,19 +1,23 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import type { QueueSort } from '@/lib/staff-queue-search';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { buildStaffQueueUrl } from '@/lib/staff-queue-search';
 
-/** Shown in place of a subsection's normal "nothing here" message when a
- * player-name search is active and matches nothing in that subsection —
- * clears only `q`, leaving the current sort selection untouched. */
-export default function QueueSearchEmptyState({ currentSort }: { currentSort: QueueSort }) {
+/** Shown in place of a section's normal "nothing here" message when its
+ * search is active and matches nothing — clears only that section's `Q`
+ * param (leaving its sort, and every other section's state, untouched). */
+export default function SectionSearchEmptyState({
+  paramPrefix,
+  heading,
+}: {
+  paramPrefix: string;
+  heading: string;
+}) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const clear = () => {
-    const params = new URLSearchParams();
-    if (currentSort !== 'newest') params.set('sort', currentSort);
-    const qs = params.toString();
-    router.replace(qs ? `/staff/queue?${qs}` : '/staff/queue', { scroll: false });
+    router.replace(buildStaffQueueUrl(searchParams, { [`${paramPrefix}Q`]: null, [`${paramPrefix}Page`]: null }), { scroll: false });
   };
 
   return (
@@ -24,10 +28,10 @@ export default function QueueSearchEmptyState({ currentSort }: { currentSort: Qu
       }}
     >
       <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 15, color: 'var(--ink)' }}>
-        No players found
+        {heading}
       </div>
       <p style={{ margin: '4px 0 14px', fontFamily: 'var(--font-manrope), system-ui', fontSize: 13.5, color: 'var(--ink-soft)' }}>
-        Try another name or clear your search.
+        Try another name, email or order reference.
       </p>
       <button
         type="button"

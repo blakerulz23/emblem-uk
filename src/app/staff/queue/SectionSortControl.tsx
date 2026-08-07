@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { QUEUE_SORT_OPTIONS, type QueueSort } from '@/lib/staff-queue-search';
+
+type SortOption = { value: string; label: string };
 
 function SortIcon() {
   return (
@@ -33,17 +34,28 @@ function CheckIcon() {
  * One trigger + option list serves both layouts: on desktop it's an
  * anchored dropdown, on mobile the exact same markup becomes a fixed
  * bottom sheet via CSS media queries only (see the <style> block below) —
- * no JS breakpoint branching in render, which is what caused the
- * hydration-mismatch bugs elsewhere in this codebase. The Tab-trap in
- * onListKeyDown is the one place that genuinely needs to know which
- * layout is active, and it checks matchMedia at keypress time (an event
- * handler, not render output), so it can't cause a hydration mismatch.
+ * no JS breakpoint branching in render, avoiding the hydration-mismatch
+ * class of bug elsewhere in this codebase. Generic over `options`/`value`
+ * so all three /staff/queue sections reuse this one component with their
+ * own sort vocabulary; `idPrefix` keeps the three simultaneous instances'
+ * DOM ids from colliding.
  */
-export default function QueueSortControl({ value, onChange }: { value: QueueSort; onChange: (v: QueueSort) => void }) {
+export default function SectionSortControl({
+  idPrefix,
+  value,
+  options,
+  onChange,
+}: {
+  idPrefix: string;
+  value: string;
+  options: SortOption[];
+  onChange: (v: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const listboxId = `${idPrefix}-sort-listbox`;
 
   const focusOption = (index: number) => {
     const el = listRef.current?.querySelectorAll<HTMLElement>('[role="option"]')[index];
@@ -52,7 +64,7 @@ export default function QueueSortControl({ value, onChange }: { value: QueueSort
 
   useEffect(() => {
     if (!open) return;
-    const idx = Math.max(0, QUEUE_SORT_OPTIONS.findIndex((o) => o.value === value));
+    const idx = Math.max(0, options.findIndex((o) => o.value === value));
     setActiveIndex(idx);
     const id = requestAnimationFrame(() => focusOption(idx));
     return () => cancelAnimationFrame(id);
@@ -76,13 +88,12 @@ export default function QueueSortControl({ value, onChange }: { value: QueueSort
     triggerRef.current?.focus();
   };
 
-  const select = (v: QueueSort) => {
+  const select = (v: string) => {
     onChange(v);
     close();
   };
 
   const onListKeyDown = (e: React.KeyboardEvent<HTMLUListElement>) => {
-    const options = QUEUE_SORT_OPTIONS;
     if (e.key === 'Escape') {
       e.preventDefault();
       close();
@@ -126,7 +137,7 @@ export default function QueueSortControl({ value, onChange }: { value: QueueSort
     }
   };
 
-  const current = QUEUE_SORT_OPTIONS.find((o) => o.value === value) ?? QUEUE_SORT_OPTIONS[0];
+  const current = options.find((o) => o.value === value) ?? options[0];
 
   return (
     <div className="qsort">
@@ -136,7 +147,7 @@ export default function QueueSortControl({ value, onChange }: { value: QueueSort
         className="qsort-trigger"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-controls="queue-sort-listbox"
+        aria-controls={listboxId}
         onClick={() => setOpen((o) => !o)}
       >
         <SortIcon />
@@ -149,8 +160,8 @@ export default function QueueSortControl({ value, onChange }: { value: QueueSort
           <div className="qsort-panel">
             <div className="qsort-handle" aria-hidden="true" />
             <div className="qsort-sheet-title">Sort queue</div>
-            <ul id="queue-sort-listbox" role="listbox" aria-label="Sort queue" ref={listRef} onKeyDown={onListKeyDown}>
-              {QUEUE_SORT_OPTIONS.map((o, i) => (
+            <ul id={listboxId} role="listbox" aria-label="Sort queue" ref={listRef} onKeyDown={onListKeyDown}>
+              {options.map((o, i) => (
                 <li
                   key={o.value}
                   role="option"

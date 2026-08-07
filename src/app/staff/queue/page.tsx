@@ -1,9 +1,23 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
-import { compareQueueRows, matchesPlayerSearch, normalizePlayerSearch, parseQueueSort, type QueueSort } from '@/lib/staff-queue-search';
+import {
+  APPROVED_SORT_OPTIONS,
+  buildStaffQueueUrl,
+  compareApprovedRows,
+  compareQueueRows,
+  matchesAnyField,
+  normalizePlayerSearch,
+  paginate,
+  parseApprovedSort,
+  parseQueueSort,
+  QUEUE_SORT_OPTIONS,
+  type ApprovedSort,
+  type QueueSort,
+} from '@/lib/staff-queue-search';
 import ApproveOrderButton from './ApproveOrderButton';
 import ApproveTeamOrderButton from './ApproveTeamOrderButton';
 import ResendInviteButton from './ResendInviteButton';
@@ -11,8 +25,8 @@ import BuildProfileButton from './BuildProfileButton';
 import RejectCardButton from './RejectCardButton';
 import DeleteCardButton from './DeleteCardButton';
 import CopyLinkButton from './CopyLinkButton';
-import QueueControls from './QueueControls';
-import QueueSearchEmptyState from './QueueSearchEmptyState';
+import SectionSearchControls from './SectionSearchControls';
+import SectionSearchEmptyState from './SectionSearchEmptyState';
 
 // This reads live pending orders on every request — without this, Next
 // would statically prerender the page at build time (its data fetch has
@@ -39,6 +53,8 @@ const INVITE_BADGE: Record<string, { bg: string; color: string; label: string }>
   skipped_no_email: { bg: 'var(--surface)', color: 'var(--ink-faint)', label: 'No recipient email' },
 };
 
+const APPROVED_PAGE_SIZE = 20;
+
 /** How many cards with a player_id are linked to each of these orders — the
  * ground truth for "single-card vs. squad," since `orders.source` no longer
  * reflects it (every live order is recorded as 'team_order', one card or
@@ -54,14 +70,54 @@ async function getCardCountsByOrder(supabase: ReturnType<typeof createServiceRol
   return counts;
 }
 
-async function getPendingOrders() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return [];
+/** Every real player name linked to each order (via cards.player_id ->
+ * players.name) — cards/players are created at order-submission time
+ * (see api/order-enquiry), before staff ever approve, so this is available
+ * for both the Awaiting Approval and Recently Approved sections. A squad
+ * order can have several; search matches if ANY of them do. */
+async function getPlayerNamesByOrder(supabase: ReturnType<typeof createServiceRoleClient>, orderIds: string[]) {
+  const map = new Map<string, string[]>();
+  if (orderIds.length === 0) return map;
+  const { data } = await supabase
+    .from('cards')
+    .select('order_id, players ( name )')
+    .in('order_id', orderIds)
+    .not('player_id', 'is', null);
+  type Row = { order_id: string; players: { name: string } | null };
+  for (const row of (data ?? []) as unknown as Row[]) {
+    const name = row.players?.name?.trim();
+    if (!name) continue;
+    const list = map.get(row.order_id) ?? [];
+    list.push(name);
+    map.set(row.order_id, list);
+  }
+  return map;
+}
+
+/** The alphabetically-first linked player name — the deterministic
+ * "representative name" an order sorts by under Player name A–Z/Z–A, since
+ * a squad order can have several players and sorting needs exactly one
+ * value per row. Both name_asc and name_desc use this same pick, so Z–A is
+ * a true reverse of A–Z rather than a different representative. */
+function representativeName(names: string[]): string {
+  if (names.length === 0) return '';
+  return names.slice().sort((a, b) => a.localeCompare(b))[0];
+}
+
+type PrintFileRef = { playerId?: string | null; playerName?: string | null; key: string };
+
+/**
+ * Section 1 — orders not yet approved. No display cap exists for this
+ * section (never has), so it isn't paginated — approvalQ/approvalSort
+ * filter and sort the full set server-side.
+ */
+async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return { orders: [], total: 0 };
   const supabase = createServiceRoleClient();
   let { data } = await supabase
     .from('orders')
     .select('id, order_ref, purchaser_email, payment_status, created_at, print_files, club_name, team_name')
-    .in('payment_status', ['order_intent', 'pending_payment', 'paid'])
-    .order('created_at', { ascending: false });
+    .in('payment_status', ['order_intent', 'pending_payment', 'paid']);
 
   // Until migrations 0007 (print_files) / 0009 (club_name/team_name) run,
   // those columns don't exist and the select above errors out (returns
@@ -71,20 +127,17 @@ async function getPendingOrders() {
     const fallback = await supabase
       .from('orders')
       .select('id, order_ref, purchaser_email, payment_status, created_at')
-      .in('payment_status', ['order_intent', 'pending_payment', 'paid'])
-      .order('created_at', { ascending: false });
+      .in('payment_status', ['order_intent', 'pending_payment', 'paid']);
     data = (fallback.data ?? []).map((o) => ({ ...o, print_files: null, club_name: null, team_name: null }));
   }
 
-  const cardCounts = await getCardCountsByOrder(
-    supabase,
-    (data ?? []).map((o) => o.id)
-  );
+  const orderIds = (data ?? []).map((o) => o.id);
+  const cardCounts = await getCardCountsByOrder(supabase, orderIds);
+  const playerNamesByOrder = await getPlayerNamesByOrder(supabase, orderIds);
 
-  type PrintFileRef = { playerId?: string | null; playerName?: string | null; key: string };
   // Presigned URLs expire (SigV4 max 7 days) — re-sign from the stored S3
   // keys on every page load so the download links always work.
-  return Promise.all(
+  const withPrintFiles = await Promise.all(
     (data ?? []).map(async (order) => {
       const refs = Array.isArray(order.print_files) ? (order.print_files as PrintFileRef[]) : [];
       const printFiles = await Promise.all(
@@ -95,39 +148,89 @@ async function getPendingOrders() {
             url: await getSignedDownloadUrl(f.key, 3600),
           }))
       );
-      return { ...order, printFiles, cardCount: cardCounts.get(order.id) ?? 0 };
+      return {
+        ...order,
+        printFiles,
+        cardCount: cardCounts.get(order.id) ?? 0,
+        playerNames: playerNamesByOrder.get(order.id) ?? [],
+      };
     })
   );
+
+  const normalizedQuery = normalizePlayerSearch(approvalQ);
+  const matching = normalizedQuery
+    ? withPrintFiles.filter((o) =>
+        matchesAnyField([o.order_ref, o.purchaser_email, o.club_name, o.team_name, ...o.playerNames], normalizedQuery)
+      )
+    : withPrintFiles;
+
+  const sorted = matching
+    .slice()
+    .sort((a, b) => compareQueueRows(a, b, approvalSort, (r) => r.created_at, (r) => representativeName(r.playerNames)));
+
+  return { orders: sorted, total: sorted.length };
 }
 
 /**
- * Single-card orders staff have already approved, most recent first — this
- * is where the post-approval invitation's delivery status/resend action
- * lives, since fulfilled orders drop off the pending list above.
- * Multi-player orders are excluded: Phase 1 doesn't trigger any invitation
- * for them (see the staff-queue gaps plan) — showing them here with no
- * status would read as a bug rather than the deliberate Phase 2 deferral
- * it is.
+ * Section 2 — single-card orders staff have already approved, most recent
+ * first — this is where the post-approval invitation's delivery status/
+ * resend action lives, since fulfilled orders drop off the pending list
+ * above. Multi-player orders are excluded: Phase 1 doesn't trigger any
+ * invitation for them (see the staff-queue gaps plan) — showing them here
+ * with no status would read as a bug rather than the deliberate Phase 2
+ * deferral it is.
+ *
+ * The existing "last 20 approved" cap only applies when approvedQ is empty
+ * — search must cover every eligible (fulfilled, single-card) record, not
+ * just the most recent 20, so it fetches the full eligible set and
+ * paginates over the real matching total instead.
  */
-async function getRecentlyApprovedSingleCardOrders() {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return [];
+async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSort: ApprovedSort, approvedPage: number) {
+  const empty = { orders: [], total: 0, page: 1, pageSize: APPROVED_PAGE_SIZE, totalPages: 1 };
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return empty;
   const supabase = createServiceRoleClient();
+  const hasSearch = normalizePlayerSearch(approvedQ).length > 0;
 
   const { data: orders } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, intended_guardian_email, approved_at')
+    .select('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name')
     .eq('payment_status', 'fulfilled')
     .order('approved_at', { ascending: false })
-    .limit(50);
+    // Not-searching keeps today's existing raw-fetch size (bounded, cheap);
+    // searching needs the full eligible universe to search across, bounded
+    // generously here only as a defensive ceiling, not a functional limit.
+    .limit(hasSearch ? 2000 : 50);
 
-  if (!orders || orders.length === 0) return [];
+  if (!orders || orders.length === 0) return empty;
 
-  const cardCounts = await getCardCountsByOrder(
+  const cardCounts = await getCardCountsByOrder(supabase, orders.map((o) => o.id));
+  const singleCardOrders = orders.filter((o) => (cardCounts.get(o.id) ?? 0) === 1);
+  if (singleCardOrders.length === 0) return empty;
+
+  const playerNamesByOrder = await getPlayerNamesByOrder(
     supabase,
-    orders.map((o) => o.id)
+    singleCardOrders.map((o) => o.id)
   );
-  const singleCardOrders = orders.filter((o) => (cardCounts.get(o.id) ?? 0) === 1).slice(0, 20);
-  if (singleCardOrders.length === 0) return [];
+
+  const normalizedQuery = normalizePlayerSearch(approvedQ);
+  const matching = normalizedQuery
+    ? singleCardOrders.filter((o) =>
+        matchesAnyField(
+          [o.order_ref, o.purchaser_email, o.intended_guardian_email, o.club_name, o.team_name, ...(playerNamesByOrder.get(o.id) ?? [])],
+          normalizedQuery
+        )
+      )
+    : singleCardOrders;
+
+  const sorted = matching
+    .slice()
+    .sort((a, b) => compareApprovedRows(a, b, approvedSort, (r) => r.approved_at, (r) => representativeName(playerNamesByOrder.get(r.id) ?? [])));
+
+  const page = hasSearch
+    ? paginate(sorted, approvedPage, APPROVED_PAGE_SIZE)
+    : { items: sorted.slice(0, APPROVED_PAGE_SIZE), total: sorted.length, page: 1, pageSize: APPROVED_PAGE_SIZE, totalPages: 1 };
+
+  if (page.items.length === 0) return { orders: [], total: page.total, page: page.page, pageSize: page.pageSize, totalPages: page.totalPages };
 
   const { data: invites } = await supabase
     .from('player_invites')
@@ -135,7 +238,7 @@ async function getRecentlyApprovedSingleCardOrders() {
     .eq('origin', 'order_approval')
     .in(
       'order_id',
-      singleCardOrders.map((o) => o.id)
+      page.items.map((o) => o.id)
     );
 
   const inviteByOrder = new Map<string, { email_status: string | null; email_sent_at: string | null }>();
@@ -143,29 +246,31 @@ async function getRecentlyApprovedSingleCardOrders() {
     if (invite.order_id) inviteByOrder.set(invite.order_id, invite);
   }
 
-  return singleCardOrders.map((order) => ({ ...order, invite: inviteByOrder.get(order.id) ?? null }));
+  return {
+    orders: page.items.map((order) => ({ ...order, invite: inviteByOrder.get(order.id) ?? null })),
+    total: page.total,
+    page: page.page,
+    pageSize: page.pageSize,
+    totalPages: page.totalPages,
+  };
 }
 
-type PrintFileRef = { playerId?: string | null; playerName?: string | null; key: string };
-
 /**
- * The real "Profile Setup Queue" — one item per physical card (cards
- * row), not per order or per abstract player, since a card is the actual
- * unit that carries a claim_token/NFC destination and can be in its own
- * independent production stage even within a squad order. Scoped to
+ * Section 3 — the real "Profile Setup Queue," one item per physical card
+ * (cards row), not per order or per abstract player, since a card is the
+ * actual unit that carries a claim_token/NFC destination and can be in its
+ * own independent production stage even within a squad order. Scoped to
  * cards linked to a fulfilled order — cards created outside the queue
- * entirely (e.g. a coach's "+Add Player") never had a physical print
- * step to track, so they're excluded here, same as they always were from
- * the old sample-only section this replaces.
+ * entirely (e.g. a coach's "+Add Player") never had a physical print step
+ * to track, so they're excluded here.
  *
- * Cards are additionally clustered by their Builder order for display —
- * this is purely a rendering concern layered on the existing order_id
- * relationship. Production state, claim tokens and every action stay
- * entirely per-card: a group can legitimately straddle both sections at
- * once (some cards waiting, some ready), since group membership never
- * depends on status.
+ * Flat per-card lists (each row already shows its own club/team label and
+ * order ref inline) rather than grouped by order — "newest first" is
+ * defined per queue item, not per order/group. No display cap exists for
+ * this section (never has), so its existing search-and-sort controls stay
+ * unpaginated, extended only to search club/team and order reference too.
  */
-async function getProductionQueueCards(q: string, sort: QueueSort) {
+async function getProductionQueueCards(setupQ: string, setupSort: QueueSort) {
   const empty = { waiting: [], submitted: [], waitingCount: 0, submittedCount: 0 };
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return empty;
   const supabase = createServiceRoleClient();
@@ -229,6 +334,7 @@ async function getProductionQueueCards(q: string, sort: QueueSort) {
       return {
         id: c.id,
         orderId: c.order_id,
+        orderRef: order?.order_ref ?? '',
         shortCardRef: c.id.slice(0, 8),
         claimToken: c.claim_token,
         purchaserEmail: order?.purchaser_email ?? '—',
@@ -249,21 +355,20 @@ async function getProductionQueueCards(q: string, sort: QueueSort) {
     })
   );
 
-  const normalizedQuery = normalizePlayerSearch(q);
-  const matching = normalizedQuery ? rows.filter((r) => matchesPlayerSearch(r.playerName, normalizedQuery)) : rows;
+  const normalizedQuery = normalizePlayerSearch(setupQ);
+  const matching = normalizedQuery
+    ? rows.filter((r) => matchesAnyField([r.playerName, r.clubTeamLabel, r.orderRef], normalizedQuery))
+    : rows;
 
   const waitingCards = matching.filter((c) => c.productionStatus === 'needs_setup');
   const submittedCards = matching.filter((c) => c.productionStatus !== 'needs_setup');
 
-  // Flat, sortable per-card lists (each row already shows its own club/team
-  // label and order ref inline) rather than the old order-grouped display —
-  // "newest first" is defined per queue item, not per order/group.
   const waitingSorted = waitingCards
     .slice()
-    .sort((a, b) => compareQueueRows(a, b, sort, (r) => r.createdAt, (r) => r.playerName));
+    .sort((a, b) => compareQueueRows(a, b, setupSort, (r) => r.createdAt, (r) => r.playerName));
   const submittedSorted = submittedCards
     .slice()
-    .sort((a, b) => compareQueueRows(a, b, sort, (r) => r.productionSubmittedAt, (r) => r.playerName));
+    .sort((a, b) => compareQueueRows(a, b, setupSort, (r) => r.productionSubmittedAt, (r) => r.playerName));
 
   return {
     waiting: waitingSorted,
@@ -273,10 +378,18 @@ async function getProductionQueueCards(q: string, sort: QueueSort) {
   };
 }
 
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function resultsLabel(total: number, q: string) {
+  return `${total === 1 ? '1 result' : `${total} results`} for ‘${q}’`;
+}
+
 export default async function StaffQueuePage({
   searchParams,
 }: {
-  searchParams: { q?: string | string[]; sort?: string | string[] };
+  searchParams: Record<string, string | string[] | undefined>;
 }) {
   const supabase = createClient();
   const staffCheck = await requireStaff(supabase);
@@ -284,16 +397,29 @@ export default async function StaffQueuePage({
     redirect('/staff/login?next=/staff/queue');
   }
 
-  const rawQ = Array.isArray(searchParams?.q) ? searchParams.q[0] : searchParams?.q;
-  const rawSort = Array.isArray(searchParams?.sort) ? searchParams.sort[0] : searchParams?.sort;
-  const q = (rawQ ?? '').trim();
-  const sort = parseQueueSort(rawSort);
-  const hasSearch = q.length > 0;
+  const fullParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams ?? {})) {
+    const v = firstParam(value);
+    if (v) fullParams.set(key, v);
+  }
 
-  const pendingOrders = await getPendingOrders();
-  const approvedOrders = await getRecentlyApprovedSingleCardOrders();
-  const productionQueue = await getProductionQueueCards(q, sort);
-  const totalQueueResults = productionQueue.waitingCount + productionQueue.submittedCount;
+  const approvalQ = (firstParam(searchParams?.approvalQ) ?? '').trim();
+  const approvalSort = parseQueueSort(firstParam(searchParams?.approvalSort));
+  const hasApprovalSearch = approvalQ.length > 0;
+
+  const approvedQ = (firstParam(searchParams?.approvedQ) ?? '').trim();
+  const approvedSort = parseApprovedSort(firstParam(searchParams?.approvedSort));
+  const approvedPageParam = Number(firstParam(searchParams?.approvedPage)) || 1;
+  const hasApprovedSearch = approvedQ.length > 0;
+
+  const setupQ = (firstParam(searchParams?.setupQ) ?? '').trim();
+  const setupSort = parseQueueSort(firstParam(searchParams?.setupSort));
+  const hasSetupSearch = setupQ.length > 0;
+
+  const pending = await getPendingOrders(approvalQ, approvalSort);
+  const approved = await getRecentlyApprovedSingleCardOrders(approvedQ, approvedSort, approvedPageParam);
+  const productionQueue = await getProductionQueueCards(setupQ, setupSort);
+  const totalSetupResults = productionQueue.waitingCount + productionQueue.submittedCount;
 
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-14">
@@ -320,13 +446,31 @@ export default async function StaffQueuePage({
         A cart redirect or submitted enquiry isn&rsquo;t proof of purchase — approving here is what makes an order&rsquo;s claim code(s) actually claimable by a parent. Orders with exactly one card also send the customer an invitation email once approved; multi-player orders do not yet (see below).
       </p>
 
-      <div style={{ marginTop: 28, display: 'grid', gap: 12 }}>
-        {pendingOrders.length === 0 && (
-          <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
-            Nothing waiting on approval right now.
-          </p>
-        )}
-        {pendingOrders.map((order) => (
+      <SectionSearchControls
+        paramPrefix="approval"
+        placeholder="Search player, email or order"
+        searchAriaLabel="Search orders awaiting approval by player, email or order reference"
+        initialQuery={approvalQ}
+        initialSort={approvalSort}
+        defaultSort="newest"
+        sortOptions={QUEUE_SORT_OPTIONS}
+      />
+      {hasApprovalSearch && (
+        <p aria-live="polite" style={{ margin: '2px 0 0', fontFamily: 'var(--font-jbmono), monospace', fontSize: 12.5, color: 'var(--ink-soft)' }}>
+          {resultsLabel(pending.total, approvalQ)}
+        </p>
+      )}
+
+      <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
+        {pending.orders.length === 0 &&
+          (hasApprovalSearch ? (
+            <SectionSearchEmptyState paramPrefix="approval" heading="No matching orders awaiting approval." />
+          ) : (
+            <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
+              Nothing waiting on approval right now.
+            </p>
+          ))}
+        {pending.orders.map((order) => (
           <div
             key={order.id}
             style={{
@@ -400,13 +544,31 @@ export default async function StaffQueuePage({
         Invitation delivery status for the last 20 approved orders with exactly one card. Multi-player orders aren&rsquo;t shown here — they don&rsquo;t get an automatic customer invitation yet.
       </p>
 
-      <div style={{ marginTop: 28, display: 'grid', gap: 12 }}>
-        {approvedOrders.length === 0 && (
-          <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
-            No approved single-card orders yet.
-          </p>
-        )}
-        {approvedOrders.map((order) => {
+      <SectionSearchControls
+        paramPrefix="approved"
+        placeholder="Search player, email or order"
+        searchAriaLabel="Search recently approved orders by player, email or order reference"
+        initialQuery={approvedQ}
+        initialSort={approvedSort}
+        defaultSort="approved-desc"
+        sortOptions={APPROVED_SORT_OPTIONS}
+      />
+      {hasApprovedSearch && (
+        <p aria-live="polite" style={{ margin: '2px 0 0', fontFamily: 'var(--font-jbmono), monospace', fontSize: 12.5, color: 'var(--ink-soft)' }}>
+          {resultsLabel(approved.total, approvedQ)}
+        </p>
+      )}
+
+      <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
+        {approved.orders.length === 0 &&
+          (hasApprovedSearch ? (
+            <SectionSearchEmptyState paramPrefix="approved" heading="No matching approved orders." />
+          ) : (
+            <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
+              No approved single-card orders yet.
+            </p>
+          ))}
+        {approved.orders.map((order) => {
           const badge = order.invite?.email_status ? INVITE_BADGE[order.invite.email_status] : null;
           const recipient = order.intended_guardian_email || order.purchaser_email;
           return (
@@ -445,6 +607,38 @@ export default async function StaffQueuePage({
         })}
       </div>
 
+      {approved.totalPages > 1 && (
+        <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+          <Link
+            href={buildStaffQueueUrl(fullParams, { approvedPage: approved.page <= 2 ? null : String(approved.page - 1) })}
+            aria-disabled={approved.page <= 1}
+            style={{
+              pointerEvents: approved.page <= 1 ? 'none' : 'auto', opacity: approved.page <= 1 ? 0.4 : 1,
+              fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
+              color: 'var(--ink)', background: 'var(--surface)',
+              padding: '9px 16px', borderRadius: 10, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center',
+            }}
+          >
+            Previous
+          </Link>
+          <span style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 12.5, color: 'var(--ink-soft)' }}>
+            Page {approved.page} of {approved.totalPages}
+          </span>
+          <Link
+            href={buildStaffQueueUrl(fullParams, { approvedPage: String(approved.page + 1) })}
+            aria-disabled={approved.page >= approved.totalPages}
+            style={{
+              pointerEvents: approved.page >= approved.totalPages ? 'none' : 'auto', opacity: approved.page >= approved.totalPages ? 0.4 : 1,
+              fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 12.5,
+              color: 'var(--ink)', background: 'var(--surface)',
+              padding: '9px 16px', borderRadius: 10, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center',
+            }}
+          >
+            Next
+          </Link>
+        </div>
+      )}
+
       <h2
         style={{
           fontFamily: 'var(--font-sora), system-ui', fontWeight: 800,
@@ -457,14 +651,22 @@ export default async function StaffQueuePage({
         Approved cards waiting for NFC programming. Open or copy the browser link to verify the correct Player OS, public profile and guardian behaviour before writing a physical chip.
       </p>
 
-      <QueueControls initialQuery={q} initialSort={sort} />
+      <SectionSearchControls
+        paramPrefix="setup"
+        placeholder="Search player name"
+        searchAriaLabel="Search the setup queue by player, club or order reference"
+        initialQuery={setupQ}
+        initialSort={setupSort}
+        defaultSort="newest"
+        sortOptions={QUEUE_SORT_OPTIONS}
+      />
 
-      {hasSearch && (
+      {hasSetupSearch && (
         <p
           aria-live="polite"
           style={{ margin: '2px 0 0', fontFamily: 'var(--font-jbmono), monospace', fontSize: 12.5, color: 'var(--ink-soft)' }}
         >
-          {totalQueueResults === 1 ? '1 result' : `${totalQueueResults} results`} for &lsquo;{q}&rsquo;
+          {resultsLabel(totalSetupResults, setupQ)}
         </p>
       )}
 
@@ -480,8 +682,8 @@ export default async function StaffQueuePage({
 
       <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
         {productionQueue.waiting.length === 0 &&
-          (hasSearch ? (
-            <QueueSearchEmptyState currentSort={sort} />
+          (hasSetupSearch ? (
+            <SectionSearchEmptyState paramPrefix="setup" heading="No matching players in the setup queue." />
           ) : (
             <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
               Nothing waiting on setup right now.
@@ -559,8 +761,8 @@ export default async function StaffQueuePage({
 
       <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
         {productionQueue.submitted.length === 0 &&
-          (hasSearch ? (
-            <QueueSearchEmptyState currentSort={sort} />
+          (hasSetupSearch ? (
+            <SectionSearchEmptyState paramPrefix="setup" heading="No matching players in the setup queue." />
           ) : (
             <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-faint)' }}>
               Nothing submitted to production yet.

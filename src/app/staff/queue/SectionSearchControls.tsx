@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
-import QueueSortControl from './QueueSortControl';
-import type { QueueSort } from '@/lib/staff-queue-search';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import SectionSortControl from './SectionSortControl';
+import { buildStaffQueueUrl } from '@/lib/staff-queue-search';
 
 function SearchIcon() {
   return (
@@ -23,64 +23,76 @@ function ClearIcon() {
   );
 }
 
-function buildQueueUrl(q: string, sort: QueueSort) {
-  const params = new URLSearchParams();
-  const trimmed = q.trim();
-  if (trimmed) params.set('q', trimmed);
-  if (sort !== 'newest') params.set('sort', sort);
-  const qs = params.toString();
-  return qs ? `/staff/queue?${qs}` : '/staff/queue';
-}
-
-export default function QueueControls({ initialQuery, initialSort }: { initialQuery: string; initialSort: QueueSort }) {
+/**
+ * The search input + sort trigger row for one /staff/queue section.
+ * `paramPrefix` ('approval' | 'approved' | 'setup') scopes every URL key
+ * this component touches (`${paramPrefix}Q`/`${paramPrefix}Sort`/
+ * `${paramPrefix}Page`) — every other param on the page (the other two
+ * sections' state) passes through untouched via buildStaffQueueUrl, which
+ * is how the three sections stay independent while sharing one URL.
+ */
+export default function SectionSearchControls({
+  paramPrefix,
+  placeholder,
+  searchAriaLabel,
+  initialQuery,
+  initialSort,
+  defaultSort,
+  sortOptions,
+}: {
+  paramPrefix: string;
+  placeholder: string;
+  searchAriaLabel: string;
+  initialQuery: string;
+  initialSort: string;
+  defaultSort: string;
+  sortOptions: { value: string; label: string }[];
+}) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [query, setQuery] = useState(initialQuery);
-  const [sort, setSort] = useState<QueueSort>(initialSort);
-  const [, startTransition] = useTransition();
+  const [sort, setSort] = useState(initialSort);
   const [isPending, setIsPending] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // The URL is the source of truth (Back button, the empty-state's "Clear
-  // search", a shared link) — resync local state whenever it changes from
-  // outside this component instead of only seeding it once on mount.
+  const qKey = `${paramPrefix}Q`;
+  const sortKey = `${paramPrefix}Sort`;
+  const pageKey = `${paramPrefix}Page`;
+
+  // The URL is the source of truth (Back button, another section's empty
+  // state clearing THIS section indirectly is impossible by design, but a
+  // shared link or Back button can still change it) — resync local state
+  // whenever it changes from outside this component.
   useEffect(() => setQuery(initialQuery), [initialQuery]);
   useEffect(() => setSort(initialSort), [initialSort]);
-
+  useEffect(() => setIsPending(false), [initialQuery, initialSort]);
   useEffect(() => () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
   }, []);
 
-  const commit = (nextQ: string, nextSort: QueueSort) => {
+  const commit = (updates: Record<string, string | null>) => {
     setIsPending(true);
-    startTransition(() => {
-      router.replace(buildQueueUrl(nextQ, nextSort), { scroll: false });
-    });
+    router.replace(buildStaffQueueUrl(searchParams, updates), { scroll: false });
   };
-
-  // useTransition's own isPending can go stale across the debounce delay
-  // (it only tracks the router.replace call itself); a plain flag cleared
-  // once the new initialQuery/initialSort props land (i.e. the server
-  // re-render committed) is a simpler, accurate "still loading" signal.
-  useEffect(() => {
-    setIsPending(false);
-  }, [initialQuery, initialSort]);
 
   const onQueryChange = (value: string) => {
     setQuery(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => commit(value, sort), 300);
+    debounceRef.current = setTimeout(() => {
+      commit({ [qKey]: value.trim() || null, [pageKey]: null });
+    }, 300);
   };
 
   const onClear = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     setQuery('');
-    commit('', sort);
+    commit({ [qKey]: null, [pageKey]: null });
   };
 
-  const onSortChange = (nextSort: QueueSort) => {
+  const onSortChange = (nextSort: string) => {
     setSort(nextSort);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    commit(query, nextSort);
+    commit({ [sortKey]: nextSort === defaultSort ? null : nextSort, [pageKey]: null });
   };
 
   return (
@@ -91,8 +103,8 @@ export default function QueueControls({ initialQuery, initialSort }: { initialQu
           type="text"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Search player name"
-          aria-label="Search queue by player name"
+          placeholder={placeholder}
+          aria-label={searchAriaLabel}
           className="qc-search-input"
         />
         <div className="qc-search-end">
@@ -104,7 +116,7 @@ export default function QueueControls({ initialQuery, initialSort }: { initialQu
           )}
         </div>
       </div>
-      <QueueSortControl value={sort} onChange={onSortChange} />
+      <SectionSortControl idPrefix={paramPrefix} value={sort} options={sortOptions} onChange={onSortChange} />
       <style>{`
         .qc-row { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; margin: 24px 0 4px; }
         .qc-search {
