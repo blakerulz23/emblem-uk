@@ -13,6 +13,9 @@ import type { StoryUpdate } from './osData';
 import { useStoryUpdates } from './useStoryUpdates';
 import OSBottomNavigation from './navigation/OSBottomNavigation';
 import { PLAYER_NAV_ITEMS, COACH_NAV_ITEMS } from './navigation/navItems';
+import type { UseOsRefreshResult } from './useOsRefresh';
+import OsRefreshBridge from './OsRefreshBridge';
+import OsRefreshIndicator from './OsRefreshIndicator';
 
 /** Every tab key either role can be in, player or coach — used to validate
  * a ?screen= value read from the URL (see resolveTabFromSearchParams)
@@ -157,6 +160,8 @@ export default function OsApp({
   const sentTimerRef = useRef<ReturnType<typeof setTimeout>>();
   /** False until the ?screen= URL-sync effect has run once — see that effect further down. */
   const tabSyncedOnceRef = useRef(false);
+  /** The actual #os-scroll DOM node — pull-to-refresh (useOsRefresh) attaches its touch listeners directly to this, not to a synthetic React handler. */
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const patch = useCallback((partial: Partial<OsState> | ((s: OsState) => Partial<OsState>)) => {
     setState((s) => ({ ...s, ...(typeof partial === 'function' ? partial(s) : partial) }));
@@ -266,9 +271,32 @@ export default function OsApp({
   // separate from OsDataContext's refreshOsData() — an update landing here
   // never needs the rest of OsData to also refresh.
   const osData = initialData ?? DEMO_OS_DATA;
+  // Seeded from osData (the initialData prop) like before, but kept live
+  // afterwards by OsRefreshBridge's onStoryUpdatesChange — osData itself
+  // never changes except on a genuine new navigation (it's a plain prop),
+  // so without this a successful pull-to-refresh/manual refresh would
+  // update every other OsData field (via useOsData() in PlayerHome/
+  // CoachHome directly) while "What's New"/Coach Assessment kept showing
+  // pre-refresh content (confirmed empirically during this feature's own
+  // testing — see OsRefreshBridge.tsx's doc comment for the full story).
+  const [liveStoryUpdatesSeed, setLiveStoryUpdatesSeed] = useState({
+    storyUpdates: osData.storyUpdates,
+    unreadCount: osData.unreadStoryUpdateCount,
+  });
+  // A genuine new navigation (a fresh initialData prop) must win over
+  // whatever a prior pull-to-refresh had reported — re-seeds from the new
+  // snapshot rather than leaving the previous player's/session's story
+  // updates in place.
+  useEffect(() => {
+    setLiveStoryUpdatesSeed({ storyUpdates: osData.storyUpdates, unreadCount: osData.unreadStoryUpdateCount });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData]);
+  const handleStoryUpdatesChange = useCallback((updates: StoryUpdate[], unreadCount: number) => {
+    setLiveStoryUpdatesSeed({ storyUpdates: updates, unreadCount });
+  }, []);
   const { storyUpdates, unreadCount: unreadStoryUpdateCount, markRead: markStoryUpdateRead } = useStoryUpdates(
-    osData.storyUpdates,
-    osData.unreadStoryUpdateCount,
+    liveStoryUpdatesSeed.storyUpdates,
+    liveStoryUpdatesSeed.unreadCount,
     osData.viewerId
   );
 
@@ -524,6 +552,31 @@ export default function OsApp({
     !state.activated || !!state.moment || !!state.collectible || !!state.celeb ||
     state.storyUpdatesOpen || state.addOpen || state.addStep > 0 || state.addUnlock;
 
+  // Pull-to-refresh is disabled whenever anyOverlayOpen is true (covers
+  // AddMomentFlow/MomentStage/CollectibleViewer/CelebrateSheet/
+  // StoryUpdates/the auth gate — every one of these holds real draft text
+  // in OsApp's own `state`, e.g. AddMomentFlow's description/score,
+  // CelebrateSheet's message, which a data refresh can't touch anyway
+  // since it only ever replaces OsDataContext — but a refresh spinner
+  // interrupting someone mid-type is still the wrong feel) — plus in demo
+  // mode, where there's no real session for /api/os/refresh to refresh
+  // (it would just 401 on every pull). useOsRefresh's own touch handler
+  // additionally refuses to start tracking a gesture at all if the
+  // currently focused element is a text input/textarea/select/
+  // contenteditable anywhere on screen — the generic safety net for
+  // screen-local draft state this flag doesn't know about (e.g.
+  // CoachTeam.tsx's own add-player/invite form fields, which live in that
+  // component's own useState, never in OsApp's central state or
+  // OsDataContext either).
+  // See OsRefreshBridge.tsx for why this is a callback-fed useState rather
+  // than a direct useOsRefresh() call here: useOsRefresh needs to run
+  // inside <OsDataProvider>, not in the component (this one) that renders
+  // it.
+  const [osRefresh, setOsRefresh] = useState<UseOsRefreshResult>({
+    status: 'idle', pullDistance: 0, progress: 0, announcement: '', triggerManualRefresh: () => {},
+  });
+  const osRefreshDisabled = anyOverlayOpen || isDemo;
+
   // Keeps ?screen=<tab> in sync with state.tab for EVERY tab change,
   // however it happens — a bottom-nav tap, "See every chapter in
   // Collection", opening a Story Update, etc. — not just the nav bar's own
@@ -562,6 +615,7 @@ export default function OsApp({
 
   return (
     <OsDataProvider value={initialData ?? DEMO_OS_DATA}>
+    <OsRefreshBridge scrollRef={scrollRef} disabled={osRefreshDisabled} onChange={setOsRefresh} onStoryUpdatesChange={handleStoryUpdatesChange} />
     <div className={`emblem-os${state.dark ? ' os-dark' : ''}`}>
       <div className="emblem-os-shell">
 
@@ -598,6 +652,35 @@ export default function OsApp({
                   ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4.2" /><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8" /></svg>
                   : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>}
               </div>
+              {/* Accessible equivalent of the pull-to-refresh gesture —
+                  same useOsRefresh status machine and refresh() call, no
+                  touch simulation needed. Hidden in demo mode alongside
+                  the gesture itself: there's no real session for
+                  /api/os/refresh to refresh, so it would just fail on
+                  every tap. */}
+              {!isDemo && (
+                <button
+                  type="button"
+                  onClick={osRefresh.triggerManualRefresh}
+                  disabled={osRefresh.status === 'refreshing' || anyOverlayOpen}
+                  aria-label="Refresh updates"
+                  style={{
+                    cursor: osRefresh.status === 'refreshing' ? 'wait' : anyOverlayOpen ? 'default' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 21, height: 21, border: 'none', background: 'none', padding: 0, margin: 0, font: 'inherit', color: 'inherit',
+                    opacity: anyOverlayOpen ? 0.4 : 1,
+                  }}
+                >
+                  {osRefresh.status === 'success' ? (
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#E97435" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5" /></svg>
+                  ) : (
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={osRefresh.status === 'refreshing' ? 'os-refresh-spin' : undefined}>
+                      <path d="M3 12a9 9 0 0 1 15.5-6.2M21 12a9 9 0 0 1-15.5 6.2" />
+                      <path d="M17 4v4.5h-4.5M7 20v-4.5h4.5" />
+                    </svg>
+                  )}
+                </button>
+              )}
               <div
                 onClick={actions.openStoryUpdates}
                 role="button"
@@ -644,49 +727,73 @@ export default function OsApp({
             </div>
           )}
 
-          {/* scroll area */}
-          <div
-            id="os-scroll"
-            style={{
-              flex: '1 1 auto',
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              // Bottom padding must clear the floating dock — its own
-              // height plus the margin now sitting between it and the
-              // safe-area inset (the dock no longer sits flush at
-              // bottom:0, see --os-dock-margin-bottom) — plus breathing
-              // room, and, on the two tabs where the Add button floats
-              // above the dock, its own footprint too, whichever of the
-              // two requires more room. Not a guessed one-screen spacer —
-              // every term here is a real, named quantity.
-              padding: `4px 18px ${
-                showFab
-                  ? 'max(calc(var(--os-dock-margin-bottom) + var(--os-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 20px), 156px)'
-                  : 'calc(var(--os-dock-margin-bottom) + var(--os-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 20px)'
-              }`,
-            }}
-          >
-            {isCoach ? (
-              <>
-                {state.tab === 'home' && <CoachHome actions={actions} storyUpdates={storyUpdates} />}
-                {state.tab === 'team' && (
-                  showCoachPlayerDetail
-                    ? <CoachPlayerDetail playerId={state.coachPlayerId as string} actions={actions} />
-                    : <CoachTeam actions={actions} />
-                )}
-                {state.tab === 'celebrate' && <CoachCelebrate actions={actions} />}
-                {state.tab === 'verify' && <CoachVerify />}
-                {state.tab === 'profile' && <CoachProfile />}
-              </>
-            ) : (
-              <>
-                {state.tab === 'home' && <PlayerHome actions={actions} storyUpdates={storyUpdates} />}
-                {state.tab === 'card' && <CardScreen state={state} actions={actions} />}
-                {state.tab === 'journey' && (isDemo ? <DemoCollection actions={actions} /> : <RealCollection highlightMomentId={state.highlightMomentId} onHighlightDone={actions.clearHighlightMoment} />)}
-                {state.tab === 'profile' && <Profile actions={actions} />}
-              </>
-            )}
+          {/* scroll area — the outer div absorbs the flex:1 1 auto sizing
+              and gives OsRefreshIndicator a position:relative parent that
+              starts exactly where the scroll content starts (not the whole
+              phone column, which would sit the indicator behind the header);
+              overflow:hidden keeps the indicator's reveal clipped to this
+              box rather than poking up over the top bar while idle. */}
+          <div style={{ flex: '1 1 auto', position: 'relative', overflow: 'hidden' }}>
+            <OsRefreshIndicator status={osRefresh.status} pullDistance={osRefresh.pullDistance} progress={osRefresh.progress} onRetry={osRefresh.triggerManualRefresh} />
+            <div
+              id="os-scroll"
+              ref={scrollRef}
+              style={{
+                height: '100%',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                // Prevents this drag from also chaining into the browser's
+                // own native pull-to-refresh/rubber-band on the document —
+                // scoped to just this one scrollable element (not a global
+                // touch-action/overscroll change), so nothing else on the
+                // site is affected.
+                overscrollBehaviorY: 'contain',
+                // Pull-to-refresh's own "content follows the finger" — see
+                // useOsRefresh.ts. No transition while actively pulling
+                // (pulling/ready must track the touch 1:1, any transition
+                // lag would read as wrong), only animates the snap-back to
+                // 0 or the settle-to-resting-height, both of which happen
+                // with no active touch on screen.
+                transform: osRefresh.pullDistance > 0 ? `translateY(${osRefresh.pullDistance}px)` : undefined,
+                transition: osRefresh.status === 'pulling' || osRefresh.status === 'ready' ? 'none' : 'transform .28s ease',
+                // Bottom padding must clear the floating dock — its own
+                // height plus the margin now sitting between it and the
+                // safe-area inset (the dock no longer sits flush at
+                // bottom:0, see --os-dock-margin-bottom) — plus breathing
+                // room, and, on the two tabs where the Add button floats
+                // above the dock, its own footprint too, whichever of the
+                // two requires more room. Not a guessed one-screen spacer —
+                // every term here is a real, named quantity.
+                padding: `4px 18px ${
+                  showFab
+                    ? 'max(calc(var(--os-dock-margin-bottom) + var(--os-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 20px), 156px)'
+                    : 'calc(var(--os-dock-margin-bottom) + var(--os-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 20px)'
+                }`,
+              }}
+            >
+              {isCoach ? (
+                <>
+                  {state.tab === 'home' && <CoachHome actions={actions} storyUpdates={storyUpdates} />}
+                  {state.tab === 'team' && (
+                    showCoachPlayerDetail
+                      ? <CoachPlayerDetail playerId={state.coachPlayerId as string} actions={actions} />
+                      : <CoachTeam actions={actions} />
+                  )}
+                  {state.tab === 'celebrate' && <CoachCelebrate actions={actions} />}
+                  {state.tab === 'verify' && <CoachVerify />}
+                  {state.tab === 'profile' && <CoachProfile />}
+                </>
+              ) : (
+                <>
+                  {state.tab === 'home' && <PlayerHome actions={actions} storyUpdates={storyUpdates} />}
+                  {state.tab === 'card' && <CardScreen state={state} actions={actions} />}
+                  {state.tab === 'journey' && (isDemo ? <DemoCollection actions={actions} /> : <RealCollection highlightMomentId={state.highlightMomentId} onHighlightDone={actions.clearHighlightMoment} />)}
+                  {state.tab === 'profile' && <Profile actions={actions} />}
+                </>
+              )}
+            </div>
           </div>
+          <span className="sr-only" aria-live="polite">{osRefresh.announcement}</span>
 
           {state.moment && <MomentStage state={state} actions={actions} />}
           {state.collectible && <CollectibleViewer state={state} actions={actions} />}
