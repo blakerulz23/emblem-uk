@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent, SyntheticEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ADD_ACH, ICN, MOMENT_ORDER, fmtFileSize, osAssetPath } from './data';
+import { ADD_ACH, MOMENT_ORDER, fmtFileSize, osAssetPath } from './data';
 import { onActivateKey } from './a11y';
 import { initialOsState } from './types';
 import type { OsState, Tab } from './types';
@@ -11,6 +11,18 @@ import { OsDataProvider, DEMO_OS_DATA } from './OsDataContext';
 import type { OsData } from './OsDataContext';
 import type { StoryUpdate } from './osData';
 import { useStoryUpdates } from './useStoryUpdates';
+import OSBottomNavigation from './navigation/OSBottomNavigation';
+import { PLAYER_NAV_ITEMS, COACH_NAV_ITEMS } from './navigation/navItems';
+
+/** Every tab key either role can be in, player or coach — used to validate
+ * a ?screen= value read from the URL (see resolveTabFromSearchParams)
+ * before trusting it, since it's user-editable/bookmarkable input. */
+const VALID_TABS = new Set<Tab>(['home', 'journey', 'card', 'team', 'profile', 'celebrate', 'verify']);
+
+function resolveTabFromSearchParams(searchParams: { get(key: string): string | null } | null): Tab | null {
+  const raw = searchParams?.get('screen');
+  return raw && VALID_TABS.has(raw as Tab) ? (raw as Tab) : null;
+}
 
 import ActivationGate from './overlays/ActivationGate';
 import MomentStage from './overlays/MomentStage';
@@ -130,13 +142,21 @@ export default function OsApp({
   // changes, mount or not — same reasoning as the existing profileRole
   // resync effect further down.
   const openPlayerId = searchParams?.get('openPlayer')?.trim() || null;
+  // Seeds the active tab from ?screen= on first mount only (a direct
+  // navigation or a refresh) — kept in sync afterwards by the tabUrlSync
+  // effect below, and by the popstate listener for browser back/forward.
+  // Falls back to initialOsState.tab ('home') for an absent/invalid value,
+  // same as before this existed.
   const [state, setState] = useState<OsState>(() => ({
     ...initialOsState,
     role: profileRole === 'coach' ? 'coach' : 'owner',
+    tab: resolveTabFromSearchParams(searchParams) ?? initialOsState.tab,
   }));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const sentTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  /** False until the ?screen= URL-sync effect has run once — see that effect further down. */
+  const tabSyncedOnceRef = useRef(false);
 
   const patch = useCallback((partial: Partial<OsState> | ((s: OsState) => Partial<OsState>)) => {
     setState((s) => ({ ...s, ...(typeof partial === 'function' ? partial(s) : partial) }));
@@ -177,6 +197,22 @@ export default function OsApp({
       router.replace('/os');
     }
   }, [profileRole, openPlayerId, patch, router]);
+
+  // Browser Back/Forward changes the URL without React ever calling
+  // setTab — this is what makes the active tab survive Back/Forward
+  // instead of only reacting to clicks. Ignores an unrecognised/absent
+  // ?screen= (e.g. Back past the very first sync) rather than guessing.
+  // (The URL->state.tab sync effect itself lives further down, after
+  // osData/isCoach are computed — see the "?screen= sync" comment there.)
+  useEffect(() => {
+    const onPopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = resolveTabFromSearchParams(params);
+      if (tab) patch({ tab, moment: null, coachPlayerId: null, highlightMomentId: null });
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [patch]);
 
   const addFiles = useCallback((list: FileList | null) => {
     const incoming = Array.from(list || []);
@@ -445,7 +481,6 @@ export default function OsApp({
   const isCoach = state.role === 'coach';
   const isOwner = !isCoach;
   const isDemo = osData.mode === 'demo';
-  const OR = '#E97435';
 
   // Guardian-context control: which claimed child's data every one of the
   // four owner destinations is currently showing. Global chrome, not owned
@@ -471,19 +506,64 @@ export default function OsApp({
     ? { home: 'HOME', team: 'MY TEAM', celebrate: 'CELEBRATE', verify: 'VERIFY', profile: 'PROFILE' }
     : { home: '', card: 'CARD', journey: 'COLLECTION', profile: 'PROFILE' };
 
-  const tabDefs: [Tab, string, string][] = isCoach
-    ? [['home', 'Home', 'home'], ['team', 'Team', 'team'], ['celebrate', 'Celebrate', 'star'], ['verify', 'Verify', 'shield'], ['profile', 'Profile', 'user']]
-    : [['home', 'Home', 'home'], ['card', 'Card', 'card'], ['journey', 'Collection', 'flag'], ['profile', 'Profile', 'user']];
+  const navItems = isCoach ? COACH_NAV_ITEMS : PLAYER_NAV_ITEMS;
 
   const showFab = isOwner && state.activated && (state.tab === 'home' || state.tab === 'journey') && state.addStep === 0 && !state.addOpen && !state.addUnlock && !state.moment && !state.celeb;
   const showBack = showOwnerCardBack || showCoachPlayerDetail;
   const showLogo = state.tab === 'home';
   const currentTitle = showOwnerCardBack ? 'ABOUT' : showCoachPlayerDetail ? 'PLAYER' : (titles[state.tab] || '');
 
+  // True while any full-screen overlay/bottom-sheet that needs
+  // uninterrupted focus is open — the fixed nav/Add button hide (not just
+  // sit visually beneath, see OSBottomNavigation's z-index comment) so a
+  // keyboard/AT user tabbing through the page can't reach them, and so no
+  // tap can land on the nav through an overlay. AddMomentFlow is always
+  // mounted and gates its own steps internally, so its "open" state here is
+  // the same three fields showFab already reads to know it should hide.
+  const anyOverlayOpen =
+    !state.activated || !!state.moment || !!state.collectible || !!state.celeb ||
+    state.storyUpdatesOpen || state.addOpen || state.addStep > 0 || state.addUnlock;
+
+  // Keeps ?screen=<tab> in sync with state.tab for EVERY tab change,
+  // however it happens — a bottom-nav tap, "See every chapter in
+  // Collection", opening a Story Update, etc. — not just the nav bar's own
+  // onSelect, so "the active tab is derived from route/screen state" holds
+  // everywhere, not only at one entry point. Uses the native History API
+  // directly (not router.push/replace) so a tab switch stays instant — no
+  // Next.js server round-trip/data refetch on every tap, matching how this
+  // already behaved before ?screen= existed. The very first sync (on
+  // mount) uses replaceState so establishing the initial URL doesn't leave
+  // a spurious extra stop in the back-button history; every real tab
+  // change after that uses pushState, so Back/Forward can step through
+  // tabs. Only ever sets `screen` (and, for a guardian with no explicit
+  // ?player= yet, fills that gap) — every other existing param, `player`
+  // included, is read from the current URL untouched, so a tab switch can
+  // never drop or swap the selected player.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const alreadySynced = params.get('screen') === state.tab;
+    if (!alreadySynced) params.set('screen', state.tab);
+    let playerAdded = false;
+    if (!isCoach && osData.playerId && !params.get('player')) {
+      params.set('player', osData.playerId);
+      playerAdded = true;
+    }
+    if (alreadySynced && !playerAdded) return;
+    const newUrl = `${window.location.pathname}?${params.toString()}`;
+    if (tabSyncedOnceRef.current) {
+      window.history.pushState(null, '', newUrl);
+    } else {
+      window.history.replaceState(null, '', newUrl);
+    }
+    tabSyncedOnceRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.tab, isCoach, osData.playerId]);
+
   return (
     <OsDataProvider value={initialData ?? DEMO_OS_DATA}>
     <div className={`emblem-os${state.dark ? ' os-dark' : ''}`}>
-      <div style={{ position: 'relative', width: '100%', maxWidth: 480, margin: '0 auto', minHeight: '100vh', background: 'var(--os-screen)', display: 'flex', flexDirection: 'column', transition: 'background .35s ease' }}>
+      <div className="emblem-os-shell">
 
           {!state.activated && (
             <ActivationGate
@@ -549,7 +629,7 @@ export default function OsApp({
             <div style={{ display: 'flex', justifyContent: 'center', padding: '0 0 10px' }}>
               <select
                 value={osData.playerId ?? ''}
-                onChange={(e) => router.push(`/os?player=${e.target.value}`)}
+                onChange={(e) => router.push(`/os?player=${e.target.value}&screen=${state.tab}`)}
                 aria-label="Switch child"
                 style={{
                   fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 12, letterSpacing: '.04em',
@@ -565,7 +645,26 @@ export default function OsApp({
           )}
 
           {/* scroll area */}
-          <div id="os-scroll" style={{ flex: '1 1 auto', overflowY: 'auto', padding: '4px 18px 96px' }}>
+          <div
+            id="os-scroll"
+            style={{
+              flex: '1 1 auto',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              // Bottom padding must clear the fixed nav (its own height,
+              // see --os-bottom-nav-height) plus the safe-area inset plus
+              // breathing room — and, on the two tabs where the Add button
+              // floats above the bar, its own footprint too (bottom offset
+              // + diameter + a little more breathing room), whichever of
+              // the two requires more room. Not a guessed one-screen
+              // spacer — every term here is a real, named quantity.
+              padding: `4px 18px ${
+                showFab
+                  ? 'max(calc(var(--os-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 20px), 156px)'
+                  : 'calc(var(--os-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 20px)'
+              }`,
+            }}
+          >
             {isCoach ? (
               <>
                 {state.tab === 'home' && <CoachHome actions={actions} storyUpdates={storyUpdates} />}
@@ -606,27 +705,13 @@ export default function OsApp({
             </div>
           )}
 
-          {showFab && (
-            <div onClick={actions.openAdd} role="button" aria-label="Add a memory" tabIndex={0} style={{ position: 'absolute', left: '50%', bottom: 80, transform: 'translateX(-50%)', zIndex: 44, width: 60, height: 60, borderRadius: '50%', background: 'linear-gradient(150deg,#E97435,#C4501C)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 16px 34px -10px rgba(233,116,53,.75),0 4px 10px -4px rgba(0,0,0,.4)' }}>
-              <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(233,116,53,.5)', animation: 'actRing 2.4s ease-out infinite' }} />
-              <svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.6} strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-            </div>
-          )}
-
-          {/* bottom tab bar */}
-          <div role="navigation" aria-label="Primary" style={{ flex: '0 0 auto', display: 'flex', justifyContent: 'space-around', alignItems: 'center', padding: '10px 14px calc(8px + env(safe-area-inset-bottom))', background: 'var(--os-card)', borderTop: '1px solid var(--os-border)', boxShadow: '0 -6px 20px -14px rgba(0,0,0,.2)' }}>
-            {tabDefs.map(([key, label, ic]) => {
-              const on = state.tab === key;
-              const c = on ? OR : '#8A8378';
-              return (
-                <div key={key} onClick={() => actions.setTab(key)} role="button" aria-label={label} aria-current={on ? 'page' : undefined} tabIndex={0} style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer', flex: 1, minHeight: 44, justifyContent: 'center' }}>
-                  <span style={{ position: 'absolute', top: -10, width: 22, height: 3, borderRadius: 3, background: on ? OR : 'transparent' }} />
-                  {ICN[ic](c)}
-                  <span style={{ fontFamily: 'Roboto', fontWeight: 600, fontSize: 11, color: c }}>{label}</span>
-                </div>
-              );
-            })}
-          </div>
+          <OSBottomNavigation
+            items={navItems}
+            activeKey={state.tab}
+            onSelect={(key) => actions.setTab(key as Tab)}
+            centralAction={showFab ? { label: 'Add a memory', onClick: actions.openAdd } : null}
+            hidden={anyOverlayOpen}
+          />
 
       </div>
     </div>

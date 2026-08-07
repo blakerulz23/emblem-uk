@@ -12,13 +12,67 @@
   --os-muted: #8A8378;
   --os-border: rgba(0, 0, 0, .12);
   --os-chip: rgba(0, 0, 0, .04);
+  /* The single source of truth for the centred mobile-app column's width —
+     the app-shell wrapper below and the fixed bottom navigation (both
+     Player OS and Coach OS) both read this, so they can never drift apart
+     on desktop. */
+  --os-app-max-width: 480px;
+  /* The bottom nav bar's own rendered height (padding + content), excluding
+     the safe-area inset, which is added separately wherever this is
+     consumed (env(safe-area-inset-bottom) is not a fixed length, so it
+     can't be baked into this constant). */
+  --os-bottom-nav-height: 63px;
+  /* Vertical desk padding around the centred phone column, top and bottom
+     combined — a single named source of truth shared with .emblem-os-shell
+     below, so the two can never drift apart (see that rule's comment for
+     why they must add up to exactly one viewport height). */
+  --os-desk-padding-y: 28px;
   font-family: 'Roboto', sans-serif;
   background: var(--os-desk);
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 28px 12px;
+  padding: var(--os-desk-padding-y) 12px;
+  transition: background .35s ease;
+}
+
+/**
+ * The centred "phone" column every OS screen renders inside (OsApp.tsx).
+ * Capped to the real visible viewport height minus the desk's own top+
+ * bottom padding — not just a *minimum*, and not a bare 100dvh either — so
+ * the column's rendered box (shell + desk padding together) never exceeds
+ * one real viewport height. That second part matters specifically because
+ * the fixed bottom nav anchors to the true viewport, not to this column: a
+ * bare 100dvh shell centred inside the desk's own padding pushes the
+ * shell's bottom edge (and #os-scroll's content-relative bottom padding,
+ * which is what's supposed to clear the fixed nav) below the visible
+ * viewport by the desk's own padding amount — the nav would then sit
+ * correctly, but #os-scroll's reserved clearance would land past the fold,
+ * and the last real row on a screen like Profile ends up hidden behind the
+ * nav instead of above it (confirmed empirically during this feature's own
+ * visual testing). Subtracting the desk padding here keeps the shell's own
+ * box exactly viewport-sized with no overflow, so #os-scroll's
+ * bottom-relative padding and the nav's viewport-relative position agree.
+ *
+ * height is declared twice on purpose: 100vh first as a fallback for
+ * browsers without dvh support, then 100dvh — a browser that understands
+ * dvh uses the second (correctly excluding mobile browser chrome); one that
+ * doesn't drops the invalid declaration and keeps the first. This is the
+ * one layout property that genuinely needs a real stylesheet rule instead
+ * of an inline style, since inline style objects can't express a fallback
+ * chain for the same property.
+ */
+.emblem-os-shell {
+  position: relative;
+  width: 100%;
+  max-width: var(--os-app-max-width);
+  margin: 0 auto;
+  height: calc(100vh - (var(--os-desk-padding-y) * 2));
+  height: calc(100dvh - (var(--os-desk-padding-y) * 2));
+  background: var(--os-screen);
+  display: flex;
+  flex-direction: column;
   transition: background .35s ease;
 }
 
