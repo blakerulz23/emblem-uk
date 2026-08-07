@@ -1,7 +1,6 @@
 'use client';
 
 import { ICN } from '../data';
-import { onActivateKey } from '../a11y';
 import type { OsNavItem } from './navItems';
 
 /**
@@ -10,17 +9,19 @@ import type { OsNavItem } from './navItems';
  * CelebrateSheet/GuardianInviteSheet 46, StoryUpdates 70, the auth/invite
  * gate family 80 — see OsApp.tsx and each overlay component) — chosen once
  * here so the nav/Add button can never accidentally climb above a dialog
- * that opens later. The Add button sits one step above the bar itself
+ * that opens later. The Add button sits one step above the dock itself
  * (still well below every overlay) so it visually reads as "attached to,
- * sitting on top of, the nav bar", not the reverse.
+ * rising out of, the dock", not the reverse.
  */
 export const OS_BOTTOM_NAV_Z_INDEX = 30;
 export const OS_CENTRAL_ACTION_Z_INDEX = 31;
 
-/** Unchanged from the pre-fixed design — the Add button's own offset from
- * the app column's bottom edge, tuned so it sits partially above the nav
- * bar (see os.css's --os-bottom-nav-height for the bar's own height). */
-const CENTRAL_ACTION_BOTTOM_OFFSET = 80;
+/** How far the Add button's own centre sits above the dock's top edge —
+ * tuned so it visually integrates with (overlaps) the dock rather than
+ * floating as a fully separate element; re-verified against the dock's
+ * real measured height whenever that changes (see os.css's
+ * --os-bottom-nav-height / --os-dock-margin-bottom). */
+const CENTRAL_ACTION_RISE_ABOVE_DOCK = 26;
 const CENTRAL_ACTION_DIAMETER = 60;
 
 const OS_ACCENT = '#E97435';
@@ -40,42 +41,56 @@ export type OsBottomNavigationProps = {
   /**
    * True while a full-screen overlay that needs uninterrupted focus is
    * open (see OsApp.tsx's anyOverlayOpen). Uses visibility, not
-   * unmounting: removes the bar from hit-testing *and* the accessibility
+   * unmounting: removes the dock from hit-testing *and* the accessibility
    * tree (so keyboard/AT users can't reach it behind the overlay) while
    * preserving layout and avoiding remount/animation churn. z-index alone
    * already keeps overlays visually on top; this additionally guarantees
-   * no tap/keyboard activation can reach the nav through them.
+   * no tap/keyboard activation can reach the dock through them.
    */
   hidden?: boolean;
+  /** "Player navigation" / "Coach navigation" — see OsApp.tsx's call site. Falls back to "Primary" only if a caller omits it. */
+  ariaLabel?: string;
 };
 
 /**
  * The one fixed-positioning implementation shared by Player OS and Coach
- * OS — owns layout (position, safe-area, z-index, responsive width,
- * hide-during-overlay) only. Which items/labels/icons/central action to
- * show is supplied by the caller (see navItems.ts) — this component makes
- * no role decisions of its own.
+ * OS — a floating rounded dock, inspired by Aceternity's FloatingDock
+ * (restrained hover magnification, floating-pill silhouette) but built
+ * from scratch with plain CSS transforms/transitions, not the original
+ * component: that component assumes href-based anchor items, requires
+ * framer-motion (not a dependency of this project), and collapses to a
+ * single expandable button on mobile — all three are wrong for this
+ * product (in-app tab state not links, no reason to add an animation
+ * library for a restrained hover effect, and a mobile-first nav that must
+ * keep every item and label visible per this feature's own spec). Owns
+ * layout/behaviour only — which items/labels/icons/central action to show
+ * is supplied by the caller (see navItems.ts); this component makes no
+ * role decisions of its own.
  */
-export default function OSBottomNavigation({ items, activeKey, onSelect, centralAction = null, hidden = false }: OsBottomNavigationProps) {
+export default function OSBottomNavigation({ items, activeKey, onSelect, centralAction = null, hidden = false, ariaLabel = 'Primary' }: OsBottomNavigationProps) {
   return (
     <>
       {centralAction && (
-        <div
+        <button
+          type="button"
+          className="os-dock-central-action"
           onClick={centralAction.onClick}
-          role="button"
           aria-label={centralAction.label}
           tabIndex={hidden ? -1 : 0}
           aria-hidden={hidden || undefined}
-          onKeyDown={onActivateKey(centralAction.onClick)}
           style={{
             position: 'fixed',
             left: '50%',
-            bottom: CENTRAL_ACTION_BOTTOM_OFFSET,
+            bottom: `calc(env(safe-area-inset-bottom, 0px) + var(--os-dock-margin-bottom) + var(--os-bottom-nav-height) - ${CENTRAL_ACTION_RISE_ABOVE_DOCK}px)`,
             transform: 'translateX(-50%)',
             zIndex: OS_CENTRAL_ACTION_Z_INDEX,
             width: CENTRAL_ACTION_DIAMETER,
             height: CENTRAL_ACTION_DIAMETER,
             borderRadius: '50%',
+            border: 'none',
+            padding: 0,
+            margin: 0,
+            font: 'inherit',
             background: 'linear-gradient(150deg,#E97435,#C4501C)',
             display: 'flex',
             alignItems: 'center',
@@ -88,28 +103,34 @@ export default function OSBottomNavigation({ items, activeKey, onSelect, central
         >
           <span aria-hidden="true" style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(233,116,53,.5)', animation: 'actRing 2.4s ease-out infinite' }} />
           <svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.6} strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-        </div>
+        </button>
       )}
 
-      <div
-        role="navigation"
-        aria-label="Primary"
+      <nav
+        aria-label={ariaLabel}
         aria-hidden={hidden || undefined}
         style={{
           position: 'fixed',
-          bottom: 0,
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + var(--os-dock-margin-bottom))',
           left: '50%',
           transform: 'translateX(-50%)',
-          width: '100%',
-          maxWidth: 'var(--os-app-max-width)',
+          width: 'calc(100% - (var(--os-dock-side-margin) * 2))',
+          maxWidth: 'calc(var(--os-app-max-width) - (var(--os-dock-side-margin) * 2))',
+          height: 'var(--os-bottom-nav-height)',
           zIndex: OS_BOTTOM_NAV_Z_INDEX,
           display: 'flex',
           justifyContent: 'space-around',
           alignItems: 'center',
-          padding: '10px 14px calc(8px + env(safe-area-inset-bottom, 0px))',
-          background: 'var(--os-card)',
-          borderTop: '1px solid var(--os-border)',
-          boxShadow: '0 -6px 20px -14px rgba(0,0,0,.2)',
+          padding: '8px 10px',
+          borderRadius: 26,
+          // Warm, translucent ivory — color-mix keeps this correct in dark
+          // mode too, since --os-card already swaps per theme; a flat
+          // rgba() literal here would only ever be right for one theme.
+          background: 'color-mix(in srgb, var(--os-card) 84%, transparent)',
+          backdropFilter: 'blur(20px) saturate(1.5)',
+          WebkitBackdropFilter: 'blur(20px) saturate(1.5)',
+          border: '1px solid rgba(233,116,53,.15)',
+          boxShadow: '0 22px 46px -20px rgba(21,19,15,.4), 0 3px 12px -3px rgba(21,19,15,.12)',
           visibility: hidden ? 'hidden' : 'visible',
           pointerEvents: hidden ? 'none' : 'auto',
         }}
@@ -118,24 +139,62 @@ export default function OSBottomNavigation({ items, activeKey, onSelect, central
           const on = item.key === activeKey;
           const color = on ? OS_ACCENT : OS_INACTIVE;
           return (
-            <div
+            <button
+              type="button"
               key={item.key}
+              className="os-dock-item"
               onClick={() => onSelect(item.key)}
-              role="button"
               aria-label={item.label}
               aria-current={on ? 'page' : undefined}
               tabIndex={hidden ? -1 : 0}
-              onKeyDown={onActivateKey(() => onSelect(item.key))}
-              style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, cursor: 'pointer', flex: 1, minHeight: 44, justifyContent: 'center' }}
+              style={{
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                flex: 1,
+                minHeight: 44,
+                border: 'none',
+                padding: '4px 2px',
+                margin: 0,
+                font: 'inherit',
+                background: 'none',
+                cursor: 'pointer',
+              }}
             >
-              {/* Active indicator — colour is never the only cue: aria-current plus the underline/label-colour pairing together mark the active tab. */}
-              <span aria-hidden="true" style={{ position: 'absolute', top: -10, width: 22, height: 3, borderRadius: 3, background: on ? OS_ACCENT : 'transparent' }} />
-              {ICN[item.icon](color)}
-              <span style={{ fontFamily: 'Roboto', fontWeight: 600, fontSize: 11, color }}>{item.label}</span>
-            </div>
+              {/* Active-state cue is never colour alone: a rounded highlight
+                  behind the icon (shape) + the top marker (position) +
+                  orange colour + the label's own font-weight together. */}
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  top: -8,
+                  width: 20,
+                  height: 3,
+                  borderRadius: 3,
+                  background: on ? OS_ACCENT : 'transparent',
+                }}
+              />
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  top: 2,
+                  width: 34,
+                  height: 34,
+                  borderRadius: 12,
+                  background: on ? 'rgba(233,116,53,.14)' : 'transparent',
+                }}
+              />
+              <span style={{ position: 'relative' }}>{ICN[item.icon](color)}</span>
+              <span style={{ position: 'relative', fontFamily: 'Roboto', fontWeight: on ? 700 : 600, fontSize: 11, color }}>{item.label}</span>
+            </button>
           );
         })}
-      </div>
+      </nav>
     </>
   );
 }

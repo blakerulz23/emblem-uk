@@ -17,11 +17,18 @@
      Player OS and Coach OS) both read this, so they can never drift apart
      on desktop. */
   --os-app-max-width: 480px;
-  /* The bottom nav bar's own rendered height (padding + content), excluding
+  /* The floating dock's own rendered height (padding + content), excluding
      the safe-area inset, which is added separately wherever this is
      consumed (env(safe-area-inset-bottom) is not a fixed length, so it
      can't be baked into this constant). */
-  --os-bottom-nav-height: 63px;
+  --os-bottom-nav-height: 64px;
+  /* Gap between the dock's own bottom edge and the safe-area inset (or the
+     true viewport bottom, on a device with none) — the floating-pill
+     treatment sits clear of the edge on all sides rather than flush
+     against it, unlike the bar it replaced. */
+  --os-dock-margin-bottom: 14px;
+  /* Left/right gap between the dock and the app column's own edges. */
+  --os-dock-side-margin: 14px;
   /* Vertical desk padding around the centred phone column, top and bottom
      combined — a single named source of truth shared with .emblem-os-shell
      below, so the two can never drift apart (see that rule's comment for
@@ -74,6 +81,46 @@
   display: flex;
   flex-direction: column;
   transition: background .35s ease;
+}
+
+/**
+ * Floating-dock interaction — restrained magnification on hover and a press
+ * scale on activation, both pure CSS transforms (no animation library: this
+ * repo has no framer-motion/motion dependency and this doesn't need one).
+ * transform never changes an element's layout box, so neighbouring items
+ * and the dock's own outer size never move when one item scales — this is
+ * what "must not move the app layout" is built on, not a manual guard.
+ *
+ * Hover-magnify is gated behind BOTH (hover:hover) and (pointer:fine): a
+ * touch device can't produce a real, un-stuck hover state, so gating here
+ * (rather than relying on :hover simply never firing on touch, which some
+ * mobile WebKit versions get wrong on first tap) guarantees touch users
+ * never see the effect and never need it disabled — the required press
+ * scale below is their equivalent tactile feedback. Reduced-motion turns
+ * hover-magnify off entirely rather than shortening it, since any amount of
+ * motion here is decorative, not load-bearing.
+ */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .os-dock-item:hover,
+  .os-dock-central-action:hover {
+    transform: scale(1.1);
+  }
+  /* Adjacent items rise slightly too, echoing FloatingDock's neighbour
+     falloff, entirely in CSS via :has() — no per-frame mouse-position
+     tracking, no JS. */
+  .os-dock-item:has(+ .os-dock-item:hover) {
+    transform: scale(1.04);
+  }
+  .os-dock-item:hover + .os-dock-item {
+    transform: scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .os-dock-item:active,
+  .os-dock-central-action:active {
+    transform: scale(0.92);
+  }
 }
 
 .emblem-os.os-dark {

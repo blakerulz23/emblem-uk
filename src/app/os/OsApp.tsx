@@ -651,17 +651,18 @@ export default function OsApp({
               flex: '1 1 auto',
               overflowY: 'auto',
               overflowX: 'hidden',
-              // Bottom padding must clear the fixed nav (its own height,
-              // see --os-bottom-nav-height) plus the safe-area inset plus
-              // breathing room — and, on the two tabs where the Add button
-              // floats above the bar, its own footprint too (bottom offset
-              // + diameter + a little more breathing room), whichever of
-              // the two requires more room. Not a guessed one-screen
-              // spacer — every term here is a real, named quantity.
+              // Bottom padding must clear the floating dock — its own
+              // height plus the margin now sitting between it and the
+              // safe-area inset (the dock no longer sits flush at
+              // bottom:0, see --os-dock-margin-bottom) — plus breathing
+              // room, and, on the two tabs where the Add button floats
+              // above the dock, its own footprint too, whichever of the
+              // two requires more room. Not a guessed one-screen spacer —
+              // every term here is a real, named quantity.
               padding: `4px 18px ${
                 showFab
-                  ? 'max(calc(var(--os-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 20px), 156px)'
-                  : 'calc(var(--os-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 20px)'
+                  ? 'max(calc(var(--os-dock-margin-bottom) + var(--os-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 20px), 156px)'
+                  : 'calc(var(--os-dock-margin-bottom) + var(--os-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 20px)'
               }`,
             }}
           >
@@ -711,6 +712,7 @@ export default function OsApp({
             onSelect={(key) => actions.setTab(key as Tab)}
             centralAction={showFab ? { label: 'Add a memory', onClick: actions.openAdd } : null}
             hidden={anyOverlayOpen}
+            ariaLabel={isCoach ? 'Coach navigation' : 'Player navigation'}
           />
 
       </div>
