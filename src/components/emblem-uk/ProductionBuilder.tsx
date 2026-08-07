@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { CardFace } from '@/lib/card-definition';
 import type { CardFaceData } from '@/lib/card-definition';
 import { isCustomCollectionTemplateId } from '@/lib/custom-collection-manifest';
+import { resolveCustomCollectionBadge } from '@/lib/badge-resolution';
 import { DEFAULT_EMJFL_CLUB, EAST_MANCHESTER_LEAGUE, EMJFL_CLUBS, getEmjflClub, preferredTemplateForClub } from '@/lib/emjfl-clubs';
 import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
 import { captureElementToPng, renderPrintFile } from '@/lib/print-capture';
@@ -123,8 +124,20 @@ function playerClubName(order: OrderDraft, player?: PlayerDraft) {
   return player?.club || getEmjflClub(playerClubId(order, player)).name || order.club;
 }
 
-function playerBadge(order: OrderDraft, player?: PlayerDraft) {
-  if (order.collectionType === 'custom') return player?.badgeUrl || order.badgeUrl || '/templates/custom-collection/custom-logo-placeholder.png';
+/**
+ * Approved product rule, not a bug: a badge-less Custom Collection card
+ * must never go to print with an empty badge slot, so this — and only
+ * this, live-Builder-preview and print-capture path — falls back to the
+ * generic Football Collection placeholder. card_definitions.logo (what
+ * Emblem OS reads, via cardDefinitionToFaceData in card-definition.tsx)
+ * is never passed through this fallback and is written as a plain null
+ * when no badge was uploaded (src/app/api/order-enquiry/route.ts) — Emblem
+ * OS is expected to show no badge in that case. Do not "fix" this
+ * difference by adding the placeholder to Emblem OS or by removing it
+ * from print; both sides are working as intended.
+ */
+export function playerBadge(order: OrderDraft, player?: PlayerDraft) {
+  if (order.collectionType === 'custom') return resolveCustomCollectionBadge(player?.badgeUrl, order.badgeUrl);
   return player?.badgeUrl || (player?.emjflClubId ? getEmjflClub(player.emjflClubId).badgePath : order.badgeUrl) || getEmjflClub(playerClubId(order, player)).badgePath;
 }
 

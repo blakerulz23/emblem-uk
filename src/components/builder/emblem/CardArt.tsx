@@ -4,6 +4,7 @@
 import type { CSSProperties } from 'react';
 import { getCustomCollectionVariant } from '@/lib/custom-collection-manifest';
 import { getHollinwoodVariant } from '@/lib/hollinwood-manifest';
+import { computePhotoGeometry } from '@/lib/photo-geometry';
 import { SPORT_STATS, type CardTemplate, type Details, type Family, type SportId } from './data';
 import Icon from './Icon';
 
@@ -190,10 +191,7 @@ function RealCardArt({
               inset: 0,
               width: '100%',
               height: '100%',
-              objectFit: 'cover',
-              objectPosition: 'center 10%',
-              transformOrigin: 'center center',
-              transform: `translate(${photoOffsetX}%, ${photoOffsetY}%) scale(${photoScale})`,
+              ...computePhotoGeometry({ x: photoOffsetX, y: photoOffsetY, scale: photoScale }, 'center 10%'),
             }}
           />
         </div>
@@ -1339,8 +1337,7 @@ function EmjflCardArt({
               alt=""
               style={{
                 position: 'absolute', inset: 0, width: '100%', height: '100%',
-                objectFit: 'cover', objectPosition: 'center 12%',
-                transform: `translate(${photoOffsetX}%, ${photoOffsetY}%) scale(${photoScale})`,
+                ...computePhotoGeometry({ x: photoOffsetX, y: photoOffsetY, scale: photoScale }, 'center 12%'),
               }}
             />
           </div>
@@ -1523,8 +1520,7 @@ function HollinwoodCardArt({
               alt=""
               style={{
                 position: 'absolute', inset: 0, width: '100%', height: '100%',
-                objectFit: 'cover', objectPosition: 'center 12%',
-                transform: `translate(${photoOffsetX}%, ${photoOffsetY}%) scale(${photoScale})`,
+                ...computePhotoGeometry({ x: photoOffsetX, y: photoOffsetY, scale: photoScale }, 'center 12%'),
               }}
             />
           </div>
@@ -1680,8 +1676,7 @@ function CustomCollectionCardArt({
               alt=""
               style={{
                 position: 'absolute', inset: 0, width: '100%', height: '100%',
-                objectFit: 'cover', objectPosition: 'center 12%',
-                transform: `translate(${photoOffsetX}%, ${photoOffsetY}%) scale(${photoScale})`,
+                ...computePhotoGeometry({ x: photoOffsetX, y: photoOffsetY, scale: photoScale }, 'center 12%'),
               }}
             />
           </div>
