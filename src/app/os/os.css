@@ -269,7 +269,37 @@
 @media (prefers-reduced-motion: reduce) {
   .emblem-os .ember,
   .emblem-os .conf,
-  .emblem-os .col-card {
+  .emblem-os .col-card,
+  .emblem-os .os-refresh-spin {
     animation: none !important;
   }
+}
+
+@keyframes osRefreshSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Pull-to-refresh's "Checking for updates…" glyph — continuous rotation
+   while a refresh is genuinely in flight. Excluded above for
+   prefers-reduced-motion: the "Checking for updates…" text alone still
+   communicates the busy state without any motion. */
+.os-refresh-spin {
+  animation: osRefreshSpin .9s linear infinite;
+  transform-origin: center;
+}
+
+/* Visually hidden but still announced by screen readers — used for the
+   pull-to-refresh aria-live region when the manual button or a silent
+   background revalidation triggers a refresh with no visible pull banner
+   to carry the same text. */
+.emblem-os .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
