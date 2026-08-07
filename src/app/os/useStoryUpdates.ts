@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLiveContent } from './useLiveContent';
 import type { StoryUpdate } from './osData';
 
@@ -39,6 +39,20 @@ function fromRow(row: StoryUpdateRow): StoryUpdate {
 export function useStoryUpdates(initial: StoryUpdate[], initialUnreadCount: number, viewerId: string | null) {
   const [storyUpdates, setStoryUpdates] = useState<StoryUpdate[]>(initial);
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
+
+  // `initial`/`initialUnreadCount` only change reference when OsDataContext
+  // actually adopts a fresh SSR snapshot (a real navigation — e.g. switching
+  // the selected player via ?player=<id> — or a router.refresh()), never on
+  // an unrelated re-render (see OsDataContext.tsx). Without this resync,
+  // useState's initializer is used once on mount and every later navigation
+  // is silently ignored, so this array can go stale relative to whichever
+  // player is actually selected.
+  useEffect(() => {
+    setStoryUpdates(initial);
+  }, [initial]);
+  useEffect(() => {
+    setUnreadCount(initialUnreadCount);
+  }, [initialUnreadCount]);
 
   useLiveContent<StoryUpdateRow>(
     'story_updates',

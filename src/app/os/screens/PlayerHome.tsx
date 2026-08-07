@@ -5,6 +5,7 @@ import { CardFace } from '@/lib/card-definition';
 import { useLiveContent, useJustUpdatedFlag } from '../useLiveContent';
 import { formatRelativeTime } from '../overlays/StoryUpdateCard';
 import EmptyState from './EmptyState';
+import { selectNewestUnreadForPlayer } from '@/lib/story-update-selection';
 import type { OsActions } from '../OsApp';
 import type { RealMoment, StoryUpdate } from '../osData';
 
@@ -78,10 +79,12 @@ function BookIcon(c: string) {
 export default function PlayerHome({ actions, storyUpdates }: { actions: OsActions; storyUpdates: StoryUpdate[] }) {
   const { mode, playerId, playerProfile, moments, currentSeasonStatus, cardPhotoUrl } = useOsData();
   const isReal = mode !== 'demo';
-  // The single newest thing this guardian hasn't seen yet — disappears
-  // from Home once opened (it becomes read), but stays visible in the full
-  // Story Updates history regardless.
-  const newestUnread = storyUpdates.find((u) => !u.readAt) ?? null;
+  // See selectNewestUnreadForPlayer's doc comment — storyUpdates is fetched
+  // guardian-wide (correct for the separate, full-history Story Updates
+  // overlay) but this card must only ever reflect the player currently
+  // selected. Disappears from Home once opened (it becomes read), but stays
+  // visible in the full Story Updates history regardless.
+  const newestUnread = selectNewestUnreadForPlayer(storyUpdates, playerId);
   const currentSeason = playerProfile.season;
   const isSeasonOpen = currentSeasonStatus === 'active';
 
