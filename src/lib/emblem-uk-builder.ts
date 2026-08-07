@@ -1,4 +1,4 @@
-import { clubBadgePath, EAST_MANCHESTER_LEAGUE, preferredTemplateForClub } from '@/lib/emjfl-clubs';
+import { clubBadgePath } from '@/lib/emjfl-clubs';
 import { CUSTOM_COLLECTION_VARIANTS, type CustomCollectionTemplateId } from '@/lib/custom-collection-manifest';
 import { HOLLINWOOD_VARIANTS, type HollinwoodTemplateId } from '@/lib/hollinwood-manifest';
 
@@ -161,24 +161,30 @@ export function createPlayer(seed?: Partial<PlayerDraft>): PlayerDraft {
   };
 }
 
+// Custom Collection is the default for every new order (Official remains a
+// fully valid, manually-selected alternative) — this shape mirrors exactly
+// what selectCollection('custom') in ProductionBuilder produces when
+// switching from a blank official state, so downstream logic that branches
+// on collectionType (template validity, club/badge fallbacks, production
+// payload) sees the same consistent state it already handles today.
 export function defaultOrder(): OrderDraft {
   return {
     id: 'emblem-local-order',
     type: 'single',
-    collectionType: 'official',
-    collectionName: EAST_MANCHESTER_LEAGUE,
+    collectionType: 'custom',
+    collectionName: 'Custom Collection',
     sport: 'football',
-    club: 'Curzon Ashton Juniors',
+    club: '',
     ageGroup: '',
     season: '2026/27',
-    league: EAST_MANCHESTER_LEAGUE,
-    emjflClubId: 'curzon-ashton',
-    templateDefault: preferredTemplateForClub('curzon-ashton') as TemplateId,
+    league: undefined,
+    emjflClubId: undefined,
+    templateDefault: DEFAULT_CUSTOM_TEMPLATE_ID,
     players: [
       createPlayer({
         id: 'emblem-player-1',
-        club: 'Curzon Ashton Juniors',
-        emjflClubId: 'curzon-ashton',
+        club: '',
+        emjflClubId: undefined,
         clubEdited: false,
         stats: { apps: '', goals: '', assists: '' },
       }),
