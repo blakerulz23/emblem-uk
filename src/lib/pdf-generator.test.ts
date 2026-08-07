@@ -22,6 +22,52 @@ async function markerSourcePng(width: number, height: number) {
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
+/**
+ * Reproduces the exact confirmed defect: a print capture taken with
+ * html2canvas's own opaque white backgroundColor behind a CardArt element
+ * that clips to a rounded rect (borderRadius: W * 0.05, per CardArt.tsx).
+ * The rounded shape is colour; the four corner triangles the clip removes
+ * from the underlying full-rectangle background layer are left as the
+ * capture's own white fill — never real template artwork. This is what
+ * every print-capture call site produced before this fix (see
+ * card-definition.tsx's CardFace `style` prop and pdf-generator.ts's
+ * assertNoCornerKnockout doc comment).
+ */
+async function roundedKnockoutSourcePng(width: number, height: number) {
+  const radius = Math.round(width * 0.05);
+  const svg = `<svg width="${width}" height="${height}">
+    <rect width="100%" height="100%" fill="#ffffff"/>
+    <rect x="0" y="0" width="${width}" height="${height}" rx="${radius}" ry="${radius}" fill="#204060"/>
+  </svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+/** Fraction of near-white pixels in a window at each of the trim's own 4
+ * corners (bleedPx in from the raster edge) — matches assertNoCornerKnockout's
+ * own sampling geometry, confirmed empirically to be where a knockout
+ * concentrates (the trim is composited back on top of the raster unblurred). */
+async function cornerNearWhiteFractions(bleedRaster: Buffer, bleedPx: number, win: number) {
+  const { data, info } = await sharp(bleedRaster).raw().ensureAlpha().toBuffer({ resolveWithObject: true });
+  const corners = [
+    { name: 'top-left', x0: bleedPx, y0: bleedPx },
+    { name: 'top-right', x0: info.width - bleedPx - win, y0: bleedPx },
+    { name: 'bottom-left', x0: bleedPx, y0: info.height - bleedPx - win },
+    { name: 'bottom-right', x0: info.width - bleedPx - win, y0: info.height - bleedPx - win },
+  ];
+  return corners.map((c) => {
+    let nearWhite = 0;
+    let total = 0;
+    for (let y = Math.max(0, c.y0); y < Math.min(info.height, c.y0 + win); y++) {
+      for (let x = Math.max(0, c.x0); x < Math.min(info.width, c.x0 + win); x++) {
+        const i = (y * info.width + x) * info.channels;
+        total++;
+        if (data[i] > 245 && data[i + 1] > 245 && data[i + 2] > 245) nearWhite++;
+      }
+    }
+    return { name: c.name, fraction: nearWhite / total };
+  });
+}
+
 // The card capture rig always produces this exact ratio (CardArt's
 // H = Math.round(size * 1.4) for every template family).
 const CARD_SOURCE = { width: 1020, height: 1428 }; // 340x476 at pixelRatio 3
@@ -133,6 +179,28 @@ describe('buildFullBleedRaster — trim composition must not be zoomed, cropped,
     const isWhite = r > 240 && g > 240 && b > 240;
     expect(isWhite).toBe(false);
     expect(b).toBeGreaterThan(r); // #204060 is blue-dominant
+  });
+
+  it('rejects a source whose corners are an unpainted rounded-corner knockout — the confirmed root cause of the pale-corner defect', async () => {
+    // Simulates exactly what every print capture produced before the
+    // borderRadius:0 print-capture fix: a rounded colour shape on an
+    // otherwise-white capture background. buildFullBleedRaster must refuse
+    // to ship this rather than mirror/blur the white into the bleed.
+    const source = await roundedKnockoutSourcePng(CARD_SOURCE.width, CARD_SOURCE.height);
+    const spec = PRINT_SPECS.card;
+    await expect(buildFullBleedRaster(source, spec)).rejects.toThrow(/knockout|near-white/i);
+  });
+
+  it('a fully-rectangular (no knockout) source produces bleed corners with real colour, not white/pale blobs', async () => {
+    const source = await markerSourcePng(CARD_SOURCE.width, CARD_SOURCE.height); // already a full rectangle, no rounded clip baked in
+    const spec = PRINT_SPECS.card;
+    const bleedPx = Math.round(spec.bleedIn * spec.dpi);
+    const bleedRaster = await buildFullBleedRaster(source, spec);
+    const win = Math.min(Math.max(Math.round(bleedPx * 0.6), 12), 60);
+    const fractions = await cornerNearWhiteFractions(bleedRaster, bleedPx, win);
+    for (const { name, fraction } of fractions) {
+      expect(fraction, `corner ${name} near-white fraction`).toBeLessThan(0.05);
+    }
   });
 });
 

@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import CardArt from '@/components/builder/emblem/CardArt';
 import { CARD_TEMPLATES } from '@/components/builder/emblem/data';
 import type { CardTemplate } from '@/components/builder/emblem/data';
@@ -83,6 +84,7 @@ export function CardFace({
   size,
   photoUrl,
   className,
+  style,
 }: {
   data: CardFaceData;
   side: 'front' | 'back';
@@ -90,6 +92,18 @@ export function CardFace({
   /** Already resolved by the caller — a live wizard URL in Builder, a freshly signed S3 URL in Collection OS. */
   photoUrl: string | null;
   className?: string;
+  /**
+   * Forwarded straight to CardArt's own outer element, which already merges
+   * it in last (see e.g. CardArt.tsx's RealCardArt). Every on-screen caller
+   * leaves this unset and gets the normal rounded card. The print-capture
+   * rigs (ProductionBuilder.tsx, RegeneratePdfButton.tsx) pass
+   * `{ borderRadius: 0 }` here — see pdf-generator.ts's buildFullBleedRaster
+   * doc comment for why: the rounded outer clip removes the four corner
+   * triangles from what is otherwise a full-rectangle background/frame
+   * image, and print capture needs that rectangle intact so there is real
+   * template artwork under the bleed, not the capture's white fill.
+   */
+  style?: CSSProperties;
 }) {
   return (
     <div className={className}>
@@ -110,6 +124,7 @@ export function CardFace({
         photoScale={data.photoCrop?.scale ?? 1}
         photoOffsetX={data.photoCrop?.x ?? 0}
         photoOffsetY={data.photoCrop?.y ?? 0}
+        style={style}
       />
     </div>
   );

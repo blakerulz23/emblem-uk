@@ -45,18 +45,141 @@ async function loadImageBytes(input: string): Promise<{ bytes: Uint8Array; mime:
 const SOURCE_ASPECT_TOLERANCE = 0.015;
 
 /**
- * Softens the bleed margin only, in-place — a plain mirror-extend of a
- * rounded card corner reflects the corner curve itself, producing a
- * visible doubled/lens-shaped seam right at the fold (confirmed by direct
- * pixel inspection; a template-aware per-layer bleed would avoid this too,
- * but would require rendering a second, larger capture at DOM level for
- * every template family — this achieves the same "no visible seam"
- * requirement entirely inside this function, no capture-rig change). A
- * blurred colour continuation reads as ordinary bleed rather than a
- * reflection; the trim content is pasted back on top afterwards
- * unblurred, so nothing inside the trim line is ever softened.
+ * Softens the bleed margin only, in-place — mirror-extending a card whose
+ * corners carry real template artwork right to the edge (see
+ * assertNoCornerKnockout's doc comment for why that precondition matters)
+ * still produces a visible doubled seam for any hard edge feature sitting
+ * right at the trim boundary. A blurred colour continuation reads as
+ * ordinary bleed rather than a reflection; the trim content is pasted back
+ * on top afterwards unblurred, so nothing inside the trim line is ever
+ * softened.
  */
 const BLEED_SOFTEN_RADIUS = 12;
+
+/**
+ * Size (as a multiple of bleedPx, clamped to [12, 60]px) of the square
+ * window sampled at each of the trim's own 4 corners when checking for a
+ * knockout. Tuned empirically (this audit) against a reproduction of the
+ * confirmed defect: 0.6x the bleed width sits comfortably inside a typical
+ * CardArt rounded-corner radius (borderRadius: W * 0.05) without growing so
+ * large that real template colour surrounding the corner dilutes the
+ * near-white fraction below the detection threshold.
+ */
+const CORNER_CHECK_WINDOW_BLEED_MULTIPLE = 0.6;
+
+/**
+ * A corner window counting as "near-white" above this fraction, combined
+ * with the whole-raster median-brightness gate below, is treated as a
+ * knockout. A reproduction of the confirmed defect measures ~0.5-1.0 at
+ * this window size; a knockout-free source measures 0.0.
+ */
+const CORNER_NEAR_WHITE_FRACTION_THRESHOLD = 0.4;
+const CORNER_NEAR_WHITE_CHANNEL_MIN = 245;
+
+/**
+ * Gaussian blur (see BLEED_SOFTEN_RADIUS) leaves harmless ±2 rounding noise
+ * on an otherwise-uniform alpha channel even when every input pixel was
+ * fully opaque (confirmed empirically) — same class of PNG re-encode
+ * rounding this file's other tests already tolerate. A real transparency
+ * leak (unresized contain-padding, a source with a genuine alpha channel)
+ * reads far below this.
+ */
+const OPAQUE_ALPHA_MIN = 250;
+const CORNER_NON_OPAQUE_FRACTION_THRESHOLD = 0.1;
+
+/**
+ * A raster whose overall median brightness is at or above this is treated
+ * as a legitimately light/white template (e.g. the "Clean" family, or a
+ * light-finish Galaxy variant) — those are light everywhere, not just at
+ * the four corners, so they must not trip the corner check below.
+ */
+const LEGITIMATELY_LIGHT_TEMPLATE_MEDIAN_BRIGHTNESS = 235;
+
+/**
+ * Confirmed root cause (this audit): the print-capture rig rasterises the
+ * on-screen CardArt element with html2canvas's own opaque white
+ * backgroundColor painted first. CardArt's outer element clips to a
+ * rounded rect (borderRadius + overflow:hidden) while its background/frame
+ * <img> layers underneath are already full width:100%/height:100%
+ * rectangles — so the four small triangles the rounded clip removes are not
+ * "missing" template artwork, they're real opaque white pixels painted by
+ * the capture itself. buildFullBleedRaster then mirrors and blurs whatever
+ * sits at the trim edge into the bleed margin, turning those white corner
+ * triangles into the pale blurred blobs seen in the full-bleed raster.
+ *
+ * The actual fix is upstream of this function: the print-capture call
+ * sites (ProductionBuilder.tsx's capture rig, RegeneratePdfButton.tsx) now
+ * pass `style={{ borderRadius: 0 }}` through CardFace/CardArt for print
+ * captures only — on-screen rendering is untouched — so the captured
+ * source already has real template colour/texture in all four corners
+ * before it ever reaches this function. This check is the safety net: if a
+ * knockout-white source ever reaches buildFullBleedRaster again (a future
+ * capture-rig regression, a template family that bypasses CardFace), it is
+ * caught here rather than silently shipped baked into a customer's PDF.
+ */
+async function assertNoCornerKnockout(bleedRasterPng: Buffer, bleedPx: number): Promise<void> {
+  const { data, info } = await sharp(bleedRasterPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+
+  let brightnessSum = 0;
+  let sampleCount = 0;
+  const stride = channels * 37; // sparse sample — this is a whole-raster tone estimate, not a precision measurement
+  for (let i = 0; i + 2 < data.length; i += stride) {
+    brightnessSum += (data[i] + data[i + 1] + data[i + 2]) / 3;
+    sampleCount++;
+  }
+  const medianBrightnessApprox = brightnessSum / Math.max(1, sampleCount);
+  if (medianBrightnessApprox >= LEGITIMATELY_LIGHT_TEMPLATE_MEDIAN_BRIGHTNESS) return;
+
+  // Anchored at the TRIM's own corner (bleedPx in from the raster edge), not
+  // the outer bleed edge — empirically confirmed (this audit) to be where a
+  // knockout concentrates: the trim content is composited back on top of the
+  // blurred bleed layer completely unblurred, so a knockout source's own
+  // corner survives here exactly as sharp and white as the input, while the
+  // mirrored copy further out in the bleed margin gets diluted by the blur.
+  // This is also the highest cutting-tolerance-risk zone in practice — the
+  // pixels nearest the intended rounded die-cut line.
+  const win = Math.min(Math.max(Math.round(bleedPx * CORNER_CHECK_WINDOW_BLEED_MULTIPLE), 12), 60);
+  const corners = [
+    { name: 'top-left', x0: bleedPx, y0: bleedPx },
+    { name: 'top-right', x0: width - bleedPx - win, y0: bleedPx },
+    { name: 'bottom-left', x0: bleedPx, y0: height - bleedPx - win },
+    { name: 'bottom-right', x0: width - bleedPx - win, y0: height - bleedPx - win },
+  ];
+
+  for (const corner of corners) {
+    let nearWhite = 0;
+    let nonOpaque = 0;
+    let total = 0;
+    const xStart = Math.max(0, corner.x0);
+    const yStart = Math.max(0, corner.y0);
+    for (let y = yStart; y < Math.min(height, corner.y0 + win); y++) {
+      for (let x = xStart; x < Math.min(width, corner.x0 + win); x++) {
+        const i = (y * width + x) * channels;
+        const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+        total++;
+        if (a < OPAQUE_ALPHA_MIN) nonOpaque++;
+        if (r > CORNER_NEAR_WHITE_CHANNEL_MIN && g > CORNER_NEAR_WHITE_CHANNEL_MIN && b > CORNER_NEAR_WHITE_CHANNEL_MIN) nearWhite++;
+      }
+    }
+    // A source within SOURCE_ASPECT_TOLERANCE of the trim ratio can still
+    // legitimately get a sliver of transparent contain-padding (sub-pixel
+    // rounding, not a defect) — fraction-gated for the same reason the
+    // near-white check below is, rather than zero-tolerance.
+    const nonOpaqueFraction = nonOpaque / total;
+    if (nonOpaqueFraction > CORNER_NON_OPAQUE_FRACTION_THRESHOLD) {
+      throw new Error(
+        `Full-bleed raster corner "${corner.name}" is ${(nonOpaqueFraction * 100).toFixed(0)}% non-opaque (${nonOpaque} of ${total} sampled pixels) — print output must be fully opaque.`
+      );
+    }
+    const nearWhiteFraction = nearWhite / total;
+    if (nearWhiteFraction > CORNER_NEAR_WHITE_FRACTION_THRESHOLD) {
+      throw new Error(
+        `Full-bleed raster corner "${corner.name}" is ${(nearWhiteFraction * 100).toFixed(0)}% near-white against a ${medianBrightnessApprox.toFixed(0)}/255 whole-raster brightness — looks like an unpainted rounded-corner knockout baked into the print source rather than template artwork. Refusing to build a PDF that could expose white under cutting tolerance.`
+      );
+    }
+  }
+}
 
 /**
  * Builds a genuine full-bleed raster from a trim-ratio source, WITHOUT
@@ -72,6 +195,10 @@ const BLEED_SOFTEN_RADIUS = 12;
  * design at 1x, matching Emblem OS, not a zoomed-in crop of it. The bleed
  * strip is never visible on the finished product — it exists only as the
  * printer's cutting-tolerance margin.
+ *
+ * Requires the source to already have real artwork under its rounded
+ * corners (see assertNoCornerKnockout) — enforced by the print-capture
+ * call sites rendering unclipped for print, checked here as a safety net.
  */
 export async function buildFullBleedRaster(
   sourceBytes: Uint8Array,
@@ -93,10 +220,14 @@ export async function buildFullBleedRaster(
 
   const softened = await sharp(mirrorExtended).blur(BLEED_SOFTEN_RADIUS).toBuffer();
 
-  return sharp(softened)
+  const bleedRaster = await sharp(softened)
     .composite([{ input: trimmed, left: bleedPx, top: bleedPx }])
     .png()
     .toBuffer();
+
+  await assertNoCornerKnockout(bleedRaster, bleedPx);
+
+  return bleedRaster;
 }
 
 /** Build a print-ready PDF from a design payload. */

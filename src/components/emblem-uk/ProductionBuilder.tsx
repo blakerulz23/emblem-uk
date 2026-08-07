@@ -770,13 +770,13 @@ export default function ProductionBuilder() {
                 ref={(el) => { if (el) captureRefs.current.set(`${player.id}:front`, el); }}
                 style={{ width: 340 }}
               >
-                <PlayerCard order={order} player={player} side="front" />
+                <PlayerCard order={order} player={player} side="front" forPrint />
               </div>
               <div
                 ref={(el) => { if (el) captureRefs.current.set(`${player.id}:back`, el); }}
                 style={{ width: 340 }}
               >
-                <PlayerCard order={order} player={player} side="back" />
+                <PlayerCard order={order} player={player} side="back" forPrint />
               </div>
             </div>
           ))}
@@ -1814,11 +1814,16 @@ function PlayerCard({
   player,
   compact = false,
   side = 'front',
+  forPrint = false,
 }: {
   order: OrderDraft;
   player: PlayerDraft;
   compact?: boolean;
   side?: CardSide;
+  /** True only inside the hidden print-capture rig — see pdf-generator.ts's
+   * buildFullBleedRaster doc comment for why print capture needs the card
+   * unclipped (borderRadius: 0) while every on-screen render stays rounded. */
+  forPrint?: boolean;
 }) {
   const template = selectedTemplate(order, player);
   const stats = sportConfig[order.sport].stats;
@@ -1834,6 +1839,7 @@ function PlayerCard({
         side={side}
         size={compact ? 170 : 340}
         photoUrl={player.photo?.srcUrl || null}
+        style={forPrint ? { borderRadius: 0 } : undefined}
       />
     );
   }
