@@ -340,10 +340,16 @@ async function getParentOsData(
     };
   }
 
-  const [{ data: player }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }, { data: seasonRows }, { data: cardRow }, { data: seasonFocusRows }, { data: strengthRows }, { data: assessmentRows }] = await Promise.all([
+  const [{ data: rawPlayer }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }, { data: seasonRows }, { data: cardRow }, { data: seasonFocusRows }, { data: strengthRows }, { data: assessmentRows }] = await Promise.all([
+    // Explicit column list, not select('*') — compatibility groundwork for
+    // the upcoming Coach Player Details schema change, which will revoke
+    // broad table-level SELECT and re-grant only an explicit list; `*`
+    // would error outright the moment that lands if this query still asked
+    // for it. Every column referenced anywhere below is named here, one
+    // for one — no behaviour change today, only a syntax change.
     supabase
       .from('players')
-      .select('*, teams ( name, clubs ( name ), seasons ( label ) )')
+      .select('id, name, "position", age, height, preferred_foot, photo_key, squad_number, created_at, favourite_player, football_ambition, secondary_position, team_id, teams ( name, clubs ( name ), seasons ( label ) )')
       .eq('id', playerId)
       .maybeSingle(),
     supabase
@@ -422,6 +428,20 @@ async function getParentOsData(
       .eq('player_id', playerId)
       .order('created_at', { ascending: false }),
   ]);
+
+  // Cast past the wrong inferred type, same reasoning as cardDefinitionDbRow
+  // below and the untyped-client quirk documented throughout this file:
+  // supabase-js's compile-time select-string parser infers `teams` (a
+  // to-one FK embed — a player has at most one team) as an array here, not
+  // something the explicit column list above caused.
+  type PlayerRow = {
+    id: string; name: string; position: string | null; age: number | null; height: string | null;
+    preferred_foot: 'Left' | 'Right' | null; photo_key: string | null; squad_number: number | null;
+    created_at: string | null; favourite_player: string | null; football_ambition: string | null;
+    secondary_position: string | null; team_id: string | null;
+    teams: { name: string; clubs: { name: string } | null; seasons: { label: string } | null } | null;
+  };
+  const player = rawPlayer as unknown as PlayerRow | null;
 
   const seasonRanges: SeasonRangeRow[] = (seasonRows ?? []) as unknown as SeasonRangeRow[];
 

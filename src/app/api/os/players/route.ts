@@ -20,13 +20,19 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { teamId, name, position, age, height, preferredFoot, squadNumber } = body as {
+  // age/height/preferredFoot are deliberately no longer accepted here —
+  // compatibility groundwork for the upcoming Coach Player Details feature
+  // (age becomes a calculated value, not a stored one; height/preferred
+  // foot move to a coach-managed edit screen). None of the three has ever
+  // been set through this route in production (confirmed by a read-only
+  // audit: zero non-null rows for all three across every existing player).
+  // Removing them now, ahead of that feature's schema change, keeps this
+  // route already compatible with the column layout that change will
+  // introduce, without depending on anything it hasn't shipped yet.
+  const { teamId, name, position, squadNumber } = body as {
     teamId?: string;
     name?: string;
     position?: string;
-    age?: number;
-    height?: string;
-    preferredFoot?: 'Left' | 'Right';
     squadNumber?: number;
   };
 
@@ -40,12 +46,14 @@ export async function POST(request: NextRequest) {
       team_id: teamId,
       name: name.trim(),
       position: position ?? null,
-      age: age ?? null,
-      height: height ?? null,
-      preferred_foot: preferredFoot ?? null,
       squad_number: squadNumber ?? null,
     })
-    .select()
+    // Explicit column, not a bare .select() (which defaults to `*`) —
+    // hardening ahead of the same upcoming schema change: once it lands
+    // and revokes broad table-level SELECT, `*` would error outright for
+    // referencing a column this role lacks privilege on. Only `player.id`
+    // is read below, so this is a no-op today and a requirement tomorrow.
+    .select('id')
     .single();
 
   if (playerError || !player) {

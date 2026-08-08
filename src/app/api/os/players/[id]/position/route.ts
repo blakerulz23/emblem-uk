@@ -26,11 +26,16 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     return NextResponse.json({ error: 'A position is required' }, { status: 400 });
   }
 
+  // Explicit column, not a bare .select() (which defaults to `*`) —
+  // compatibility groundwork for the upcoming Coach Player Details
+  // schema change, which will revoke broad table-level SELECT; `*` would
+  // error outright the moment that lands if this route still asked for
+  // it. Only existence/length of `data` is checked below, not any field.
   const { data, error } = await supabase
     .from('players')
     .update({ position: trimmed })
     .eq('id', params.id)
-    .select();
+    .select('id');
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
