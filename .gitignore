@@ -39,3 +39,6 @@ next-env.d.ts
 # AI model cache — too large for git
 /public/imgly/
 .env*
+
+# Supabase CLI local cache (project-link metadata, not source)
+supabase/.temp/
