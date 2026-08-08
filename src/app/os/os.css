@@ -53,6 +53,22 @@
   padding-bottom: var(--os-desk-padding-y);
   padding-left: 12px;
   transition: background .35s ease;
+  /* Defensive guard against document-level horizontal panning on iOS
+     Safari — clip, not hidden: overflow-x:hidden paired with an unset
+     (visible) overflow-y triggers the CSS Overflow spec's axis-promotion
+     rule ("if one axis is non-visible, the other can't stay visible"),
+     silently turning this into an internal vertical scroll container —
+     the exact bug already found and fixed once in #os-scroll. `clip` is
+     specifically exempted from that promotion (clip and visible are
+     treated as a compatible pair), so overflow-y stays genuinely visible
+     and the real document underneath keeps doing the scrolling. This is
+     .emblem-os, not #os-scroll: OsApp.tsx renders nothing outside this
+     div on the /os route, so it's the outermost box any stray
+     horizontally-overflowing descendant (a fixed-width card, a translated
+     element, the dock, a position:fixed overlay wrapper) could still
+     reach — clipping here catches all of them in one place regardless of
+     which one is the actual source. */
+  overflow-x: clip;
 }
 
 /**
@@ -100,8 +116,26 @@
    own transform-based pull animation is in play (useOsRefresh.ts).
    Scoped to the body only while Emblem OS is actually mounted (toggled in
    OsApp.tsx), never applied to marketing/staff/builder pages. */
+html.emblem-os-active,
+body.emblem-os-active {
+  /* Same reasoning as .emblem-os's overflow-x: clip above (see that
+     comment) — belt-and-braces at the real document root (both html and
+     body — document.documentElement.scrollWidth, the exact diagnostic for
+     this bug, reads html's own overflow, not just body's), not just the
+     OS app's own top-level div. */
+  overflow-x: clip;
+}
+
 body.emblem-os-active {
   overscroll-behavior-y: contain;
+  /* Was never set before (only -y was) — the X axis was left at its
+     default `auto`, meaning iOS's own elastic rubber-band was still free
+     to bounce the page horizontally on any diagonal/imprecise swipe, with
+     or without genuine horizontal overflow underneath. `none` (not
+     `contain`) is deliberate: unlike Y, X is never a real, intentional
+     scroll axis here, so there's nothing legitimate to "contain" — it
+     should simply not move at all. */
+  overscroll-behavior-x: none;
 }
 
 /**

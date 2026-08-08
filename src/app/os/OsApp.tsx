@@ -627,8 +627,17 @@ export default function OsApp({
   // inner div; a class toggled here keeps it from ever touching marketing/
   // staff/builder pages, which don't import os.css at all.
   useEffect(() => {
+    // Both html and body: document.documentElement (html) is what
+    // scrollWidth/clientWidth checks for horizontal overflow actually
+    // read, and what iOS Safari's own gesture/rubber-band physics apply
+    // to — body alone isn't guaranteed to be the element that matters for
+    // either.
+    document.documentElement.classList.add('emblem-os-active');
     document.body.classList.add('emblem-os-active');
-    return () => document.body.classList.remove('emblem-os-active');
+    return () => {
+      document.documentElement.classList.remove('emblem-os-active');
+      document.body.classList.remove('emblem-os-active');
+    };
   }, []);
 
   return (
