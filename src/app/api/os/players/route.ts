@@ -20,15 +20,22 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  // age/height/preferredFoot are deliberately no longer accepted here —
-  // compatibility groundwork for the upcoming Coach Player Details feature
-  // (age becomes a calculated value, not a stored one; height/preferred
-  // foot move to a coach-managed edit screen). None of the three has ever
-  // been set through this route in production (confirmed by a read-only
-  // audit: zero non-null rows for all three across every existing player).
-  // Removing them now, ahead of that feature's schema change, keeps this
-  // route already compatible with the column layout that change will
-  // introduce, without depending on anything it hasn't shipped yet.
+  // age/height are deliberately not accepted here any more — both columns
+  // are dropped in Stage 3 (0039_player_legacy_columns_contract.sql, an
+  // optional, deferred migration — see its header):
+  // provably unused, never written by any route, confirmed by a read-only
+  // production audit. date_of_birth/height_cm are coach-managed and set
+  // later, from Coach Player Details, never at roster-creation time.
+  //
+  // preferredFoot is also deliberately not accepted here — it moved to
+  // update_player_coach_fields alongside the other four coach-owned
+  // fields (see 0036_player_coach_fields_secure_expand.sql's Part 6): a
+  // new roster player is created with preferred_foot left null, and it is
+  // set afterward through that one validated RPC, the same as every other
+  // coach-owned field. This is what keeps that RPC the *only* effective
+  // write path for preferred_foot — 0036's INSERT grant no longer includes
+  // the column at all, so sending it here would fail outright, not
+  // silently succeed via a second, ungoverned path.
   const { teamId, name, position, squadNumber } = body as {
     teamId?: string;
     name?: string;
@@ -48,11 +55,13 @@ export async function POST(request: NextRequest) {
       position: position ?? null,
       squad_number: squadNumber ?? null,
     })
-    // Explicit column, not a bare .select() (which defaults to `*`) —
-    // hardening ahead of the same upcoming schema change: once it lands
-    // and revokes broad table-level SELECT, `*` would error outright for
-    // referencing a column this role lacks privilege on. Only `player.id`
-    // is read below, so this is a no-op today and a requirement tomorrow.
+    // Explicit column, not a bare .select() (which defaults to `*`, and
+    // now fails outright for `authenticated` —
+    // 0036_player_coach_fields_secure_expand.sql revokes table-level
+    // SELECT on `players` and re-grants only an explicit column list that
+    // does not include date_of_birth; `*` errors if it would reference any
+    // column the caller lacks privilege on). Only `player.id` is read
+    // below.
     .select('id')
     .single();
 

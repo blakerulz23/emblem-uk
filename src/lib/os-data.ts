@@ -2,7 +2,6 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { DEMO_OS_DATA } from '@/app/os/osData';
 import type { OsData, RealMoment, RealConnection, CoachTeamSummary, StoryUpdate } from '@/app/os/osData';
 import type { SkillCategory, CoachSummary, DevelopmentSeason, SeasonTarget, PlayerProfile } from '@/app/os/playerProfile';
-import { extractAgeGroup } from '@/app/os/playerProfile';
 import { computeOverallScore, MIDFIELDER_WEIGHTS } from '@/app/os/scoring';
 import { cardDefinitionToFaceData } from '@/lib/card-definition';
 import type { CardDefinitionRow, CardFaceData } from '@/lib/card-definition';
@@ -54,14 +53,14 @@ const EMPTY_PLAYER_PROFILE: PlayerProfile = {
   name: '',
   position: '',
   club: '',
-  age: 0,
-  height: '',
-  preferredFoot: 'Right',
+  age: null,
+  heightCm: null,
+  preferredFoot: null,
   overallScore: null,
   seasonalChange: null,
   photoUrl: null,
   squadNumber: null,
-  ageGroup: null,
+  footballAgeGroup: null,
   memberSinceYear: null,
   season: null,
   favouritePlayer: null,
@@ -340,18 +339,32 @@ async function getParentOsData(
     };
   }
 
-  const [{ data: rawPlayer }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }, { data: seasonRows }, { data: cardRow }, { data: seasonFocusRows }, { data: strengthRows }, { data: assessmentRows }] = await Promise.all([
-    // Explicit column list, not select('*') — compatibility groundwork for
-    // the upcoming Coach Player Details schema change, which will revoke
-    // broad table-level SELECT and re-grant only an explicit list; `*`
-    // would error outright the moment that lands if this query still asked
-    // for it. Every column referenced anywhere below is named here, one
-    // for one — no behaviour change today, only a syntax change.
+  const [{ data: rawPlayer }, { data: calculatedAge }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }, { data: seasonRows }, { data: cardRow }, { data: seasonFocusRows }, { data: strengthRows }, { data: assessmentRows }] = await Promise.all([
+    // Explicit column list, not select('*') — date_of_birth has SELECT
+    // revoked from `authenticated` (0036_player_coach_fields_secure_expand.sql),
+    // so `*` would error outright for referencing a column this role has
+    // no privilege on. age itself is fetched separately, below, via
+    // get_player_age — never a raw column on this row at all.
     supabase
       .from('players')
-      .select('id, name, "position", age, height, preferred_foot, photo_key, squad_number, created_at, favourite_player, football_ambition, secondary_position, team_id, teams ( name, clubs ( name ), seasons ( label ) )')
+      // Single-line select string, matching this file's other queries —
+      // supabase-js's compile-time type inference for embedded relations
+      // (to-one vs to-many) parses this string at the type level, and a
+      // multi-line template literal here was enough to make it infer
+      // `teams` as an array instead of the single object it actually is at
+      // runtime (confirmed: a foreign key column can only ever resolve to
+      // one row). A purely cosmetic formatting choice, not a real runtime
+      // behaviour difference — kept single-line to avoid relying on a cast
+      // to paper over it.
+      .select('id, name, "position", preferred_foot, height_cm, football_age_group, photo_key, squad_number, created_at, favourite_player, football_ambition, secondary_position, team_id, teams ( name, clubs ( name ), seasons ( label ) )')
       .eq('id', playerId)
       .maybeSingle(),
+    // The *only* way this function ever learns this player's age — see
+    // get_player_age's own comment (0036_player_coach_fields_secure_expand.sql)
+    // for why it's a SECURITY DEFINER function and not a column: age
+    // changes over calendar time, so it can never correctly be a stored or
+    // generated value, only computed at request time like this.
+    supabase.rpc('get_player_age', { p_player_id: playerId }),
     supabase
       .from('player_skill_snapshots')
       .select('*, seasons ( label, starts_on )')
@@ -429,20 +442,6 @@ async function getParentOsData(
       .order('created_at', { ascending: false }),
   ]);
 
-  // Cast past the wrong inferred type, same reasoning as cardDefinitionDbRow
-  // below and the untyped-client quirk documented throughout this file:
-  // supabase-js's compile-time select-string parser infers `teams` (a
-  // to-one FK embed — a player has at most one team) as an array here, not
-  // something the explicit column list above caused.
-  type PlayerRow = {
-    id: string; name: string; position: string | null; age: number | null; height: string | null;
-    preferred_foot: 'Left' | 'Right' | null; photo_key: string | null; squad_number: number | null;
-    created_at: string | null; favourite_player: string | null; football_ambition: string | null;
-    secondary_position: string | null; team_id: string | null;
-    teams: { name: string; clubs: { name: string } | null; seasons: { label: string } | null } | null;
-  };
-  const player = rawPlayer as unknown as PlayerRow | null;
-
   const seasonRanges: SeasonRangeRow[] = (seasonRows ?? []) as unknown as SeasonRangeRow[];
 
   // Same untyped-client many-to-one quirk documented throughout this file —
@@ -467,7 +466,7 @@ async function getParentOsData(
 
   const claimedPlayers = (claimedPlayerRows ?? []).map((p) => ({ id: p.id as string, name: p.name as string }));
 
-  if (!player) {
+  if (!rawPlayer) {
     return {
       ...emptyConnections,
       mode: 'real',
@@ -487,6 +486,23 @@ async function getParentOsData(
       cardPhotoUrl: null,
     };
   }
+
+  // Cast past the wrong inferred type, same reasoning and same pattern as
+  // teamCoachRows/teamLinkRows below: supabase-js's compile-time select-
+  // string parser infers `teams` (a to-one FK embed — a player has at most
+  // one team) as an array here, pre-existing behaviour of this untyped
+  // client (no `Database` generic — this project hand-maintains row shapes
+  // rather than using `supabase gen types`, see getCoachOsData's own casts
+  // for the established precedent), not something the explicit column list
+  // this query now uses caused.
+  type PlayerRow = {
+    id: string; name: string; position: string | null; preferred_foot: 'Left' | 'Right' | 'Both' | null;
+    height_cm: number | null; football_age_group: string | null; photo_key: string | null; squad_number: number | null;
+    created_at: string | null; favourite_player: string | null; football_ambition: string | null;
+    secondary_position: string | null; team_id: string | null;
+    teams: { name: string; clubs: { name: string } | null; seasons: { label: string } | null } | null;
+  };
+  const player = rawPlayer as unknown as PlayerRow;
 
   const goals: SeasonTarget[] = (goalRows ?? []).map((g) => ({
     id: g.id,
@@ -703,14 +719,18 @@ async function getParentOsData(
       name: player.name,
       position: player.position ?? '',
       club: player.teams?.clubs?.name ?? '',
-      age: player.age ?? 0,
-      height: player.height ?? '',
-      preferredFoot: (player.preferred_foot as 'Left' | 'Right') ?? 'Right',
+      // Never 0, never a raw column — see get_player_age's own comment and
+      // the query above. A failed/errored RPC call degrades to "Not set"
+      // (null), the same as a genuinely unset date of birth, rather than a
+      // crash or a misleading 0.
+      age: calculatedAge ?? null,
+      heightCm: player.height_cm ?? null,
+      preferredFoot: (player.preferred_foot as 'Left' | 'Right' | 'Both' | null) ?? null,
       overallScore,
       seasonalChange: latestSnapshot?.seasonal_change ?? null,
       photoUrl: player.photo_key ? await getSignedDownloadUrl(player.photo_key) : null,
       squadNumber: player.squad_number ?? null,
-      ageGroup: extractAgeGroup(player.teams?.name),
+      footballAgeGroup: player.football_age_group ?? null,
       memberSinceYear: player.created_at ? new Date(player.created_at).getFullYear() : null,
       season: player.teams?.seasons?.label ?? null,
       favouritePlayer: player.favourite_player ?? null,
@@ -779,13 +799,23 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
 
   const { data: profile } = await supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle();
 
+  // football_age_group/height_cm/preferred_foot are bulk-loaded here (like
+  // secondary_position already was) — unlike date_of_birth, none of the
+  // three are privacy-sensitive, so there's no reason to defer them to an
+  // on-demand fetch the way Coach Player Details' date-of-birth field is.
+  const SQUAD_COLUMNS = 'id, name, position, squad_number, team_id, secondary_position, football_age_group, height_cm, preferred_foot, coach_fields_updated_at';
+  type SquadPlayerRow = {
+    id: string; name: string; position: string | null; squad_number: number | null; team_id: string | null;
+    secondary_position: string | null; football_age_group: string | null; height_cm: number | null;
+    preferred_foot: 'Left' | 'Right' | 'Both' | null; coach_fields_updated_at: string | null;
+  };
   const [{ data: teamPlayers }, { data: directPlayersRaw }] = await Promise.all([
     teamIds.length
-      ? supabase.from('players').select('id, name, position, squad_number, team_id, secondary_position').in('team_id', teamIds)
-      : Promise.resolve({ data: [] as { id: string; name: string; position: string | null; squad_number: number | null; team_id: string | null; secondary_position: string | null }[] }),
+      ? supabase.from('players').select(SQUAD_COLUMNS).in('team_id', teamIds)
+      : Promise.resolve({ data: [] as SquadPlayerRow[] }),
     directPlayerIds.length
-      ? supabase.from('players').select('id, name, position, squad_number, team_id, secondary_position').in('id', directPlayerIds)
-      : Promise.resolve({ data: [] as { id: string; name: string; position: string | null; squad_number: number | null; team_id: string | null; secondary_position: string | null }[] }),
+      ? supabase.from('players').select(SQUAD_COLUMNS).in('id', directPlayerIds)
+      : Promise.resolve({ data: [] as SquadPlayerRow[] }),
   ]);
 
   // De-duplicated by id — a player connected to this coach both ways
@@ -913,6 +943,10 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
       latestInviteExpiresAt: guardianStatus === 'pending' || guardianStatus === 'expired' ? latestInvite?.expiresAt ?? null : null,
       hasManageableInvite: guardianStatus === 'pending',
       secondaryPosition: p.secondary_position ?? null,
+      footballAgeGroup: p.football_age_group ?? null,
+      heightCm: p.height_cm ?? null,
+      preferredFoot: p.preferred_foot ?? null,
+      coachFieldsUpdatedAt: p.coach_fields_updated_at ?? null,
       seasonFocus: seasonFocusByPlayer.get(p.id) ?? [],
       strengths: strengthsByPlayer.get(p.id) ?? [],
       assessments: assessmentsByPlayer.get(p.id) ?? [],

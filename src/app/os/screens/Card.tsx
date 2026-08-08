@@ -11,6 +11,7 @@ import { useLiveContent, useJustUpdatedFlag } from '../useLiveContent';
 import EmptyState from './EmptyState';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
+import { formatAge, formatFoot, formatHeightCm, positionLabel } from '../coachFields';
 
 /**
  * The digital twin of the physical collectible, present-tense only
@@ -159,24 +160,36 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
 
   return (
     <div style={{ animation: 'faceIn .45s ease' }}>
-      <div style={{ position: 'relative', background: 'var(--os-card)', borderRadius: 22, overflow: 'hidden', boxShadow: '0 12px 30px -14px rgba(0,0,0,.2)', marginBottom: 12 }}>
-        <div style={{ position: 'absolute', inset: 0, backgroundImage: 'repeating-linear-gradient(115deg,transparent 0 22px,rgba(233,116,53,.05) 22px 24px)' }} />
-        <div style={{ position: 'relative', padding: 20 }}>
-          <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 26, lineHeight: .95, color: 'var(--os-ink)' }}>{firstName.toUpperCase()}<br />{lastName.toUpperCase()}</div>
-          <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.08em', fontSize: 13, color: '#E97435', margin: '6px 0 12px' }}>{PLAYER_PROFILE.position.toUpperCase()}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 16 }}>
-            <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#15130F' }} />
-            <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 11.5, color: '#6B6357' }}>{PLAYER_PROFILE.club.toUpperCase()}</span>
+      {/* Identity-led player-information card — approved arrangement from
+          the design prototype (src/app/os/prototype-player-profile,
+          AboutView.tsx's "A" arrangement), chosen over the trading-card-
+          dossier alternative because it degrades cleanly with 0 of the 4
+          coach-managed facts set, not just all 4 (see the prototype's
+          Empty-details demo state). Portrait replaces the old black-circle
+          club-badge placeholder — this card's photo is the same
+          PLAYER_PROFILE.photoUrl Profile.tsx's own photo upload sets, not a
+          second, independent image. */}
+      <div style={{ background: 'var(--os-card)', borderRadius: 22, padding: 20, boxShadow: '0 12px 30px -14px rgba(0,0,0,.2)', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+          <div style={{ width: 66, height: 84, borderRadius: 16, flex: '0 0 auto', position: 'relative', overflow: 'hidden', background: PLAYER_PROFILE.photoUrl ? '#00000010' : 'linear-gradient(150deg,#E9C46A,#C98B3A)' }}>
+            {PLAYER_PROFILE.photoUrl ? (
+              <img src={PLAYER_PROFILE.photoUrl} alt={PLAYER_PROFILE.name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
+            ) : (
+              <span aria-hidden="true" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Roboto', fontWeight: 900, fontSize: 20, color: '#fff' }}>
+                {firstName[0]}{lastName[0] ?? ''}
+              </span>
+            )}
           </div>
-          <div style={{ display: 'flex', gap: 16 }}>
-            <div><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>AGE</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)' }}>{PLAYER_PROFILE.age}</div></div>
-            <div style={{ borderLeft: '1px solid var(--os-border)', paddingLeft: 16 }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>HEIGHT</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)' }}>{PLAYER_PROFILE.height}</div></div>
-            <div style={{ borderLeft: '1px solid var(--os-border)', paddingLeft: 16 }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>FOOT</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)' }}>{PLAYER_PROFILE.preferredFoot.toUpperCase()}</div></div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 20, color: 'var(--os-ink)', lineHeight: 1.1 }}>{PLAYER_PROFILE.name}</div>
+            <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.08em', fontSize: 12.5, color: '#E97435', marginTop: 5 }}>{PLAYER_PROFILE.position.toUpperCase()}</div>
           </div>
-          <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--os-border)' }}>
-            <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>SECONDARY POSITION</div>
-            <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)' }}>{PLAYER_PROFILE.secondaryPosition ?? 'Not set'}</div>
-          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <AboutStatTile label="Age" value={formatAge(PLAYER_PROFILE.age)} />
+          <AboutStatTile label="Height" value={formatHeightCm(PLAYER_PROFILE.heightCm)} />
+          <AboutStatTile label="Preferred foot" value={formatFoot(PLAYER_PROFILE.preferredFoot)} />
+          <AboutStatTile label="Secondary position" value={positionLabel(PLAYER_PROFILE.secondaryPosition)} />
         </div>
       </div>
 
@@ -291,6 +304,19 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** One of the four Identity-led stat tiles — label above, value below, "Not
+ * set" styled identically to a real value (never greyed out differently),
+ * matching the prototype's own treatment: a missing coach-managed fact
+ * reads as calm and normal, not broken or urgent. */
+function AboutStatTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ background: 'var(--os-screen)', borderRadius: 12, padding: '11px 13px' }}>
+      <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--os-muted)', marginBottom: 3 }}>{label}</div>
+      <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>{value}</div>
     </div>
   );
 }

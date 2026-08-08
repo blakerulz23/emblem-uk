@@ -141,9 +141,9 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
                 <span style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 19, color: 'var(--os-ink)' }}>{playerProfile.name.toUpperCase()}</span>
                 <VerifiedBadge />
               </div>
-              {(playerProfile.position || playerProfile.ageGroup) && (
+              {(playerProfile.position || playerProfile.footballAgeGroup) && (
                 <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.04em', fontSize: 13.5, color: '#E97435', marginTop: 3 }}>
-                  {[playerProfile.position, playerProfile.ageGroup].filter(Boolean).join(' • ')}
+                  {[playerProfile.position, playerProfile.footballAgeGroup].filter(Boolean).join(' • ')}
                 </div>
               )}
             </div>

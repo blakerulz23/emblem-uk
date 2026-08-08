@@ -14,29 +14,44 @@ export type PlayerProfile = {
   name: string;
   position: string;
   club: string;
-  age: number;
-  height: string;
-  preferredFoot: 'Left' | 'Right';
+  /**
+   * Calculated from players.date_of_birth server-side (get_player_age RPC
+   * or getOsData's own service-role read — see os-data.ts), never a raw
+   * stored value and never defaulted to 0. Null means genuinely unset —
+   * render "Not set" (coachFields.ts's formatAge), not 0. The raw date of
+   * birth itself is never part of this type — Player OS only ever sees the
+   * calculated number (see 0036_player_coach_fields_secure_expand.sql's
+   * REVOKE SELECT (date_of_birth) and get_player_age's own comment for the
+   * authorization boundary this relies on).
+   */
+  age: number | null;
+  /** Coach-managed. Null means unset — render "Not set", not 0 or "". */
+  heightCm: number | null;
+  /** Coach-managed. Null means unset — render "Not set". */
+  preferredFoot: 'Left' | 'Right' | 'Both' | null;
   /** Null for a real player with no coach assessment yet — never a demo/placeholder number. */
   overallScore: number | null;
   seasonalChange: number | null;
   /** A signed, time-limited S3 download URL — never a stored public link. Null until a guardian uploads one. */
   photoUrl: string | null;
   squadNumber: number | null;
-  /** Derived from the team name (e.g. "U10"), not a separate stored field. */
-  ageGroup: string | null;
+  /**
+   * Coach-managed (players.football_age_group), not a family fact —
+   * read-only everywhere on Player OS (Profile.tsx shows a "Set by coach"
+   * indicator alongside it, never an input). Not the same as `age`: a
+   * player playing up an age group has a football_age_group that
+   * legitimately differs from what their date of birth would imply — this
+   * type deliberately keeps them as two independent fields so neither can
+   * be derived from or overwrite the other.
+   */
+  footballAgeGroup: string | null;
   memberSinceYear: number | null;
   season: string | null;
   favouritePlayer: string | null;
   footballAmbition: string | null;
-  /** A coach's own football judgement, not a family fact — coach-only to set (see update_secondary_position). Null until a coach sets one. */
+  /** A coach's own football judgement, not a family fact — coach-only to set (see update_player_coach_fields). Null until a coach sets one. Never equal to `position` (players_secondary_position_not_primary). */
   secondaryPosition: string | null;
 };
-
-/** Pulls an age-group label like "U10" out of a team name — there's no separate stored field for it. */
-export function extractAgeGroup(teamName: string | null | undefined): string | null {
-  return teamName?.match(/U\d{1,2}\b/i)?.[0]?.toUpperCase() ?? null;
-}
 
 export type Skill = {
   id: string;
@@ -388,7 +403,7 @@ export const PLAYER_PROFILE: PlayerProfile = {
   position: 'Midfielder',
   club: 'Curzon Ashton Juniors U10',
   age: 10,
-  height: '1.42m',
+  heightCm: 142,
   preferredFoot: 'Right',
   overallScore,
   seasonalChange: 5,
@@ -396,12 +411,12 @@ export const PLAYER_PROFILE: PlayerProfile = {
   // field — real mode is the only branch that reads photoUrl.
   photoUrl: null,
   squadNumber: 7,
-  ageGroup: 'U10',
+  footballAgeGroup: 'U10',
   memberSinceYear: 2026,
   season: '2026/27',
   favouritePlayer: 'Kevin De Bruyne',
   footballAmbition: 'Play academy football',
-  secondaryPosition: 'Winger',
+  secondaryPosition: 'RW',
 };
 
 export const DEVELOPMENT_SEASONS: DevelopmentSeason[] = [

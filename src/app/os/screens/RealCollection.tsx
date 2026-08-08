@@ -228,7 +228,7 @@ export default function RealCollection({
                       <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 11, color: 'var(--os-muted)', marginTop: 3 }}>Career Moment #{m.careerOrdinal}</div>
                       {/* Season context — tertiary. */}
                       <div style={{ fontSize: 10.5, color: 'var(--os-muted)', marginTop: 2, opacity: .8 }}>
-                        {[playerProfile.ageGroup, m.seasonLabel ?? 'Earlier', m.occurredOn ? formatMomentDate(m.occurredOn) : null].filter(Boolean).join(' • ')}
+                        {[playerProfile.footballAgeGroup, m.seasonLabel ?? 'Earlier', m.occurredOn ? formatMomentDate(m.occurredOn) : null].filter(Boolean).join(' • ')}
                       </div>
                       <div style={{ marginTop: 7 }}>
                         {isRecognized || isMilestone ? (

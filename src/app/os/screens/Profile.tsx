@@ -37,11 +37,13 @@ function coachInviteSuccessCopy(reused: boolean, emailStatus: 'sent' | 'failed' 
 // *edits* it, so it needs a home in Player Preferences alongside the other
 // editable/preference facts (Collection OS Product Specification v1.0's
 // overlap table, revised in the Profile/About duplication audit).
-const DEMO_IDENTITY: [string, string][] = [
-  ['Primary position', 'Midfielder'],
-  ['Football age group', 'U10'],
-  ['Favourite player', 'Kevin De Bruyne'],
-  ['Football ambition', 'Play academy football'],
+type PreferenceRow = { label: string; value: string; badge?: string };
+
+const DEMO_IDENTITY: PreferenceRow[] = [
+  { label: 'Primary position', value: 'Midfielder' },
+  { label: 'Football age group', value: 'U10', badge: 'Set by coach' },
+  { label: 'Favourite player', value: 'Kevin De Bruyne' },
+  { label: 'Football ambition', value: 'Play academy football' },
 ];
 
 /** Reproduces the three demo presentation states from one shape: a literal fraction, a vague "in progress", or "Completed". */
@@ -56,12 +58,16 @@ export default function Profile({ actions }: { actions: OsActions }) {
   const router = useRouter();
   const { mode, playerId, playerProfile, connections, goals, viewerId } = useOsData();
   const isReal = mode !== 'demo';
-  const identityRows: [string, string][] = isReal
+  const identityRows: PreferenceRow[] = isReal
     ? [
-        ['Primary position', playerProfile.position || 'Not set'],
-        ['Football age group', playerProfile.ageGroup ?? 'Not set'],
-        ['Favourite player', playerProfile.favouritePlayer ?? 'Not set'],
-        ['Football ambition', playerProfile.footballAmbition ?? 'Not set'],
+        { label: 'Primary position', value: playerProfile.position || 'Not set' },
+        // Coach-managed — the badge, not an input, is what communicates
+        // that (see Player Preferences' Edit form below, which never
+        // includes this row). Matches the approved prototype's own
+        // ProfileView.tsx exactly.
+        { label: 'Football age group', value: playerProfile.footballAgeGroup ?? 'Not set', badge: 'Set by coach' },
+        { label: 'Favourite player', value: playerProfile.favouritePlayer ?? 'Not set' },
+        { label: 'Football ambition', value: playerProfile.footballAmbition ?? 'Not set' },
       ]
     : DEMO_IDENTITY;
   const refreshOsData = useRefreshOsData();
@@ -170,6 +176,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
   const [footballAmbition, setFootballAmbition] = useState(playerProfile.footballAmbition ?? '');
   const [position, setPosition] = useState(playerProfile.position ?? '');
   const [editStatus, setEditStatus] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [positionNotice, setPositionNotice] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
@@ -189,30 +196,36 @@ export default function Profile({ actions }: { actions: OsActions }) {
     e.preventDefault();
     if (!playerId || editStatus === 'saving') return;
     setEditStatus('saving');
+    setPositionNotice(null);
     const trimmedPosition = position.trim();
-    const requests = [
-      fetch(`/api/os/players/${playerId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ favouritePlayer, footballAmbition }),
-      }),
-    ];
-    // Position has its own route/RLS policy (guardian-only, distinct from
-    // secondary_position's coach-only RPC) — never sent blank, since the
-    // route rejects an empty value and every player has a real position.
-    if (trimmedPosition) {
-      requests.push(
-        fetch(`/api/os/players/${playerId}/position`, {
+    const identityRequest = fetch(`/api/os/players/${playerId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ favouritePlayer, footballAmbition }),
+    });
+    // Position has its own route (guardian-only update_primary_position
+    // RPC, distinct from secondary_position's coach-only RPC) — never sent
+    // blank, since the route rejects an empty value and every player has a
+    // real position. A collision with a coach-set secondary_position is
+    // resolved atomically server-side (secondary_position cleared, never a
+    // raw constraint error) — surfaced below, not silently dropped.
+    const positionRequest = trimmedPosition
+      ? fetch(`/api/os/players/${playerId}/position`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ position: trimmedPosition }),
         })
-      );
-    }
-    const results = await Promise.all(requests);
-    if (results.some((res) => !res.ok)) {
+      : null;
+    const [identityRes, positionRes] = await Promise.all([identityRequest, positionRequest]);
+    if (!identityRes.ok || (positionRes && !positionRes.ok)) {
       setEditStatus('error');
       return;
+    }
+    if (positionRes) {
+      const positionResult = (await positionRes.json()) as { secondaryPositionCleared?: boolean };
+      if (positionResult.secondaryPositionCleared) {
+        setPositionNotice('Secondary position cleared — it matched the new primary position.');
+      }
     }
     setEditStatus('idle');
     setShowEdit(false);
@@ -284,6 +297,19 @@ export default function Profile({ actions }: { actions: OsActions }) {
   return (
     <>
       <div onMouseMove={actions.tiltMove} onMouseLeave={actions.tiltReset} style={{ background: 'var(--os-card)', borderRadius: 20, padding: 18, boxShadow: '0 10px 26px -16px rgba(0,0,0,.22)', marginBottom: 16 }}>
+        {positionNotice && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: '#FFF4E8', border: '1px solid #F0C896', borderRadius: 10, padding: '9px 12px', marginBottom: 14 }}>
+            <span style={{ fontFamily: 'Roboto', fontSize: 12.5, color: '#8A5A1E' }}>{positionNotice}</span>
+            <button
+              type="button"
+              onClick={() => setPositionNotice(null)}
+              aria-label="Dismiss"
+              style={{ background: 'none', border: 'none', color: '#8A5A1E', fontSize: 15, lineHeight: 1, cursor: 'pointer', padding: 2 }}
+            >
+              ×
+            </button>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 14, marginBottom: 16 }}>
           {isReal && !playerProfile.photoUrl ? (
             <div
@@ -336,10 +362,17 @@ export default function Profile({ actions }: { actions: OsActions }) {
             </div>
           )}
         </div>
-        {identityRows.map(([k, v]) => (
-          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid rgba(0,0,0,.05)' }}>
-            <span style={{ fontSize: 13.5, color: '#6B6357' }}>{k}</span>
-            <span style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, color: '#E97435' }}>{v}</span>
+        {identityRows.map((row) => (
+          <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid rgba(0,0,0,.05)', gap: 10 }}>
+            <span style={{ fontSize: 13.5, color: '#6B6357' }}>{row.label}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+              <span style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, color: '#E97435', textAlign: 'right' }}>{row.value}</span>
+              {row.badge && (
+                <span style={{ flex: '0 0 auto', fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 9, letterSpacing: '.04em', textTransform: 'uppercase', color: 'var(--os-muted)', background: 'rgba(0,0,0,.05)', padding: '3px 7px', borderRadius: 999, whiteSpace: 'nowrap' }}>
+                  {row.badge}
+                </span>
+              )}
+            </span>
           </div>
         ))}
         {isReal && showEdit && (

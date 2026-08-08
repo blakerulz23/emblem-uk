@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useOsData, useRefreshOsData } from '../OsDataContext';
 import { onActivateKey } from '../a11y';
@@ -10,6 +10,8 @@ import type { OsActions } from '../OsApp';
 import { GuardianStatusRow } from './CoachTeam';
 import GuardianInviteSheet from '../overlays/GuardianInviteSheet';
 import EmptyState from './EmptyState';
+import type { PreferredFoot } from '../coachFields';
+import { AGE_GROUP_OPTIONS, FOOT_OPTIONS, POSITION_OPTIONS, calculateAge, formatAge, positionLabel, validateDateOfBirth, validateHeightCm } from '../coachFields';
 
 /** "15 Aug 2026" — matches RealCollection/PlayerHome's date convention. */
 function formatDate(iso: string): string {
@@ -21,6 +23,8 @@ function formatDate(iso: string): string {
 const sectionCard = { background: 'var(--os-card)', borderRadius: 16, padding: 16, marginBottom: 14, boxShadow: '0 6px 18px -14px rgba(0,0,0,.2)' };
 const sectionTitle = { fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)', marginBottom: 10 };
 const inputStyle = { padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 14, width: '100%', boxSizing: 'border-box' as const };
+const fieldLabel = { fontSize: 11.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase' as const, color: 'var(--os-muted)' };
+const clearLinkStyle = { background: 'none', border: 'none', padding: '2px 4px', minHeight: 28, fontFamily: 'Roboto', fontWeight: 700, fontSize: 11.5, color: 'var(--os-muted)', cursor: 'pointer' as const };
 const addButtonStyle = (disabled: boolean) => ({
   background: disabled ? 'rgba(233,116,53,.4)' : '#E97435',
   color: '#fff', border: 'none', borderRadius: 10, padding: '10px 16px',
@@ -65,10 +69,151 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
 
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const [editingSecondary, setEditingSecondary] = useState(false);
-  const [secondaryDraft, setSecondaryDraft] = useState(player?.secondaryPosition ?? '');
-  const [secondaryBusy, setSecondaryBusy] = useState(false);
-  const [secondaryError, setSecondaryError] = useState('');
+  // Player information — date of birth, football age group, height,
+  // preferred foot, secondary position, all coach-managed, one atomic
+  // Save. Matches the approved design prototype's CoachDetailView.tsx
+  // exactly (src/app/os/prototype-player-profile) — same fields, same
+  // controls, same interaction pattern, adapted from mock state to a real
+  // fetch/save round trip.
+  //
+  // dateOfBirth/age are the only two of these five facts NOT already
+  // present on `player` (SquadPlayer never carries them — see
+  // get_player_date_of_birth's own comment for why) — fetched here,
+  // specifically because this screen is opening for this one player, via
+  // GET .../coach-fields. committedDob is what isDirty compares dobDraft
+  // against; it only ever changes when a fresh fetch resolves or a save
+  // succeeds, never on every render.
+  const [committedDob, setCommittedDob] = useState<string | null>(null);
+  const [coachAge, setCoachAge] = useState<number | null>(null);
+  const [dobDraft, setDobDraft] = useState('');
+  const [coachFieldsLoading, setCoachFieldsLoading] = useState(true);
+  const [coachFieldsLoadError, setCoachFieldsLoadError] = useState(false);
+  // Same coach-fields fetch also returns a signed photo URL — see the GET
+  // route's own comment for why it's fetched here (on demand, this one
+  // player) rather than bulk-loaded onto every squad row.
+  const [coachPhotoUrl, setCoachPhotoUrl] = useState<string | null>(null);
+
+  const [ageGroupDraft, setAgeGroupDraft] = useState<string | null>(player?.footballAgeGroup ?? null);
+  const [heightDraft, setHeightDraft] = useState(player?.heightCm != null ? String(player.heightCm) : '');
+  const [footDraft, setFootDraft] = useState<PreferredFoot | null>(player?.preferredFoot ?? null);
+  const [secondaryPositionDraft, setSecondaryPositionDraft] = useState<string | null>(player?.secondaryPosition ?? null);
+  const [coachFieldsSaveStatus, setCoachFieldsSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+
+  // Re-fetch date of birth/age whenever this screen opens for a
+  // (potentially different) player — never bundled into the squad list
+  // fetch. Reset to a neutral blank state at the start, not just on
+  // success, so switching from one player's detail straight to another's
+  // (this component re-renders with a new playerId prop rather than
+  // remounting) never briefly shows the previous player's date.
+  useEffect(() => {
+    if (!isReal) {
+      setCoachFieldsLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCommittedDob(null);
+    setCoachAge(null);
+    setDobDraft('');
+    setCoachPhotoUrl(null);
+    setCoachFieldsLoading(true);
+    setCoachFieldsLoadError(false);
+    fetch(`/api/os/players/${playerId}/coach-fields`)
+      .then((res) => {
+        if (!res.ok) throw new Error('failed to load');
+        return res.json() as Promise<{ age: number | null; dateOfBirth: string | null; photoUrl: string | null }>;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setCoachAge(data.age);
+        setCommittedDob(data.dateOfBirth);
+        setDobDraft(data.dateOfBirth ?? '');
+        setCoachPhotoUrl(data.photoUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setCoachFieldsLoadError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setCoachFieldsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isReal, playerId]);
+
+  // The other four fields *are* already on `player` (bulk-loaded with the
+  // squad) — re-synced here so switching between players' detail screens
+  // (a re-render, not a remount) never leaves a stale draft from whichever
+  // player was open before.
+  useEffect(() => {
+    setAgeGroupDraft(player?.footballAgeGroup ?? null);
+    setHeightDraft(player?.heightCm != null ? String(player.heightCm) : '');
+    setFootDraft(player?.preferredFoot ?? null);
+    setSecondaryPositionDraft(player?.secondaryPosition ?? null);
+    setCoachFieldsSaveStatus('idle');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerId]);
+
+  const dobValidationError = dobDraft ? validateDateOfBirth(dobDraft) : null;
+  const heightValidationError = validateHeightCm(heightDraft);
+  const normalizedDobDraft = dobDraft.trim() === '' ? null : dobDraft;
+  const heightDraftNum = heightDraft.trim() === '' ? null : Number(heightDraft);
+
+  const coachFieldsDirty =
+    normalizedDobDraft !== committedDob ||
+    ageGroupDraft !== (player?.footballAgeGroup ?? null) ||
+    heightDraftNum !== (player?.heightCm ?? null) ||
+    footDraft !== (player?.preferredFoot ?? null) ||
+    secondaryPositionDraft !== (player?.secondaryPosition ?? null);
+
+  const coachFieldsCanSave =
+    coachFieldsDirty && !dobValidationError && !heightValidationError && coachFieldsSaveStatus !== 'saving' && !coachFieldsLoading;
+
+  const saveCoachFields = async () => {
+    if (!coachFieldsCanSave) return;
+    setCoachFieldsSaveStatus('saving');
+    try {
+      const res = await fetch(`/api/os/players/${playerId}/coach-fields`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dateOfBirth: normalizedDobDraft,
+          footballAgeGroup: ageGroupDraft,
+          heightCm: heightDraftNum,
+          preferredFoot: footDraft,
+          secondaryPosition: secondaryPositionDraft,
+        }),
+      });
+      if (!res.ok) {
+        setCoachFieldsSaveStatus('error');
+        return;
+      }
+      setCommittedDob(normalizedDobDraft);
+      // Age isn't part of squad/router.refresh() data at all (it's fetched
+      // separately, on purpose — see the effect above) — computed directly
+      // here so it's correct immediately, not just after some other
+      // unrelated refresh happens to also re-trigger the GET.
+      setCoachAge(calculateAge(normalizedDobDraft));
+      setCoachFieldsSaveStatus('success');
+      // Squad (footballAgeGroup/heightCm/preferredFoot/secondaryPosition/
+      // coachFieldsUpdatedAt) comes from the server component's own
+      // getOsData() call — router.refresh() is what makes those five
+      // reflect the save, same pattern this file's other write actions
+      // already use (shareAssessment/addStrength/addFocus below).
+      router.refresh();
+      setTimeout(() => setCoachFieldsSaveStatus('idle'), 1800);
+    } catch {
+      setCoachFieldsSaveStatus('error');
+    }
+  };
+
+  const cancelCoachFields = () => {
+    setDobDraft(committedDob ?? '');
+    setAgeGroupDraft(player?.footballAgeGroup ?? null);
+    setHeightDraft(player?.heightCm != null ? String(player.heightCm) : '');
+    setFootDraft(player?.preferredFoot ?? null);
+    setSecondaryPositionDraft(player?.secondaryPosition ?? null);
+    setCoachFieldsSaveStatus('idle');
+  };
 
   const [assessmentDraft, setAssessmentDraft] = useState('');
   const [assessmentOpen, setAssessmentOpen] = useState(false);
@@ -130,33 +275,6 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
   const pending = verifyQueue.filter((v) => v.playerId === playerId);
   const latestAssessment = player.assessments[0] ?? null;
   const activeFocusCount = player.seasonFocus.filter((f) => f.status === 'active').length;
-
-  const startEditSecondary = () => {
-    setSecondaryDraft(player.secondaryPosition ?? '');
-    setSecondaryError('');
-    setEditingSecondary(true);
-  };
-
-  const saveSecondary = async () => {
-    setSecondaryBusy(true);
-    setSecondaryError('');
-    try {
-      const res = await fetch(`/api/os/players/${playerId}/secondary-position`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ secondaryPosition: secondaryDraft.trim() || null }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setSecondaryError(data.error || 'Could not save that');
-        return;
-      }
-      setEditingSecondary(false);
-      router.refresh();
-    } finally {
-      setSecondaryBusy(false);
-    }
-  };
 
   const shareAssessment = async () => {
     const trimmed = assessmentDraft.trim();
@@ -239,45 +357,208 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
       {/* Identity */}
       <div style={sectionCard}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'linear-gradient(150deg,#E9C46A,#C98B3A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto', fontFamily: 'Roboto', fontWeight: 900, fontSize: 17, color: '#fff' }}>{initials}</div>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', flex: '0 0 auto', position: 'relative', overflow: 'hidden', background: coachPhotoUrl ? '#00000010' : 'linear-gradient(150deg,#E9C46A,#C98B3A)' }}>
+            {coachPhotoUrl ? (
+              <img src={coachPhotoUrl} alt={player.name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
+            ) : (
+              <span aria-hidden="true" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Roboto', fontWeight: 900, fontSize: 17, color: '#fff' }}>{initials}</span>
+            )}
+          </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 18, color: 'var(--os-ink)' }}>{player.name}</div>
             <div style={{ fontSize: 12.5, color: 'var(--os-muted)' }}>#{player.num} · {player.pos}</div>
             <GuardianStatusRow player={player} onAction={() => setSheetOpen(true)} />
           </div>
         </div>
+      </div>
 
-        <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--os-border)' }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--os-muted)', marginBottom: 6 }}>Secondary Position</div>
-          {isReal && editingSecondary ? (
-            <div style={{ display: 'flex', gap: 8 }}>
+      {/* Player information — date of birth, football age group, height,
+          preferred foot, secondary position. Same fields, same controls,
+          same single-Save interaction as the approved design prototype's
+          Coach Player Details screen. */}
+      <div style={sectionCard}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
+          <span style={sectionTitle}>Player information</span>
+          <span style={{ fontSize: 11, color: 'var(--os-muted)' }}>
+            {player.coachFieldsUpdatedAt ? `Updated ${formatDate(player.coachFieldsUpdatedAt)}` : 'Not yet updated'}
+          </span>
+        </div>
+
+        {!isReal ? (
+          // Demo mode previews the read layout only — demo SquadPlayer
+          // rows never carry a date of birth (there's no real session for
+          // get_player_date_of_birth to authenticate with anyway, same
+          // isReal-gating this file already applies to the presence
+          // heartbeat/live-content hooks above), so there is no age row
+          // to fake here.
+          <>
+            <PlayerInfoRow label="Football age group" value={player.footballAgeGroup ?? 'Not set'} />
+            <PlayerInfoRow label="Height" value={player.heightCm ? `${player.heightCm} cm` : 'Not set'} />
+            <PlayerInfoRow label="Preferred foot" value={player.preferredFoot ?? 'Not set'} />
+            <PlayerInfoRow label="Secondary position" value={positionLabel(player.secondaryPosition)} last />
+          </>
+        ) : coachFieldsLoading ? (
+          <p style={{ fontSize: 13, color: 'var(--os-muted)' }}>Loading…</p>
+        ) : coachFieldsLoadError ? (
+          <p role="alert" style={{ fontSize: 13, color: '#C0392B' }}>Couldn&apos;t load this player&apos;s details — try again.</p>
+        ) : (
+          <>
+            {/* Date of birth */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={fieldLabel}>Date of birth</span>
+                {dobDraft && <button type="button" onClick={() => setDobDraft('')} style={clearLinkStyle}>Clear</button>}
+              </div>
               <input
-                value={secondaryDraft}
-                onChange={(e) => setSecondaryDraft(e.target.value)}
-                placeholder="e.g. Winger"
-                autoFocus
-                style={{ ...inputStyle, flex: 1 }}
+                type="date"
+                value={dobDraft}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setDobDraft(e.target.value)}
+                style={inputStyle}
+                aria-invalid={!!dobValidationError}
+                aria-describedby="coach-dob-help"
               />
-              <button type="button" onClick={saveSecondary} disabled={secondaryBusy} style={{ ...addButtonStyle(secondaryBusy), marginTop: 0, flex: '0 0 auto' }}>
-                {secondaryBusy ? 'Saving…' : 'Save'}
+              <p id="coach-dob-help" style={{ fontSize: 12, color: dobValidationError ? '#C0392B' : 'var(--os-muted)', margin: '6px 0 0' }}>
+                {dobValidationError ?? `Age: ${formatAge(coachAge)}. Not shown to players or guardians — only the calculated age appears on Player OS.`}
+              </p>
+            </div>
+
+            {/* Football age group */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={fieldLabel}>Assigned football age group</span>
+                {ageGroupDraft && <button type="button" onClick={() => setAgeGroupDraft(null)} style={clearLinkStyle}>Clear</button>}
+              </div>
+              <div className="coach-field-hscroll" role="radiogroup" aria-label="Assigned football age group" style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', paddingBottom: 2 }}>
+                {AGE_GROUP_OPTIONS.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    role="radio"
+                    aria-checked={ageGroupDraft === g}
+                    onClick={() => setAgeGroupDraft(g)}
+                    style={{
+                      flex: '0 0 auto', fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, padding: '9px 14px', minHeight: 40, borderRadius: 999,
+                      border: `1px solid ${ageGroupDraft === g ? '#E97435' : 'var(--os-border)'}`,
+                      background: ageGroupDraft === g ? 'rgba(233,116,53,.12)' : 'var(--os-card)',
+                      color: ageGroupDraft === g ? '#C4501C' : 'var(--os-ink)', cursor: 'pointer', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--os-muted)', margin: '6px 0 0' }}>
+                Not the same as age — a player can be assigned an older group if they&apos;re playing up.
+              </p>
+            </div>
+
+            {/* Height */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={fieldLabel}>Height</span>
+                {heightDraft && <button type="button" onClick={() => setHeightDraft('')} style={clearLinkStyle}>Clear</button>}
+              </div>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={heightDraft}
+                  onChange={(e) => setHeightDraft(e.target.value)}
+                  placeholder="e.g. 138"
+                  style={{ ...inputStyle, paddingRight: 44 }}
+                  aria-invalid={!!heightValidationError}
+                  aria-describedby="coach-height-help"
+                />
+                <span aria-hidden="true" style={{ position: 'absolute', right: 13, top: '50%', transform: 'translateY(-50%)', fontSize: 13, fontWeight: 700, color: 'var(--os-muted)' }}>cm</span>
+              </div>
+              {heightValidationError && <p id="coach-height-help" style={{ fontSize: 12, color: '#C0392B', margin: '6px 0 0' }}>{heightValidationError}</p>}
+            </div>
+
+            {/* Preferred foot */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={fieldLabel}>Preferred foot</span>
+                {footDraft && <button type="button" onClick={() => setFootDraft(null)} style={clearLinkStyle}>Clear</button>}
+              </div>
+              <div role="radiogroup" aria-label="Preferred foot" style={{ display: 'flex', borderRadius: 12, border: '1px solid var(--os-border)', overflow: 'hidden' }}>
+                {FOOT_OPTIONS.map((f, i) => (
+                  <button
+                    key={f}
+                    type="button"
+                    role="radio"
+                    aria-checked={footDraft === f}
+                    onClick={() => setFootDraft(f)}
+                    style={{
+                      flex: 1, minHeight: 44, border: 'none', borderLeft: i > 0 ? '1px solid var(--os-border)' : 'none',
+                      background: footDraft === f ? '#E97435' : 'var(--os-card)', color: footDraft === f ? '#fff' : 'var(--os-ink)',
+                      fontFamily: 'Roboto', fontWeight: 700, fontSize: 13.5, cursor: 'pointer',
+                    }}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Secondary position */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={fieldLabel}>Secondary position</span>
+                {secondaryPositionDraft && <button type="button" onClick={() => setSecondaryPositionDraft(null)} style={clearLinkStyle}>Clear</button>}
+              </div>
+              <div role="radiogroup" aria-label="Secondary position" style={{ display: 'flex', gap: 8, overflowX: 'auto', overflowY: 'hidden', paddingBottom: 2 }}>
+                {POSITION_OPTIONS.filter((p) => p.code !== player.pos && p.label !== player.pos).map((p) => (
+                  <button
+                    key={p.code}
+                    type="button"
+                    role="radio"
+                    aria-checked={secondaryPositionDraft === p.code}
+                    title={p.label}
+                    onClick={() => setSecondaryPositionDraft(p.code)}
+                    style={{
+                      flex: '0 0 auto', fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, padding: '9px 14px', minHeight: 40, borderRadius: 999,
+                      border: `1px solid ${secondaryPositionDraft === p.code ? '#E97435' : 'var(--os-border)'}`,
+                      background: secondaryPositionDraft === p.code ? 'rgba(233,116,53,.12)' : 'var(--os-card)',
+                      color: secondaryPositionDraft === p.code ? '#C4501C' : 'var(--os-ink)', cursor: 'pointer', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {p.code}
+                  </button>
+                ))}
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--os-muted)', margin: '6px 0 0' }}>
+                {player.pos} is already the primary position, so it isn&apos;t offered here.
+              </p>
+            </div>
+
+            {coachFieldsSaveStatus === 'error' && (
+              <p role="alert" style={{ fontSize: 12.5, color: '#C0392B', margin: '14px 0 0' }}>Couldn&apos;t save those changes — your edits are still here, try again.</p>
+            )}
+            {coachFieldsSaveStatus === 'success' && (
+              <p role="status" style={{ fontSize: 12.5, color: '#2E9E5B', margin: '14px 0 0' }}>Saved</p>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button
+                type="button"
+                onClick={cancelCoachFields}
+                disabled={!coachFieldsDirty || coachFieldsSaveStatus === 'saving'}
+                style={{ flex: 1, minHeight: 46, borderRadius: 12, background: 'none', border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontWeight: 700, fontSize: 14, color: 'var(--os-ink)', cursor: coachFieldsDirty ? 'pointer' : 'default', opacity: coachFieldsDirty ? 1 : 0.5 }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveCoachFields}
+                disabled={!coachFieldsCanSave}
+                style={{ flex: 1, minHeight: 46, borderRadius: 12, background: coachFieldsCanSave ? '#E97435' : 'rgba(233,116,53,.35)', border: 'none', fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: '#fff', cursor: coachFieldsCanSave ? 'pointer' : 'default' }}
+              >
+                {coachFieldsSaveStatus === 'saving' ? 'Saving…' : 'Save'}
               </button>
             </div>
-          ) : isReal ? (
-            <div
-              onClick={startEditSecondary}
-              role="button"
-              tabIndex={0}
-              onKeyDown={onActivateKey(startEditSecondary)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-            >
-              <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 14, color: 'var(--os-ink)' }}>{player.secondaryPosition ?? 'Not set'}</span>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#E97435' }}>Edit</span>
-            </div>
-          ) : (
-            <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 14, color: 'var(--os-ink)' }}>{player.secondaryPosition ?? 'Not set'}</span>
-          )}
-          {secondaryError && <p role="alert" style={{ color: '#C0392B', fontSize: 12.5, marginTop: 6 }}>{secondaryError}</p>}
-        </div>
+          </>
+        )}
       </div>
 
       {/* Pending recognition */}
@@ -459,5 +740,16 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
 
       {sheetOpen && <GuardianInviteSheet player={player} onClose={() => setSheetOpen(false)} />}
     </>
+  );
+}
+
+/** Demo-mode's read-only preview of a Player information row — real mode
+ * uses the interactive controls above instead. */
+function PlayerInfoRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: last ? 'none' : '1px solid rgba(0,0,0,.05)' }}>
+      <span style={{ fontSize: 13.5, color: '#6B6357' }}>{label}</span>
+      <span style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, color: 'var(--os-ink)' }}>{value}</span>
+    </div>
   );
 }

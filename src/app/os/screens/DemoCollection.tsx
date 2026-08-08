@@ -85,7 +85,7 @@ export default function DemoCollection({ actions }: { actions: OsActions }) {
                         {/* Career Moment — supporting metadata, a real ever-counting position, never a fraction of a fixed total. */}
                         <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10.5, color: 'rgba(255,255,255,.65)', marginTop: 3 }}>Career Moment {num}</div>
                         {/* Season context — tertiary. */}
-                        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 500, fontSize: 9.5, color: 'rgba(255,255,255,.4)', marginTop: 2 }}>{PLAYER_PROFILE.ageGroup} • {m.date}</div>
+                        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 500, fontSize: 9.5, color: 'rgba(255,255,255,.4)', marginTop: 2 }}>{PLAYER_PROFILE.footballAgeGroup} • {m.date}</div>
                       </div>
                     </div>
                   </div>
