@@ -26,6 +26,18 @@ const STALE_INTERVAL_MS = 45_000;
  * wrongly steal a horizontal carousel swipe). */
 const GESTURE_INTENT_DEADZONE = 6;
 
+/** The real document's own scroll position — #os-scroll (scrollRef's
+ * target) no longer scrolls itself (see .emblem-os-shell in os.css: the
+ * page scrolls for real now, so mobile Safari can auto-collapse its own
+ * toolbar), so "are we at the top of the content" has to be read from the
+ * document, not from the element the gesture listeners happen to attach
+ * to. document.documentElement.scrollTop is the fallback for the rare case
+ * window.scrollY isn't available (SSR guards elsewhere already ensure this
+ * only ever runs client-side, but this keeps the helper self-contained). */
+function getPageScrollTop(): number {
+  return window.scrollY || document.documentElement.scrollTop || 0;
+}
+
 function isTextEntryFocused(): boolean {
   const active = document.activeElement as HTMLElement | null;
   if (!active) return false;
@@ -143,7 +155,7 @@ export function useOsRefresh({ scrollRef, disabled }: { scrollRef: RefObject<HTM
     if (!el) return;
 
     const onTouchStart = (e: TouchEvent) => {
-      if (disabled || statusRef.current === 'refreshing' || isTextEntryFocused() || el.scrollTop > 0) {
+      if (disabled || statusRef.current === 'refreshing' || isTextEntryFocused() || getPageScrollTop() > 0) {
         gestureRef.current = null;
         return;
       }
@@ -172,9 +184,9 @@ export function useOsRefresh({ scrollRef, disabled }: { scrollRef: RefObject<HTM
       }
       if (g.intent !== 'vertical') return;
 
-      if (el.scrollTop > 0 || dy <= 0) {
-        // The container scrolled away from the top mid-gesture (e.g. the
-        // pull itself caused a frame of native scroll before we started
+      if (getPageScrollTop() > 0 || dy <= 0) {
+        // The page scrolled away from the top mid-gesture (e.g. the pull
+        // itself caused a frame of native scroll before we started
         // resisting), or the finger reversed direction — abandon cleanly
         // rather than fight the browser for control of the touch.
         g.tracking = false;

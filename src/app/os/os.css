@@ -37,50 +37,71 @@
   font-family: 'Roboto', sans-serif;
   background: var(--os-desk);
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--os-desk-padding-y) 12px;
+  /* Top padding also clears the notch/Dynamic Island/status bar in
+     standalone or viewport-fit=cover contexts (see the os/layout.tsx
+     viewport export) — env() resolves to 0px on devices/browsers that
+     don't need it, so this is a no-op there. Bottom keeps the plain desk
+     gap only; the dock's own clearance is handled separately (env() +
+     --os-dock-margin-bottom) in OSBottomNavigation.tsx and #os-scroll's
+     padding, since it needs to be exact, not just "some space". */
+  padding-top: calc(var(--os-desk-padding-y) + env(safe-area-inset-top, 0px));
+  padding-right: 12px;
+  padding-bottom: var(--os-desk-padding-y);
+  padding-left: 12px;
   transition: background .35s ease;
 }
 
 /**
  * The centred "phone" column every OS screen renders inside (OsApp.tsx).
- * Capped to the real visible viewport height minus the desk's own top+
- * bottom padding — not just a *minimum*, and not a bare 100dvh either — so
- * the column's rendered box (shell + desk padding together) never exceeds
- * one real viewport height. That second part matters specifically because
- * the fixed bottom nav anchors to the true viewport, not to this column: a
- * bare 100dvh shell centred inside the desk's own padding pushes the
- * shell's bottom edge (and #os-scroll's content-relative bottom padding,
- * which is what's supposed to clear the fixed nav) below the visible
- * viewport by the desk's own padding amount — the nav would then sit
- * correctly, but #os-scroll's reserved clearance would land past the fold,
- * and the last real row on a screen like Profile ends up hidden behind the
- * nav instead of above it (confirmed empirically during this feature's own
- * visual testing). Subtracting the desk padding here keeps the shell's own
- * box exactly viewport-sized with no overflow, so #os-scroll's
- * bottom-relative padding and the nav's viewport-relative position agree.
+ *
+ * min-height, not height: a fixed, exactly-one-viewport height forced
+ * every screen's content to scroll inside a nested div (#os-scroll)
+ * instead of the real document — and mobile Safari only ever auto-hides
+ * its own toolbar in response to scrolling the actual document, never an
+ * inner div. With a fixed-height shell the toolbar simply never collapses,
+ * permanently eating space alongside the floating dock (the reported bug).
+ * min-height keeps today's exact look on short screens (the shell still
+ * fills one viewport, centred in the desk background) while letting it
+ * grow with content on long ones, so html/body genuinely have scrollable
+ * overflow and Safari can show/hide its own chrome normally.
+ *
+ * Every full-screen overlay (MomentStage, CollectibleViewer, AddMomentFlow,
+ * CelebrateSheet, StoryUpdates, ActivationGate, GuardianInviteSheet) still
+ * assumes this element — or a container exactly matching the viewport — is
+ * its `position: absolute` containing block. See OsApp.tsx's two `position:
+ * fixed` overlay wrappers (and GuardianInviteSheet's own fixed root) for
+ * how that's kept correct now that this box can be taller than one screen.
  *
  * height is declared twice on purpose: 100vh first as a fallback for
  * browsers without dvh support, then 100dvh — a browser that understands
  * dvh uses the second (correctly excluding mobile browser chrome); one that
- * doesn't drops the invalid declaration and keeps the first. This is the
- * one layout property that genuinely needs a real stylesheet rule instead
- * of an inline style, since inline style objects can't express a fallback
- * chain for the same property.
+ * doesn't drops the invalid declaration and keeps the first.
  */
 .emblem-os-shell {
   position: relative;
   width: 100%;
   max-width: var(--os-app-max-width);
   margin: 0 auto;
-  height: calc(100vh - (var(--os-desk-padding-y) * 2));
-  height: calc(100dvh - (var(--os-desk-padding-y) * 2));
+  min-height: calc(100vh - (var(--os-desk-padding-y) * 2));
+  min-height: calc(100dvh - (var(--os-desk-padding-y) * 2));
   background: var(--os-screen);
   display: flex;
   flex-direction: column;
   transition: background .35s ease;
+}
+
+/* Real document scroll (see .emblem-os-shell above) now drives Safari's
+   own toolbar collapse — this stops that scroll's native rubber-band/
+   overscroll from also visually shifting content while pull-to-refresh's
+   own transform-based pull animation is in play (useOsRefresh.ts).
+   Scoped to the body only while Emblem OS is actually mounted (toggled in
+   OsApp.tsx), never applied to marketing/staff/builder pages. */
+body.emblem-os-active {
+  overscroll-behavior-y: contain;
 }
 
 /**

@@ -551,6 +551,14 @@ export default function OsApp({
   const anyOverlayOpen =
     !state.activated || !!state.moment || !!state.collectible || !!state.celeb ||
     state.storyUpdatesOpen || state.addOpen || state.addStep > 0 || state.addUnlock;
+  /** anyOverlayOpen minus ActivationGate (which gets its own `position:
+   * fixed` wrapper further up, since it renders before the top bar) — used
+   * to guard the *other* five overlays' shared wrapper below so that
+   * wrapper is never mounted empty. An always-mounted `position: fixed;
+   * inset: 0` div — even with no visible content — still intercepts every
+   * tap across the whole app (a transparent box still hit-tests), so it
+   * must not exist in the DOM at all when nothing inside it is showing. */
+  const anyContentOverlayOpen = anyOverlayOpen && state.activated;
 
   // Pull-to-refresh is disabled whenever anyOverlayOpen is true (covers
   // AddMomentFlow/MomentStage/CollectibleViewer/CelebrateSheet/
@@ -613,21 +621,41 @@ export default function OsApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.tab, isCoach, osData.playerId]);
 
+  // Scopes overscroll-behavior-y: contain (os.css) to the real document
+  // only while Emblem OS is mounted — the page now scrolls for real (see
+  // .emblem-os-shell in os.css), so this has to live on body, not on an
+  // inner div; a class toggled here keeps it from ever touching marketing/
+  // staff/builder pages, which don't import os.css at all.
+  useEffect(() => {
+    document.body.classList.add('emblem-os-active');
+    return () => document.body.classList.remove('emblem-os-active');
+  }, []);
+
   return (
     <OsDataProvider value={initialData ?? DEMO_OS_DATA}>
     <OsRefreshBridge scrollRef={scrollRef} disabled={osRefreshDisabled} onChange={setOsRefresh} onStoryUpdatesChange={handleStoryUpdatesChange} />
     <div className={`emblem-os${state.dark ? ' os-dark' : ''}`}>
       <div className="emblem-os-shell">
 
+          {/* ActivationGate (and everything it renders internally — SignIn,
+              RoleFork, ClaimCodeEntry, etc.) still styles its own root as
+              `position: absolute; inset: 0`, assuming its containing block
+              is exactly one viewport. Now that .emblem-os-shell can grow
+              taller than one viewport (see os.css), that assumption only
+              holds if the containing block is this new `position: fixed`
+              wrapper instead of the shell itself — the wrapper is the only
+              thing that changed; ActivationGate's own file is untouched. */}
           {!state.activated && (
-            <ActivationGate
-              onActivate={actions.activate}
-              hasSession={hasSession}
-              profileRole={profileRole}
-              hasClaimedPlayer={hasClaimedPlayer}
-              hasTeam={hasTeam}
-              cardAlreadyResolved={cardAlreadyResolved}
-            />
+            <div style={{ position: 'fixed', inset: 0, zIndex: 80 }}>
+              <ActivationGate
+                onActivate={actions.activate}
+                hasSession={hasSession}
+                profileRole={profileRole}
+                hasClaimedPlayer={hasClaimedPlayer}
+                hasTeam={hasTeam}
+                cardAlreadyResolved={cardAlreadyResolved}
+              />
+            </div>
           )}
 
           {/* top bar */}
@@ -732,22 +760,33 @@ export default function OsApp({
               starts exactly where the scroll content starts (not the whole
               phone column, which would sit the indicator behind the header);
               overflow:hidden keeps the indicator's reveal clipped to this
-              box rather than poking up over the top bar while idle. */}
-          <div style={{ flex: '1 1 auto', position: 'relative', overflow: 'hidden' }}>
+              box rather than poking up over the top bar while idle.
+              minHeight:'min-content' is load-bearing, not decorative: a
+              flex item whose own overflow isn't `visible` gets an
+              *automatic* minimum size of 0 per the flexbox spec, which
+              would let this box collapse to whatever flex-grow hands it and
+              silently clip (rather than grow for) tall screens — exactly
+              the "inner div absorbs the scroll instead of the real
+              document" bug this whole change exists to avoid. The explicit
+              min-content override restores "grow to fit content" while
+              keeping overflow:hidden's clipping for the indicator. */}
+          <div style={{ flex: '1 1 auto', minHeight: 'min-content', position: 'relative', overflow: 'hidden' }}>
             <OsRefreshIndicator status={osRefresh.status} pullDistance={osRefresh.pullDistance} progress={osRefresh.progress} onRetry={osRefresh.triggerManualRefresh} />
             <div
               id="os-scroll"
               ref={scrollRef}
               style={{
-                height: '100%',
-                overflowY: 'auto',
-                overflowX: 'hidden',
-                // Prevents this drag from also chaining into the browser's
-                // own native pull-to-refresh/rubber-band on the document —
-                // scoped to just this one scrollable element (not a global
-                // touch-action/overscroll change), so nothing else on the
-                // site is affected.
-                overscrollBehaviorY: 'contain',
+                // Deliberately no overflow-x/overflow-y/height at all: this
+                // div no longer scrolls itself (the real document does —
+                // see .emblem-os-shell in os.css) and setting *either*
+                // overflow axis alone (even just overflow-x:hidden) makes
+                // the browser auto-promote the other axis to `auto` per the
+                // CSS Overflow spec ("if one axis is non-visible, used
+                // value of the other becomes auto, never visible") —
+                // silently recreating an internal scroll container here,
+                // confirmed happening during this fix's own testing. The
+                // parent wrapper's own overflow:hidden above already clips
+                // any accidental horizontal overflow, so this needs none.
                 // Pull-to-refresh's own "content follows the finger" — see
                 // useOsRefresh.ts. No transition while actively pulling
                 // (pulling/ready must track the touch 1:1, any transition
@@ -795,19 +834,38 @@ export default function OsApp({
           </div>
           <span className="sr-only" aria-live="polite">{osRefresh.announcement}</span>
 
-          {state.moment && <MomentStage state={state} actions={actions} />}
-          {state.collectible && <CollectibleViewer state={state} actions={actions} />}
+          {/* Same reasoning as the ActivationGate wrapper above: these five
+              overlays' own files are untouched, still `position: absolute;
+              inset: 0` internally — this new `position: fixed` wrapper is
+              what gives them a viewport-anchored containing block again,
+              now that .emblem-os-shell can be taller than one viewport.
+              Guarded by anyContentOverlayOpen (not just always-rendered) so
+              an empty fixed box never sits over the page intercepting taps
+              when none of the five are actually open. */}
+          {anyContentOverlayOpen && (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 40 }}>
+              {state.moment && <MomentStage state={state} actions={actions} />}
+              {state.collectible && <CollectibleViewer state={state} actions={actions} />}
 
-          <AddMomentFlow state={state} actions={actions} fileInputRef={fileInputRef} />
+              <AddMomentFlow state={state} actions={actions} fileInputRef={fileInputRef} />
 
-          {state.celeb && <CelebrateSheet state={state} actions={actions} />}
+              {state.celeb && <CelebrateSheet state={state} actions={actions} />}
 
-          {state.storyUpdatesOpen && (
-            <StoryUpdates updates={storyUpdates} onOpen={actions.openStoryUpdate} onClose={actions.closeStoryUpdates} />
+              {state.storyUpdatesOpen && (
+                <StoryUpdates updates={storyUpdates} onOpen={actions.openStoryUpdate} onClose={actions.closeStoryUpdates} />
+              )}
+            </div>
           )}
 
           {state.sent && (
-            <div style={{ position: 'absolute', left: '50%', bottom: 92, transform: 'translateX(-50%)', zIndex: 60, display: 'flex', alignItems: 'center', gap: 9, background: '#15130F', color: '#fff', borderRadius: 14, padding: '12px 18px', boxShadow: '0 14px 30px -12px rgba(0,0,0,.5)', animation: 'faceIn .3s ease', whiteSpace: 'nowrap' }}>
+            // Fixed, not absolute: .emblem-os-shell (its old containing
+            // block) can now be taller than one viewport on long pages, and
+            // this toast must stay glued just above the dock in the
+            // visible viewport regardless of scroll position — same reason
+            // as the two overlay wrappers above. bottom reuses the dock's
+            // own real geometry instead of the old guessed 92px, so it
+            // never drifts if the dock's own height/margin ever changes.
+            <div style={{ position: 'fixed', left: '50%', bottom: 'calc(env(safe-area-inset-bottom, 0px) + var(--os-dock-margin-bottom) + var(--os-bottom-nav-height) + 18px)', transform: 'translateX(-50%)', zIndex: 60, display: 'flex', alignItems: 'center', gap: 9, background: '#15130F', color: '#fff', borderRadius: 14, padding: '12px 18px', boxShadow: '0 14px 30px -12px rgba(0,0,0,.5)', animation: 'faceIn .3s ease', whiteSpace: 'nowrap' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4FD07E" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
               <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 13.5 }}>Recognition added to their Collection</span>
             </div>

@@ -156,7 +156,14 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
   };
 
   return (
-    <div onClick={onClose} style={{ position: 'absolute', inset: 0, zIndex: 46, background: 'rgba(15,13,11,.5)', display: 'flex', alignItems: 'flex-end' }}>
+    // Fixed, not absolute: unlike OsApp.tsx's own overlays (MomentStage,
+    // CelebrateSheet, etc. — see the position:fixed wrappers added around
+    // those), this sheet is rendered from CoachTeam/CoachPlayerDetail,
+    // themselves inside the scrollable tab content — its nearest positioned
+    // ancestor is no longer guaranteed to be exactly one viewport tall now
+    // that the page scrolls for real (see .emblem-os-shell in os.css), so
+    // it needs its own viewport-anchored containing block directly.
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 46, background: 'rgba(15,13,11,.5)', display: 'flex', alignItems: 'flex-end' }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', background: '#F4F2EE', borderRadius: '26px 26px 0 0', padding: '10px 20px 26px' }}>
         <div style={{ width: 42, height: 5, borderRadius: 4, background: 'rgba(0,0,0,.18)', margin: '0 auto 16px' }} />
 
