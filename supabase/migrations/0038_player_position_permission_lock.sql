@@ -1,0 +1,41 @@
+-- Coach Player Details — Milestone 2, STAGE 2.5 of 5 (position permission
+-- lock).
+--
+-- ============================================================================
+-- DO NOT APPLY until Stage 2 (the application deploy that switches
+-- players/[id]/position/route.ts from a raw `.update()` to the
+-- update_primary_position RPC — created in
+-- 0036_player_coach_fields_secure_expand.sql's Part 5) is confirmed fully
+-- rolled out, with no old instance still calling the raw update.
+--
+-- Why this is its own migration, not folded into 0036 or 0039:
+--   - Not 0036 (Stage 1): at the moment 0036 applies, Stage 0's app
+--     instance is still live and still calls a raw `.update()` on
+--     `position` — revoking that grant in the same migration that adds
+--     date_of_birth would have broken Stage 0 immediately, and 0036's own
+--     header explains exactly why that was the mistake being corrected
+--     this time. `position` has to stay grantable until Stage 2 (a
+--     separate app deploy) has actually replaced every caller of it.
+--   - Not 0039 (Stage 3): 0039 drops the unrelated, already-unused
+--     `age`/`height` columns. Coupling a privilege change to a
+--     destructive, deliberately-deferred cleanup migration would force
+--     this fix to wait on that cleanup's own preconditions (production
+--     stability window, backup, etc. — see 0039's header) for no reason;
+--     the two changes have nothing to do with each other.
+--
+-- What this migration actually closes: between Stage 1 and this file,
+-- `position` is not privacy-sensitive (unlike date_of_birth, there is no
+-- exposure risk in that gap), but it is a real, if narrow, gap: a
+-- guardian's own session could bypass the app entirely and call the raw
+-- REST UPDATE on `position` directly, re-hitting the pre-fix
+-- players_secondary_position_not_primary collision as a raw error instead
+-- of going through update_primary_position's atomic handling. This
+-- migration is what makes that RPC the only effective path — not Stage 1,
+-- and not simply "the one the UI happens to call".
+-- ============================================================================
+revoke update on players from authenticated, anon;
+grant update (photo_key, favourite_player, football_ambition) on players to authenticated;
+-- "position" is the one column deliberately absent from this list, for the
+-- first time in this rollout — update_primary_position
+-- (0036_player_coach_fields_secure_expand.sql, Part 5) is now the only
+-- effective way to change it.
