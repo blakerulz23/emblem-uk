@@ -11,6 +11,8 @@ export default function CoachVerify() {
   const isReal = mode !== 'demo';
   const [items, setItems] = useState<VerifyItem[]>(verifyQueue);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [errorId, setErrorId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Keeps this screen's list in step with any live refresh of the wider
   // OsData snapshot (see below) — demo mode never refreshes, so this is a
@@ -39,17 +41,30 @@ export default function CoachVerify() {
       setItems((current) => current.filter((v) => v.id !== id));
       return;
     }
+    // Guards against a second tap on the same item while its first request
+    // is still in flight — a re-render mid-request could otherwise fire the
+    // approve/reject call twice for one moment.
+    if (busyId === id) return;
     setBusyId(id);
+    setErrorId(null);
+    setErrorMessage(null);
     try {
       const res = await fetch('/api/os/moments/verify', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ momentId: id, decision }),
       });
-      if (res.ok) {
-        setItems((current) => current.filter((v) => v.id !== id));
-        refreshOsData();
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setErrorId(id);
+        setErrorMessage((body && typeof body.error === 'string' && body.error) || 'Could not save your decision — try again.');
+        return; // Item stays in the queue — never removed on failure.
       }
+      setItems((current) => current.filter((v) => v.id !== id));
+      refreshOsData();
+    } catch {
+      setErrorId(id);
+      setErrorMessage('Could not save your decision — check your connection and try again.');
     } finally {
       setBusyId(null);
     }
@@ -100,6 +115,9 @@ export default function CoachVerify() {
               Not this time
             </div>
           </div>
+          {errorId === v.id && errorMessage && (
+            <p style={{ fontSize: 11.5, color: '#C0392B', margin: '10px 0 0', textAlign: 'center' }}>{errorMessage}</p>
+          )}
         </div>
       ))}
     </>

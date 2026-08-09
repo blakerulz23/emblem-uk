@@ -13,14 +13,15 @@ export const runtime = 'nodejs';
  * compliant reading of docs/compliance/children-data-checklist.md's
  * retention concerns, not less.
  *
- * Reject turns RLS's silent zero-row filter into a real error rather than
- * reporting success — same pattern as src/app/api/os/goals/[id]/route.ts.
- * Until migration 0010, `moments` had no DELETE policy at all, so this
- * branch always matched zero rows and still returned { ok: true } with
- * nothing actually deleted — that's the bug this fixes. Approve has the
- * same class of latent gap (an unauthorized coach's update also silently
- * matches zero rows and still returns { ok: true }) but is intentionally
- * left unchanged here — out of this fix's scope, not overlooked.
+ * Both approve and reject turn RLS's silent zero-row filter into a real
+ * error rather than reporting success — same pattern as
+ * src/app/api/os/goals/[id]/route.ts. Reject's version of this predates
+ * approve's (migration 0010 gave `moments` its first DELETE policy; before
+ * that, this branch always matched zero rows and still returned
+ * { ok: true } with nothing actually deleted). Approve had the same class
+ * of latent gap — an unauthorized coach's update also silently matched
+ * zero rows and still returned { ok: true } — left unfixed at the time as
+ * out of scope; closed here as part of the pre-pilot reliability fix pack.
  */
 export async function PATCH(request: NextRequest) {
   const supabase = createClient();
@@ -48,24 +49,28 @@ export async function PATCH(request: NextRequest) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
-    if (moment) {
-      const [{ data: guardianRows }, { data: player }, { data: actor }] = await Promise.all([
-        supabase.from('guardians').select('profile_id').eq('player_id', moment.player_id),
-        supabase.from('players').select('name').eq('id', moment.player_id).maybeSingle(),
-        supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
-      ]);
-      const actorName = actor?.display_name ?? 'Their coach';
-      await generateStoryUpdate({
-        eventType: 'moment_verified',
-        playerId: moment.player_id,
-        actorProfileId: user.id,
-        recipients: (guardianRows ?? []).map((g) => ({ profileId: g.profile_id, presenceScope: `collection:${moment.player_id}` })),
-        title: 'Moment Verified',
-        body: `${actorName} verified ${player?.name ?? 'your player'}'s moment: "${moment.title}"`,
-        relatedMomentId: moment.id,
-      });
+    if (!moment) {
+      return NextResponse.json(
+        { error: "This moment can't be recognised — it may not exist, may already be verified, or you may not have permission" },
+        { status: 403 }
+      );
     }
+
+    const [{ data: guardianRows }, { data: player }, { data: actor }] = await Promise.all([
+      supabase.from('guardians').select('profile_id').eq('player_id', moment.player_id),
+      supabase.from('players').select('name').eq('id', moment.player_id).maybeSingle(),
+      supabase.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
+    ]);
+    const actorName = actor?.display_name ?? 'Their coach';
+    await generateStoryUpdate({
+      eventType: 'moment_verified',
+      playerId: moment.player_id,
+      actorProfileId: user.id,
+      recipients: (guardianRows ?? []).map((g) => ({ profileId: g.profile_id, presenceScope: `collection:${moment.player_id}` })),
+      title: 'Moment Verified',
+      body: `${actorName} verified ${player?.name ?? 'your player'}'s moment: "${moment.title}"`,
+      relatedMomentId: moment.id,
+    });
 
     return NextResponse.json({ ok: true });
   }

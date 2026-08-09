@@ -12,6 +12,7 @@ import EmptyState from './EmptyState';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
 import { formatAge, formatFoot, formatHeightCm, positionLabel } from '../coachFields';
+import { useOsPhotoUpload } from '../useOsPhotoUpload';
 
 /**
  * The digital twin of the physical collectible, present-tense only
@@ -46,7 +47,8 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
   const isReal = mode !== 'demo';
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+  const { status: photoStatus, error: photoError, uploadPhoto } = useOsPhotoUpload(playerId);
+  const uploading = photoStatus === 'uploading';
   const [firstName, ...restName] = PLAYER_PROFILE.name.split(' ');
   const lastName = restName.join(' ');
 
@@ -99,16 +101,11 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
     }
   };
 
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file || !playerId || uploading) return;
-    setUploading(true);
-    const form = new FormData();
-    form.append('file', file);
-    await fetch(`/api/os/players/${playerId}/photo`, { method: 'POST', body: form });
-    setUploading(false);
-    router.refresh();
+    if (!file) return;
+    uploadPhoto(file);
   };
 
   if (!state.flipped) {
@@ -140,6 +137,9 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
             <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onChange={handlePhotoChange} style={{ display: 'none' }} />
             <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--os-muted)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="9" cy="9" r="2" /><path d="M21 15l-5-5L5 21" /></svg>
             <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 14, color: 'var(--os-ink)' }}>{uploading ? 'Uploading…' : 'Add a photo'}</span>
+            {photoStatus === 'error' && (
+              <span style={{ fontFamily: 'Roboto', fontSize: 11.5, color: '#C0392B', textAlign: 'center', padding: '0 16px' }}>{photoError ?? 'Could not upload photo — try again.'}</span>
+            )}
           </div>
         ) : (
           <div onClick={actions.flipCard} onMouseMove={actions.tiltMove} onMouseLeave={actions.tiltReset} style={{ position: 'relative', width: 300, maxWidth: '100%', margin: '14px auto 14px', borderRadius: 18, overflow: 'hidden', boxShadow: '0 26px 50px -18px rgba(0,0,0,.55)', cursor: 'pointer' }}>

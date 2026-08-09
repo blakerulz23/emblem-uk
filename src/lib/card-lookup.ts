@@ -10,7 +10,6 @@ type CardLookupRow = {
     name: string;
     position: string | null;
     public_player_id: string | null;
-    public_id_enabled: boolean;
     teams: {
       name: string;
       clubs: { name: string; badge_url: string | null } | null;
@@ -47,7 +46,7 @@ export async function resolveCardCode(code: string): Promise<CardLookupResult> {
     .select(
       `id, status, player_id, order_id,
        orders ( payment_status ),
-       players ( name, position, public_player_id, public_id_enabled,
+       players ( name, position, public_player_id,
          teams ( name, clubs ( name, badge_url ), seasons ( label ) )
        )`
     )
@@ -65,7 +64,16 @@ export async function resolveCardCode(code: string): Promise<CardLookupResult> {
   }
 
   if (data.status === 'claimed') {
-    if (!data.player_id || !data.players?.public_player_id || !data.players.public_id_enabled) {
+    // Deliberately does NOT check public_id_enabled — that flag governs
+    // whether a stranger can view /player/[publicPlayerId] (enforced there,
+    // by getPublicPlayerProfile), not whether this claim_token resolves to
+    // a player at all. A guardian tapping their own physical card must
+    // always reach their OS regardless of their current Share Profile
+    // setting (src/app/os/page.tsx branches on capabilities.isGuardian,
+    // never on this flag) — conflating the two here previously meant a
+    // guardian who hadn't (yet, or no longer) enabled sharing would be
+    // permanently locked out of tapping back into their own player.
+    if (!data.player_id || !data.players?.public_player_id) {
       return { status: 'claimed_unavailable' };
     }
     return { status: 'claimed', playerId: data.player_id, publicPlayerId: data.players.public_player_id };

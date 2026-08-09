@@ -7,6 +7,7 @@ import { useOsData, useRefreshOsData } from '../OsDataContext';
 import type { OsActions } from '../OsApp';
 import type { SeasonTarget } from '../playerProfile';
 import { onActivateKey } from '../a11y';
+import { useOsPhotoUpload } from '../useOsPhotoUpload';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -178,18 +179,91 @@ export default function Profile({ actions }: { actions: OsActions }) {
   const [editStatus, setEditStatus] = useState<'idle' | 'saving' | 'error'>('idle');
   const [positionNotice, setPositionNotice] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const { status: photoStatus, error: photoError, uploadPhoto } = useOsPhotoUpload(playerId);
+  const uploadingPhoto = photoStatus === 'uploading';
 
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file || !playerId || uploadingPhoto) return;
-    setUploadingPhoto(true);
-    const form = new FormData();
-    form.append('file', file);
-    await fetch(`/api/os/players/${playerId}/photo`, { method: 'POST', body: form });
-    setUploadingPhoto(false);
+    if (!file) return;
+    uploadPhoto(file);
+  };
+
+  // Share Profile — enabling is deliberately tied to this one explicit
+  // action (never automatic on player creation or on claim, see
+  // 0039_guardian_public_profile_control.sql), via the guardian-only
+  // update_player_public_visibility RPC. The
+  // link itself is always the canonical /player/[publicPlayerId] route —
+  // its own field allowlist (src/lib/public-player-profile.ts) is what
+  // keeps DOB/age/coach-only fields out, not anything decided here.
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareStatus, setShareStatus] = useState<'idle' | 'copied' | 'error'>('idle');
+  const [shareError, setShareError] = useState<string | null>(null);
+
+  const setPublicVisibility = async (enabled: boolean): Promise<boolean> => {
+    if (!playerId) return false;
+    const res = await fetch(`/api/os/players/${playerId}/public-profile`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) return false;
     router.refresh();
+    return true;
+  };
+
+  const shareProfile = async () => {
+    if (!playerId || !playerProfile.publicPlayerId || shareBusy) return;
+    setShareBusy(true);
+    setShareStatus('idle');
+    setShareError(null);
+    try {
+      if (!playerProfile.publicIdEnabled) {
+        const ok = await setPublicVisibility(true);
+        if (!ok) {
+          setShareStatus('error');
+          setShareError("Couldn't turn on the public link — try again.");
+          return;
+        }
+      }
+      const url = `${window.location.origin}/player/${playerProfile.publicPlayerId}`;
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        try {
+          await navigator.share({ title: `${playerProfile.name} on Emblem`, url });
+          return; // Native share sheet handled its own feedback.
+        } catch (err) {
+          // A user-cancelled share is not a failure — nothing to report.
+          if (err instanceof Error && err.name === 'AbortError') return;
+          // Any other native-share failure falls through to the clipboard.
+        }
+      }
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        setShareStatus('copied');
+        setTimeout(() => setShareStatus((s) => (s === 'copied' ? 'idle' : s)), 2500);
+      } else {
+        setShareStatus('error');
+        setShareError("Couldn't copy the link automatically — copy it from your browser's address bar instead.");
+      }
+    } catch {
+      setShareStatus('error');
+      setShareError("Couldn't share the link — try again.");
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
+  const turnOffPublicLink = async () => {
+    if (!playerId || shareBusy) return;
+    setShareBusy(true);
+    setShareStatus('idle');
+    setShareError(null);
+    const ok = await setPublicVisibility(false);
+    setShareBusy(false);
+    if (!ok) {
+      setShareStatus('error');
+      setShareError("Couldn't turn off the public link — try again.");
+    }
   };
 
   const saveIdentity = async (e: React.FormEvent) => {
@@ -310,7 +384,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
             </button>
           </div>
         )}
-        <div style={{ display: 'flex', gap: 14, marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 14, marginBottom: playerProfile.photoUrl || photoError ? 6 : 16 }}>
           {isReal && !playerProfile.photoUrl ? (
             <div
               onClick={() => photoInputRef.current?.click()}
@@ -325,12 +399,25 @@ export default function Profile({ actions }: { actions: OsActions }) {
               <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 10.5, color: 'var(--os-ink)', textAlign: 'center' }}>{uploadingPhoto ? 'Uploading…' : 'Add photo'}</span>
             </div>
           ) : (
-            <div data-tiltz="26" style={{ width: 96, height: 120, borderRadius: 14, background: 'linear-gradient(160deg,#E9C46A,#C98B3A)', flex: '0 0 auto', position: 'relative', overflow: 'hidden' }}>
+            <div
+              onClick={isReal ? () => photoInputRef.current?.click() : undefined}
+              role={isReal ? 'button' : undefined}
+              tabIndex={isReal ? 0 : undefined}
+              aria-label={isReal ? 'Replace photo' : undefined}
+              data-tiltz="26"
+              style={{ width: 96, height: 120, borderRadius: 14, background: 'linear-gradient(160deg,#E9C46A,#C98B3A)', flex: '0 0 auto', position: 'relative', overflow: 'hidden', cursor: isReal ? 'pointer' : 'default' }}
+            >
+              {isReal && <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onChange={handlePhotoChange} style={{ display: 'none' }} />}
               <img
                 src={isReal && playerProfile.photoUrl ? playerProfile.photoUrl : `${osAssetPath}/player-ollie.png`}
                 alt={playerProfile.name}
                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }}
               />
+              {isReal && uploadingPhoto && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 10.5, color: '#fff', textAlign: 'center' }}>Uploading…</span>
+                </div>
+              )}
             </div>
           )}
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -340,12 +427,49 @@ export default function Profile({ actions }: { actions: OsActions }) {
             </div>
           </div>
         </div>
+        {photoStatus === 'success' && (
+          <p style={{ fontSize: 11.5, color: '#2E9E5B', margin: '0 0 12px' }}>Photo updated.</p>
+        )}
+        {photoStatus === 'error' && (
+          <p style={{ fontSize: 11.5, color: '#C0392B', margin: '0 0 12px' }}>{photoError ?? 'Could not upload photo — try again.'} The existing photo has been kept.</p>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--os-border)', borderBottom: '1px solid var(--os-border)', padding: '12px 0', marginBottom: 14 }}>
           <div><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>MEMBER SINCE</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.memberSinceYear ?? '—'}</div></div>
           <div style={{ textAlign: 'center' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>SQUAD NUMBER</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.squadNumber ?? '—'}</div></div>
           <div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>SEASON</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.season ?? '—'}</div></div>
         </div>
-        <div style={{ textAlign: 'center', padding: 11, borderRadius: 11, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: 'var(--os-ink)' }}>Share Profile</div>
+        {isReal && playerProfile.publicPlayerId && (
+          <>
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={shareProfile}
+              onKeyDown={onActivateKey(shareProfile)}
+              style={{
+                textAlign: 'center', padding: 11, borderRadius: 11, border: '1px solid var(--os-border)',
+                fontFamily: 'Roboto', fontWeight: 800, fontSize: 13,
+                color: shareStatus === 'copied' ? '#2E9E5B' : 'var(--os-ink)',
+                cursor: shareBusy ? 'default' : 'pointer', opacity: shareBusy ? 0.6 : 1,
+              }}
+            >
+              {shareBusy ? 'Sharing…' : shareStatus === 'copied' ? 'Link copied!' : 'Share Profile'}
+            </div>
+            {shareStatus === 'error' && shareError && (
+              <p style={{ fontSize: 11.5, color: '#C0392B', textAlign: 'center', margin: '8px 0 0' }}>{shareError}</p>
+            )}
+            {playerProfile.publicIdEnabled && (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={turnOffPublicLink}
+                onKeyDown={onActivateKey(turnOffPublicLink)}
+                style={{ textAlign: 'center', marginTop: 8, fontSize: 11.5, color: 'var(--os-muted)', textDecoration: 'underline', cursor: shareBusy ? 'default' : 'pointer' }}
+              >
+                Public link is on — turn off
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: 18, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 16 }}>

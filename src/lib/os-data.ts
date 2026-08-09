@@ -66,6 +66,8 @@ const EMPTY_PLAYER_PROFILE: PlayerProfile = {
   favouritePlayer: null,
   footballAmbition: null,
   secondaryPosition: null,
+  publicPlayerId: null,
+  publicIdEnabled: false,
 };
 
 function deriveGuardianStatus(
@@ -356,7 +358,7 @@ async function getParentOsData(
       // one row). A purely cosmetic formatting choice, not a real runtime
       // behaviour difference — kept single-line to avoid relying on a cast
       // to paper over it.
-      .select('id, name, "position", preferred_foot, height_cm, football_age_group, photo_key, squad_number, created_at, favourite_player, football_ambition, secondary_position, team_id, teams ( name, clubs ( name ), seasons ( label ) )')
+      .select('id, name, "position", preferred_foot, height_cm, football_age_group, photo_key, squad_number, created_at, favourite_player, football_ambition, secondary_position, team_id, public_player_id, public_id_enabled, teams ( name, clubs ( name ), seasons ( label ) )')
       .eq('id', playerId)
       .maybeSingle(),
     // The *only* way this function ever learns this player's age — see
@@ -500,6 +502,7 @@ async function getParentOsData(
     height_cm: number | null; football_age_group: string | null; photo_key: string | null; squad_number: number | null;
     created_at: string | null; favourite_player: string | null; football_ambition: string | null;
     secondary_position: string | null; team_id: string | null;
+    public_player_id: string | null; public_id_enabled: boolean;
     teams: { name: string; clubs: { name: string } | null; seasons: { label: string } | null } | null;
   };
   const player = rawPlayer as unknown as PlayerRow;
@@ -736,6 +739,8 @@ async function getParentOsData(
       favouritePlayer: player.favourite_player ?? null,
       footballAmbition: player.football_ambition ?? null,
       secondaryPosition: player.secondary_position ?? null,
+      publicPlayerId: player.public_player_id ?? null,
+      publicIdEnabled: player.public_id_enabled ?? false,
     },
     skillCategories,
     developmentSeasons,

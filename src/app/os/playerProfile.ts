@@ -51,6 +51,10 @@ export type PlayerProfile = {
   footballAmbition: string | null;
   /** A coach's own football judgement, not a family fact — coach-only to set (see update_player_coach_fields). Null until a coach sets one. Never equal to `position` (players_secondary_position_not_primary). */
   secondaryPosition: string | null;
+  /** The stable, opaque identifier behind /player/[publicPlayerId] — generated once at first claim (ensurePublicPlayerId), independent of whether sharing is currently on. Null only if somehow not yet generated. */
+  publicPlayerId: string | null;
+  /** Guardian-controlled — off by default for a newly created player, and backfilled to off for any player who isn't yet claimed (0039_guardian_public_profile_control.sql); claiming itself never flips this on. On only after Share Profile explicitly turns it on. Never assume true. */
+  publicIdEnabled: boolean;
 };
 
 export type Skill = {
@@ -417,6 +421,10 @@ export const PLAYER_PROFILE: PlayerProfile = {
   favouritePlayer: 'Kevin De Bruyne',
   footballAmbition: 'Play academy football',
   secondaryPosition: 'RW',
+  // Demo mode never calls the real Share Profile flow — isReal gates that
+  // whole section off — so these values are never actually read/acted on.
+  publicPlayerId: null,
+  publicIdEnabled: false,
 };
 
 export const DEVELOPMENT_SEASONS: DevelopmentSeason[] = [
