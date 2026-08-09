@@ -6,6 +6,7 @@ import { getPublicPlayerProfile } from '@/lib/public-player-profile';
 import { resolvePlayerCapabilities } from '@/lib/player-capabilities';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { getRequestIdentifier, isWithinRateLimit } from '@/lib/rate-limit';
+import PublicMomentsList from './PublicMomentsList';
 
 // Technically public, never search-indexed — reduces incidental discovery
 // beyond "someone who was actually handed the link or tapped the card."
@@ -27,11 +28,6 @@ const COLORS = {
   border: 'rgba(0,0,0,.12)',
   accent: '#E97435',
 };
-
-function formatDate(iso: string | null) {
-  if (!iso) return null;
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-}
 
 export default async function PublicPlayerProfilePage({ params }: { params: { publicPlayerId: string } }) {
   const identifier = getRequestIdentifier(headers());
@@ -138,29 +134,7 @@ export default async function PublicPlayerProfilePage({ params }: { params: { pu
             <p style={{ fontFamily: 'Roboto', fontSize: 12.5, color: COLORS.muted, margin: 0 }}>Moments appear here once a guardian shares them.</p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: 12 }}>
-            {profile.moments.map((m) => (
-              <div key={m.id} style={{ background: COLORS.card, borderRadius: 16, overflow: 'hidden', boxShadow: '0 6px 18px -14px rgba(0,0,0,.2)' }}>
-                {m.media[0] && m.media[0].kind === 'photo' && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={m.media[0].url} alt="" style={{ width: '100%', aspectRatio: '4 / 3', objectFit: 'cover', display: 'block' }} />
-                )}
-                <div style={{ padding: '14px 16px' }}>
-                  <div style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 15, color: COLORS.ink }}>{m.title}</div>
-                  {formatDate(m.occurredOn) && <div style={{ fontFamily: 'Roboto', fontSize: 11.5, color: COLORS.muted, marginTop: 2 }}>{formatDate(m.occurredOn)}</div>}
-                  {m.note && <p style={{ fontFamily: 'Roboto', fontSize: 13, color: COLORS.ink, marginTop: 8, marginBottom: 0, lineHeight: 1.5 }}>{m.note}</p>}
-                  {m.media.slice(1).map((media) =>
-                    media.kind === 'photo' ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img key={media.id} src={media.url} alt="" style={{ width: '100%', borderRadius: 10, marginTop: 10 }} />
-                    ) : (
-                      <video key={media.id} src={media.url} controls style={{ width: '100%', borderRadius: 10, marginTop: 10 }} />
-                    )
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <PublicMomentsList moments={profile.moments} playerName={profile.name} />
         )}
 
         <div style={{ textAlign: 'center', marginTop: 32, fontFamily: 'Barlow Condensed', fontSize: 11, letterSpacing: '.06em', color: COLORS.muted, textTransform: 'uppercase' }}>

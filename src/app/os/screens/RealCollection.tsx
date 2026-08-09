@@ -4,7 +4,10 @@ import { MOMENT_STATUS_BADGE } from '../data';
 import { CardFace } from '@/lib/card-definition';
 import { usePresenceHeartbeat } from '../usePresenceHeartbeat';
 import { useLiveContent, useJustUpdatedFlag } from '../useLiveContent';
-import type { RealMoment } from '../osData';
+import { onActivateKey } from '../a11y';
+import MomentMediaViewer from '../overlays/MomentMediaViewer';
+import { MomentThumbnail } from '../overlays/MomentThumbnail';
+import { toMomentMediaItem, type RealMoment } from '../osData';
 
 type SeasonGroup = { label: string; status: 'active' | 'closed' | null; items: RealMoment[] };
 
@@ -66,6 +69,18 @@ export default function RealCollection({
 }: { highlightMomentId?: string | null; onHighlightDone?: () => void } = {}) {
   const { moments, playerProfile, playerId } = useOsData();
   const groups = groupBySeason(moments);
+
+  // View-only media viewer, opened from a card's own photo/video area —
+  // entirely local state, same pattern as Coach Verify (production-tested)
+  // and PlayerHome. One trigger ref per moment id so focus returns to the
+  // exact card that opened the viewer, not a blanket "first card."
+  const [expandedMomentId, setExpandedMomentId] = useState<string | null>(null);
+  const mediaTriggerRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const closeMediaViewer = (id: string) => {
+    setExpandedMomentId((current) => (current === id ? null : current));
+    mediaTriggerRefs.current[id]?.focus();
+  };
+  const expandedMoment = expandedMomentId ? moments.find((m) => m.id === expandedMomentId) ?? null : null;
 
   // A Story Update deep-link (recognition/moment_verified) lands on this
   // tab and asks for one real moment's card to be scrolled-to and briefly
@@ -175,7 +190,12 @@ export default function RealCollection({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               {group.items.map((m) => {
                 const badge = MOMENT_STATUS_BADGE[m.status];
-                const photo = m.media.find((med) => med.kind === 'photo');
+                // Widened from photo-only — a video-only moment previously
+                // rendered no thumbnail at all here (RealCollection never
+                // picked up video media for the card preview, unlike
+                // PlayerHome's equivalent card, which already considers
+                // both kinds).
+                const previewMedia = m.media.find((med) => med.kind === 'photo' || med.kind === 'video');
                 const isMilestone = m.rarity === 'milestone';
                 const isRecognized = m.rarity === 'recognized';
                 const isHighlighted = activeHighlight === m.id;
@@ -212,9 +232,30 @@ export default function RealCollection({
                         <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           <CardFace data={m.cardDefinition} side="front" size={100} photoUrl={m.cardPhotoUrl} />
                         </div>
-                      ) : (
-                        photo && <img src={photo.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      )}
+                      ) : previewMedia ? (
+                        <div
+                          ref={(el) => { mediaTriggerRefs.current[m.id] = el; }}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`View ${previewMedia.kind === 'video' ? 'video' : 'photo'} for ${m.title}`}
+                          onClick={() => setExpandedMomentId(m.id)}
+                          onKeyDown={onActivateKey(() => setExpandedMomentId(m.id))}
+                          style={{ position: 'absolute', inset: 0, cursor: 'pointer' }}
+                        >
+                          <MomentThumbnail mediaUrl={previewMedia.url} mediaKind={previewMedia.kind} />
+                          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, rgba(0,0,0,.45) 0%, transparent 40%)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: '0 0 5px' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 8.5, fontWeight: 800, letterSpacing: '.03em', color: '#fff', textTransform: 'uppercase' }}>
+                              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4M15 3h4a2 2 0 0 1 2 2v4M9 21H5a2 2 0 0 1-2-2v-4M15 21h4a2 2 0 0 0 2-2v-4" /></svg>
+                              View
+                            </span>
+                          </div>
+                          {previewMedia.kind === 'video' && (
+                            <div style={{ position: 'absolute', top: 6, right: 6, width: 18, height: 18, borderRadius: '50%', background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <svg width="8" height="8" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z" /></svg>
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
                     </div>
                     <div style={{ padding: '10px 12px' }}>
                       {/* Rarity — a structural fact about this moment (first-of-its-kind, coach-verified, or neither), never a random tier. Same vocabulary as demo mode. */}
@@ -269,9 +310,15 @@ export default function RealCollection({
                             {visibilityBusyId === m.id ? 'Updating…' : m.visibility === 'public' ? 'Make private' : 'Make public'}
                           </button>
                         </div>
+                        {m.visibility === 'public' && m.status === 'pending_verification' && (
+                          <p style={{ fontSize: 9.5, lineHeight: 1.35, color: 'var(--os-muted)', margin: '4px 0 0' }}>
+                            This will appear publicly after your coach verifies it.
+                          </p>
+                        )}
                         {m.visibility === 'private' && (
                           <p style={{ fontSize: 9.5, lineHeight: 1.35, color: 'var(--os-muted)', margin: '4px 0 0' }}>
                             Public moments can be seen by anyone who taps the card.
+                            {m.status === 'pending_verification' ? ' This one will appear publicly only after your coach verifies it.' : ''}
                           </p>
                         )}
                         {visibilityErrorId === m.id && (
@@ -288,6 +335,14 @@ export default function RealCollection({
           </div>
         );
       })}
+
+      {expandedMoment && (
+        <MomentMediaViewer
+          mode="view"
+          item={toMomentMediaItem(expandedMoment, playerProfile.name)}
+          onClose={() => closeMediaViewer(expandedMoment.id)}
+        />
+      )}
     </>
   );
 }

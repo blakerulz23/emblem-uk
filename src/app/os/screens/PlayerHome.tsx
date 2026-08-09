@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import { useOsData, useRefreshOsData } from '../OsDataContext';
 import { onActivateKey } from '../a11y';
 import { ICN, MOMENT_STATUS_BADGE } from '../data';
@@ -6,8 +7,10 @@ import { useLiveContent, useJustUpdatedFlag } from '../useLiveContent';
 import { formatRelativeTime } from '../overlays/StoryUpdateCard';
 import EmptyState from './EmptyState';
 import { selectNewestUnreadForPlayer } from '@/lib/story-update-selection';
+import MomentMediaViewer from '../overlays/MomentMediaViewer';
+import { MomentThumbnail } from '../overlays/MomentThumbnail';
 import type { OsActions } from '../OsApp';
-import type { RealMoment, StoryUpdate } from '../osData';
+import { toMomentMediaItem, type RealMoment, type StoryUpdate } from '../osData';
 
 /**
  * Home v1.2 — an orientation glance, not a container for the other three
@@ -117,6 +120,25 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
   // priority from the Card-tab glance link, per this build's explicit spec.
   const heroPhotoUrl = playerProfile.photoUrl ?? cardPhotoUrl ?? null;
 
+  // View-only media viewer for the Latest Moment card's photo/video — kept
+  // entirely local to this screen (own state, own render at the bottom),
+  // matching Coach Verify's already-production-tested pattern exactly.
+  // Deliberately a *nested* trigger, not the card's own onClick: the whole
+  // card already navigates to Collection + highlights this moment there
+  // (actions.openLatestMoment) — that existing behaviour must survive
+  // untouched, so only the photo itself gets its own stopPropagation'd
+  // click/keydown to open the viewer instead.
+  const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
+  const mediaTriggerRef = useRef<HTMLDivElement>(null);
+  const openMediaViewer = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    setMediaViewerOpen(true);
+  };
+  const closeMediaViewer = () => {
+    setMediaViewerOpen(false);
+    mediaTriggerRef.current?.focus();
+  };
+
   return (
     <>
       {playerProfile.name && (
@@ -202,7 +224,32 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
                   <CardFace data={featuredMoment.cardDefinition} side="front" size={220} photoUrl={featuredMoment.cardPhotoUrl} />
                 </div>
               ) : featuredPhoto ? (
-                <img src={featuredPhoto.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div
+                  ref={mediaTriggerRef}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View ${featuredPhoto.kind === 'video' ? 'video' : 'photo'} for ${featuredMoment.title}`}
+                  onClick={openMediaViewer}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    onActivateKey(() => setMediaViewerOpen(true))(e);
+                  }}
+                  style={{ position: 'absolute', inset: 0, cursor: 'pointer' }}
+                >
+                  <MomentThumbnail mediaUrl={featuredPhoto.url} mediaKind={featuredPhoto.kind} />
+                  {/* Same restrained "View" badge as Coach Verify's own trigger — a corner affordance, not a full overlay, so the photo itself still reads clearly before tapping in. */}
+                  <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, rgba(0,0,0,.4) 0%, transparent 35%)', display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', padding: '0 10px 10px 0' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9.5, fontWeight: 800, letterSpacing: '.03em', color: '#fff', textTransform: 'uppercase', background: 'rgba(0,0,0,.4)', padding: '4px 8px', borderRadius: 999 }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4M15 3h4a2 2 0 0 1 2 2v4M9 21H5a2 2 0 0 1-2-2v-4M15 21h4a2 2 0 0 0 2-2v-4" /></svg>
+                      View
+                    </span>
+                  </div>
+                  {featuredPhoto.kind === 'video' && (
+                    <div style={{ position: 'absolute', top: 10, left: 10, width: 22, height: 22, borderRadius: '50%', background: 'rgba(0,0,0,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z" /></svg>
+                    </div>
+                  )}
+                </div>
               ) : null}
 
               {featuredMoment.media.length > 1 && (
@@ -321,6 +368,14 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
         </div>
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--os-muted)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M9 5l7 7-7 7" /></svg>
       </div>
+
+      {mediaViewerOpen && featuredMoment && (
+        <MomentMediaViewer
+          mode="view"
+          item={toMomentMediaItem(featuredMoment, playerProfile.name)}
+          onClose={closeMediaViewer}
+        />
+      )}
     </>
   );
 }

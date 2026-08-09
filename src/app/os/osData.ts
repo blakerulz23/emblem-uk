@@ -3,6 +3,7 @@ import { PLAYER_PROFILE, SKILL_CATEGORIES, DEVELOPMENT_SEASONS, COACH_SUMMARY } 
 import type { PlayerProfile, SkillCategory, DevelopmentSeason, CoachSummary, SeasonTarget } from './playerProfile';
 import type { SquadPlayer, VerifyItem, CoachActivityItem, SeasonFocusEntry, StrengthEntry, AssessmentEntry } from './types';
 import type { CardFaceData } from '@/lib/card-definition';
+import type { MomentMediaItem } from './overlays/MomentMediaViewer';
 // Type-only import — fully erased at build time, so this never pulls
 // src/lib/story-updates.ts's server-only createServiceRoleClient into any
 // client bundle that imports osData.ts (e.g. OsDataContext.tsx).
@@ -109,6 +110,38 @@ export type RealMoment = {
    */
   visibility: 'private' | 'public';
 };
+
+/** "15 Aug 2026" — the same en-GB absolute-date convention already used independently in PlayerHome.tsx, RealCollection.tsx and the public profile page; duplicated here rather than importing one of those (screen files, not meant to be imported from a shared data module). */
+function formatMomentDisplayDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/**
+ * Shared mapper from a real moment to the shared viewer's generic shape —
+ * used by both PlayerHome and RealCollection, which both already consume
+ * RealMoment directly, so the mapping logic is genuinely identical between
+ * them (not two coincidentally-similar copies). Picks the first photo OR
+ * video media item — this MVP shows one media item per moment, matching
+ * Coach Verify's own scope. A card_definition-backed (system-generated)
+ * moment is never passed here at all — see PlayerHome.tsx/RealCollection.tsx,
+ * which only wire this for the raw-media branch of their rendering, not the
+ * CardFace branch.
+ */
+export function toMomentMediaItem(m: RealMoment, playerName: string): MomentMediaItem {
+  const media = m.media.find((x) => x.kind === 'photo' || x.kind === 'video') ?? null;
+  return {
+    mediaUrl: media?.url ?? '',
+    mediaKind: media ? (media.kind === 'video' ? 'video' : 'image') : null,
+    title: m.title,
+    playerName,
+    date: formatMomentDisplayDate(m.occurredOn) ?? formatMomentDisplayDate(m.createdAt) ?? '',
+    note: m.note,
+    status: m.status === 'coach_verified' ? 'Coach verified' : null,
+  };
+}
 
 /**
  * The real player/team data this signed-in user can see. Shared by the

@@ -34,12 +34,38 @@ async function signOrNull(key: string | null | undefined): Promise<string | null
   }
 }
 
+/**
+ * The full set of verification_status values that may ever appear on a
+ * public profile (moments_verification_status_check, migration 0020 —
+ * 'pending_verification' is the only real stored value deliberately
+ * excluded here; a rejected moment has no status of its own because
+ * CoachVerify's reject path deletes the row outright, see
+ * src/app/api/os/moments/verify/route.ts). 'system_generated' covers
+ * exactly the Builder-approval "Card Created" moment (source='system',
+ * migration 0020) — a real, non-sensitive, guardian-opted-in fact with no
+ * human verifier claim attached, so it's as legitimate to share as a
+ * coach-verified one.
+ */
+export type PublicMomentStatus = 'coach_verified' | 'family_memory' | 'system_generated';
+const PUBLIC_ELIGIBLE_VERIFICATION_STATUSES: PublicMomentStatus[] = ['coach_verified', 'family_memory', 'system_generated'];
+
+/**
+ * The public display DTO — deliberately carries no moment id, no
+ * moment_media id, and (see PublicPlayerProfile below) no player/team/
+ * guardian/coach id anywhere in this shape. This is the exact boundary the
+ * React server-to-client serialization crosses: getPublicPlayerProfile may
+ * read and use real ids internally (to join moment_media, to resolve
+ * capabilities server-side), but nothing constructed here, past this point,
+ * carries one — PublicMomentsList (a client component) receives PublicMoment[]
+ * directly and must never need a database id for rendering or focus state;
+ * a local array index is what it uses instead (see that file).
+ */
 export type PublicMoment = {
-  id: string;
   title: string;
   occurredOn: string | null;
   note: string | null;
-  media: { id: string; kind: string; url: string }[];
+  status: PublicMomentStatus;
+  media: { kind: string; url: string }[];
 };
 
 export type PublicPlayerProfile = {
@@ -104,9 +130,15 @@ export async function getPublicPlayerProfile(publicPlayerId: string): Promise<Pu
       .maybeSingle<{ template_id: string; logo: string | null; photo: { storageKey?: string } | null; stats: Record<string, string> | null }>(),
     serviceRole
       .from('moments')
-      .select('id, title, occurred_on, note, moment_media ( id, s3_key, kind )')
+      .select('id, title, occurred_on, note, verification_status, moment_media ( id, s3_key, kind )')
       .eq('player_id', player.id)
       .eq('visibility', 'public')
+      // Public eligibility is decided from the moment's own stored
+      // verification_status, never re-derived from the player's current
+      // team/coach state — see PUBLIC_ELIGIBLE_VERIFICATION_STATUSES above.
+      // This is the server-side enforcement point; nothing downstream may
+      // rely on client-side filtering to hide an ineligible moment.
+      .in('verification_status', PUBLIC_ELIGIBLE_VERIFICATION_STATUSES)
       .order('occurred_on', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false }),
   ]);
@@ -119,27 +151,30 @@ export async function getPublicPlayerProfile(publicPlayerId: string): Promise<Pu
       title: string;
       occurred_on: string | null;
       note: string | null;
+      verification_status: PublicMomentStatus;
       moment_media: { id: string; s3_key: string; kind: string }[];
     }>) ?? [];
 
   const publicMoments: PublicMoment[] = await Promise.all(
     momentRows.map(async (m) => ({
-      id: m.id,
+      // m.id exists on the raw row (selected for the moment_media join
+      // above) but is deliberately never copied into this DTO — see
+      // PublicMoment's own doc comment.
       title: m.title,
       occurredOn: m.occurred_on,
       note: m.note,
+      status: m.verification_status,
       // A photo/video whose signing fails is dropped from this moment's
       // media list rather than crashing the whole profile — same
       // reasoning as signOrNull above.
       media: (
         await Promise.all(
           (m.moment_media ?? []).map(async (media) => ({
-            id: media.id,
             kind: media.kind,
             url: await signOrNull(media.s3_key),
           }))
         )
-      ).filter((media): media is { id: string; kind: string; url: string } => media.url !== null),
+      ).filter((media): media is { kind: string; url: string } => media.url !== null),
     }))
   );
 
