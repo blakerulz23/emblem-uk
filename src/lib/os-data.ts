@@ -969,7 +969,7 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
 
   const verifyQueue: VerifyItem[] = await Promise.all(
     (pendingMoments ?? []).map(async (m) => {
-      const firstMedia = (m.moment_media ?? [])[0] as { s3_key: string } | undefined;
+      const firstMedia = (m.moment_media ?? [])[0] as { s3_key: string; kind: 'photo' | 'video' } | undefined;
       return {
         id: m.id,
         player: m.players?.name ?? '',
@@ -978,6 +978,8 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
         thumb: firstMedia ? await getSignedDownloadUrl(firstMedia.s3_key) : '',
         by: 'Parent',
         date: m.occurred_on ?? new Date(m.created_at).toLocaleDateString('en-GB'),
+        note: m.note ?? null,
+        mediaKind: firstMedia?.kind ?? null,
       };
     })
   );

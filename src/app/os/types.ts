@@ -150,7 +150,19 @@ export type SquadPlayer = {
   teamId: string | null;
 };
 
-export type VerifyItem = { id: string; player: string; playerId: string; moment: string; thumb: string; by: string; date: string };
+export type VerifyItem = {
+  id: string;
+  player: string;
+  playerId: string;
+  moment: string;
+  thumb: string;
+  by: string;
+  date: string;
+  /** Caption/note the guardian added when submitting — null if none. */
+  note: string | null;
+  /** Which kind of media `thumb` actually points to — same URL either way, no separate low-res asset exists. */
+  mediaKind: 'photo' | 'video' | null;
+};
 export type CoachActivityItem = { text: string; when: string; ic: string };
 export type CelebrateGroup = { group: string; items: [string, string][] };
 
