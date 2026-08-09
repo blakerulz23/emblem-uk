@@ -1,10 +1,7 @@
 import { notFound } from 'next/navigation';
 import { headers } from 'next/headers';
-import Link from 'next/link';
 import '../../os/os.css';
 import { getPublicPlayerProfile } from '@/lib/public-player-profile';
-import { resolvePlayerCapabilities } from '@/lib/player-capabilities';
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { getRequestIdentifier, isWithinRateLimit } from '@/lib/rate-limit';
 import PublicMomentsList from './PublicMomentsList';
 
@@ -43,13 +40,6 @@ export default async function PublicPlayerProfilePage({ params }: { params: { pu
     notFound();
   }
   const { profile } = result;
-
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const serviceRole = createServiceRoleClient();
-  const capabilities = await resolvePlayerCapabilities(serviceRole, profile.playerId, user?.id ?? null);
 
   const photoUrl = profile.card?.photoUrl ?? profile.photoUrl;
   const initials = profile.name
@@ -99,7 +89,7 @@ export default async function PublicPlayerProfilePage({ params }: { params: { pu
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${COLORS.border}`, borderBottom: `1px solid ${COLORS.border}`, padding: '12px 0', marginBottom: capabilities.isGuardian || capabilities.isCoach ? 14 : 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${COLORS.border}`, borderBottom: `1px solid ${COLORS.border}`, padding: '12px 0' }}>
             <div>
               <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: COLORS.muted }}>SQUAD NUMBER</div>
               <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: COLORS.ink }}>{profile.squadNumber ?? '—'}</div>
@@ -113,15 +103,6 @@ export default async function PublicPlayerProfilePage({ params }: { params: { pu
               <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: COLORS.ink }}>{profile.team?.season ?? '—'}</div>
             </div>
           </div>
-
-          {(capabilities.isGuardian || capabilities.isCoach) && (
-            <Link
-              href={`/os?player=${profile.playerId}`}
-              style={{ display: 'block', textAlign: 'center', padding: 11, borderRadius: 11, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, color: COLORS.ink, textDecoration: 'none' }}
-            >
-              {capabilities.isGuardian ? 'Open full Player OS →' : 'Open Coach tools →'}
-            </Link>
-          )}
         </div>
 
         <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 11, letterSpacing: '.06em', color: COLORS.accent, textTransform: 'uppercase', marginBottom: 10, paddingLeft: 2 }}>
