@@ -59,11 +59,20 @@ console.log('Stubbed auth schema + roles.\n');
 // new staged migrations so test data can be seeded into the pre-migration
 // shape first (Stage 1's own backfill UPDATE needs "U9s" to already exist). ---
 const files = fs.readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort();
+// 0039 is now 0039_guardian_public_profile_control.sql (the pre-pilot
+// reliability/privacy fix pack) — a real, permanently-applied migration,
+// not the deferred legacy-columns contract that number used to belong to.
+// That draft has since been renamed and moved to
+// supabase/planned/player_legacy_columns_contract.sql specifically so it
+// no longer holds a reserved number while undecided — matched here by its
+// exact filename, never a numeric prefix, so it can't collide with
+// whatever real migration a given number happens to mean at any point in
+// this repo's history.
 const pre0036 = files.filter((f) => !f.startsWith('0036') && !f.startsWith('0037') && !f.startsWith('0038') && !f.startsWith('0039'));
 const migrationSecureExpand = files.find((f) => f.startsWith('0036')); // Stage 1
 const migrationServiceRole = files.find((f) => f.startsWith('0037')); // Stage 1 (bundled, orthogonal)
 const migrationPositionLock = files.find((f) => f.startsWith('0038')); // Stage 2.5
-const migrationContract = files.find((f) => f.startsWith('0039')); // Stage 3 (optional/deferred)
+const migrationContract = files.find((f) => f === 'player_legacy_columns_contract.sql'); // Stage 3 (optional/deferred, not yet promoted into supabase/migrations/)
 
 for (const f of pre0036) {
   const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, f), 'utf8');
@@ -75,6 +84,12 @@ for (const f of pre0036) {
   }
 }
 console.log(`Applied ${pre0036.length} pre-0036 migrations cleanly.\n`);
+console.log('NOTE: 0039_guardian_public_profile_control.sql is not applied or checked by');
+console.log('this pglite harness (no dedicated Stage block added here) — it was instead');
+console.log('verified directly against real hosted Postgres/Auth/RLS on staging, which');
+console.log('exercises the guardian-authorization RPC boundary this migration adds more');
+console.log('faithfully than pglite\'s stubbed auth schema could. See the fix pack\'s own');
+console.log('staging test run for that coverage.\n');
 
 // ============================================================================
 // Baseline — actual effective grants BEFORE Stage 1, exactly as a fresh
@@ -547,54 +562,60 @@ await asRoleCommit('authenticated', ids.guardianUser, () =>
 // ============================================================================
 console.log('\n=== STAGE 3 (optional/deferred) — legacy column contract ===\n');
 
-const grantsBeforeContract = await db.query(`
-  select grantee, privilege_type, column_name
-  from information_schema.role_column_grants
-  where table_name = 'players' and grantee = 'authenticated'
-  order by privilege_type, column_name;
-`);
+if (!migrationContract) {
+  console.log('SKIPPED — player_legacy_columns_contract.sql is a deferred draft under');
+  console.log('supabase/planned/, not yet promoted into supabase/migrations/. Nothing to');
+  console.log('apply or check until that decision is made; this is expected, not a failure.\n');
+} else {
+  const grantsBeforeContract = await db.query(`
+    select grantee, privilege_type, column_name
+    from information_schema.role_column_grants
+    where table_name = 'players' and grantee = 'authenticated'
+    order by privilege_type, column_name;
+  `);
 
-const sqlContract = fs.readFileSync(path.join(MIGRATIONS_DIR, migrationContract), 'utf8');
-try {
-  await db.exec(sqlContract);
-  console.log(`\nApplied Stage 3 (${migrationContract}) cleanly.\n`);
-} catch (e) {
-  console.log(`STAGE 3 (${migrationContract}) FAILED TO APPLY:`, e.message);
-  process.exit(1);
+  const sqlContract = fs.readFileSync(path.join(MIGRATIONS_DIR, migrationContract), 'utf8');
+  try {
+    await db.exec(sqlContract);
+    console.log(`\nApplied Stage 3 (${migrationContract}) cleanly.\n`);
+  } catch (e) {
+    console.log(`STAGE 3 (${migrationContract}) FAILED TO APPLY:`, e.message);
+    process.exit(1);
+  }
+
+  const grantsAfterContract = await db.query(`
+    select grantee, privilege_type, column_name
+    from information_schema.role_column_grants
+    where table_name = 'players' and grantee = 'authenticated'
+    order by privilege_type, column_name;
+  `);
+  const beforeMinusAgeHeight = grantsBeforeContract.rows.filter((r) => r.column_name !== 'age' && r.column_name !== 'height');
+  check(
+    'Stage 3 changes no grant other than the natural loss of the dropped age/height columns (Stage 1 + Stage 2.5 already carried the permanent grant model)',
+    JSON.stringify(beforeMinusAgeHeight) === JSON.stringify(grantsAfterContract.rows),
+    { before: grantsBeforeContract.rows.length, after: grantsAfterContract.rows.length }
+  );
+
+  const columnsAfterContract = await db.query(`
+    select column_name from information_schema.columns where table_name = 'players' and column_name in ('age','height');
+  `);
+  check('age/height columns no longer exist after Stage 3', columnsAfterContract.rows.length === 0, columnsAfterContract.rows);
+
+  const dobColumnGrant = grantsAfterContract.rows.find((r) => r.column_name === 'date_of_birth');
+  check('authenticated has NO column-level grant of any kind on date_of_birth (unchanged since Stage 1)', !dobColumnGrant, dobColumnGrant);
+  check(
+    'authenticated has column-level UPDATE on exactly the 3 guardian-editable columns (position is now RPC-only)',
+    grantsAfterContract.rows.filter((r) => r.privilege_type === 'UPDATE').map((r) => r.column_name).sort().join(',') ===
+      ['favourite_player', 'football_ambition', 'photo_key'].sort().join(','),
+    grantsAfterContract.rows.filter((r) => r.privilege_type === 'UPDATE').map((r) => r.column_name)
+  );
+  check(
+    'authenticated has column-level INSERT on exactly team_id/name/position/squad_number (preferred_foot excluded)',
+    grantsAfterContract.rows.filter((r) => r.privilege_type === 'INSERT').map((r) => r.column_name).sort().join(',') ===
+      ['team_id', 'name', 'position', 'squad_number'].sort().join(','),
+    grantsAfterContract.rows.filter((r) => r.privilege_type === 'INSERT').map((r) => r.column_name)
+  );
 }
-
-const grantsAfterContract = await db.query(`
-  select grantee, privilege_type, column_name
-  from information_schema.role_column_grants
-  where table_name = 'players' and grantee = 'authenticated'
-  order by privilege_type, column_name;
-`);
-const beforeMinusAgeHeight = grantsBeforeContract.rows.filter((r) => r.column_name !== 'age' && r.column_name !== 'height');
-check(
-  'Stage 3 changes no grant other than the natural loss of the dropped age/height columns (Stage 1 + Stage 2.5 already carried the permanent grant model)',
-  JSON.stringify(beforeMinusAgeHeight) === JSON.stringify(grantsAfterContract.rows),
-  { before: grantsBeforeContract.rows.length, after: grantsAfterContract.rows.length }
-);
-
-const columnsAfterContract = await db.query(`
-  select column_name from information_schema.columns where table_name = 'players' and column_name in ('age','height');
-`);
-check('age/height columns no longer exist after Stage 3', columnsAfterContract.rows.length === 0, columnsAfterContract.rows);
-
-const dobColumnGrant = grantsAfterContract.rows.find((r) => r.column_name === 'date_of_birth');
-check('authenticated has NO column-level grant of any kind on date_of_birth (unchanged since Stage 1)', !dobColumnGrant, dobColumnGrant);
-check(
-  'authenticated has column-level UPDATE on exactly the 3 guardian-editable columns (position is now RPC-only)',
-  grantsAfterContract.rows.filter((r) => r.privilege_type === 'UPDATE').map((r) => r.column_name).sort().join(',') ===
-    ['favourite_player', 'football_ambition', 'photo_key'].sort().join(','),
-  grantsAfterContract.rows.filter((r) => r.privilege_type === 'UPDATE').map((r) => r.column_name)
-);
-check(
-  'authenticated has column-level INSERT on exactly team_id/name/position/squad_number (preferred_foot excluded)',
-  grantsAfterContract.rows.filter((r) => r.privilege_type === 'INSERT').map((r) => r.column_name).sort().join(',') ===
-    ['team_id', 'name', 'position', 'squad_number'].sort().join(','),
-  grantsAfterContract.rows.filter((r) => r.privilege_type === 'INSERT').map((r) => r.column_name)
-);
 
 const failed = results.filter((r) => !r.pass);
 console.log(`\n\n${results.length - failed.length}/${results.length} TOTAL checks passed`);
