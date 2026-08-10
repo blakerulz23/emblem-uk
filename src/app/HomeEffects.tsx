@@ -147,39 +147,56 @@ const whyProfileMatters: ProfileFeature[] = [
 
 const faqItems: FaqItem[] = [
   {
-    question: 'Is this just a football card?',
+    question: 'What is an Emblem card?',
     answer:
-      'No. Every Emblem card includes a built-in NFC chip that opens a private digital profile. As they play, new photos, matches, milestones, videos and achievements can be added to the same football story, season after season.',
+      'An Emblem card is a personalised premium trading card with built-in NFC. Tap it with a compatible phone to open the player’s digital profile, where their milestones, achievements and memories can grow over time.',
   },
   {
-    question: 'Do I need an app?',
-    answer: 'No app is required. Tap the Emblem card with a compatible smartphone and the player’s digital profile opens in the browser.',
+    question: 'Do I need to download an app?',
+    answer: 'No. Tap the card with an NFC-compatible smartphone and the player’s profile opens in the phone’s browser.',
   },
   {
-    question: 'What happens next season?',
+    question: 'Is there an annual subscription?',
     answer:
-      'Their existing profile continues into the next season, so new teams, matches, memories and milestones can be added without replacing their football story.',
+      'No. Digital profile access is included with the card, with no annual subscription required. Existing moments, achievements and previous seasons remain accessible.',
   },
   {
-    question: 'What can I add?',
-    answer: 'You can add photos, videos, match moments, awards, achievements, coach recognition and season memories to their Collection.',
-  },
-  {
-    question: 'Is it private?',
-    answer: 'Yes. Guardians control the player’s profile and decide which moments stay private and which can be shared with people who tap the card.',
-  },
-  {
-    question: 'How long does shipping take?',
-    answer: 'Most cards are printed and dispatched within 3-5 working days.',
-  },
-  {
-    question: 'Can I order a whole team?',
-    answer: 'Yes. Coaches and team organisers can build a full squad in one session, upload multiple player photos, apply one design and review every card together.',
-  },
-  {
-    question: 'What if they become a professional?',
+    question: 'Can the profile continue into another season?',
     answer:
-      'Their Emblem story remains theirs. The same profile can continue growing as they move through new teams, seasons and levels of the game.',
+      'Yes. The same profile can carry the player’s story forward from season to season. A new season card can become the next physical collectible connected to their continuing journey.',
+  },
+  {
+    question: 'Can I order just one card?',
+    answer: 'Yes. You can create one personalised player card, order multiple cards together or build a complete squad.',
+  },
+  {
+    question: 'What qualifies as a Full Squad order?',
+    answer: 'An order containing 10 or more player cards qualifies for Full Squad pricing and includes one free coach card.',
+  },
+  {
+    question: 'What is the free coach card?',
+    answer: 'It is a personalised Emblem card for the team’s coach, included at no extra cost with every qualifying Full Squad order.',
+  },
+  {
+    question: 'What can coaches do with Coach OS?',
+    answer: 'Coaches can manage their squad, verify moments submitted by parents and award player achievements from one dashboard.',
+  },
+  {
+    question: 'Can parents add photos and moments?',
+    answer:
+      'Yes. Parents can add memories and submit player moments. Where coach verification applies, the coach can review them before they appear as verified achievements.',
+  },
+  {
+    question: 'Is Emblem only for football?',
+    answer: 'No. Emblem is designed to celebrate players, teams and achievements across different sports and levels.',
+  },
+  {
+    question: 'Is the player’s information secure?',
+    answer: 'Player profiles are managed through authorised parent, guardian and coach access. Guardians remain in control of what is added and what they choose to share.',
+  },
+  {
+    question: 'How much is delivery?',
+    answer: 'UK delivery is calculated at checkout and shown before the order is completed.',
   },
 ];
 
