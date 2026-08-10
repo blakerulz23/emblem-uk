@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 
@@ -32,6 +32,19 @@ export async function uploadObject(key: string, buffer: Buffer, contentType = 'a
 /** Upload a PDF Buffer to S3 and return the S3 key. */
 export async function uploadPdf(key: string, buffer: Buffer, contentType = 'application/pdf'): Promise<string> {
   return uploadObject(key, buffer, contentType);
+}
+
+/**
+ * Delete one S3 object. S3's DeleteObject is idempotent by design —
+ * deleting an already-gone or never-existed key still succeeds (no
+ * NoSuchKey error) — which is what makes the guardian-facing delete flows
+ * (photo removal, moment deletion) safely retryable with no extra
+ * bookkeeping here: a retried request re-issues the same delete calls,
+ * and any key already gone from a prior attempt is simply a no-op.
+ */
+export async function deleteObject(key: string): Promise<void> {
+  if (!bucket) throw new Error('AWS_S3_BUCKET is not set');
+  await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
 }
 
 /** SigV4's AWS-enforced ceiling for presigned URL expiry: 7 days. */

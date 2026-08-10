@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { onActivateKey } from '../a11y';
 
 /**
@@ -60,6 +60,20 @@ export type MomentMediaViewerProps = {
   onReject?: () => void;
   isSubmitting?: boolean;
   actionError?: string | null;
+  /**
+   * Guardian-owned view contexts only (Player OS Home, Collection) —
+   * never passed by the public profile's viewer instance, which is also
+   * mode="view" but must never offer deletion to a page strangers can
+   * reach. Handler presence, not `mode`, is what shows the action — same
+   * rule this file already applies to onApprove/onReject, restated here:
+   * omitting this prop just omits the affordance, it is not itself an
+   * authorization boundary — the real check happens server-side
+   * (DELETE /api/os/moments/[id]) regardless of whether this button was
+   * ever rendered.
+   */
+  onDelete?: () => void;
+  isDeleting?: boolean;
+  deleteError?: string | null;
 };
 
 export default function MomentMediaViewer({
@@ -70,8 +84,13 @@ export default function MomentMediaViewer({
   onReject,
   isSubmitting = false,
   actionError = null,
+  onDelete,
+  isDeleting = false,
+  deleteError = null,
 }: MomentMediaViewerProps) {
   const closeButtonRef = useRef<HTMLDivElement>(null);
+  const [deleteStep, setDeleteStep] = useState<'idle' | 'menu' | 'confirm'>('idle');
+  const canDelete = mode === 'view' && !!onDelete;
   const reducedMotion =
     typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -104,7 +123,35 @@ export default function MomentMediaViewer({
           animation: reducedMotion ? 'none' : 'colExpand .3s cubic-bezier(.22,.61,.36,1)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '14px 14px 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 14px 0', position: 'relative' }}>
+          {canDelete && (
+            <div style={{ position: 'relative' }}>
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label="Moment options"
+                aria-haspopup="menu"
+                onClick={() => setDeleteStep((s) => (s === 'menu' ? 'idle' : 'menu'))}
+                onKeyDown={onActivateKey(() => setDeleteStep((s) => (s === 'menu' ? 'idle' : 'menu')))}
+                style={{ width: 38, height: 38, borderRadius: '50%', background: 'rgba(255,255,255,.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>
+              </div>
+              {deleteStep === 'menu' && (
+                <div role="menu" style={{ position: 'absolute', top: 44, right: 0, background: '#1C1815', borderRadius: 12, boxShadow: '0 12px 28px -8px rgba(0,0,0,.6)', overflow: 'hidden', minWidth: 160, zIndex: 1 }}>
+                  <div
+                    role="menuitem"
+                    tabIndex={0}
+                    onClick={() => setDeleteStep('confirm')}
+                    onKeyDown={onActivateKey(() => setDeleteStep('confirm'))}
+                    style={{ padding: '12px 16px', fontSize: 13.5, fontWeight: 700, color: '#E8897E', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    Delete moment
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div
             ref={closeButtonRef}
             role="button"
@@ -186,6 +233,47 @@ export default function MomentMediaViewer({
           {showActions && actionError && <p style={{ fontSize: 12.5, color: '#E8897E', marginTop: 10, textAlign: 'center' }}>{actionError}</p>}
         </div>
       </div>
+
+      {deleteStep === 'confirm' && (
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 46, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Delete this moment permanently?"
+        >
+          <div style={{ width: '100%', maxWidth: 340, background: '#1C1815', borderRadius: 18, padding: 22 }}>
+            <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 19, color: '#F4F1EC', marginBottom: 10 }}>
+              Delete this moment permanently?
+            </div>
+            <p style={{ fontSize: 13.5, lineHeight: 1.55, color: '#CFC7B8', margin: '0 0 20px' }}>
+              This removes the moment and its photos or videos from the player&apos;s collection. This cannot be undone.
+            </p>
+            {deleteError && <p style={{ fontSize: 12.5, color: '#E8897E', margin: '0 0 14px' }}>{deleteError}</p>}
+            <div style={{ display: 'flex', gap: 9 }}>
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label="Cancel"
+                onClick={() => !isDeleting && setDeleteStep('idle')}
+                onKeyDown={isDeleting ? undefined : onActivateKey(() => setDeleteStep('idle'))}
+                style={{ flex: 1, textAlign: 'center', padding: 13, borderRadius: 12, border: '1px solid rgba(255,255,255,.15)', color: '#F4F1EC', fontFamily: 'Roboto', fontWeight: 700, fontSize: 13.5, cursor: isDeleting ? 'default' : 'pointer' }}
+              >
+                Cancel
+              </div>
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label={`Permanently delete ${item.title}`}
+                onClick={() => !isDeleting && onDelete && onDelete()}
+                onKeyDown={isDeleting ? undefined : onActivateKey(() => onDelete && onDelete())}
+                style={{ flex: 1, textAlign: 'center', padding: 13, borderRadius: 12, background: isDeleting ? 'rgba(210,60,50,.4)' : '#C0392B', color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, cursor: isDeleting ? 'default' : 'pointer' }}
+              >
+                {isDeleting ? 'Deleting…' : 'Delete'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

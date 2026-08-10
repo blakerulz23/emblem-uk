@@ -82,6 +82,36 @@ export default function RealCollection({
   };
   const expandedMoment = expandedMomentId ? moments.find((m) => m.id === expandedMomentId) ?? null : null;
 
+  // "Delete moment" — same contract as PlayerHome's own featured-moment
+  // delete handler (closes only on success, refreshOsData() only after
+  // the server confirms, failure leaves the confirm panel open with the
+  // real error).
+  const [isDeletingMoment, setIsDeletingMoment] = useState(false);
+  const [deleteMomentError, setDeleteMomentError] = useState<string | null>(null);
+  const deleteExpandedMoment = async () => {
+    if (!expandedMoment || isDeletingMoment) return;
+    setIsDeletingMoment(true);
+    setDeleteMomentError(null);
+    const momentId = expandedMoment.id;
+    try {
+      const res = await fetch(`/api/os/moments/${momentId}`, { method: 'DELETE' });
+      // Same neutral-404 handling as PlayerHome's own delete handler —
+      // see the route's doc comment for why 404 also covers "you already
+      // deleted this" and must not be shown as an error.
+      if (!res.ok && res.status !== 404) {
+        const body = await res.json().catch(() => null);
+        setDeleteMomentError((body && typeof body.error === 'string' && body.error) || 'Could not delete this moment — try again.');
+        return;
+      }
+      closeMediaViewer(momentId);
+      await refreshOsData();
+    } catch {
+      setDeleteMomentError('Could not delete this moment — check your connection and try again.');
+    } finally {
+      setIsDeletingMoment(false);
+    }
+  };
+
   // A Story Update deep-link (recognition/moment_verified) lands on this
   // tab and asks for one real moment's card to be scrolled-to and briefly
   // highlighted — Collection stays the single destination for football
@@ -341,6 +371,9 @@ export default function RealCollection({
           mode="view"
           item={toMomentMediaItem(expandedMoment, playerProfile.name)}
           onClose={() => closeMediaViewer(expandedMoment.id)}
+          onDelete={deleteExpandedMoment}
+          isDeleting={isDeletingMoment}
+          deleteError={deleteMomentError}
         />
       )}
     </>

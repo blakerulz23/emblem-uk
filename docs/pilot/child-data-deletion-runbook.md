@@ -1,11 +1,49 @@
 # Manual child-data deletion runbook
 
-No self-serve deletion path exists in the app today (confirmed in the
-pre-pilot readiness audit — `on delete cascade` exists at the database
-level, but nothing in the product triggers it). Until a self-serve flow
-exists, a parent's erasure request is handled manually, by a staff member
-with database access, following this runbook exactly. Do not improvise the
-order of operations — see "Safe deletion order" below for why it matters.
+**Update (Account Settings MVP):** a guardian can now file a
+self-serve **request** for this from Player OS → Account Settings →
+"Request player-data deletion" — this does *not* perform the deletion
+itself, only files a `player_deletion_requests` row and shows the
+guardian a reference number. Staff still carry out every actual deletion
+by hand, following this runbook exactly, then record completion at
+`/staff/deletion-requests` (requires a short attestation note — see
+"Operational queues" below). A parent can also still reach staff directly
+(support email/phone) without having used the in-app request form at
+all — both paths land on the same manual runbook.
+
+Do not improvise the order of operations — see "Safe deletion order"
+below for why it matters.
+
+## Operational queues (pilot)
+
+- **`/staff/deletion-requests`** — player-data deletion requests filed by
+  guardians via Account Settings, or logged manually by staff for a
+  request that arrived by another channel (email/phone). Each pending row
+  shows the player, when it was requested, and the guardian's contact
+  email at the time of the request (captured at request time — it may no
+  longer match the guardian's account if they've since changed it or
+  deleted their own account entirely). "Mark completed" requires an
+  explicit attestation checkbox plus a short note/reference — it records
+  that the runbook below was carried out, it does not perform any
+  deletion itself.
+- **`/staff/pending-auth-deletions`** — a separate, smaller queue for the
+  one hard edge case in guardian *account* deletion: the guardian's own
+  profile/guardian-link data was already removed automatically, but
+  Supabase Auth couldn't delete their sign-in credential (a transient API
+  issue). Finish it via the Supabase dashboard's Auth admin panel using
+  the user id shown, then confirm on that page.
+- Both queues are linked from `/staff/queue`, with a live pending count.
+
+**Pilot operational target** (internal service target, not a statutory
+deadline): staff check both queues **daily**. Aim to review and
+acknowledge a new request within **2 working days** of it being filed —
+"acknowledge" means either starting the runbook or replying to the
+guardian to confirm receipt; full completion may reasonably take longer
+if identity verification (§1) is still in progress. Revisit this target
+once real request volume during the pilot gives a better sense of what's
+sustainable.
+
+## Original manual process
 
 ## 1. Identity and authority verification
 

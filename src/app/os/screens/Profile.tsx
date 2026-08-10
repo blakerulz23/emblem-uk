@@ -8,6 +8,7 @@ import type { OsActions } from '../OsApp';
 import type { SeasonTarget } from '../playerProfile';
 import { onActivateKey } from '../a11y';
 import { useOsPhotoUpload } from '../useOsPhotoUpload';
+import AccountSettings from '../overlays/AccountSettings';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -172,6 +173,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
       setRevokingCoachId(null);
     }
   };
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [favouritePlayer, setFavouritePlayer] = useState(playerProfile.favouritePlayer ?? '');
   const [footballAmbition, setFootballAmbition] = useState(playerProfile.footballAmbition ?? '');
@@ -823,11 +825,29 @@ export default function Profile({ actions }: { actions: OsActions }) {
 
       <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: 16, boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)' }}>
         <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', marginBottom: 12 }}>ACCOUNT MANAGEMENT</div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', cursor: 'pointer' }}>
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Open Account Settings"
+          onClick={() => setShowAccountSettings(true)}
+          onKeyDown={onActivateKey(() => setShowAccountSettings(true))}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', cursor: 'pointer' }}
+        >
           <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--os-ink)' }}>Account Settings</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
         </div>
       </div>
+
+      {showAccountSettings && isReal && playerId && (
+        <AccountSettings
+          playerId={playerId}
+          playerName={playerProfile.name}
+          publicIdEnabled={playerProfile.publicIdEnabled}
+          publicPlayerId={playerProfile.publicPlayerId}
+          onClose={() => setShowAccountSettings(false)}
+          onPublicVisibilityChanged={refreshOsData}
+        />
+      )}
     </>
   );
 }

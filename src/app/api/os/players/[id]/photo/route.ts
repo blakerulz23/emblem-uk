@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { uploadObject } from '@/lib/s3-client';
+import { uploadObject, deleteObject } from '@/lib/s3-client';
 import { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
@@ -68,4 +68,72 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       { status: 500 }
     );
   }
+}
+
+/**
+ * Removes a player's photo — the actual S3 object, then the DB pointer,
+ * in that order (see delete_own_moment's own comment for the general
+ * reasoning: the DB should only ever say "no photo" once the object is
+ * genuinely gone, never a live column pointing at dead storage).
+ *
+ * Ownership is checked explicitly against `guardians` here rather than
+ * relying on the broader "players: visible to..." SELECT policy alone —
+ * that policy also matches an assigned coach, and a coach must never be
+ * able to remove a guardian's photo. Same explicit-check pattern already
+ * used by POST /api/os/moments/[id]/visibility. The final UPDATE still
+ * goes through the session client, backstopped by the real "players:
+ * guardians can update their player" RLS policy — this route's own check
+ * is belt-and-braces, not a replacement for it.
+ *
+ * Idempotent: no photo_key (already removed, or never set) returns
+ * success immediately rather than erroring — a repeated request after a
+ * prior partial failure, or a plain double-tap, is always safe.
+ */
+export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
+  }
+
+  const { data: guardianRow } = await supabase
+    .from('guardians')
+    .select('player_id')
+    .eq('player_id', params.id)
+    .eq('profile_id', user.id)
+    .maybeSingle();
+  if (!guardianRow) {
+    return NextResponse.json({ error: 'Only a guardian can remove this photo' }, { status: 403 });
+  }
+
+  const { data: player, error: fetchError } = await supabase
+    .from('players')
+    .select('photo_key')
+    .eq('id', params.id)
+    .maybeSingle();
+  if (fetchError) {
+    return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  }
+  if (!player?.photo_key) {
+    return NextResponse.json({ ok: true });
+  }
+
+  try {
+    await deleteObject(player.photo_key);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not remove the photo — try again.';
+    return NextResponse.json(
+      { error: message.includes('AWS_S3_BUCKET') ? 'Photo storage is not configured' : message },
+      { status: 500 }
+    );
+  }
+
+  const { error: updateError } = await supabase.from('players').update({ photo_key: null }).eq('id', params.id);
+  if (updateError) {
+    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
 }

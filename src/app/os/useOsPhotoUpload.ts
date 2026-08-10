@@ -19,6 +19,12 @@ export function useOsPhotoUpload(playerId: string | null) {
   const router = useRouter();
   const [status, setStatus] = useState<PhotoUploadStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  // Separate status for remove — a failed upload must never be confused
+  // with a failed removal (different action, different retry), and vice
+  // versa; keeping the current photo visible on either failure relies on
+  // neither ever clearing the other's error/idle state prematurely.
+  const [removeStatus, setRemoveStatus] = useState<PhotoUploadStatus>('idle');
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const uploadPhoto = async (file: File) => {
     if (!playerId || status === 'uploading') return;
@@ -43,5 +49,26 @@ export function useOsPhotoUpload(playerId: string | null) {
     }
   };
 
-  return { status, error, uploadPhoto };
+  const removePhoto = async () => {
+    if (!playerId || removeStatus === 'uploading') return;
+    setRemoveStatus('uploading');
+    setRemoveError(null);
+    try {
+      const res = await fetch(`/api/os/players/${playerId}/photo`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setRemoveStatus('error');
+        setRemoveError((body && typeof body.error === 'string' && body.error) || 'Could not remove photo — try again.');
+        return;
+      }
+      setRemoveStatus('success');
+      router.refresh();
+      setTimeout(() => setRemoveStatus((current) => (current === 'success' ? 'idle' : current)), 2500);
+    } catch {
+      setRemoveStatus('error');
+      setRemoveError('Could not remove photo — check your connection and try again.');
+    }
+  };
+
+  return { status, error, uploadPhoto, removeStatus, removeError, removePhoto };
 }

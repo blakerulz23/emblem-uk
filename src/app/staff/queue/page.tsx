@@ -416,6 +416,16 @@ export default async function StaffQueuePage({
   const setupSort = parseQueueSort(firstParam(searchParams?.setupSort));
   const hasSetupSearch = setupQ.length > 0;
 
+  const { count: pendingDeletionRequestCount } = await createServiceRoleClient()
+    .from('player_deletion_requests')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending');
+
+  const { count: pendingAuthDeletionCount } = await createServiceRoleClient()
+    .from('pending_auth_deletions')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending');
+
   const pending = await getPendingOrders(approvalQ, approvalSort);
   const approved = await getRecentlyApprovedSingleCardOrders(approvedQ, approvedSort, approvedPageParam);
   const productionQueue = await getProductionQueueCards(setupQ, setupSort);
@@ -445,6 +455,33 @@ export default async function StaffQueuePage({
       <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 15, color: 'var(--ink-soft)', margin: 0 }}>
         A cart redirect or submitted enquiry isn&rsquo;t proof of purchase — approving here is what makes an order&rsquo;s claim code(s) actually claimable by a parent. Orders with exactly one card also send the customer an invitation email once approved; multi-player orders do not yet (see below).
       </p>
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+        <Link
+          href="/staff/deletion-requests"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 13.5,
+            color: pendingDeletionRequestCount ? '#b91c1c' : 'var(--ink-soft)',
+            background: pendingDeletionRequestCount ? '#fef2f2' : 'var(--surface)',
+            padding: '9px 14px', borderRadius: 10, textDecoration: 'none',
+          }}
+        >
+          Player-data deletion requests{pendingDeletionRequestCount ? ` — ${pendingDeletionRequestCount} pending` : ' — none pending'}
+        </Link>
+        <Link
+          href="/staff/pending-auth-deletions"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 13.5,
+            color: pendingAuthDeletionCount ? '#b91c1c' : 'var(--ink-soft)',
+            background: pendingAuthDeletionCount ? '#fef2f2' : 'var(--surface)',
+            padding: '9px 14px', borderRadius: 10, textDecoration: 'none',
+          }}
+        >
+          Stuck account deletions{pendingAuthDeletionCount ? ` — ${pendingAuthDeletionCount} pending` : ' — none pending'}
+        </Link>
+      </div>
 
       <SectionSearchControls
         paramPrefix="approval"

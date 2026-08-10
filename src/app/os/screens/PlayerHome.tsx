@@ -139,6 +139,39 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
     mediaTriggerRef.current?.focus();
   };
 
+  // "Delete moment" — real mode only (demo mode has no real backend to
+  // delete against). Closes the viewer only on success, per the shared
+  // component's own contract; a failure leaves the confirm panel open
+  // with the real error, and refreshOsData() only runs once the server
+  // has actually confirmed deletion, so this card never optimistically
+  // shows a moment as gone before it truly is.
+  const [isDeletingMoment, setIsDeletingMoment] = useState(false);
+  const [deleteMomentError, setDeleteMomentError] = useState<string | null>(null);
+  const deleteFeaturedMoment = async () => {
+    if (!featuredMoment || isDeletingMoment) return;
+    setIsDeletingMoment(true);
+    setDeleteMomentError(null);
+    try {
+      const res = await fetch(`/api/os/moments/${featuredMoment.id}`, { method: 'DELETE' });
+      // A 404 here means "not found or not yours" (see the route's own
+      // doc comment — deliberately neutral, no distinguishable signal).
+      // For the guardian who just deleted their own moment, a retry
+      // lands here too, since the row is genuinely gone — treat it as
+      // the success it actually is rather than surfacing a scary error.
+      if (!res.ok && res.status !== 404) {
+        const body = await res.json().catch(() => null);
+        setDeleteMomentError((body && typeof body.error === 'string' && body.error) || 'Could not delete this moment — try again.');
+        return;
+      }
+      closeMediaViewer();
+      await refreshOsData();
+    } catch {
+      setDeleteMomentError('Could not delete this moment — check your connection and try again.');
+    } finally {
+      setIsDeletingMoment(false);
+    }
+  };
+
   return (
     <>
       {playerProfile.name && (
@@ -374,6 +407,9 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
           mode="view"
           item={toMomentMediaItem(featuredMoment, playerProfile.name)}
           onClose={closeMediaViewer}
+          onDelete={isReal ? deleteFeaturedMoment : undefined}
+          isDeleting={isDeletingMoment}
+          deleteError={deleteMomentError}
         />
       )}
     </>
