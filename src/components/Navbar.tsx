@@ -10,12 +10,12 @@ const links = [
   { href: '/#pricing', label: 'Pricing' },
 ];
 
-export default function Navbar() {
+export default function Navbar({ sticky = false }: { sticky?: boolean }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <nav
-      className="fixed top-0 left-0 right-0 z-50 border-b emh-site-nav"
+      className={`${sticky ? 'sticky' : 'fixed'} top-0 left-0 right-0 z-50 border-b emh-site-nav`}
       style={{
         background: 'rgba(8,9,10,0.86)',
         backdropFilter: 'blur(10px)',
@@ -23,10 +23,10 @@ export default function Navbar() {
         borderColor: 'rgba(255,255,255,0.07)',
       }}
     >
-      <div className="mx-auto max-w-[1220px] px-[10px]">
-        <div className="emh-site-nav-inner flex h-[55px] items-center justify-between gap-4">
+      <div className="mx-auto max-w-[1220px] px-[16px] min-[701px]:px-[10px]">
+        <div className="emh-site-nav-inner flex h-[64px] items-center justify-between gap-4">
           <Link href="/" className="flex items-center" onClick={() => setMobileOpen(false)}>
-            <img src="/embm.png" alt="Emblem" className="emh-nav-logo" decoding="async" />
+            <img src="/embm-nav.png" alt="Emblem" className="emh-nav-logo" decoding="async" />
           </Link>
 
           <div className="hidden min-[860px]:flex items-center gap-[30px]">
@@ -54,7 +54,7 @@ export default function Navbar() {
             onClick={() => setMobileOpen((v) => !v)}
             style={{ color: '#fff', padding: 5, marginRight: -5 }}
           >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               {mobileOpen ? (
                 <>
                   <path d="M6 6l12 12" />
@@ -80,6 +80,10 @@ export default function Navbar() {
             background: 'rgba(8,9,10,0.96)',
             backdropFilter: 'blur(10px)',
             WebkitBackdropFilter: 'blur(10px)',
+            // Sticky nav is in normal flow, so without this the open dropdown
+            // would push page content down instead of overlaying it (the old
+            // fixed nav overlaid for free, being out of flow entirely).
+            ...(sticky ? { position: 'absolute' as const, top: '100%', left: 0, right: 0 } : null),
           }}
         >
           <div className="px-6 py-4 flex flex-col gap-1">

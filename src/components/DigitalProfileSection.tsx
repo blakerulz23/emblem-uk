@@ -29,18 +29,18 @@ type Beat = {
 
 const BEATS: Beat[] = [
   {
-    eyebrow: "YOUR SEASON",
-    title: (<>Every season<br/>begins here.</>),
+    eyebrow: "THEIR PROFILE",
+    title: (<>Their sporting story<br/>starts here.</>),
     screen: "/emblem/dp-home-screen.png",
   },
   {
     eyebrow: "THE COLLECTION",
-    title: (<>Every milestone,<br/>a collectible.</>),
+    title: (<>Every milestone<br/>becomes collectible.</>),
     screen: "/emblem/dp-develop-screen.png",
   },
   {
     eyebrow: "COACH'S ASSESSMENT",
-    title: (<>A word from<br/>their coach.</>),
+    title: (<>Recognition that<br/>means more.</>),
     screen: "/emblem/dp-recognition-screen.png",
   },
   {
@@ -50,7 +50,7 @@ const BEATS: Beat[] = [
   },
   {
     eyebrow: "COACH RECOGNITION",
-    title: (<>Every player<br/>celebrated.</>),
+    title: (<>Celebrate more<br/>than the score.</>),
     screen: "/emblem/dp-celebrate-screen.png",
   },
   {
@@ -59,8 +59,8 @@ const BEATS: Beat[] = [
     screen: "/emblem/dp-addmoment-screen.png",
   },
   {
-    eyebrow: "A SEASON, GROWN",
-    title: (<>Chapters that<br/>keep adding up.</>),
+    eyebrow: "SEASON AFTER SEASON",
+    title: (<>One season ends.<br/>Their story continues.</>),
     screen: "/emblem/dp-grown-screen.png",
   },
 ];
@@ -342,10 +342,10 @@ export default function DigitalProfileSection() {
         <div>
           <div style={{ fontFamily: font.cond, fontWeight: 700, letterSpacing: ".24em", fontSize: 13, color: ORANGE, marginBottom: 16 }}>THE DIGITAL PROFILE</div>
           <h2 style={{ fontFamily: font.display, fontWeight: 900, fontSize: "clamp(40px,5.5vw,64px)", lineHeight: .96, letterSpacing: "-.01em", margin: "0 0 20px", textTransform: "none", color: "#F4F0E9" }}>
-            Their season<br /><span style={{ color: ORANGE }}>lives here.</span>
+            More than a<br /><span style={{ color: ORANGE }}>trading card.</span>
           </h2>
           <p style={{ fontFamily: font.body, fontSize: 17, lineHeight: 1.65, color: "#AAA39A", margin: "0 0 26px", maxWidth: 420 }}>
-            Every tap opens a private digital profile that grows throughout the season. New matches, memories and milestones are added as their football story unfolds.
+            One premium physical card. A digital sporting journey that grows with every milestone.
           </p>
           <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 18, color: "#8B8478", fontSize: 13, fontFamily: font.body }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8B8478" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z" /></svg>

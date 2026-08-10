@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import AnnouncementBar from '@/components/AnnouncementBar';
 
 /**
  * The home page, the builder flow, Emblem OS, and a player's public profile
@@ -42,7 +43,8 @@ export default function ConditionalChrome({ children }: { children: React.ReactN
     // the same nav as everywhere else.
     return (
       <div className={isMarketing ? 'marketing-shell' : undefined}>
-        <Navbar />
+        <AnnouncementBar />
+        <Navbar sticky />
         <main className="emh-home-shell">{children}</main>
         <Footer />
       </div>

@@ -3763,11 +3763,27 @@ a { text-decoration: none; color: inherit; }
 
 .emh-site-nav { color: #f4f4f2; }
 
+/* /embm-nav.png is a dedicated crop of embm.png's own artwork, trimmed
+   to its visible bounds (the source file carries a large, asymmetric
+   transparent margin) — this class is sizing only, no separate asset
+   redraw. Flex `align-items: center` on .emh-site-nav-inner now optically
+   centres it without needing a manual transform nudge. */
 .emh-nav-logo {
   display: block;
   width: auto;
-  height: 55px;
-  transform: translateY(-4px);
+  height: 44px;
+}
+
+/* Unconditional (not just inside the <=700px query) since the button is
+   only ever hidden via the min-[860px]:hidden Tailwind class — without
+   this, viewports between 701-859px would fall back to unstyled sizing
+   and miss the 44x44 minimum touch target. */
+.emh-mobile-menu-button {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .emh-nav-link,
@@ -3778,10 +3794,11 @@ a { text-decoration: none; color: inherit; }
 
 .emh-eyebrow,
 .emh-micro,
-.emh-trust-strip,
+.emh-hero-process,
+.emh-hero-proof,
 .emh-roster-head p,
 .emh-roster-head span,
-.emh-roster-actions,
+.emh-squad-group-number,
 .emh-status,
 .emh-tier-flag,
 .emh-footer-col h3,
@@ -3831,10 +3848,29 @@ a { text-decoration: none; color: inherit; }
   letter-spacing: -0.02em;
 }
 
+/* Sits above the sticky nav (see .emh-site-nav / Navbar's `sticky` prop) as
+   a plain in-flow block — not fixed/sticky itself, so it scrolls away
+   naturally and the nav settles flush at the top behind it, with no manual
+   offset needed anywhere (nav no longer overlays content, so unlike the
+   old fixed-nav setup, .emh-hero-section needs no compensating padding-top). */
+.emh-announcement-bar {
+  width: 100%;
+  padding: 9px 16px;
+  background: #f1601d;
+  color: #16130f;
+  font-family: var(--font-jbmono), monospace;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1.3;
+}
+
 .emh-hero-section {
   position: relative;
   overflow: hidden;
-  padding-top: 55px;
+  padding-top: 0;
   border-bottom: 1px solid rgba(20, 17, 15, 0.08);
   background:
     linear-gradient(90deg, rgba(20, 17, 15, 0.08) 1px, transparent 1px) calc(50% - 610px) 0 / 1220px 100% no-repeat,
@@ -3864,15 +3900,16 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-hero-copy h1 {
-  margin: 0 auto 4px;
+  margin: 0 auto 14px;
   max-width: 620px;
   color: #16130f;
   font-family: var(--font-sora), system-ui, sans-serif;
   font-size: clamp(28px, 3.6vw, 46px);
   font-weight: 800;
-  line-height: 0.86;
+  line-height: 1.06;
   letter-spacing: 0;
   text-transform: none;
+  text-wrap: balance;
 }
 
 .emh-hero-copy h1 span {
@@ -3883,13 +3920,18 @@ a { text-decoration: none; color: inherit; }
   color: #e97435;
 }
 
-.emh-hero-subline {
-  margin: 0 0 8px;
-  color: #16130f;
-  font-family: var(--font-jbmono), monospace;
-  font-size: clamp(12px, 1vw, 13px);
-  font-weight: 800;
-  letter-spacing: 0.02em;
+/* Hero's own supporting paragraph — deliberately not .emh-lede (that
+   class's mobile max-width, tuned for narrower intro copy elsewhere on
+   this page, would force this longer sentence into an awkward number of
+   short lines here). Unconstrained on mobile (wraps at the hero's own
+   side padding, matching the reference design); held to a comfortable
+   reading measure once the hero has room to spare. */
+.emh-hero-lede {
+  margin: 0 auto 22px;
+  max-width: 480px;
+  color: #5a5248;
+  font-size: clamp(15px, 1.6vw, 17px);
+  line-height: 1.55;
 }
 
 .emh-eyebrow {
@@ -3937,7 +3979,7 @@ a { text-decoration: none; color: inherit; }
   gap: 14px;
 }
 
-.emh-hero-copy .emh-actions { margin-bottom: 26px; }
+.emh-hero-copy .emh-actions { margin-bottom: 14px; }
 
 .emh-btn {
   display: inline-flex;
@@ -4429,13 +4471,13 @@ a { text-decoration: none; color: inherit; }
   align-items: center;
 }
 
-.emh-hero-footer .emh-actions {
+.emh-hero .emh-actions {
   justify-content: center;
   gap: 8px;
   margin-bottom: 14px;
 }
 
-.emh-hero-footer .emh-actions .emh-btn {
+.emh-hero .emh-actions .emh-btn {
   min-height: 40px;
   border-radius: 8px;
   padding: 10px 16px;
@@ -4443,18 +4485,20 @@ a { text-decoration: none; color: inherit; }
   letter-spacing: 0.02em;
 }
 
-/* Single hero CTA — scoped to .emh-hero-footer only, so the shared
-   .emh-btn/.emh-actions classes used elsewhere on the page (pricing,
-   FAQ, final CTA, nav) are untouched. Selectors here deliberately match
-   or exceed the specificity of the two-button rules above (.emh-hero-footer
-   .emh-actions / .emh-hero-footer .emh-actions .emh-btn) so this genuinely
+/* Single hero CTA — scoped to .emh-hero (not .emh-hero-footer) so this
+   still applies now that the CTA lives in .emh-hero-copy, directly under
+   the supporting paragraph, rather than in the footer alongside the trust
+   strip. .emh-hero is the shared ancestor of both, so this is a pure
+   rescope, not a behaviour change. Selectors here deliberately match or
+   exceed the specificity of the two-button rules above (.emh-hero
+   .emh-actions / .emh-hero .emh-actions .emh-btn) so this genuinely
    overrides them instead of silently losing the cascade. */
-.emh-hero-footer .emh-hero-actions-single {
+.emh-hero .emh-hero-actions-single {
   justify-content: center;
   width: 100%;
 }
 
-.emh-hero-footer .emh-actions .emh-hero-cta {
+.emh-hero .emh-actions .emh-hero-cta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4475,70 +4519,85 @@ a { text-decoration: none; color: inherit; }
   line-height: 1;
 }
 
-.emh-hero-reassurance {
-  margin: 0 0 14px;
-  color: rgba(20, 17, 15, 0.55);
-  font-family: var(--font-jbmono), monospace;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-align: center;
+/* Hero product composition — the supplied asset is already transparent
+   (no card/phone backdrop baked in), so this is sizing only: no
+   background, no border, nothing that would introduce a visible
+   rectangle behind it. The source PNG is cropped to its actual
+   non-transparent bounds (1008x865, small even padding), so it's now
+   width-capped rather than height-capped: this landscape aspect ratio
+   reads full-size at a sensible width, with height following via
+   aspect-ratio. */
+.emh-hero-product-image {
+  display: block;
+  width: min(92%, 820px);
+  height: auto;
+  aspect-ratio: 1008 / 865;
+  max-width: 100%;
+  margin: 0 auto 16px;
+  object-fit: contain;
 }
 
-.emh-trust-strip {
-  position: relative;
+.emh-hero-process {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px 20px;
-  width: min(456px, 100%);
-  margin: 0 auto;
-  padding: 0;
-  background: transparent;
-}
-
-.emh-trust-strip > span {
-  display: flex;
-  align-items: center;
-  text-align: left;
-  gap: 6px;
-  color: rgba(20, 17, 15, 0.66);
-  font-family: var(--font-jbmono), monospace;
-  font-size: 12px;
+  gap: 9px;
+  margin: 0 0 22px;
+  color: rgba(20, 17, 15, 0.62);
+  font-size: 12.5px;
   font-weight: 800;
-  letter-spacing: 0;
-  text-transform: none;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
 }
 
-.emh-trust-strip i {
-  width: 5px;
-  height: 5px;
+.emh-hero-process-dot {
+  width: 4px;
+  height: 4px;
   flex: 0 0 auto;
   border-radius: 999px;
   background: #f1601d;
 }
 
-.emh-trust-copy {
-  display: block;
+.emh-hero-proof {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
 }
 
-.emh-trust-strip b,
-.emh-trust-strip small {
-  display: block;
-}
-
-.emh-trust-strip b {
+.emh-hero-proof-item {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
   color: #16130f;
-  font-family: var(--font-sora), system-ui, sans-serif;
-  font-size: 13px;
+  font-size: 11.5px;
   font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-align: center;
+  border-left: 1px solid rgba(20, 17, 15, 0.12);
 }
 
-.emh-trust-strip small {
-  color: rgba(20, 17, 15, 0.55);
-  font-size: 13px;
-  font-weight: 600;
+.emh-hero-proof-item:first-child {
+  border-left: none;
+}
+
+/* Supplied SVGs already contain their own bordered container artwork,
+   so this is sizing only — no extra border/background wrapper, which
+   would otherwise double-box them. */
+.emh-hero-proof-icon {
+  display: block;
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
 }
 
 .emh-section {
@@ -6573,7 +6632,6 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-digital-copy ul,
-.emh-squad-copy ul,
 .emh-tier-grid ul {
   display: grid;
   gap: 12px;
@@ -6583,7 +6641,6 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-digital-copy li,
-.emh-squad-copy li,
 .emh-tier-grid li {
   display: flex;
   gap: 11px;
@@ -6624,136 +6681,319 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-squad {
-  display: grid;
-  grid-template-columns: minmax(300px, 0.82fr) minmax(340px, 1.18fr);
-  gap: 48px;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
   background:
     radial-gradient(720px 420px at 82% 24%, rgba(233, 116, 53, 0.08), transparent 68%),
     #fdfcfa;
   color: #16130f;
 }
 
+.emh-squad-copy {
+  max-width: 640px;
+}
+
 .emh-squad-copy > p:not(.emh-eyebrow) {
-  margin: 16px 0 22px;
+  margin: 16px 0 0;
   color: #5f574f;
   font-size: 16.5px;
   line-height: 1.65;
 }
 
-.emh-squad-copy li {
-  color: #2b2621;
-  font-size: 15.5px;
-  font-weight: 500;
+/* Two matching cards (not the old loose bullet list) — warm-white surface,
+   fine border, subtle shadow, 22px radius. Number + uppercase heading sit
+   together at the top of each card; items use a small orange circular
+   check (.emh-squad-check), not a bullet dot. */
+.emh-squad-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  max-width: 860px;
 }
 
-.emh-squad-copy li::before {
-  content: "";
-  width: 7px;
-  height: 7px;
+.emh-squad-group {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 26px;
+  border: 1px solid rgba(20, 17, 15, 0.1);
+  border-radius: 22px;
+  background: #fefaf5;
+  box-shadow: 0 20px 46px -34px rgba(20, 17, 15, 0.35);
+}
+
+.emh-squad-group-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.emh-squad-group-number {
+  display: flex;
   flex: 0 0 auto;
-  transform: translateY(-1px);
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   border-radius: 999px;
-  background: #17a968;
+  background: rgba(241, 96, 29, 0.12);
+  color: #ef6c2f;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.emh-squad-group h3 {
+  margin: 0;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 15.5px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+.emh-squad-group ul {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.emh-squad-group li {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: #2b2621;
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.emh-squad-check {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #f1601d;
+  color: #fff;
+}
+
+.emh-squad-cta-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.emh-squad-offer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 16px;
+  border: 1px solid rgba(241, 96, 29, 0.32);
+  border-radius: 999px;
+  background: rgba(241, 96, 29, 0.12);
+  color: #b3480f;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.emh-squad-panels {
+  /* flex-start (not stretch): Order Session and Coach OS naturally hold
+     different amounts of content, and forcing equal heights left a large
+     empty gap in the shorter panel above its footer. */
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 18px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.emh-squad-connector {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  color: #f1601d;
+}
+
+.emh-roster-card,
+.emh-coachos-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 320px;
+  min-width: 0;
+  max-width: 380px;
+  overflow: hidden;
+  border-radius: 20px;
 }
 
 .emh-roster-card {
-  overflow: hidden;
   border: 1px solid rgba(20, 17, 15, 0.1);
-  border-radius: 18px;
   background: #ffffff;
-  box-shadow: 0 30px 70px -48px rgba(20, 17, 15, 0.45);
+  box-shadow: 0 24px 54px -40px rgba(20, 17, 15, 0.4);
+}
+
+.emh-coachos-card {
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  background: #17140f;
+  color: #f4f1ec;
+  box-shadow: 0 24px 54px -34px rgba(0, 0, 0, 0.55);
+}
+
+.emh-panel-footer {
+  margin: 0;
+  padding: 12px 18px 14px;
+  border-top: 1px solid rgba(20, 17, 15, 0.08);
+  color: #756c62;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.emh-panel-footer-dark {
+  border-top-color: rgba(255, 255, 255, 0.1);
+  color: rgba(244, 241, 236, 0.62);
 }
 
 .emh-roster-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 16px 20px;
+  padding: 16px 18px 12px;
   border-bottom: 1px solid rgba(20, 17, 15, 0.08);
 }
 
 .emh-roster-head p {
   margin: 0;
   color: #8b8478;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .emh-roster-head h3 {
-  margin: 0;
-  font-size: 16px;
+  margin: 2px 0 0;
+  font-size: 15px;
   font-weight: 800;
 }
 
-.emh-roster-head > span {
-  padding: 6px 13px;
-  border-radius: 999px;
-  background: rgba(23, 169, 104, 0.14);
+.emh-order-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px 0;
+}
+
+.emh-order-progress-label {
+  flex: 0 0 auto;
   color: #147a4c;
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   white-space: nowrap;
+}
+
+.emh-progress-bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 999px;
+  background: #f6dcd0;
+  overflow: hidden;
+}
+
+.emh-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #17a968;
 }
 
 .emh-roster-list {
   display: grid;
-  gap: 10px;
-  padding: 14px 20px;
+  gap: 8px;
+  padding: 12px 18px 16px;
 }
 
-.emh-roster-row {
+.emh-order-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: 10px;
+  padding: 8px;
   border: 1px solid rgba(20, 17, 15, 0.08);
   border-radius: 12px;
   background: #fdfbf7;
 }
 
-.emh-shirt {
-  width: 38px;
-  height: 38px;
-  display: flex;
+.emh-order-row-photo {
+  position: relative;
   flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9px;
-  color: #fff;
-  font-family: var(--font-sora), system-ui, sans-serif;
-  font-size: 14px;
-  font-weight: 900;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #eee;
 }
 
-.emh-roster-row div {
+.emh-order-row-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 18%;
+}
+
+.emh-order-row-number {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 5px;
+  border: 1.5px solid #fff;
+  color: #fff;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 900;
+  font-style: normal;
+}
+
+.emh-order-row div {
   min-width: 0;
   flex: 1;
 }
 
-.emh-roster-row strong,
-.emh-roster-row small {
+.emh-order-row strong,
+.emh-order-row small {
   display: block;
 }
 
-.emh-roster-row strong { font-size: 14.5px; }
+.emh-order-row strong { font-size: 13.5px; }
 
-.emh-roster-row small {
+.emh-order-row small {
   color: #756c62;
-  font-size: 12.5px;
+  font-size: 11.5px;
 }
 
 .emh-status {
+  flex: 0 0 auto;
   border-radius: 999px;
-  font-size: 13px;
+  font-size: 11.5px;
   font-style: normal;
   font-weight: 700;
   letter-spacing: 0.03em;
-  padding: 5px 12px;
+  padding: 4px 10px;
   white-space: nowrap;
 }
 
@@ -6767,27 +7007,161 @@ a { text-decoration: none; color: inherit; }
   color: #756c62;
 }
 
-.emh-roster-actions {
-  display: flex;
-  gap: 10px;
-  padding-top: 4px;
+/* ---- Coach OS (dark) panel-only elements ---- */
+
+.emh-coachos-head {
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.emh-roster-actions span {
-  flex: 1;
-  border-radius: 10px;
-  background: #efe8de;
-  color: #2b2621;
-  font-size: 14px;
+.emh-coachos-head p {
+  margin: 0;
+  color: rgba(244, 241, 236, 0.5);
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.02em;
-  padding: 12px;
-  text-align: center;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-.emh-roster-actions span:last-child {
+.emh-coachos-head h3 {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.emh-coachos-sub {
+  display: block;
+  margin-top: 2px;
+  color: rgba(244, 241, 236, 0.5);
+  font-size: 12px;
+}
+
+.emh-coachos-avatars {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 18px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.emh-coachos-avatar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1.5px solid #17140f;
+  overflow: hidden;
+  background: #3a352c;
+  color: rgba(244, 241, 236, 0.75);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  margin-left: -8px;
+}
+
+.emh-coachos-avatar:first-child { margin-left: 0; }
+
+.emh-coachos-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 18%;
+}
+
+.emh-coachos-avatar-more {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.emh-coachos-block {
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.emh-coachos-label {
+  margin: 0 0 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.emh-coachos-moment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.emh-coachos-moment-thumb {
+  display: block;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 9px;
+  object-fit: cover;
+  object-position: center 30%;
+}
+
+.emh-coachos-moment div {
+  min-width: 0;
+  flex: 1;
+}
+
+.emh-coachos-moment strong,
+.emh-coachos-moment small,
+.emh-coachos-achievement strong,
+.emh-coachos-achievement small {
+  display: block;
+}
+
+.emh-coachos-moment strong,
+.emh-coachos-achievement strong {
+  font-size: 13px;
+  color: #fff;
+}
+
+.emh-coachos-moment small,
+.emh-coachos-achievement small {
+  color: rgba(244, 241, 236, 0.5);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.emh-coachos-approve {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
   background: #f1601d;
   color: #fff;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 7px 14px;
+}
+
+.emh-coachos-achievement {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.emh-coachos-shield {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(212, 160, 62, 0.4);
+  background: rgba(212, 160, 62, 0.12);
+  color: #d4a03e;
 }
 
 .emh-pricing > p:not(.emh-eyebrow) {
@@ -6799,7 +7173,10 @@ a { text-decoration: none; color: inherit; }
 
 .emh-tier-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  /* 220px (not the more spacious 280px this used to be) so three columns
+     still fit in one balanced row at 768px (720px of content width) rather
+     than wrapping the third, featured card onto an orphaned row alone. */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 20px;
 }
 
@@ -6846,12 +7223,15 @@ a { text-decoration: none; color: inherit; }
   font-family: var(--font-sora), system-ui, sans-serif;
   font-size: 36px;
   line-height: 1;
+  text-transform: uppercase;
 }
 
 .emh-tier-grid strong span {
+  display: inline-block;
   color: rgba(255, 255, 255, 0.5);
   font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .emh-tier-grid li {
@@ -6860,6 +7240,10 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-tier-grid a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   margin-top: auto;
   border-radius: 10px;
   background: #fff;
@@ -6868,6 +7252,7 @@ a { text-decoration: none; color: inherit; }
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.02em;
+  text-transform: uppercase;
   padding: 14px;
   text-align: center;
 }
@@ -6877,9 +7262,25 @@ a { text-decoration: none; color: inherit; }
   color: #fff;
 }
 
-.emh-tier-green a {
-  background: #0e4a2f;
-  color: #fff;
+.emh-pricing-note {
+  margin-top: 32px;
+  text-align: center;
+}
+
+.emh-pricing-reassurance {
+  margin: 0;
+  color: #f4f1ec;
+  font-family: var(--font-jbmono), monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.emh-pricing-delivery {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 13px;
 }
 
 .emh-faq {
@@ -7183,8 +7584,7 @@ a { text-decoration: none; color: inherit; }
 .emh-footer-bottom b { color: #f1601d; }
 
 @media (max-width: 960px) {
-  .emh-digital > div,
-  .emh-squad {
+  .emh-digital > div {
     grid-template-columns: 1fr;
   }
 
@@ -7195,8 +7595,7 @@ a { text-decoration: none; color: inherit; }
   }
 
   .emh-hero .emh-actions,
-  .emh-hero-swatches,
-  .emh-trust-strip > div {
+  .emh-hero-swatches {
     justify-content: center;
   }
 
@@ -7231,28 +7630,25 @@ a { text-decoration: none; color: inherit; }
 }
 
 @media (max-width: 700px) {
+  .emh-announcement-bar {
+    padding: 7px 14px;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+  }
+
   .emh-hero-section {
-    padding-top: 46px;
+    padding-top: 0;
   }
 
   .emh-site-nav-inner {
-    height: 46px;
+    height: 79px;
     gap: 11px;
   }
 
   .emh-nav-logo {
-    height: 31px;
-    max-width: 85px;
+    height: 30px;
+    max-width: 70px;
     object-fit: contain;
-    transform: none;
-  }
-
-  .emh-mobile-menu-button {
-    width: 42px;
-    height: 42px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
   }
 
   .emh-hero {
@@ -7274,12 +7670,6 @@ a { text-decoration: none; color: inherit; }
     line-height: 1.35;
     letter-spacing: 0.13em;
     justify-content: center;
-  }
-
-  .emh-hero-subline {
-    margin-bottom: 6px;
-    font-size: 12px;
-    letter-spacing: 0.02em;
   }
 
   .emh-lede {
@@ -7358,7 +7748,7 @@ a { text-decoration: none; color: inherit; }
     letter-spacing: 0.1em;
   }
 
-  .emh-hero-footer .emh-actions {
+  .emh-hero .emh-actions {
     gap: 10px;
   }
 
@@ -7383,11 +7773,11 @@ a { text-decoration: none; color: inherit; }
     min-width: 220px;
   }
 
-  .emh-hero-footer .emh-actions {
+  .emh-hero .emh-actions {
     width: auto;
   }
 
-  .emh-hero-footer .emh-actions .emh-btn {
+  .emh-hero .emh-actions .emh-btn {
     flex: 0 1 auto;
     min-width: 88px;
     min-height: 36px;
@@ -7397,13 +7787,13 @@ a { text-decoration: none; color: inherit; }
   /* Single hero CTA: full-width within the hero content container
      (.emh-hero already provides the 16px side margins), overriding the
      old two-buttons-shrink-to-fit sizing above. Selector specificity
-     matches (and is declared after) .emh-hero-footer .emh-actions above,
-     so this genuinely wins instead of silently losing the cascade. */
-  .emh-hero-footer .emh-hero-actions-single {
+     matches (and is declared after) .emh-hero .emh-actions above, so
+     this genuinely wins instead of silently losing the cascade. */
+  .emh-hero .emh-hero-actions-single {
     width: 100%;
   }
 
-  .emh-hero-footer .emh-actions .emh-hero-cta {
+  .emh-hero .emh-actions .emh-hero-cta {
     flex: 1 1 auto;
     width: 100%;
     max-width: none;
@@ -7411,6 +7801,44 @@ a { text-decoration: none; color: inherit; }
     min-height: 48px;
     padding: 12px 16px;
     white-space: nowrap;
+  }
+
+  .emh-hero-lede {
+    max-width: 340px;
+    font-size: 15.5px;
+    line-height: 1.5;
+  }
+
+  /* Full-bleed to the hero's own edges (undoing .emh-hero's 16px side
+     padding just for this element) rather than sitting inset like the
+     text above it — the extra width is what makes the composition read
+     as genuinely large on narrow screens, matching the reference scale. */
+  .emh-hero-product-image {
+    width: calc(100% + 32px);
+    max-width: calc(100% + 32px);
+    margin: 0 -16px 14px;
+  }
+
+  .emh-hero-process {
+    gap: 6px;
+    margin-bottom: 18px;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+  }
+
+  .emh-hero-proof {
+    max-width: 320px;
+  }
+
+  .emh-hero-proof-item {
+    gap: 6px;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+
+  .emh-hero-proof-icon {
+    width: 36px;
+    height: 36px;
   }
 
   .emh-section,
@@ -7862,14 +8290,6 @@ a { text-decoration: none; color: inherit; }
     width: min(44vw, 190px);
   }
 
-  .emh-roster-head,
-  .emh-roster-row,
-  .emh-roster-actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .emh-status { width: fit-content; }
   .emh-footer-main { grid-template-columns: 1fr; }
 }
 
@@ -8121,7 +8541,6 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-section-head p:last-child,
-.emh-squad-copy > p:not(.emh-eyebrow),
 .emh-pricing > p:not(.emh-eyebrow) {
   max-width: 300px;
   font-size: 14px;
@@ -8129,90 +8548,84 @@ a { text-decoration: none; color: inherit; }
 }
 
 .emh-squad {
-  gap: 20px;
+  gap: 28px;
+}
+
+.emh-squad-copy > p:not(.emh-eyebrow) {
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .emh-digital-copy ul,
-.emh-squad-copy ul,
 .emh-tier-grid ul {
   gap: 5px;
   margin-bottom: 12px;
 }
 
-.emh-squad-copy li,
 .emh-tier-grid li {
   gap: 6px;
   font-size: 13px;
 }
 
-.emh-squad-copy li::before,
 .emh-tier-grid li::before {
   width: 4px;
   height: 4px;
 }
 
-.emh-roster-card {
-  border-radius: 10px;
-  box-shadow: 0 16px 38px -30px rgba(20, 17, 15, 0.4);
+.emh-squad-groups {
+  grid-template-columns: 1fr;
+  gap: 14px;
+  max-width: 420px;
 }
 
-.emh-roster-head {
-  gap: 8px;
-  padding: 8px 10px;
+.emh-squad-group {
+  padding: 20px 20px 22px;
+  border-radius: 18px;
 }
 
-.emh-roster-head p {
-  font-size: 12px;
+.emh-squad-cta-row {
+  align-items: center;
+  text-align: center;
+  width: 100%;
 }
 
-.emh-roster-head h3 {
-  font-size: 13px;
+.emh-squad-cta-row .emh-btn {
+  width: 100%;
 }
 
-.emh-roster-head > span {
-  padding: 4px 7px;
-  font-size: 12px;
-}
-
-.emh-roster-list {
-  gap: 5px;
-  padding: 8px 10px;
-}
-
-.emh-roster-row {
-  gap: 7px;
-  padding: 6px 7px;
-  border-radius: 8px;
-}
-
-.emh-shirt {
-  width: 25px;
-  height: 25px;
-  border-radius: 6px;
+.emh-squad-offer {
+  max-width: 280px;
+  padding: 8px 14px;
   font-size: 11px;
+  text-align: center;
+  white-space: normal;
 }
 
-.emh-roster-row strong {
-  font-size: 13px;
+/* Panels stack below 700px (side by side from 700px up) — a downward
+   connector between them instead of the desktop's right-facing one. */
+.emh-squad-panels {
+  flex-direction: column;
 }
 
-.emh-roster-row small {
-  font-size: 12px;
+.emh-squad-connector {
+  transform: rotate(90deg);
 }
 
-.emh-status {
-  padding: 3px 7px;
-  font-size: 12px;
+.emh-roster-card,
+.emh-coachos-card {
+  /* flex-basis tracks the main axis, which becomes height once
+     .emh-squad-panels switches to a column — without resetting it here,
+     the 320px basis (meant as a desktop width) clips these cards' real
+     content height instead. */
+  flex: none;
+  max-width: 420px;
+  width: 100%;
+  margin: 0 auto;
 }
 
-.emh-roster-actions {
-  gap: 5px;
-}
-
-.emh-roster-actions span {
-  padding: 7px;
-  border-radius: 7px;
-  font-size: 13px;
+.emh-panel-footer {
+  padding: 10px 16px 12px;
+  font-size: 11.5px;
 }
 
 .emh-pricing > p:not(.emh-eyebrow) {
@@ -8663,7 +9076,7 @@ a { text-decoration: none; color: inherit; }
   line-height: 1.55;
 }
 
-.emh-page :is(.emh-hiw-card p, .emh-faq-answer p, .emh-tier-grid li, .emh-squad-copy li) {
+.emh-page :is(.emh-hiw-card p, .emh-faq-answer p, .emh-tier-grid li) {
   font-size: clamp(13px, 1.2vw, 14px);
 }
 
@@ -8671,7 +9084,7 @@ a { text-decoration: none; color: inherit; }
   font-size: clamp(14px, 1.2vw, 15px);
 }
 
-.emh-page :is(.emh-eyebrow, .emh-hiw-number, .emh-hero-subline, .emh-hero-edition-note) {
+.emh-page :is(.emh-eyebrow, .emh-hiw-number, .emh-hero-edition-note) {
   font-size: clamp(12px, 1vw, 13px);
 }
 
