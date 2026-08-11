@@ -43,9 +43,29 @@ type EnquiryBody = {
     type?: string;
     club?: string;
   };
+  /**
+   * The authoritative quote from POST /api/pricing/quote (Stage 3/4),
+   * copied field-for-field by the client's productionPayload() — never
+   * recalculated here. Optional: the builder omits this entirely rather
+   * than sending a stale/placeholder block when no confirmed-fresh quote
+   * was available at submit time (see ProductionBuilder.tsx's
+   * canSendEnquiry/quoteMatchesCurrentCounts). Logged below for
+   * observability only — this route still does not validate or persist
+   * pricing.
+   */
   pricing?: {
-    approvedPrints?: number;
-    subtotal?: number;
+    currency?: string;
+    pricingTier?: string;
+    paidPlayerCount?: number;
+    totalPrintQuantity?: number;
+    unitPricePence?: number;
+    subtotalPence?: number;
+    pricingVersion?: number;
+    coachCardIncluded?: boolean;
+    lineItems?: Array<{ kind?: string; quantity?: number; unitPricePence?: number; subtotalPence?: number }>;
+    deliveryPence?: number | null;
+    taxPence?: number | null;
+    totalPence?: number | null;
   };
   players?: EnquiryPlayer[];
   submittedAt?: string;
@@ -88,8 +108,11 @@ export async function POST(request: Request) {
     orderType: body.order?.type,
     club: body.order?.club,
     approvedPlayers,
-    approvedPrints: body.pricing?.approvedPrints,
-    subtotal: body.pricing?.subtotal,
+    pricingTier: body.pricing?.pricingTier,
+    totalPrintQuantity: body.pricing?.totalPrintQuantity,
+    subtotalPence: body.pricing?.subtotalPence,
+    coachCardIncluded: body.pricing?.coachCardIncluded,
+    pricingVersion: body.pricing?.pricingVersion,
     contact: {
       name,
       email,
