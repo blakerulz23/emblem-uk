@@ -1,0 +1,161 @@
+-- Pricing project — Stage 5A: schema for the free coach card a qualifying
+-- squad order unlocks. Schema only — nothing writes to this table yet. The
+-- builder does not collect coach details, no coach-card-details step exists,
+-- and no server route creates a row here in this stage.
+--
+-- A coach card is not a player card and has no login/OS presence: it is a
+-- printing/fulfilment detail record only, standalone and owned by `orders`.
+-- It deliberately has no relationship to `players`, `guardians`, or
+-- `auth.users` — there is no coach identity to create, and none should ever
+-- be created for this. (Contrast with `players`/`card_definitions`, which
+-- back a real claimable card with an OS presence — this table intentionally
+-- has neither.)
+--
+-- ---------------------------------------------------------------------------
+-- order_coach_cards — at most one row per qualifying order, and every row
+-- that exists is complete and immediately printable.
+--
+-- Lifecycle (amended): the builder may hold draft coach-card details in
+-- client state before the customer submits their order — a name typed into
+-- a form field, a photo picked but not yet uploaded — exactly like every
+-- other in-progress builder field today. None of that is a database row.
+-- No row is created here merely because a squad quote unlocks the free
+-- coach-card entitlement (coachCardIncluded: true on its own creates
+-- nothing). The future authoritative order transaction creates a row in
+-- this table only once ALL of the following are true together:
+--   - server-side pricing confirms coachCardIncluded (the quote's own
+--     pricingTier is 'squad' and coachCardIncluded is true)
+--   - the customer has completed every required coach-card detail
+--     (full_name, role_title, club_name, team_name, photo_key — see below)
+--   - the corresponding £0 order_line_items row (kind = 'coach_card',
+--     quantity 1, unit_price_pence 0) is created in the same transaction
+-- If the customer has not completed the required details, that transaction
+-- must not create a row here at all — there is no partial/placeholder
+-- state for this table to represent. This is a deliberate change from this
+-- migration's first draft (which made every detail column nullable to
+-- allow a stub row created ahead of detail-collection); the approved
+-- design is instead that the row's existence itself always means "this
+-- coach card is complete and ready for production," never "eligible but
+-- still being filled in."
+--
+-- club_name/team_name are plain text with no FK, matching orders.club_name/
+-- orders.team_name exactly (0009_team_invites.sql): a builder order is not
+-- guaranteed a backing `teams`/`clubs` row at any point in its lifecycle —
+-- club/team identity is resolved by staff later, and typed free text is the
+-- only value ever actually available here. photo_key follows
+-- players.photo_key (0004_player_photo.sql): a private S3 key, never a
+-- public URL or base64 image — a signed download URL is generated on read,
+-- same as every other photo reference in this codebase.
+--
+-- Multi-team orders (application-level requirement, not enforced by this
+-- schema): there is still exactly one free coach card per qualifying
+-- order, even when that order spans multiple clubs/teams (a squad order
+-- can include players from more than one club group — see
+-- ProductionBuilder.tsx's groupPlayersByClub()). When it does, the
+-- customer must explicitly choose which one of the order's included clubs/
+-- teams the coach card belongs to; club_name/team_name store that choice
+-- as an immutable display snapshot at the moment the row is created, not a
+-- live reference to any club/team the rest of the order might later change.
+-- Stage 5B is expected to implement that selection step in the builder.
+-- This migration deliberately adds no team/club FK and no additional
+-- column to represent the choice — the two snapshot columns already
+-- planned are sufficient to record its outcome.
+--
+-- metadata mirrors order_line_items.metadata (0045) verbatim in intent:
+-- non-authoritative future display context only, never a second source of
+-- truth for anything typed above it. It remains the one nullable detail
+-- column, since it was never part of "the required printable details" —
+-- see the field-by-field breakdown below.
+--
+-- No collection/template reference is stored here. Per-player cards already
+-- carry their own template via card_definitions.template_id, and nothing
+-- about production today establishes that the coach card must reuse (or
+-- could reliably infer) a single order-level template value — inventing a
+-- field for that now would be exactly the kind of speculative addition this
+-- stage is asked not to make. If the coach card ever needs its own explicit
+-- template choice, that is a future, separately-justified column.
+--
+-- ---------------------------------------------------------------------------
+-- Commercial integrity — documented invariant, not a database trigger:
+--
+-- A future server transaction must create a row here only when all of the
+-- following hold, verified against the authoritative quote (POST /api/
+-- pricing/quote) and the order's own order_line_items, exactly as Stage 4
+-- already established as the sole source of pricing truth:
+--   - the quote's pricingTier is 'squad'
+--   - the quote's coachCardIncluded is true
+--   - all required coach-card details (see below) have been supplied
+--   - the order's order_line_items contains the corresponding
+--     kind = 'coach_card' row (quantity 1, unit_price_pence 0)
+--
+-- This is deliberately NOT enforced here by a cross-table CHECK, FK, or
+-- trigger — this repo has no precedent for that style of fragile,
+-- pricing-aware database constraint (see the audited migration history:
+-- every pricing rule this project enforces lives in application code —
+-- src/lib/pricing-engine.ts — or in per-table CHECKs scoped to that table's
+-- own columns, never a trigger reaching into a sibling table). The
+-- guarantee that at most one coach card exists per order is enforced here
+-- structurally (the unique constraint below); the guarantee that a coach
+-- card is only ever created for an eligible, fully-detailed order is an
+-- application-level invariant the future write path is responsible for —
+-- incomplete details must abort that transaction before it ever inserts a
+-- row here, the same way order_enquiry/route.ts is already responsible for
+-- never inventing a price.
+-- ---------------------------------------------------------------------------
+create table order_coach_cards (
+  id uuid primary key default gen_random_uuid(),
+  -- unique, not just indexed: at most one coach-card row per order. The
+  -- unique constraint's own backing index also serves every FK lookup on
+  -- this column — no separate index is added, to avoid a redundant one.
+  order_id uuid not null unique references orders (id) on delete cascade,
+  -- Required: a row only ever exists once these are complete (see the
+  -- lifecycle note above) — every stored row must be immediately usable
+  -- for production, never a placeholder awaiting the rest of the details.
+  full_name text not null check (length(trim(full_name)) > 0),
+  role_title text not null check (length(trim(role_title)) > 0),
+  -- The customer's chosen club/team for a multi-team order, or the order's
+  -- one club/team when there is only one — see the multi-team note above.
+  club_name text not null check (length(trim(club_name)) > 0),
+  team_name text not null check (length(trim(team_name)) > 0),
+  photo_key text not null check (length(trim(photo_key)) > 0),
+  -- The one genuinely optional field — never part of "the required
+  -- printable details", see the comment above.
+  metadata jsonb,
+  created_at timestamptz not null default now()
+  -- No updated_at: this repo has no generic "touch updated_at" trigger
+  -- anywhere (confirmed against every migration that creates one) — the
+  -- two tables that have it (player_goals, player_season_focus) set it
+  -- manually, in the application code that performs their edit. This
+  -- table has no edit path yet either, so adding updated_at now would be
+  -- exactly the kind of mechanism-without-a-consumer this stage is asked
+  -- not to add. A future stage that adds a real edit flow for these
+  -- details should add updated_at then, set the same manual way.
+);
+
+-- Every required column's check still allows the general NULL-passes-CHECK
+-- idiom used throughout this codebase (0045's own constraints rely on the
+-- same rule) to fall out naturally: because the columns are also NOT NULL,
+-- a genuinely missing value is caught by the NOT NULL constraint itself,
+-- and the CHECK's real job is only to catch a present-but-blank/
+-- whitespace-only value (e.g. full_name = '   '), which NOT NULL alone
+-- would not reject.
+
+alter table order_coach_cards enable row level security;
+
+-- No policies, no grants — service-only, matching order_line_items'
+-- established convention (0045/0046). Not even service_role is granted
+-- anything: nothing reads or writes this table yet (Stage 5A is schema
+-- only), so per 0037_service_role_least_privilege.sql's own discipline, a
+-- grant belongs in the migration that ships the real, audited write path —
+-- not here, ahead of one existing.
+--
+-- Learning from 0045/0046 needing two migrations to close the same gap:
+-- production's `public` schema has an out-of-band default-privilege policy
+-- (set by the `postgres` role, not by any migration in this repo) that
+-- auto-grants a newly created table structural access for anon/
+-- authenticated and full DML for service_role — confirmed present on
+-- production, absent on staging. Revoking it here, in the same migration
+-- that creates the table, closes that gap immediately rather than leaving
+-- a window where production's drift would grant access until a follow-up
+-- migration catches it, as happened with order_line_items.
+revoke all privileges on table public.order_coach_cards from anon, authenticated, service_role;
