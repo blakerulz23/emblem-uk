@@ -1,6 +1,7 @@
 import { clubBadgePath } from '@/lib/emjfl-clubs';
 import { CUSTOM_COLLECTION_VARIANTS, type CustomCollectionTemplateId } from '@/lib/custom-collection-manifest';
 import { HOLLINWOOD_VARIANTS, type HollinwoodTemplateId } from '@/lib/hollinwood-manifest';
+import type { PricingQuoteResponse } from '@/lib/pricing-quote';
 
 export type OrderType = 'single' | 'set' | 'squad';
 export type CollectionType = 'official' | 'custom';
@@ -204,13 +205,20 @@ export function derivePlayerStatus(player: PlayerDraft): PlayerStatus {
   return 'ready';
 }
 
-export function priceForApprovedCount(approvedPlayers: number) {
-  if (approvedPlayers >= 16) return { perCard: 9.5, label: 'Squad+ pricing' };
-  if (approvedPlayers >= 7) return { perCard: 11, label: 'Squad pricing' };
-  if (approvedPlayers >= 2) return { perCard: 12.99, label: 'Set pricing' };
-  return { perCard: 14.99, label: 'Single pricing' };
-}
-
+/**
+ * Distinct approved (paid) players and their combined print quantity —
+ * exactly the two inputs POST /api/pricing/quote accepts
+ * (paidPlayerCount/totalPrintQuantity). This module deliberately computes
+ * nothing else pricing-related: no tier, no unit price, no subtotal. Those
+ * are authoritative-only, calculated exclusively by src/lib/pricing-
+ * engine.ts on the server and fetched via that endpoint — see
+ * src/components/emblem-uk/useOrderPricingQuote.ts. This file previously
+ * had its own client-side priceForApprovedCount() tier/price model (a
+ * pre-Stage-4 relic — different thresholds and prices from the approved
+ * engine, never reconciled with it); it has been removed rather than kept
+ * as a fallback, since silently falling back to a different, wrong price
+ * is worse than showing a loading/error state.
+ */
 export function summarizeOrder(order: OrderDraft) {
   const counts = order.players.reduce(
     (acc, player) => {
@@ -222,14 +230,11 @@ export function summarizeOrder(order: OrderDraft) {
   );
   const approvedPlayers = order.players.filter((player) => derivePlayerStatus(player) === 'approved');
   const approvedPrints = approvedPlayers.reduce((sum, player) => sum + player.prints, 0);
-  const pricing = priceForApprovedCount(approvedPlayers.length);
 
   return {
     counts,
     approvedPlayers,
     approvedPrints,
-    pricing,
-    subtotal: approvedPrints * pricing.perCard,
     checkoutEligible: approvedPlayers.length >= 1,
   };
 }
@@ -238,7 +243,18 @@ export function selectedTemplate(order: OrderDraft, player?: PlayerDraft) {
   return templates.find((template) => template.id === (player?.templateId || order.templateDefault)) || templates[0];
 }
 
-export function productionPayload(order: OrderDraft) {
+/**
+ * Explicit, required (not optional-defaulted) parameter — the caller must
+ * decide what quote applies, this function never reaches into React state
+ * or falls back to a stale/default price on its own. Pass `null` only when
+ * there is genuinely no authoritative quote to attach yet (e.g. the one
+ * remaining internal/debug export path, exportPayload() in
+ * ProductionBuilder.tsx, which isn't wired to the public submit flow); the
+ * real enquiry-submission call site must only ever pass a quote whose
+ * counts have already been confirmed fresh — see
+ * ProductionBuilder.tsx's submitEnquiry()/canSendEnquiry.
+ */
+export function productionPayload(order: OrderDraft, quote: PricingQuoteResponse | null) {
   const summary = summarizeOrder(order);
   const fallbackClub = order.collectionType === 'custom' ? 'Custom Collection' : order.club;
   const players = summary.approvedPlayers.map((player) => ({
@@ -263,7 +279,6 @@ export function productionPayload(order: OrderDraft) {
     if (existing) {
       existing.players.push(player.id);
       existing.prints += player.prints;
-      existing.subtotal = Number((existing.prints * summary.pricing.perCard).toFixed(2));
       return groups;
     }
     groups.set(key, {
@@ -274,10 +289,9 @@ export function productionPayload(order: OrderDraft) {
       badgeSnapshotUrl: player.badgeSnapshotUrl,
       players: [player.id],
       prints: player.prints,
-      subtotal: Number((player.prints * summary.pricing.perCard).toFixed(2)),
     });
     return groups;
-  }, new Map<string, { id: string; club: string; badgeUrl?: string; badgeStorageKey?: string; badgeSnapshotUrl?: string; players: string[]; prints: number; subtotal: number }>()).values());
+  }, new Map<string, { id: string; club: string; badgeUrl?: string; badgeStorageKey?: string; badgeSnapshotUrl?: string; players: string[]; prints: number }>()).values());
 
   return {
     order: {
@@ -295,12 +309,29 @@ export function productionPayload(order: OrderDraft) {
       emjflClubId: order.emjflClubId,
       templateDefault: order.templateDefault,
     },
-    pricing: {
-      label: summary.pricing.label,
-      perCard: summary.pricing.perCard,
-      approvedPrints: summary.approvedPrints,
-      subtotal: Number(summary.subtotal.toFixed(2)),
-    },
+    // One order-level block, copied field-for-field from the authoritative
+    // quote — never recalculated, never converted (pence stays pence), and
+    // never allocated across clubGroups/players below. Omitted entirely
+    // (not a zeroed/placeholder block) when no quote was passed, so a
+    // reader can never mistake "no quote" for "a £0 quote".
+    ...(quote
+      ? {
+          pricing: {
+            currency: quote.currency,
+            pricingTier: quote.pricingTier,
+            paidPlayerCount: quote.paidPlayerCount,
+            totalPrintQuantity: quote.totalPrintQuantity,
+            unitPricePence: quote.unitPricePence,
+            subtotalPence: quote.subtotalPence,
+            pricingVersion: quote.pricingVersion,
+            coachCardIncluded: quote.coachCardIncluded,
+            lineItems: quote.lineItems,
+            deliveryPence: quote.deliveryPence,
+            taxPence: quote.taxPence,
+            totalPence: quote.totalPence,
+          },
+        }
+      : {}),
     clubGroups,
     players,
   };

@@ -2986,6 +2986,196 @@ a { text-decoration: none; color: inherit; }
   color: #8f1f1f;
 }
 
+/* Stage 4 — authoritative pricing summary (PricingSummaryCard). Reuses the
+   builder's existing warm-cream card/border palette and JetBrains
+   Mono/Sora label-value pattern (see .uk-order-summary-card,
+   .uk-production-snapshot above) rather than introducing a new visual
+   language for this one panel. */
+.uk-pricing-summary {
+  margin: 14px 0;
+  border: 1px solid #eadfce;
+  border-radius: 16px;
+  background: #fffdfa;
+  padding: 16px;
+}
+
+.uk-pricing-compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 16px;
+}
+
+.uk-pricing-compact span {
+  color: var(--wizard-soft);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.uk-pricing-compact b {
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 20px;
+}
+
+.uk-pricing-rows {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.uk-pricing-rows div {
+  display: grid;
+  gap: 4px;
+}
+
+.uk-pricing-rows span {
+  color: var(--wizard-soft);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.uk-pricing-rows strong {
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.uk-pricing-subtotal-row {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--wizard-line);
+  padding-top: 10px;
+  margin-top: 2px;
+}
+
+.uk-pricing-subtotal-row strong {
+  font-size: 22px;
+}
+
+.uk-pricing-note {
+  margin: 12px 0 0;
+  color: var(--wizard-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.uk-pricing-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--wizard-soft);
+  font-size: 14px;
+}
+
+.uk-pricing-spinner {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 3px solid var(--wizard-line);
+  border-top-color: var(--wizard-accent);
+  animation: uk-pricing-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uk-pricing-spinner {
+    animation-duration: 1.6s;
+  }
+}
+
+@keyframes uk-pricing-spin {
+  to { transform: rotate(360deg); }
+}
+
+.uk-pricing-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-color: rgba(190, 45, 45, 0.25);
+  background: rgba(190, 45, 45, 0.08);
+}
+
+.uk-pricing-error p {
+  margin: 0;
+  color: #8f1f1f;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.uk-pricing-error button {
+  flex: 0 0 auto;
+  border: 1px solid rgba(190, 45, 45, 0.4);
+  border-radius: 10px;
+  background: #fff;
+  color: #8f1f1f;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.uk-coach-card-unlock {
+  margin-top: 14px;
+  border: 1px solid rgba(23, 169, 104, 0.28);
+  border-radius: 12px;
+  background: rgba(23, 169, 104, 0.09);
+  color: #115f3e;
+  padding: 12px 14px;
+}
+
+.uk-coach-card-unlock strong {
+  display: block;
+  font-size: 14px;
+}
+
+.uk-coach-card-unlock p {
+  margin: 4px 0 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.uk-coach-card-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid rgba(23, 169, 104, 0.25);
+  padding-top: 8px;
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 480px) {
+  .uk-pricing-rows {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .uk-coach-card-line {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+}
+
+.uk-quote-block-hint {
+  margin: -6px 0 12px;
+  color: var(--wizard-soft);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .uk-handoff-box h3 {
   margin: 0;
 }

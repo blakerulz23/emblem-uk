@@ -32,6 +32,10 @@ import {
   type TemplateId,
 } from '@/lib/emblem-uk-builder';
 import BackgroundRemovalStep from './builder-steps/BackgroundRemovalStep';
+import PricingSummaryCard from './PricingSummaryCard';
+import { useOrderPricingQuote } from './useOrderPricingQuote';
+import { isQuoteFreshForCounts, type OrderPricingQuoteState } from '@/lib/pricing-quote-controller';
+import { formatPence } from '@/lib/pricing-quote';
 
 const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'person' | 'group' }> = [
   { id: 'single', title: 'One player', copy: 'Create one card from one football photo.', icon: 'person' },
@@ -69,8 +73,21 @@ type UploadedOrderAsset = {
   size?: number;
 };
 
-function money(value: number) {
-  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value);
+// Small inline read of the same quote state PricingSummaryCard renders in
+// full — used only for compact single-value spots (the snapshot grid cell,
+// the handoff-box recap) that can't host the whole card's layout. Never
+// invents a price: 'loading'/'error'/'idle' all render as non-numeric text.
+function quoteSubtotalLabel(state: OrderPricingQuoteState): string {
+  switch (state.status) {
+    case 'ready':
+      return formatPence(state.quote.subtotalPence);
+    case 'loading':
+      return 'Calculating…';
+    case 'error':
+      return 'Unavailable';
+    default:
+      return '—';
+  }
 }
 
 function statusClass(status: string) {
@@ -235,6 +252,19 @@ export default function ProductionBuilder() {
   const stepOrder = useMemo(() => stepsFor(order.type), [order.type]);
   const activeIndex = stepOrder.indexOf(activeStepId);
   const summary = useMemo(() => summarizeOrder(order), [order]);
+  // Authoritative pricing — server-only. paidPlayerCount/totalPrintQuantity
+  // are the only two values sent (see useOrderPricingQuote/fetchPricingQuote);
+  // tier, unit price, subtotal and coach-card eligibility all come back from
+  // POST /api/pricing/quote and are never calculated here.
+  const { state: quoteState, retry: retryQuote } = useOrderPricingQuote(summary.approvedPlayers.length, summary.approvedPrints);
+  // Submit-ready only when the quote is 'ready' AND its counts match the
+  // order's current approved players/prints exactly — a 'ready' quote left
+  // over from before the last edit (a player added/removed/re-quantified
+  // since) is stale, not authoritative for what's about to be submitted.
+  // Every other state (idle, loading, error) is therefore also "not ready"
+  // by construction, with no separate case needed for each.
+  const currentQuote = quoteState.status === 'ready' ? quoteState.quote : null;
+  const quoteMatchesCurrentCounts = isQuoteFreshForCounts(quoteState, summary.approvedPlayers.length, summary.approvedPrints);
   const reviewGroups = useMemo(() => groupPlayersByClub(order, order.players), [order]);
   const approvedGroups = useMemo(() => groupPlayersByClub(order, summary.approvedPlayers), [order, summary.approvedPlayers]);
   const stats = sportConfig[order.sport].stats;
@@ -243,7 +273,16 @@ export default function ProductionBuilder() {
   const addDisabled = !canAddPlayer(order);
   const hasAnyPhoto = order.players.some((player) => Boolean(player.photo?.srcUrl));
   const selectedHasPhoto = Boolean(selectedPlayer?.photo?.srcUrl);
-  const canSendEnquiry = summary.checkoutEligible && enquiry.name.trim().length > 1 && /\S+@\S+\.\S+/.test(enquiry.email);
+  // summary.checkoutEligible already requires >=1 approved player, so the
+  // zero-approved-players case is unaffected by quoteMatchesCurrentCounts —
+  // it already short-circuits to false before that check is ever reached,
+  // preserving the builder's existing zero-player submission rule exactly.
+  const canSendEnquiry =
+    summary.checkoutEligible &&
+    enquiry.name.trim().length > 1 &&
+    /\S+@\S+\.\S+/.test(enquiry.email) &&
+    quoteMatchesCurrentCounts;
+  const quoteBlocksSubmission = summary.checkoutEligible && !quoteMatchesCurrentCounts;
   const canManageAsTeam = order.type !== 'single' || order.players.length > 1;
   const reviewPrimaryLabel = summary.checkoutEligible ? 'Continue to order' : summary.counts.ready > 0 ? 'Approve ready cards' : 'Continue';
   const reviewPrimaryDisabled = !summary.checkoutEligible && summary.counts.ready === 0;
@@ -611,10 +650,12 @@ export default function ProductionBuilder() {
 
   // Kept for a future internal/staff view — no longer exposed on the public
   // confirmation screen, but the download-a-JSON-summary capability itself
-  // is intentionally retained rather than deleted.
+  // is intentionally retained rather than deleted. Not wired to the real
+  // submit flow, so there is no confirmed-fresh quote to attach here —
+  // passing null explicitly omits the pricing block rather than guessing.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const exportPayload = () => {
-    const blob = new Blob([JSON.stringify({ contact: enquiry, ...productionPayload(order) }, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify({ contact: enquiry, ...productionPayload(order, null) }, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -644,6 +685,11 @@ export default function ProductionBuilder() {
   const submitEnquiry = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSendEnquiry) return;
+    // canSendEnquiry already guarantees quoteMatchesCurrentCounts, so
+    // currentQuote is confirmed non-null and fresh for exactly this
+    // submission — captured once here rather than re-read later, so the
+    // payload always reflects the quote that authorized this submit.
+    const quoteForSubmission = currentQuote;
     setEnquiryStatus('sending');
     setEnquiryError('');
 
@@ -698,7 +744,7 @@ export default function ProductionBuilder() {
           submittedAt: nowIso(),
           orderRef,
           printFiles,
-          ...productionPayload(productionOrder),
+          ...productionPayload(productionOrder, quoteForSubmission),
         }),
       });
 
@@ -1256,8 +1302,8 @@ export default function ProductionBuilder() {
               ) : null}
               <div className="uk-review-total">
                 <span>Approved prints</span><b>{summary.approvedPrints}</b>
-                <span>Total</span><b>{money(summary.subtotal)}</b>
               </div>
+              <PricingSummaryCard state={quoteState} onRetry={retryQuote} variant="compact" />
               <p className="uk-review-helper">{reviewHelper}</p>
               <button type="button" className="uk-wizard-primary" onClick={handleReviewPrimary} disabled={reviewPrimaryDisabled}>
                 {reviewPrimaryLabel}
@@ -1290,8 +1336,8 @@ export default function ProductionBuilder() {
                   <strong>{summary.approvedPrints}</strong>
                 </div>
                 <div>
-                  <span>Estimated</span>
-                  <strong>{money(summary.subtotal)}</strong>
+                  <span>Card subtotal</span>
+                  <strong>{quoteSubtotalLabel(quoteState)}</strong>
                 </div>
               </div>
               <div className="uk-order-club-list">
@@ -1307,7 +1353,6 @@ export default function ProductionBuilder() {
                             <strong>{group.name}</strong>
                             <small>{group.players.length} player{group.players.length === 1 ? '' : 's'} &middot; {prints} print{prints === 1 ? '' : 's'}</small>
                           </span>
-                          <b>{money(prints * summary.pricing.perCard)}</b>
                         </summary>
                         <div className="uk-order-player-list">
                           {group.players.map((player) => (
@@ -1324,7 +1369,6 @@ export default function ProductionBuilder() {
                                 <strong>{playerLabel(player)}</strong>
                                 <small>{selectedTemplate(order, player).name} &middot; #{player.kitNo || '--'} &middot; Qty {player.prints}</small>
                               </span>
-                              <b>{money(player.prints * summary.pricing.perCard)}</b>
                             </button>
                           ))}
                         </div>
@@ -1344,11 +1388,8 @@ export default function ProductionBuilder() {
                   <span>Approved prints</span>
                   <strong>{summary.approvedPrints}</strong>
                 </div>
-                <div>
-                  <span>Estimated total</span>
-                  <strong>{money(summary.subtotal)}</strong>
-                </div>
               </div>
+              <PricingSummaryCard state={quoteState} onRetry={retryQuote} variant="full" />
               <form className="uk-enquiry-form" onSubmit={submitEnquiry}>
                 <div className="uk-enquiry-form-head">
                   <h3>Where should we send the order link?</h3>
@@ -1401,8 +1442,20 @@ export default function ProductionBuilder() {
                   </div>
                 )}
                 {enquiryStatus === 'error' && <p className="uk-enquiry-error">{enquiryError}</p>}
+                {quoteBlocksSubmission && enquiryStatus !== 'sent' && (
+                  <p id="uk-quote-block-hint" className="uk-quote-block-hint" aria-live="polite">
+                    {quoteState.status === 'error'
+                      ? "We couldn't confirm your card price — tap Try again above before continuing."
+                      : 'Waiting for your authoritative card price before you can continue.'}
+                  </p>
+                )}
                 {enquiryStatus !== 'sent' ? (
-                  <button type="submit" className="uk-wizard-primary" disabled={!canSendEnquiry || enquiryStatus === 'sending'}>
+                  <button
+                    type="submit"
+                    className="uk-wizard-primary"
+                    disabled={!canSendEnquiry || enquiryStatus === 'sending'}
+                    aria-describedby={quoteBlocksSubmission ? 'uk-quote-block-hint' : undefined}
+                  >
                     {enquiryStatus === 'sending' ? 'Preparing your cards...' : 'Continue to checkout'}
                   </button>
                 ) : null}
@@ -1419,7 +1472,7 @@ export default function ProductionBuilder() {
               <div className="uk-handoff-box">
                 <h3>Order summary</h3>
                 <p>
-                  {summary.approvedPlayers.length} card{summary.approvedPlayers.length === 1 ? '' : 's'} &middot; {summary.approvedPrints} print{summary.approvedPrints === 1 ? '' : 's'} &middot; {money(summary.subtotal)}
+                  {summary.approvedPlayers.length} card{summary.approvedPlayers.length === 1 ? '' : 's'} &middot; {summary.approvedPrints} print{summary.approvedPrints === 1 ? '' : 's'} &middot; {quoteSubtotalLabel(quoteState)}
                 </p>
               </div>
             </section>
