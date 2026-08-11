@@ -35,6 +35,23 @@ export const SQUAD_MIN_PLAYERS = 10;
  *  silent discount off the paid subtotal (see coachCardUnitPricePence). */
 export const COACH_CARD_UNIT_PRICE_PENCE = 0;
 
+/**
+ * Identifies which commercial-rule revision priced a given quote —
+ * distinct from the app's package/deploy version. Owned here, not by any
+ * caller: this is the single source of truth for both the pricing rules
+ * above and the number that says which version of them produced a result,
+ * so the two can never drift apart. Changing any commercial rule (a unit
+ * price, a tier threshold, the coach-card entitlement) requires
+ * incrementing this constant and coordinating the corresponding
+ * database/application rollout — tier boundaries persisted to
+ * `orders.pricing_tier` are pinned to this version today (see
+ * supabase/migrations/0045_order_pricing_schema.sql's
+ * orders_pricing_tier_matches_player_count constraint), so a new version
+ * with different thresholds needs its own migration alongside it, not just
+ * a bump here.
+ */
+export const PRICING_VERSION = 1 as const;
+
 export interface PriceOrderInput {
   /** Number of distinct paid players in the order — determines the tier
    *  and free coach-card eligibility. Excludes the coach card itself. */
@@ -47,6 +64,7 @@ export interface PriceOrderInput {
 
 export interface PricingResult {
   currency: typeof CURRENCY;
+  pricingVersion: typeof PRICING_VERSION;
   tier: PricingTier;
   paidPlayerCount: number;
   totalPrintQuantity: number;
@@ -125,6 +143,7 @@ export function priceOrder(input: PriceOrderInput): PricingResult {
 
   return {
     currency: CURRENCY,
+    pricingVersion: PRICING_VERSION,
     tier,
     paidPlayerCount,
     totalPrintQuantity,

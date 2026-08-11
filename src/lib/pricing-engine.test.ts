@@ -8,6 +8,7 @@ import {
   SQUAD_MIN_PLAYERS,
   COACH_CARD_UNIT_PRICE_PENCE,
   CURRENCY,
+  PRICING_VERSION,
 } from './pricing-engine';
 
 describe('priceOrder', () => {
@@ -164,5 +165,20 @@ describe('priceOrder', () => {
     expect(SQUAD_UNIT_PRICE_PENCE).toBe(1899);
     expect(MULTI_MIN_PLAYERS).toBe(2);
     expect(SQUAD_MIN_PLAYERS).toBe(10);
+  });
+
+  describe('pricingVersion', () => {
+    it('exports PRICING_VERSION as 1', () => {
+      expect(PRICING_VERSION).toBe(1);
+    });
+
+    it('every result carries the engine-owned PRICING_VERSION, not a caller-supplied value', () => {
+      const single = priceOrder({ paidPlayerCount: 1, totalPrintQuantity: 1 });
+      const multi = priceOrder({ paidPlayerCount: 2, totalPrintQuantity: 2 });
+      const squad = priceOrder({ paidPlayerCount: 10, totalPrintQuantity: 10 });
+      expect(single.pricingVersion).toBe(PRICING_VERSION);
+      expect(multi.pricingVersion).toBe(PRICING_VERSION);
+      expect(squad.pricingVersion).toBe(PRICING_VERSION);
+    });
   });
 });
