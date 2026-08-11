@@ -1,6 +1,6 @@
 'use client';
 
-import { type FormEvent, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { CardFace } from '@/lib/card-definition';
@@ -32,10 +32,21 @@ import {
   type TemplateId,
 } from '@/lib/emblem-uk-builder';
 import BackgroundRemovalStep from './builder-steps/BackgroundRemovalStep';
+import CoachCardSection from './CoachCardSection';
 import PricingSummaryCard from './PricingSummaryCard';
 import { useOrderPricingQuote } from './useOrderPricingQuote';
 import { isQuoteFreshForCounts, type OrderPricingQuoteState } from '@/lib/pricing-quote-controller';
 import { formatPence } from '@/lib/pricing-quote';
+import {
+  buildCoachCardPayload,
+  coachCardTeamOptions,
+  emptyCoachCardDraft,
+  evaluateCoachCardEligibility,
+  isCoachCardDraftComplete,
+  reconcileCoachCardTeamSelection,
+  selectCoachCardTeam,
+  type CoachCardDraft,
+} from '@/lib/coach-card-draft';
 
 const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'person' | 'group' }> = [
   { id: 'single', title: 'One player', copy: 'Create one card from one football photo.', icon: 'person' },
@@ -245,6 +256,14 @@ export default function ProductionBuilder() {
     phone: '',
     notes: '',
   });
+  // Stage 5B — free coach-card details. Lives in its own state, never in
+  // `order`/`players`, so it can never be counted as a paid player/print or
+  // create a real roster row. Survives eligibility flapping (loading/error/
+  // ineligible) by construction — nothing here clears it except the
+  // customer removing the photo/team themselves, or reconciliation
+  // invalidating a team selection that no longer exists in the order.
+  const [coachCardDraft, setCoachCardDraft] = useState<CoachCardDraft>(() => emptyCoachCardDraft());
+  const patchCoachCardDraft = (patch: Partial<CoachCardDraft>) => setCoachCardDraft((current) => ({ ...current, ...patch }));
 
   const selectedPlayer = order.players.find((player) => player.id === selectedId) || order.players[0];
   // Single-player orders skip the team-only "approve" gate (6 steps total);
@@ -265,6 +284,24 @@ export default function ProductionBuilder() {
   // by construction, with no separate case needed for each.
   const currentQuote = quoteState.status === 'ready' ? quoteState.quote : null;
   const quoteMatchesCurrentCounts = isQuoteFreshForCounts(quoteState, summary.approvedPlayers.length, summary.approvedPrints);
+  // Options come only from the order's own approved players — never an
+  // arbitrary club/team outside this order. Recomputed whenever `order`
+  // changes; reconciliation below invalidates a selection that no longer
+  // appears here (a team removed) and auto-preselects the only remaining
+  // option, independent of whether the coach card is currently eligible —
+  // so the draft is already consistent by the time eligibility returns.
+  const coachCardOptions = useMemo(() => coachCardTeamOptions(order), [order]);
+  useEffect(() => {
+    setCoachCardDraft((current) => reconcileCoachCardTeamSelection(current, coachCardOptions));
+  }, [coachCardOptions]);
+  // The only source of coach-card eligibility — never order.type, never a
+  // hardcoded player-count threshold. See evaluateCoachCardEligibility.
+  const coachCardEligibility = useMemo(
+    () => evaluateCoachCardEligibility(quoteState, summary.approvedPlayers.length, summary.approvedPrints),
+    [quoteState, summary.approvedPlayers.length, summary.approvedPrints],
+  );
+  const coachCardComplete = !coachCardEligibility.eligible || isCoachCardDraftComplete(coachCardDraft, coachCardOptions);
+  const coachCardBlocksSubmission = coachCardEligibility.eligible && !coachCardComplete;
   const reviewGroups = useMemo(() => groupPlayersByClub(order, order.players), [order]);
   const approvedGroups = useMemo(() => groupPlayersByClub(order, summary.approvedPlayers), [order, summary.approvedPlayers]);
   const stats = sportConfig[order.sport].stats;
@@ -281,7 +318,8 @@ export default function ProductionBuilder() {
     summary.checkoutEligible &&
     enquiry.name.trim().length > 1 &&
     /\S+@\S+\.\S+/.test(enquiry.email) &&
-    quoteMatchesCurrentCounts;
+    quoteMatchesCurrentCounts &&
+    coachCardComplete;
   const quoteBlocksSubmission = summary.checkoutEligible && !quoteMatchesCurrentCounts;
   const canManageAsTeam = order.type !== 'single' || order.players.length > 1;
   const reviewPrimaryLabel = summary.checkoutEligible ? 'Continue to order' : summary.counts.ready > 0 ? 'Approve ready cards' : 'Continue';
@@ -690,6 +728,12 @@ export default function ProductionBuilder() {
     // submission — captured once here rather than re-read later, so the
     // payload always reflects the quote that authorized this submit.
     const quoteForSubmission = currentQuote;
+    // canSendEnquiry also already guarantees coachCardComplete (either the
+    // coach card is not eligible at all, or it is eligible AND complete) —
+    // captured once here for the same reason as quoteForSubmission above.
+    const coachCardEligibleForSubmission = coachCardEligibility.eligible;
+    const coachCardDraftForSubmission = coachCardDraft;
+    const coachCardOptionsForSubmission = coachCardOptions;
     setEnquiryStatus('sending');
     setEnquiryError('');
 
@@ -734,8 +778,37 @@ export default function ProductionBuilder() {
       // 2) Upload source assets (photos/badges) to S3.
       const productionOrder = await orderWithUploadedAssets();
 
+      // 2b) Coach-card photo, uploaded through the exact same order-assets
+      //     pipeline as player photos — this is just an S3 key segment (see
+      //     /api/order-assets/route.ts's cleanSegment()), not a real
+      //     player/DB row. Only runs for a fresh eligible+complete coach
+      //     card with a local (blob:) photo still to upload.
+      //
+      //     order.id is a constant placeholder ('emblem-local-order' — see
+      //     defaultOrder() in emblem-uk-builder.ts), not unique per order,
+      //     so it supplies no collision resistance on its own. Player
+      //     photos are still collision-safe because each PlayerDraft.id is
+      //     its own crypto.randomUUID(); a coach has no such id, so one
+      //     must be generated here — a literal 'coach' segment would leave
+      //     the key's only uniqueness as the route's own Date.now(),
+      //     genuinely collidable under concurrent submissions from
+      //     different customers.
+      let coachCardBlock: ReturnType<typeof buildCoachCardPayload> = null;
+      if (coachCardEligibleForSubmission && coachCardDraftForSubmission.photo) {
+        const photoUrl = coachCardDraftForSubmission.photo.srcUrl;
+        const coachAssetId = `coach-${crypto.randomUUID()}`;
+        const photoKey = isLocalAssetUrl(photoUrl)
+          ? (await uploadOrderAsset(photoUrl, { orderId: order.id, playerId: coachAssetId, kind: 'photo', fileName: coachCardDraftForSubmission.photo.fileName })).key
+          : null;
+        coachCardBlock = buildCoachCardPayload(coachCardDraftForSubmission, coachCardOptionsForSubmission, photoKey);
+      }
+
       // 3) Create the orders/players/cards rows — now carrying the shared
-      //    orderRef and the print-file keys for staff fulfilment.
+      //    orderRef and the print-file keys for staff fulfilment. coachCard
+      //    is a separate, clearly-labelled block — never merged into
+      //    players/printFiles, and the server does not yet persist it (see
+      //    src/app/api/order-enquiry/route.ts — Stage 6 will add the actual
+      //    order_coach_cards insert).
       const response = await fetch('/api/order-enquiry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -745,6 +818,7 @@ export default function ProductionBuilder() {
           orderRef,
           printFiles,
           ...productionPayload(productionOrder, quoteForSubmission),
+          ...(coachCardBlock ? { coachCard: coachCardBlock } : {}),
         }),
       });
 
@@ -1390,6 +1464,14 @@ export default function ProductionBuilder() {
                 </div>
               </div>
               <PricingSummaryCard state={quoteState} onRetry={retryQuote} variant="full" />
+              <CoachCardSection
+                order={order}
+                eligible={coachCardEligibility.eligible}
+                draft={coachCardDraft}
+                options={coachCardOptions}
+                onChange={patchCoachCardDraft}
+                onSelectTeam={(option) => setCoachCardDraft((current) => selectCoachCardTeam(current, option))}
+              />
               <form className="uk-enquiry-form" onSubmit={submitEnquiry}>
                 <div className="uk-enquiry-form-head">
                   <h3>Where should we send the order link?</h3>
@@ -1449,12 +1531,19 @@ export default function ProductionBuilder() {
                       : 'Waiting for your authoritative card price before you can continue.'}
                   </p>
                 )}
+                {coachCardBlocksSubmission && enquiryStatus !== 'sent' && (
+                  <p id="uk-coach-card-block-hint" className="uk-quote-block-hint" aria-live="polite">
+                    Finish your free coach card details above before continuing.
+                  </p>
+                )}
                 {enquiryStatus !== 'sent' ? (
                   <button
                     type="submit"
                     className="uk-wizard-primary"
                     disabled={!canSendEnquiry || enquiryStatus === 'sending'}
-                    aria-describedby={quoteBlocksSubmission ? 'uk-quote-block-hint' : undefined}
+                    aria-describedby={
+                      quoteBlocksSubmission ? 'uk-quote-block-hint' : coachCardBlocksSubmission ? 'uk-coach-card-block-hint' : undefined
+                    }
                   >
                     {enquiryStatus === 'sending' ? 'Preparing your cards...' : 'Continue to checkout'}
                   </button>

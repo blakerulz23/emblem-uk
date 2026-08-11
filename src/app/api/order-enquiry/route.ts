@@ -68,6 +68,32 @@ type EnquiryBody = {
     totalPence?: number | null;
   };
   players?: EnquiryPlayer[];
+  /**
+   * Stage 5B — free coach-card details, built by
+   * src/lib/coach-card-draft.ts's buildCoachCardPayload() and sent only for
+   * a fresh, eligible, complete draft. Deliberately kept out of `players`
+   * (see EnquiryPlayer above) so it can never trigger this route's
+   * players/cards/card_definitions provisioning loop below — a coach is not
+   * a player and must never get a claim_token.
+   *
+   * Logged below for staff observability only, exactly like `pricing` —
+   * this route does not yet insert into order_coach_cards (migration 0047)
+   * or persist this block anywhere. NOT PRODUCTION-READY: Stage 5B only
+   * carries the draft this far; Stage 6 must add real validation and a
+   * real order_coach_cards insert before this branch can be merged or
+   * deployed. Until then, nothing in this response or the builder UI may
+   * tell a customer their coach card has been saved — see
+   * CoachCardSection.tsx's copy, which deliberately never claims
+   * persistence, and ProductionBuilder.tsx's "Order received" success
+   * copy, which only speaks to the player cards it actually creates below.
+   */
+  coachCard?: {
+    fullName?: string;
+    roleTitle?: string;
+    clubName?: string;
+    teamName?: string;
+    photoKey?: string;
+  };
   submittedAt?: string;
   /** Client-generated order reference — generated once, reused everywhere
    * (print PDF metadata, DB row, Shopify cart attribute). Server falls
@@ -113,6 +139,8 @@ export async function POST(request: Request) {
     subtotalPence: body.pricing?.subtotalPence,
     coachCardIncluded: body.pricing?.coachCardIncluded,
     pricingVersion: body.pricing?.pricingVersion,
+    // Presence/shape only — never the coach's name or photo key in logs.
+    coachCardReceived: Boolean(body.coachCard?.fullName && body.coachCard?.photoKey),
     contact: {
       name,
       email,
