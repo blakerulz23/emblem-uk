@@ -1,0 +1,47 @@
+-- Normalizes production/staging privilege drift on public.order_line_items.
+--
+-- 0045_order_pricing_schema.sql created order_line_items with RLS enabled,
+-- zero policies, and deliberately no grants to anon/authenticated/
+-- service_role — verified as the actual end state on staging. Applying that
+-- same migration to production surfaced a real environment difference
+-- (caught by in-transaction verification before commit, nothing was
+-- applied): production's `public` schema carries a default-privilege policy
+-- — set by the `postgres` role, outside any migration in this repo's
+-- history — that automatically grants newly created tables structural
+-- access to anon/authenticated (REFERENCES, TRIGGER, TRUNCATE) and full DML
+-- to service_role (SELECT, INSERT, UPDATE, DELETE) plus the same structural
+-- set. Staging has no equivalent default-privilege policy, which is why
+-- order_line_items came up clean there.
+--
+-- This is the same drift 0037_service_role_least_privilege.sql documented
+-- and revoked for the tables that existed at the time (its Part 0) — see
+-- that migration's own header: "any access service_role has on any existing
+-- project (including production) is therefore either this migration, or
+-- undocumented, out-of-band drift this migration intentionally supersedes."
+-- order_line_items didn't exist yet when 0037 ran, so it was never covered.
+-- This migration is the same fix, scoped to the one table that needs it now.
+--
+-- Unlike 0037's Part 0 — which left TRUNCATE/REFERENCES/TRIGGER/MAINTAIN in
+-- place as harmless structural privileges no audited route needed changed —
+-- this table has zero consumers of any kind today (schema only, nothing
+-- reads or writes it), so the target end state is simpler: nothing at all.
+-- `revoke all privileges` is used rather than an explicit DML list so the
+-- one statement below covers every privilege type a default-privilege
+-- policy could have granted (confirmed empirically on staging inside a
+-- rolled-back transaction: a simulated copy of production's exact drift
+-- grants was fully removed by this single statement), without needing to
+-- enumerate SELECT/INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER by name.
+--
+-- Deliberately does not touch `ALTER DEFAULT PRIVILEGES` — that would change
+-- every future table project-wide, far beyond this table, and 0037 already
+-- established the standing convention that every table's access is granted
+-- explicitly, in its own migration, never by a project-level default. This
+-- migration revokes; it does not grant anything, alter RLS, alter columns,
+-- constraints, the index, or the foreign key, and touches no other table.
+--
+-- Idempotent and safe to re-run on both environments: revoking a privilege
+-- that isn't held is a no-op in Postgres, not an error (confirmed
+-- empirically on staging) — so this produces the same end state whether the
+-- starting point is staging (already zero grants) or production (the drift
+-- grants described above).
+revoke all privileges on table public.order_line_items from anon, authenticated, service_role;
