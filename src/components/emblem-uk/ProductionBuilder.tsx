@@ -242,6 +242,22 @@ export default function ProductionBuilder() {
   const [selectedId, setSelectedId] = useState(order.players[0]?.id || '');
   const [cardSide, setCardSide] = useState<CardSide>('front');
   const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>('idle');
+  // Stage 6 — one cryptographically random idempotency key per builder
+  // submission attempt, generated once and reused for every retry (never
+  // regenerated just because a network response was lost, never the old
+  // hardcoded 'emblem-local-order' order.id). Also doubles as the S3 asset
+  // namespace: every player/coach photo this session uploads is keyed
+  // under order-assets/<submissionKey>/, so no two customers can ever
+  // collide, and the server rejects any submitted photo key that doesn't
+  // start with this exact prefix.
+  const [submissionKey, setSubmissionKey] = useState(() => crypto.randomUUID());
+  // Set only on a 409 "same key, different content" response — a genuine
+  // conflict, not an ordinary retryable network/server failure. Distinct
+  // from enquiryStatus === 'error' so the UI never tells a customer to
+  // just "try again" when retrying the identical request would only
+  // repeat the same conflict forever (the key is already bound to
+  // whatever content the server committed under it).
+  const [enquiryConflict, setEnquiryConflict] = useState(false);
   // Print-capture rig: rendered off-screen only while a submit is in
   // flight, so html2canvas has a full-size, image-loaded card DOM to
   // rasterise for each approved player. Captures happen BEFORE the photo
@@ -249,6 +265,34 @@ export default function ProductionBuilder() {
   // canvas untainted without needing S3 CORS configuration.
   const [captureMode, setCaptureMode] = useState(false);
   const captureRefs = useRef(new Map<string, HTMLDivElement>());
+  // Double-submit guard — a ref, not enquiryStatus state. Two clicks fired
+  // on the same tick both run submitEnquiry before React has processed the
+  // first setEnquiryStatus('sending') and re-rendered with a fresh
+  // closure, so a check against the *state* value is a stale-closure race
+  // (confirmed live: it let both clicks through). A ref mutates
+  // synchronously and is shared across both invocations, so the second one
+  // always sees the first's write.
+  const submittingRef = useRef(false);
+  // Stage 6 amendment — persistent, component-lifetime asset-upload cache
+  // (same lifetime as submissionKey, both reset only by a fresh mount or an
+  // explicit "start a new order" action). Keyed by `${kind}:${sourceUrl}` —
+  // a player/coach photo's blob: URL is itself a stable identity that only
+  // changes when the customer genuinely replaces that photo (a fresh
+  // File -> a fresh URL.createObjectURL() result), so this cache is
+  // naturally self-invalidating on replace with no extra bookkeeping.
+  // Previously this Map was created fresh *inside* orderWithUploadedAssets
+  // on every call, so a retry after a lost response re-uploaded every
+  // photo under a brand-new S3 key — which changed the submitted photoKey
+  // and therefore the idempotency fingerprint on every retry, making an
+  // identical retry look like "same key, different content" to the
+  // server. Living here instead means a retry that touches nothing finds
+  // every entry already cached and reuses the exact same keys.
+  const uploadedAssetsRef = useRef(new Map<string, Promise<UploadedOrderAsset>>());
+  // Same reasoning, for the print-file capture/render step — keyed by
+  // player.id, invalidated only when that player's approvedAt changes
+  // (i.e. they were genuinely re-approved after an edit), not on every
+  // submit attempt.
+  const printFilesRef = useRef(new Map<string, { approvedAt: string | undefined; result: { playerId: string; playerName: string; key: string } }>());
   const [enquiryError, setEnquiryError] = useState('');
   const [enquiry, setEnquiry] = useState({
     name: '',
@@ -580,17 +624,35 @@ export default function ProductionBuilder() {
 
   const orderWithUploadedAssets = async () => {
     const approvedIds = new Set(summary.approvedPlayers.map((player) => player.id));
-    const uploaded = new Map<string, Promise<UploadedOrderAsset>>();
+    const uploaded = uploadedAssetsRef.current;
 
     const uploadOnce = (url: string, meta: { playerId: string; kind: 'photo' | 'badge'; fileName?: string }) => {
       const cacheKey = `${meta.kind}:${url}`;
       if (!uploaded.has(cacheKey)) {
-        uploaded.set(cacheKey, uploadOrderAsset(url, {
-          orderId: order.id,
+        // Stage 6 — every asset this submission uploads is namespaced by
+        // submissionKey, never order.id (a constant placeholder — see
+        // defaultOrder() in emblem-uk-builder.ts), so the server can
+        // verify every photoKey it receives genuinely belongs to this
+        // one submission and reject anything that doesn't.
+        const attempt = uploadOrderAsset(url, {
+          orderId: submissionKey,
           playerId: meta.playerId,
           kind: meta.kind,
           fileName: meta.fileName,
-        }));
+        }).catch((err) => {
+          // A JS Promise is single-shot — once rejected, it stays rejected
+          // forever, so caching a still-pending upload eagerly (as above)
+          // would otherwise "cache" a transient failure permanently: a
+          // retry would find this same rejected promise and re-throw the
+          // exact same error without ever attempting the upload again.
+          // Removing the entry on failure is what makes "retry only the
+          // failed assets" actually true — a successful sibling upload's
+          // cache entry is untouched, only this one clears so the next
+          // call re-attempts it fresh.
+          uploaded.delete(cacheKey);
+          throw err;
+        });
+        uploaded.set(cacheKey, attempt);
       }
       return uploaded.get(cacheKey)!;
     };
@@ -722,7 +784,26 @@ export default function ProductionBuilder() {
 
   const submitEnquiry = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    // Explicit synchronous guard via a ref, not enquiryStatus state — two
+    // clicks fired on the same tick both run this function before React
+    // has processed the first setEnquiryStatus('sending') and re-rendered
+    // with an updated closure, so a check against the *state* value is a
+    // stale-closure race (a plain `if (enquiryStatus === 'sending')
+    // return;` here let both clicks through in testing). A ref mutates
+    // synchronously and is shared across both invocations. submissionKey
+    // stays the same either way, so even if this were somehow bypassed,
+    // the server's idempotency check on it still prevents a duplicate
+    // order — this guard is what keeps a double-click from ever sending a
+    // second request in the first place.
+    if (submittingRef.current) return;
     if (!canSendEnquiry) return;
+    // A conflict means this submissionKey is already bound, server-side,
+    // to different content than what's currently in the form — retrying
+    // the identical (still-changed) request would only repeat the same
+    // conflict. Recovery requires the explicit "Start a new order" action
+    // below, never an ordinary resubmit.
+    if (enquiryConflict) return;
+    submittingRef.current = true;
     // canSendEnquiry already guarantees quoteMatchesCurrentCounts, so
     // currentQuote is confirmed non-null and fresh for exactly this
     // submission — captured once here rather than re-read later, so the
@@ -740,8 +821,13 @@ export default function ProductionBuilder() {
     try {
       // One order reference, generated once, reused everywhere: the print
       // PDF metadata, the orders row, and the Shopify cart attribute the
-      // paid-webhook later matches on (Checkout Phase 0 defect #1).
-      const orderRef = `emblem-${order.id.slice(0, 8)}-${Date.now().toString(36)}`;
+      // paid-webhook later matches on (Checkout Phase 0 defect #1). Derived
+      // from submissionKey (a real random UUID), not order.id (a constant
+      // placeholder) — recomputing this on a retry is harmless, since the
+      // server only uses the client-supplied orderRef for a brand-new
+      // order; a retry of an already-created submissionKey returns the
+      // original order's own stored order_ref instead.
+      const orderRef = `emblem-${submissionKey.slice(0, 8)}-${Date.now().toString(36)}`;
 
       // 1) Capture print files while photos are still local blob URLs —
       //    after orderWithUploadedAssets() swaps them to S3 URLs, canvas
@@ -751,8 +837,21 @@ export default function ProductionBuilder() {
       const rig = captureRefs.current;
       for (const el of Array.from(rig.values())) await waitForImages(el);
 
+      // Cached by player.id, invalidated only when that player's
+      // approvedAt changes (a genuine re-approval after an edit) — an
+      // unedited approved card is re-rendered and re-uploaded at most once
+      // per submissionKey, not on every retry. isPlayerDirty()/
+      // derivePlayerStatus() already guarantee a dirty player can't be in
+      // summary.approvedPlayers in the first place, so approvedAt alone is
+      // a safe, sufficient cache-invalidation key here.
+      const printFileCache = printFilesRef.current;
       const printFiles: Array<{ playerId: string; playerName: string; key: string }> = [];
       for (const player of summary.approvedPlayers) {
+        const cached = printFileCache.get(player.id);
+        if (cached && cached.approvedAt === player.approvedAt) {
+          printFiles.push(cached.result);
+          continue;
+        }
         const frontEl = rig.get(`${player.id}:front`);
         const backEl = rig.get(`${player.id}:back`);
         if (!frontEl) continue;
@@ -769,9 +868,12 @@ export default function ProductionBuilder() {
             template: selectedTemplate(order, player).name,
             orderRef,
           },
-          back
+          back,
+          submissionKey
         );
-        printFiles.push({ playerId: player.id, playerName: player.name || 'Player', key: rendered.key });
+        const result = { playerId: player.id, playerName: player.name || 'Player', key: rendered.key };
+        printFileCache.set(player.id, { approvedAt: player.approvedAt, result });
+        printFiles.push(result);
       }
       setCaptureMode(false);
 
@@ -782,39 +884,54 @@ export default function ProductionBuilder() {
       //     pipeline as player photos — this is just an S3 key segment (see
       //     /api/order-assets/route.ts's cleanSegment()), not a real
       //     player/DB row. Only runs for a fresh eligible+complete coach
-      //     card with a local (blob:) photo still to upload.
+      //     card with a local (blob:) photo still to upload. Namespaced
+      //     under submissionKey exactly like player photos.
       //
-      //     order.id is a constant placeholder ('emblem-local-order' — see
-      //     defaultOrder() in emblem-uk-builder.ts), not unique per order,
-      //     so it supplies no collision resistance on its own. Player
-      //     photos are still collision-safe because each PlayerDraft.id is
-      //     its own crypto.randomUUID(); a coach has no such id, so one
-      //     must be generated here — a literal 'coach' segment would leave
-      //     the key's only uniqueness as the route's own Date.now(),
-      //     genuinely collidable under concurrent submissions from
-      //     different customers.
+      //     coach-${photo.id} — photo.id is a stable identity generated
+      //     once when the customer selects this file (CoachCardSection.tsx)
+      //     and never regenerated on retry, and this upload goes through
+      //     the SAME persistent uploadedAssetsRef cache as player photos —
+      //     an unchanged coach photo uploads at most once per
+      //     submissionKey and reuses the exact same key on every retry. A
+      //     genuine replace gets a genuinely new photo.id (and a new blob
+      //     URL), so it naturally gets a new cache entry / new S3 key —
+      //     never colliding with the previous (now-orphaned) attempt's.
       let coachCardBlock: ReturnType<typeof buildCoachCardPayload> = null;
       if (coachCardEligibleForSubmission && coachCardDraftForSubmission.photo) {
         const photoUrl = coachCardDraftForSubmission.photo.srcUrl;
-        const coachAssetId = `coach-${crypto.randomUUID()}`;
-        const photoKey = isLocalAssetUrl(photoUrl)
-          ? (await uploadOrderAsset(photoUrl, { orderId: order.id, playerId: coachAssetId, kind: 'photo', fileName: coachCardDraftForSubmission.photo.fileName })).key
-          : null;
+        const coachAssetId = `coach-${coachCardDraftForSubmission.photo.id}`;
+        const coachCacheKey = `photo:${photoUrl}`;
+        const coachUploadedAssets = uploadedAssetsRef.current;
+        if (!coachUploadedAssets.has(coachCacheKey)) {
+          // Same not-cached-while-pending/rejected fix as uploadOnce above —
+          // a failed coach upload must be retryable, not permanently poisoned.
+          const attempt = uploadOrderAsset(photoUrl, { orderId: submissionKey, playerId: coachAssetId, kind: 'photo', fileName: coachCardDraftForSubmission.photo.fileName }).catch((err) => {
+            coachUploadedAssets.delete(coachCacheKey);
+            throw err;
+          });
+          coachUploadedAssets.set(coachCacheKey, attempt);
+        }
+        const photoKey = isLocalAssetUrl(photoUrl) ? (await coachUploadedAssets.get(coachCacheKey)!).key : null;
         coachCardBlock = buildCoachCardPayload(coachCardDraftForSubmission, coachCardOptionsForSubmission, photoKey);
       }
 
-      // 3) Create the orders/players/cards rows — now carrying the shared
-      //    orderRef and the print-file keys for staff fulfilment. coachCard
-      //    is a separate, clearly-labelled block — never merged into
-      //    players/printFiles, and the server does not yet persist it (see
-      //    src/app/api/order-enquiry/route.ts — Stage 6 will add the actual
-      //    order_coach_cards insert).
+      // 3) One atomic call — the server derives authoritative pricing from
+      //    the players below itself (never trusting the `pricing` block
+      //    productionPayload() still attaches for freshness comparison
+      //    only), validates the coach card against that authoritative
+      //    result, and persists everything (order, pricing snapshot, line
+      //    items, players, cards, card_definitions, and the coach-card
+      //    record when eligible) in one transaction — see
+      //    supabase/migrations/0048_authoritative_order_persistence.sql
+      //    and src/app/api/order-enquiry/route.ts. coachCard stays a
+      //    separate, clearly-labelled block, never merged into players.
       const response = await fetch('/api/order-enquiry', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contact: enquiry,
           submittedAt: nowIso(),
+          submissionKey,
           orderRef,
           printFiles,
           ...productionPayload(productionOrder, quoteForSubmission),
@@ -822,8 +939,15 @@ export default function ProductionBuilder() {
         }),
       });
 
-      if (!response.ok) {
-        const result = await response.json().catch(() => null);
+      const result = await response.json().catch(() => null);
+      if (response.status === 409) {
+        // Same submissionKey, materially different content than whatever
+        // the server already committed under it — never treat this as a
+        // plain retryable failure (see the enquiryConflict guard above).
+        setEnquiryConflict(true);
+        throw new Error(result?.error || 'This submission was already sent with different details');
+      }
+      if (!response.ok || !result?.ok || !result?.orderId) {
         throw new Error(result?.error || 'Could not send enquiry');
       }
 
@@ -842,7 +966,25 @@ export default function ProductionBuilder() {
       setCaptureMode(false);
       setEnquiryStatus('error');
       setEnquiryError(error instanceof Error ? error.message : 'Could not send enquiry');
+      // Release the guard so a retry (same submissionKey, same builder
+      // state — nothing here is cleared) can actually submit again.
+      submittingRef.current = false;
     }
+  };
+
+  // The only place submissionKey is ever regenerated — an explicit,
+  // visible customer action (never automatic) for recovering from a
+  // genuine 409 conflict. Clears the asset caches too: they're keyed by
+  // blob URL, which hasn't changed, so without this a "new" submission
+  // would still resolve to the old (now-conflicting) S3 keys.
+  const startNewOrder = () => {
+    setSubmissionKey(crypto.randomUUID());
+    uploadedAssetsRef.current.clear();
+    printFilesRef.current.clear();
+    submittingRef.current = false;
+    setEnquiryConflict(false);
+    setEnquiryStatus('idle');
+    setEnquiryError('');
   };
 
   const progress = ((activeIndex + 1) / stepOrder.length) * 100;
@@ -1523,7 +1665,19 @@ export default function ProductionBuilder() {
                     <span>We will email you within one business day with the final print total, delivery options and secure payment link.</span>
                   </div>
                 )}
-                {enquiryStatus === 'error' && <p className="uk-enquiry-error">{enquiryError}</p>}
+                {enquiryStatus === 'error' && enquiryConflict && (
+                  <div role="alert">
+                    <p className="uk-enquiry-error">
+                      This order couldn&apos;t be resubmitted safely — your earlier attempt may have already gone through with different
+                      details, so resending this exact form could create a mismatched order. Nothing has been created from this attempt.
+                      Start a new order to try again — your card details are still here.
+                    </p>
+                    <button type="button" className="uk-wizard-primary compact" onClick={startNewOrder}>
+                      Start a new order
+                    </button>
+                  </div>
+                )}
+                {enquiryStatus === 'error' && !enquiryConflict && <p className="uk-enquiry-error">{enquiryError}</p>}
                 {quoteBlocksSubmission && enquiryStatus !== 'sent' && (
                   <p id="uk-quote-block-hint" className="uk-quote-block-hint" aria-live="polite">
                     {quoteState.status === 'error'
@@ -1536,7 +1690,7 @@ export default function ProductionBuilder() {
                     Finish your free coach card details above before continuing.
                   </p>
                 )}
-                {enquiryStatus !== 'sent' ? (
+                {enquiryStatus !== 'sent' && !enquiryConflict ? (
                   <button
                     type="submit"
                     className="uk-wizard-primary"

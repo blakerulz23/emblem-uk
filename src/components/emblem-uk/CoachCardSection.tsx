@@ -71,7 +71,11 @@ export default function CoachCardSection({ order, eligible, draft, options, onCh
       setPhotoError('Photo must be under 18MB.');
       return;
     }
-    onChange({ photo: { file, srcUrl: URL.createObjectURL(file), fileName: file.name } });
+    // A fresh id here (only here — never regenerated on submit/retry)
+    // is what lets ProductionBuilder.tsx upload this exact photo at most
+    // once per submission attempt: replacing the photo is the only thing
+    // that should ever change which S3 key it ends up at.
+    onChange({ photo: { id: crypto.randomUUID(), file, srcUrl: URL.createObjectURL(file), fileName: file.name } });
   };
 
   const handleRemovePhoto = () => {

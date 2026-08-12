@@ -1,5 +1,6 @@
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
+import { resolveCardDefinitionLogo } from '@/lib/card-definition-logo';
 
 /**
  * The public profile's explicit field allowlist. This file is deliberately
@@ -143,7 +144,15 @@ export async function getPublicPlayerProfile(publicPlayerId: string): Promise<Pu
       .order('created_at', { ascending: false }),
   ]);
 
-  const [photoUrl, cardPhotoUrl] = await Promise.all([signOrNull(player.photo_key), signOrNull(cardDefinition?.photo?.storageKey)]);
+  const [photoUrl, cardPhotoUrl, cardLogoUrl] = await Promise.all([
+    signOrNull(player.photo_key),
+    signOrNull(cardDefinition?.photo?.storageKey),
+    // A private uploaded badge is stored as a JSON { storageKey, source }
+    // reference, never a URL — signed fresh here with this file's own
+    // short public-media expiry; a legacy/static-asset plain string
+    // passes through unchanged. See card-definition-logo.ts.
+    resolveCardDefinitionLogo(cardDefinition?.logo, PUBLIC_MEDIA_EXPIRY_SEC),
+  ]);
 
   const momentRows =
     (moments as unknown as Array<{
@@ -191,7 +200,7 @@ export async function getPublicPlayerProfile(publicPlayerId: string): Promise<Pu
       team: player.teams ? { name: player.teams.name, season: player.teams.seasons?.label ?? null } : null,
       club: player.teams?.clubs ? { name: player.teams.clubs.name, badgeUrl: player.teams.clubs.badge_url } : null,
       card: cardDefinition
-        ? { templateId: cardDefinition.template_id, logo: cardDefinition.logo, photoUrl: cardPhotoUrl, stats: cardDefinition.stats }
+        ? { templateId: cardDefinition.template_id, logo: cardLogoUrl, photoUrl: cardPhotoUrl, stats: cardDefinition.stats }
         : null,
       moments: publicMoments,
     },

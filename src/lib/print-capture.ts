@@ -36,12 +36,19 @@ export async function renderPrintFile(
   product: PrintProduct,
   frontImageDataUrl: string,
   meta?: { playerName?: string; teamName?: string; template?: string; orderRef?: string },
-  backImageDataUrl?: string
+  backImageDataUrl?: string,
+  /** Required for a real order submission (see ProductionBuilder.tsx) —
+   *  namespaces the print-file key by order-enquiry-validation.ts's
+   *  expected print-files/<submissionKey>/ prefix. Left undefined by the
+   *  other two callers of this function (src/app/test-print, src/
+   *  components/builder/emblem/PrintFileBlock.tsx), which aren't part of
+   *  any order submission and never need that prefix. */
+  submissionKey?: string
 ): Promise<RenderPrintResponse> {
   const r = await fetch('/api/render-print', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ product, frontImageDataUrl, backImageDataUrl, meta }),
+    body: JSON.stringify({ product, frontImageDataUrl, backImageDataUrl, meta, submissionKey }),
   });
   if (!r.ok) {
     const err = await r.json().catch(() => ({ error: 'render failed' }));

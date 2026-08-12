@@ -77,6 +77,22 @@ export type CoachCardRolePreset = 'Coach' | 'Manager' | 'Assistant Coach' | 'Goa
 export const COACH_CARD_ROLE_PRESETS: CoachCardRolePreset[] = ['Coach', 'Manager', 'Assistant Coach', 'Goalkeeping Coach', 'Other'];
 
 export interface CoachCardPhotoDraft {
+  /**
+   * Stable asset identity for this specific photo selection — generated
+   * once, when the customer picks this file (see CoachCardSection.tsx's
+   * handlePhotoFile), never regenerated on a later submit/retry attempt.
+   * Used as the S3 path segment in place of a fresh crypto.randomUUID()
+   * per submit call: a coach has no PlayerDraft.id-equivalent identity of
+   * its own, and generating a new one every submitEnquiry() call meant
+   * every retry re-uploaded the same bytes under a different key, which
+   * changed the submitted photoKey and therefore the idempotency
+   * fingerprint on every retry — a lost response followed by Retry looked
+   * like "same key, materially different content" to the server. A new id
+   * is generated only when the photo is actually replaced (a genuinely new
+   * file), matching how a replaced player photo naturally gets a new blob
+   * URL.
+   */
+  id: string;
   file: File;
   srcUrl: string;
   fileName: string;

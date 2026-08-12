@@ -210,7 +210,7 @@ describe('reconcileCoachCardTeamSelection', () => {
 
 describe('validateCoachCardDraft / isCoachCardDraftComplete', () => {
   const options = [{ id: 'a', clubName: 'Club A', teamName: 'Club A' }];
-  const photo = { file: new File(['x'], 'coach.jpg', { type: 'image/jpeg' }), srcUrl: 'blob:coach', fileName: 'coach.jpg' };
+  const photo = { id: 'coach-photo-1', file: new File(['x'], 'coach.jpg', { type: 'image/jpeg' }), srcUrl: 'blob:coach', fileName: 'coach.jpg' };
 
   function completeDraft(): CoachCardDraft {
     return { fullName: 'Alex Coach', roleTitle: 'Head Coach', teamOptionId: 'a', clubName: 'Club A', teamName: 'Club A', photo };
@@ -283,7 +283,7 @@ describe('coachCardDesignInheritance', () => {
 
 describe('buildCoachCardPayload', () => {
   const options = [{ id: 'a', clubName: 'Club A', teamName: 'Club A' }];
-  const photo = { file: new File(['x'], 'coach.jpg', { type: 'image/jpeg' }), srcUrl: 'blob:coach', fileName: 'coach.jpg' };
+  const photo = { id: 'coach-photo-1', file: new File(['x'], 'coach.jpg', { type: 'image/jpeg' }), srcUrl: 'blob:coach', fileName: 'coach.jpg' };
 
   function completeDraft(): CoachCardDraft {
     return { fullName: '  Alex Coach  ', roleTitle: ' Head Coach ', teamOptionId: 'a', clubName: 'Club A', teamName: 'Club A', photo };
