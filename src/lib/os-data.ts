@@ -6,6 +6,7 @@ import { computeOverallScore, MIDFIELDER_WEIGHTS } from '@/app/os/scoring';
 import { cardDefinitionToFaceData } from '@/lib/card-definition';
 import type { CardDefinitionRow, CardFaceData } from '@/lib/card-definition';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
+import { resolveCardDefinitionLogo } from '@/lib/card-definition-logo';
 import type { SquadPlayer, VerifyItem, GuardianStatus, SeasonFocusEntry, StrengthEntry, AssessmentEntry } from '@/app/os/types';
 
 type CardDefinitionDbRow = {
@@ -451,6 +452,11 @@ async function getParentOsData(
   // runtime despite how the client infers it.
   const cardDefinitionDbRow = (cardRow as unknown as { card_definitions: CardDefinitionDbRow | null } | null)?.card_definitions ?? null;
   const cardDefinition: CardFaceData | null = cardDefinitionDbRow ? cardDefinitionToFaceData(toCardDefinitionRow(cardDefinitionDbRow)) : null;
+  // A private uploaded badge is stored as a JSON { storageKey, source }
+  // reference, never a URL — resolveCardDefinitionLogo signs it fresh here,
+  // exactly like the photo just below; a legacy/static-asset plain string
+  // passes through unchanged. See card-definition-logo.ts.
+  if (cardDefinition) cardDefinition.logo = await resolveCardDefinitionLogo(cardDefinitionDbRow?.logo);
   const cardPhotoUrl = cardDefinitionDbRow?.photo?.storageKey ? await getSignedDownloadUrl(cardDefinitionDbRow.photo.storageKey) : null;
 
   // Sorted client-side rather than via `.order(col, { foreignTable })` —
@@ -674,6 +680,7 @@ async function getParentOsData(
       // file — a moment references at most one card_definitions row.
       const linkedDefinitionDbRow = (m as unknown as { card_definitions: CardDefinitionDbRow | null }).card_definitions;
       const cardDefinition: CardFaceData | null = linkedDefinitionDbRow ? cardDefinitionToFaceData(toCardDefinitionRow(linkedDefinitionDbRow)) : null;
+      if (cardDefinition) cardDefinition.logo = await resolveCardDefinitionLogo(linkedDefinitionDbRow?.logo);
       const cardPhotoUrl = linkedDefinitionDbRow?.photo?.storageKey ? await getSignedDownloadUrl(linkedDefinitionDbRow.photo.storageKey) : null;
       return {
         id: m.id,

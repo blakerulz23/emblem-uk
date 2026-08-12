@@ -9291,3 +9291,244 @@ a { text-decoration: none; color: inherit; }
     font-size: clamp(22px, 8vw, 32px);
   }
 }
+
+/* ==========================================================================
+   Stage 5B — free coach-card details (Review step)
+
+   New, self-contained block appended at the end of the file so its diff
+   hunk never touches or interleaves with any pre-existing rule, including
+   the unrelated .emh-hero-copy/.emh-hero-lede/.emh-hero-actions-single
+   alignment edit earlier in this file. Reuses the same --wizard-* tokens,
+   --font-jbmono, and green "unlocked" accent already established by
+   .uk-coach-card-unlock/.uk-coach-card-line just above, so this reads as
+   a continuation of that moment rather than a new visual language.
+   ========================================================================== */
+
+.uk-coach-card-section {
+  margin-top: 14px;
+  border: 1px solid rgba(23, 169, 104, 0.28);
+  border-radius: 14px;
+  background: rgba(23, 169, 104, 0.05);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.uk-coach-card-head h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: #115f3e;
+}
+
+.uk-coach-card-head p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--wizard-soft);
+}
+
+.uk-coach-card-field {
+  display: grid;
+  gap: 7px;
+  color: var(--wizard-faint);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.uk-coach-card-field input,
+.uk-coach-card-field select {
+  width: 100%;
+  min-height: 52px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 14px;
+  background: var(--wizard-surface);
+  padding: 0 14px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  color: inherit;
+}
+
+.uk-coach-card-field input[aria-invalid="true"],
+.uk-coach-card-field select[aria-invalid="true"] {
+  border-color: #c0392b;
+}
+
+.uk-coach-card-error {
+  display: block;
+  color: #c0392b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.uk-coach-card-team-preselected {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--wizard-line);
+  border-radius: 14px;
+  background: var(--wizard-surface);
+  padding: 0 14px;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--wizard-ink, inherit);
+}
+
+.uk-coach-card-team-preselected em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--wizard-soft);
+}
+
+.uk-coach-card-design-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--wizard-soft);
+}
+
+.uk-coach-card-photo-upload {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-height: 96px;
+  border: 1.5px dashed rgba(23, 169, 104, 0.4);
+  border-radius: 14px;
+  background: var(--wizard-surface);
+  padding: 16px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.uk-coach-card-photo-upload span[aria-hidden] {
+  font-size: 22px;
+  line-height: 1;
+  color: #17a968;
+}
+
+.uk-coach-card-photo-upload strong {
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+  color: inherit;
+}
+
+.uk-coach-card-photo-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.uk-coach-card-photo-preview img {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--wizard-line);
+}
+
+.uk-coach-card-photo-actions {
+  display: flex;
+  gap: 10px;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.uk-coach-card-photo-actions label {
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.uk-coach-card-photo-actions button {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #c0392b;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.uk-coach-card-section .uk-wizard-primary.compact {
+  justify-self: start;
+}
+
+.uk-coach-card-summary {
+  gap: 10px;
+}
+
+.uk-coach-card-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #115f3e;
+}
+
+.uk-coach-card-summary-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.uk-coach-card-summary-photo img {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--wizard-line);
+}
+
+.uk-coach-card-summary-body > div {
+  display: grid;
+  gap: 2px;
+  font-family: var(--font-sora), system-ui, sans-serif;
+}
+
+.uk-coach-card-summary-body strong {
+  font-size: 14px;
+}
+
+.uk-coach-card-summary-body span {
+  font-size: 12.5px;
+  color: var(--wizard-soft);
+}
+
+.uk-coach-card-summary > button {
+  justify-self: start;
+  border: none;
+  background: none;
+  padding: 0;
+  color: #17a968;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+@media (max-width: 480px) {
+  .uk-coach-card-summary-body {
+    flex-wrap: wrap;
+  }
+}
