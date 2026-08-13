@@ -7,9 +7,10 @@ import './badge.css';
 
 const states = [
   ['create', 'Create Squad Invite'], ['approval', 'Awaiting staff approval'], ['staff', 'Staff approval'],
-  ['publish', 'Publish and reusable link'], ['share', 'WhatsApp share preview'], ['invite', 'Parent invitation'],
-  ['verify', 'New parent verification'], ['resume', 'Returning parent'], ['builder', 'One-child builder'],
-  ['permissions', 'Permissions'], ['saved', 'Card saved'], ['closed', 'Closed/deadline'],
+  ['publish', 'Publish and reusable link'], ['share', 'WhatsApp share preview'],
+  ['board', 'Team board (parent landing)'], ['pick', 'Pick your player'], ['photo', 'Drop the photo'],
+  ['save', 'Save & permissions'], ['done', 'Done — board updated'],
+  ['resume', 'Returning parent'], ['closed', 'Closed/deadline'],
   ['dashboard', 'Organiser dashboard'], ['squad', 'Squad price unlocked'], ['coach-pending', 'Coach card pending'],
   ['coach-config', 'Coach card configuration'], ['fulfilment', 'Distribution view'], ['links', 'Link exception states'],
 ] as const;
@@ -17,6 +18,30 @@ type PreviewState = typeof states[number][0];
 
 const deadline = new Date(Date.now() + 7 * 86400000);
 const dateText = deadline.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+const shipDate = new Date(Date.now() + 21 * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+
+/**
+ * Organiser-seeded synthetic roster. First name + initial only — the same
+ * information the team WhatsApp group already shares — no photos, contact
+ * details or child metadata ever appear on the board.
+ */
+const ROSTER: Array<{ id: string; name: string; number: string; done: boolean }> = [
+  { id: 'p1', name: 'Maya R.', number: '8', done: true },
+  { id: 'p2', name: 'Alfie T.', number: '4', done: true },
+  { id: 'p3', name: 'Zainab K.', number: '10', done: true },
+  { id: 'p4', name: 'Noah B.', number: '1', done: true },
+  { id: 'p5', name: 'Poppy L.', number: '7', done: true },
+  { id: 'p6', name: 'Rio A.', number: '11', done: true },
+  { id: 'p7', name: 'Ella G.', number: '5', done: true },
+  { id: 'p8', name: 'Theo M.', number: '9', done: true },
+  { id: 'p9', name: 'Oliver W.', number: '3', done: false },
+  { id: 'p10', name: 'Amara D.', number: '6', done: false },
+  { id: 'p11', name: 'Charlie H.', number: '2', done: false },
+  { id: 'p12', name: 'Isla F.', number: '12', done: false },
+  { id: 'p13', name: 'Kai P.', number: '14', done: false },
+  { id: 'p14', name: 'Sofia N.', number: '15', done: false },
+  { id: 'p15', name: 'Jude S.', number: '16', done: false },
+];
 
 function Pill({ children, tone = 'green' }: { children: React.ReactNode; tone?: 'green' | 'amber' | 'grey' | 'red' }) {
   return <span className={`si-pill ${tone}`}>{children}</span>;
@@ -44,6 +69,14 @@ function ProductCard({ coach = false, generic = false }: { coach?: boolean; gene
 export default function SquadInvitePreview() {
   const [state, setState] = useState<PreviewState>('create');
   const [linkCopied, setLinkCopied] = useState(false);
+  // Parent-flow simulation: which roster player this parent picked, and
+  // whether their card has been "completed" in this preview session.
+  const [pickedId, setPickedId] = useState<string | null>(null);
+  const [justFinished, setJustFinished] = useState(false);
+  const doneCount = ROSTER.filter((r) => r.done).length + (justFinished ? 1 : 0);
+  const price = doneCount >= 10 ? '£18.99' : doneCount >= 2 ? '£21.99' : '£24.99';
+  const toSquad = Math.max(0, 10 - doneCount);
+  const picked = ROSTER.find((r) => r.id === pickedId) ?? null;
   const index = states.findIndex(([id]) => id === state);
   const go = (offset: number) => setState(states[(index + offset + states.length) % states.length][0]);
   const reviewerAction = (label: string, next: PreviewState) => <button className="si-reviewer-action" onClick={() => setState(next)}><span>Reviewer control</span>{label} →</button>;
@@ -54,13 +87,13 @@ export default function SquadInvitePreview() {
       case 'approval': return <><Hero eyebrow="Draft saved" title="Waiting for Emblem review" copy="The invitation cannot be shared until an authorised staff member approves it."/><StatusSteps active={1}/><Pill tone="amber">Awaiting staff approval</Pill>{reviewerAction('Open staff review', 'staff')}</>;
       case 'staff': return <><Hero eyebrow="Controlled pilot safeguard" title="Review Squad Invite" copy="A lightweight staff check before the organiser can share the invitation."/><StaffChecklist/><div className="si-actions"><button className="si-secondary" onClick={() => setState('approval')}>Return for changes</button><button className="si-primary" onClick={() => setState('publish')}>Approve Squad Invite</button></div></>;
       case 'publish': return <><Hero eyebrow="Approved" title="Squad Invite link ready" copy="Share one link in the existing parent WhatsApp group. It contains no child or parent information."/><div className="si-link-ready"><span className="si-icon">✓</span><div><strong>Reusable invitation link created</strong><span>Credential details stay hidden from the organiser view.</span></div></div><div className="si-actions"><button className="si-secondary" onClick={() => setLinkCopied(true)}>{linkCopied ? 'Link copied' : 'Copy link'}</button><button className="si-primary" onClick={() => setState('share')}>Share to WhatsApp</button></div><div className="si-quiet-actions"><button onClick={() => setState('links')}>Pause invitation</button><button onClick={() => setState('links')}>Replace link</button></div></>;
-      case 'share': return <><Hero eyebrow="WhatsApp preview" title="Ready to share" copy="No contacts or group membership are sent to Emblem."/><div className="si-phone"><div className="si-phone-top">Ashton Juniors parents <span>•••</span></div><div className="si-message"><b>Coach Jordan</b><p>Ashton Juniors U10 has opened an Emblem Squad Invite. Create your child’s personalised sporting card privately by {dateText}. Participation is optional. Create your card now and pay after the team price is confirmed.</p><div className="si-share-card"><ClubBadge/><span><b>Join Ashton Juniors U10</b><small>2 more completed cards unlock £18.99 · One team delivery</small></span></div></div></div>{reviewerAction('Preview parent opening link', 'invite')}</>;
-      case 'invite': return <><div className="si-invite-hero"><div><ClubBadge className="si-club-badge"/><Hero eyebrow="Ashton Juniors · Under 10" title="Make their moment iconic." copy="Create your child’s card now. Pay after the team price is confirmed."/></div><ProductCard generic/></div><Progress/><p className="si-estimate">Estimated squad size: 15</p><div className="si-trust"><b>Private. Secure. Parent controlled.</b><span>Participation is optional. No participant list or child photograph is public.</span></div><Delivery/><PreviewNotice/><button className="si-primary" onClick={() => setState('verify')}>Create your child’s card <span>→</span></button></>;
-      case 'verify': return <><Hero eyebrow="Private parent session" title="Verify your email" copy="We’ll send a one-time code so you can return safely to this invitation."/><label className="si-field">Email address<input defaultValue="alex.taylor@example.test" type="email"/></label><button className="si-primary" onClick={() => setState('builder')}>Send verification code <span>→</span></button>{reviewerAction('Preview returning parent', 'resume')}</>;
-      case 'resume': return <><Hero eyebrow="Welcome back" title="Resume your private card" copy="Your existing card was found. The shared team link never exposes your private builder."/><Pill>Private card resumed</Pill><button className="si-primary" onClick={() => setState('builder')}>Continue card <span>→</span></button></>;
-      case 'builder': return <><Hero eyebrow="Private builder · Step 2 of 4" title="Create their card" copy="This information is not visible to Coach Jordan or other parents."/><div className="si-builder-layout"><ProductCard/><BuilderControls/></div><p className="si-help">Synthetic initials only. No real photograph is used. Controls demonstrate the intended journey and do not save data.</p><button className="si-primary" onClick={() => setState('permissions')}>Review before saving <span>→</span></button></>;
-      case 'permissions': return <><Hero eyebrow="Parent permissions" title="Before you save the card" copy="Please confirm the following so Emblem can prepare your child’s personalised card."/><div className="si-permissions"><Check text="I am the child’s parent/guardian or have permission to submit their details."/><Check text="I have permission to use this photograph on the printed card."/><Check text="I understand the cards will be delivered together to Coach Jordan."/><Check text="I understand I am not paying today. I will receive a payment request after the team price is confirmed."/></div><button className="si-primary" onClick={() => setState('saved')}>Save my child’s card <span>→</span></button></>;
-      case 'saved': return <><div className="si-success-mark">✓</div><Hero eyebrow="Card completed" title="Your child’s card is saved" copy="You have not been charged. When the invitation closes, Emblem will confirm the final team price and send you a payment request."/><Pill>Card design saved</Pill><Delivery detail="Your card will be delivered with the team order to Coach Jordan after payment and production."/><button className="si-primary" onClick={() => setState('invite')}>Done</button>{reviewerAction('Return to team invitation', 'invite')}</>;
+      case 'share': return <><Hero eyebrow="WhatsApp preview" title="Ready to share" copy="No contacts or group membership are sent to Emblem."/><div className="si-phone"><div className="si-phone-top">Ashton Juniors parents <span>•••</span></div><div className="si-message"><b>Coach Jordan</b><p>Ashton Juniors U10 has opened an Emblem Squad Invite. Create your child’s personalised sporting card privately by {dateText}. Participation is optional. Create your card now and pay after the team price is confirmed.</p><div className="si-share-card"><ClubBadge/><span><b>Join Ashton Juniors U10</b><small>2 more completed cards unlock £18.99 · One team delivery</small></span></div></div></div>{reviewerAction('Preview parent opening link', 'board')}</>;
+      case 'board': return <><div className="si-invite-hero"><div><ClubBadge className="si-club-badge"/><Hero eyebrow="Ashton Juniors · Under 10" title="Team card board" copy="Tap your player, drop a photo, done. Nobody pays until the invitation closes — everyone gets the final team price."/></div></div><PriceLadder done={doneCount} price={price} toSquad={toSquad}/><Roster finishedId={justFinished ? pickedId : null} onPick={(id) => { setPickedId(id); setState('pick'); }}/><div className="si-grid"><Metric value={dateText} label="invitation closes"/><Metric value={`~${shipDate}`} label="estimated delivery"/></div><PreviewNotice/><button className="si-primary" onClick={() => setState('pick')}>Add your player’s card <span>→</span></button></>;
+      case 'pick': return <><Hero eyebrow="Step 1 of 3" title="Which player is yours?" copy="The squad list comes from your organiser — just tap your player. Their name and number are already filled in."/><Roster pickMode selectedId={pickedId} onPick={(id) => { setPickedId(id); setState('photo'); }}/><p className="si-help">Player not listed? Ask your organiser to add them — the board updates instantly.</p>{reviewerAction('Preview returning parent', 'resume')}</>;
+      case 'resume': return <><Hero eyebrow="Welcome back" title="Resume your player’s card" copy="We found your saved card from this invitation. Pick up exactly where you left off."/><Pill>Card resumed</Pill><button className="si-primary" onClick={() => setState('photo')}>Continue card <span>→</span></button></>;
+      case 'photo': return <><Hero eyebrow="Step 2 of 3" title={`Drop ${picked ? picked.name.split(' ')[0] + '’s' : 'their'} football photo`} copy="One clear photo of your player. We handle the cutout, the card design and the print."/><button className="si-photodrop" type="button" onClick={() => setState('save')}><span aria-hidden="true">📷</span><b>Tap to add a photo</b><small>or drag one here · Synthetic preview — no photo is uploaded</small></button><div className="si-builder-layout"><ProductCard/><div className="si-rows"><div>{picked ? picked.name : 'Maya R.'} · No. {picked ? picked.number : '8'}</div><div>Ashton Juniors U10 · organiser-seeded</div><div>Design: club template (change later)</div></div></div><button className="si-primary" onClick={() => setState('save')}>Looks good <span>→</span></button></>;
+      case 'save': return <><Hero eyebrow="Step 3 of 3" title="Save the card" copy="An email so you can come back to it, and four quick confirmations. That’s everything."/><label className="si-field">Email address<input defaultValue="alex.taylor@example.test" type="email"/></label><div className="si-permissions"><Check text="I am the child’s parent/guardian or have permission to submit their details."/><Check text="I have permission to use this photograph on the printed card."/><Check text="I understand the cards will be delivered together to Coach Jordan."/><Check text="I understand I am not paying today. I’ll get one payment request at the final team price after the invitation closes."/></div><button className="si-primary" onClick={() => { setJustFinished(true); setState('done'); }}>Save my player’s card <span>→</span></button></>;
+      case 'done': return <><div className="si-success-mark">✓</div><Hero eyebrow="Card completed" title={`${picked ? picked.name : 'Your player'} is on the board`} copy={`Nothing to pay today. ${toSquad > 0 ? `${toSquad} more card${toSquad === 1 ? '' : 's'} and the whole team drops to £18.99 — including yours.` : 'Squad price locked at £18.99 for everyone.'}`}/><PriceLadder done={doneCount} price={price} toSquad={toSquad}/><Roster finishedId={pickedId}/><div className="si-actions"><button className="si-primary" onClick={() => setState('share')}>Nudge the team on WhatsApp</button><button className="si-secondary" onClick={() => setState('board')}>Back to the board</button></div></>;
       case 'closed': return <><Hero eyebrow="Invitation closed" title="New card starts are closed" copy="Parents who began before the deadline may finish their card during the 24-hour grace period."/><Pill tone="grey">Team price confirms after grace</Pill><Progress/><PreviewNotice/></>;
       case 'dashboard': return <><Hero eyebrow="Organiser dashboard" title="Ashton Juniors U10" copy="Aggregate progress only. No parent list, payment details or child photographs."/><div className="si-dashboard-strip"><div><span>Progress to squad price</span><strong>8 of 10</strong></div><div className="si-ring" aria-label="80 percent of squad-price target completed">80%</div></div><progress className="si-native-progress" value="8" max="10" aria-label="8 of 10 cards completed for squad price">8 of 10</progress><div className="si-grid"><Metric value="8" label="completed cards"/><Metric value="10" label="squad-price target"/><Metric value="15" label="estimated squad size"/><Metric value="£21.99" label="current price"/></div><div className="si-milestones"><b>Squad price: 2 more completed cards needed</b><span>Free coach card: Confirmed after 10 parents pay</span></div><StatusSteps active={2}/><Delivery organiser/>{reviewerAction('Preview 10 completed cards', 'squad')}</>;
       case 'squad': return <><div className="si-celebrate">SQUAD PRICE UNLOCKED</div><Hero eyebrow="Team price confirmed" title="£18.99 per card" copy="Ten distinct completed eligible cards freeze the squad price."/><div className="si-grid"><Metric value="10" label="completed cards"/><Metric value="£18.99" label="confirmed unit price"/></div><div className="si-milestones"><b>Squad price unlocked: £18.99 per card</b><span>Free coach card: Waiting for 10 successful payments</span></div><PreviewNotice/></>;
@@ -69,9 +102,40 @@ export default function SquadInvitePreview() {
       case 'fulfilment': return <><Hero eyebrow="Consolidated fulfilment" title="One team package" copy="One standard UK team delivery is included. Paid cards are individually sealed for private distribution."/><div className="si-box-visual"><b>EMBLEM</b><span>ASHTON JUNIORS U10</span><small>15 sealed card envelopes · one organiser delivery</small></div><div className="si-package"><b>Package SI-014</b><span>For the parent/guardian of Maya R. — No. 8</span><Pill>Sealed</Pill></div><p className="si-help">No email, phone, address, permission record, internal child ID or NFC claim secret appears here.</p></>;
       case 'links': return <><Hero eyebrow="Reusable link controls" title="This invitation is unavailable" copy="Invalid, expired, paused and revoked links use the same privacy-preserving response."/><div className="si-unavailable">Link unavailable</div><div className="si-link-grid">{[['Invalid', 'Unavailable'], ['Expired', 'Unavailable'], ['Paused', 'Unavailable'], ['Revoked', 'Unavailable'], ['Replaced', 'Old link unavailable']].map(([a, b]) => <div key={a}><b>{a} link</b><span>{b}</span></div>)}</div><button className="si-secondary" onClick={() => setState('publish')}>Replace shared link</button><p className="si-help">Existing private cards survive replacement without retaining public-link authority.</p></>;
     }
-  }, [state, linkCopied]);
+  }, [state, linkCopied, pickedId, justFinished, doneCount, price, toSquad, picked]);
 
   return <main className="si-preview"><div className="si-shell"><div className="si-preview-bar"><b>Synthetic product preview</b><span>· No database · No payments · No real child data</span></div><aside className="si-reviewer-nav" aria-label="Reviewer navigation — synthetic preview only"><strong>Reviewer navigation — synthetic preview only</strong><div><button onClick={() => go(-1)} aria-label="Previous synthetic preview state">←</button><select value={state} onChange={(e) => setState(e.target.value as PreviewState)} aria-label="Choose synthetic preview state">{states.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select><button onClick={() => go(1)} aria-label="Next synthetic preview state">→</button></div></aside><div className="si-product-surface"><BrandHeader/><section className="si-screen" aria-label={states[index][1]}>{screen}</section><footer className="si-footer"><span className="si-footer-identity">© Emblem</span><span>Privacy</span><span>Safety</span><span>Support</span></footer></div></div></main>;
+}
+
+/**
+ * The team board — the heart of the flow. Organiser-seeded roster with a
+ * checkmark per completed card. First name + initial and squad number only:
+ * exactly the information the team WhatsApp group already has. No photos,
+ * no parent identity, no contact details, gated behind the invitation link.
+ */
+function Roster({ pickMode = false, selectedId = null, finishedId = null, onPick }: { pickMode?: boolean; selectedId?: string | null; finishedId?: string | null; onPick?: (id: string) => void }) {
+  return <div className="si-roster" role="list" aria-label={pickMode ? 'Choose your player' : 'Team card progress'}>
+    {ROSTER.map((r) => {
+      const done = r.done || r.id === finishedId;
+      const clickable = pickMode && !done && onPick;
+      return <button key={r.id} role="listitem" type="button" disabled={!clickable} onClick={clickable ? () => onPick(r.id) : undefined}
+        className={`si-roster-row${done ? ' done' : ''}${r.id === selectedId ? ' selected' : ''}${clickable ? ' pickable' : ''}`}>
+        <span className="si-roster-check" aria-hidden="true">{done ? '✓' : ''}</span>
+        <span className="si-roster-name">{r.name}</span>
+        <span className="si-roster-number">No. {r.number}</span>
+        <span className="si-roster-status">{done ? 'Card done' : pickMode ? 'Tap to start' : 'Waiting'}</span>
+      </button>;
+    })}
+  </div>;
+}
+
+/** Price ladder: where the team price stands and what the next unlock is. */
+function PriceLadder({ done, price, toSquad }: { done: number; price: string; toSquad: number }) {
+  return <div className="si-priceladder">
+    <div className="si-grid"><Metric value={`${done} of 10`} label="cards completed"/><Metric value={price} label="current team price"/></div>
+    <progress className="si-native-progress" value={Math.min(done, 10)} max="10" aria-label={`${done} of 10 cards completed for squad price`}>{done} of 10</progress>
+    <p className="si-progress-copy">{toSquad > 0 ? `${toSquad} more completed card${toSquad === 1 ? '' : 's'} unlock £18.99 for the whole team — nobody pays until the invitation closes, so everyone gets the final price.` : 'Squad price locked: £18.99 per card for everyone.'}</p>
+  </div>;
 }
 
 function Hero({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) { return <header className="si-header"><span>{eyebrow}</span><h1>{title}</h1><p>{copy}</p></header>; }
