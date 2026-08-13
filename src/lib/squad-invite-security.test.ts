@@ -96,4 +96,16 @@ describe('Squad Invite security correction contract', () => {
     expect(middleware).toContain('reviewMode && realSquadInviteSurface');
     expect(middleware).toContain("path.startsWith('/api/staff/squad-invites')");
   });
+
+  it('keeps synthetic preview copy payment-neutral and navigation labels non-interactive', () => {
+    const component = read('src/app/dev/squad-invite-preview/SquadInvitePreview.tsx');
+    expect(component).toContain('Each parent builds and commits individually. Payment requests are not active in this preview.');
+    expect(component).toContain('Organiser: Coach Jordan');
+    expect(component).toContain('Invitation deadline: ${dateText}');
+    expect(component).toContain('Estimated squad participation: 15');
+    expect(component).not.toContain('builds and pays individually');
+    expect(component).not.toContain('className="si-help-button"');
+    expect(component).not.toContain('emblem-footer-logo.png');
+    expect(component).toContain('className="si-footer-identity">© Emblem');
+  });
 });
