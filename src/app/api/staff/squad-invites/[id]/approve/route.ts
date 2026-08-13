@@ -26,5 +26,5 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
   await service.from('squad_invite_link_audit_events').insert({
     link_id: link.id, campaign_id: data.id, actor_profile_id: staff.userId, event_type: 'created',
   });
-  return NextResponse.json({ ok: true, invitationPath: `/squad-invite/join/${credential.token}` });
+  return NextResponse.json({ ok: true, invitationPath: `/squad-invite/access#token=${credential.token}` });
 }

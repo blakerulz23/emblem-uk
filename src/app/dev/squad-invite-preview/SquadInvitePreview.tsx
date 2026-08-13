@@ -17,7 +17,7 @@ type PreviewState = typeof states[number][0];
 
 const deadline = new Date(Date.now() + 7 * 86400000);
 const dateText = deadline.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-const invitationPath = '/squad-invite/join/••••••••••••••••';
+const invitationPath = '/squad-invite/access#token=••••••••••••••••';
 
 function Pill({ children, tone = 'green' }: { children: React.ReactNode; tone?: 'green' | 'amber' | 'grey' | 'red' }) {
   return <span className={`si-pill ${tone}`}>{children}</span>;
@@ -65,7 +65,7 @@ export default function SquadInvitePreview() {
     }
   }, [state]);
 
-  return <main className="si-preview"><div className="si-shell"><div className="si-preview-bar"><b>Synthetic local preview</b><span>No database · no Shopify · no real child data</span></div><BrandHeader/><nav className="si-switcher" aria-label="Preview state"><button onClick={() => go(-1)} aria-label="Previous state">←</button><select value={state} onChange={(e) => setState(e.target.value as PreviewState)}>{states.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select><button onClick={() => go(1)} aria-label="Next state">→</button></nav><section className="si-screen" aria-label={states[index][1]}>{screen}</section><footer className="si-footer"><Image src="/emblem-footer-logo.png" width={85} height={28} style={{ height: 'auto' }} alt="Emblem"/><span>Privacy</span><span>Safety</span><span>Support</span></footer></div></main>;
+  return <main className="si-preview"><div className="si-shell"><div className="si-preview-bar"><b>Synthetic product preview</b><span>No database · no Shopify · no real child data</span></div><BrandHeader/><nav className="si-switcher" aria-label="Preview state"><button onClick={() => go(-1)} aria-label="Previous state">←</button><select value={state} onChange={(e) => setState(e.target.value as PreviewState)}>{states.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select><button onClick={() => go(1)} aria-label="Next state">→</button></nav><section className="si-screen" aria-label={states[index][1]}>{screen}</section><footer className="si-footer"><Image src="/emblem-footer-logo.png" width={85} height={28} style={{ height: 'auto' }} alt="Emblem"/><span>Privacy</span><span>Safety</span><span>Support</span></footer></div></main>;
 }
 
 function Hero({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) { return <header className="si-header"><span>{eyebrow}</span><h1>{title}</h1><p>{copy}</p></header>; }

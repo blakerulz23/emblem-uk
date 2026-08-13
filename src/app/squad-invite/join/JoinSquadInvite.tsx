@@ -2,10 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
 import type { SafeSquadInviteProjection } from '@/lib/squad-invite-link';
 
-export default function JoinSquadInvite({ invitation }: { invitation: SafeSquadInviteProjection }) {
+export default function JoinSquadInvite({ invitation, csrfToken }: { invitation: SafeSquadInviteProjection; csrfToken: string }) {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -14,7 +13,7 @@ export default function JoinSquadInvite({ invitation }: { invitation: SafeSquadI
 
   const start = async () => {
     setError('');
-    const response = await fetch('/api/squad-invite-links/participation', { method: 'POST' });
+    const response = await fetch('/api/squad-invite-links/participation', { method: 'POST', headers: { 'X-Emblem-CSRF': csrfToken } });
     if (response.status === 401) { setStep('email'); return; }
     if (!response.ok) { setError('This Squad Invite is unavailable.'); return; }
     const result = await response.json() as { participationId: string };
@@ -22,14 +21,15 @@ export default function JoinSquadInvite({ invitation }: { invitation: SafeSquadI
   };
   const sendCode = async (event: React.FormEvent) => {
     event.preventDefault(); setError('');
-    const { error: authError } = await createClient().auth.signInWithOtp({ email: email.trim() });
-    if (authError) { setError('We could not send a verification code.'); return; }
+    const response = await fetch('/api/squad-invite-auth/request-code', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Emblem-CSRF': csrfToken }, body: JSON.stringify({ email: email.trim() }) });
+    if (!response.ok && response.status !== 429) { setError('We could not send a verification code.'); return; }
+    if (response.status === 429) { setError('Please wait before requesting another code.'); return; }
     setStep('code');
   };
   const verifyCode = async (event: React.FormEvent) => {
     event.preventDefault(); setError('');
-    const { error: authError } = await createClient().auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'email' });
-    if (authError) { setError('That verification code was not accepted.'); return; }
+    const response = await fetch('/api/squad-invite-auth/verify-code', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Emblem-CSRF': csrfToken }, body: JSON.stringify({ email: email.trim(), code: code.trim(), returnTo: '/squad-invite/join' }) });
+    if (!response.ok) { setError('That verification code was not accepted.'); return; }
     await start();
   };
 
@@ -41,8 +41,8 @@ export default function JoinSquadInvite({ invitation }: { invitation: SafeSquadI
       <p><strong>{invitation.completedCommitments}</strong> completed commitments · Current incentive: <strong>{invitation.currentIncentive}</strong></p>
       <p>{invitation.productSummary}</p>
       <p>{invitation.deliverySummary}</p>
-      <h2>One team link. Each parent builds and pays individually.</h2>
-      <p>Your child’s information is submitted privately to Emblem and is not shown to the organiser or other parents.</p>
+      <h2>One team link. Each parent or guardian builds and pays individually.</h2>
+      <p>Email verification confirms control of the address only. A separate authority declaration is required before submitting a child&apos;s information.</p>
       {step === 'ready' && <button onClick={start} style={{ width: '100%', border: 0, borderRadius: 999, padding: 16, background: '#173f2a', color: '#fff', fontWeight: 800 }}>Create your child’s card for this team order</button>}
       {step === 'email' && <form onSubmit={sendCode}><label>Email address<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label><button>Send verification code</button></form>}
       {step === 'code' && <form onSubmit={verifyCode}><label>Verification code<input inputMode="numeric" required value={code} onChange={(e) => setCode(e.target.value)} /></label><button>Verify and continue</button></form>}

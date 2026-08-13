@@ -2,7 +2,8 @@ import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 
 const routeFiles = [
-  'src/app/squad-invite/join/[token]/route.ts',
+  'src/app/squad-invite/access/InvitationAccess.tsx',
+  'src/app/api/squad-invite-links/exchange/route.ts',
   'src/app/api/squad-invite-links/context/route.ts',
   'src/app/api/squad-invite-links/participation/route.ts',
   'src/app/api/squad-invites/[id]/invitation-link/route.ts',
@@ -17,7 +18,9 @@ describe('Squad Invite link route privacy contract', () => {
 
   it('uses HttpOnly same-site cookies and never sends the link token to the builder URL', () => {
     expect(source).toContain('httpOnly: true');
-    expect(source).toContain("sameSite: 'lax'");
+    expect(source).toContain("sameSite: 'strict'");
+    expect(source).toContain("path: '/'");
+    expect(source).toContain('httpOnly: true');
     expect(source).not.toContain('squadInvite=${');
   });
 
@@ -30,8 +33,8 @@ describe('Squad Invite link route privacy contract', () => {
 
   it('preserves campaign context through new-parent email verification without exposing the link to client code', () => {
     const join = readFileSync('src/app/squad-invite/join/JoinSquadInvite.tsx', 'utf8');
-    expect(join).toContain('signInWithOtp');
-    expect(join).toContain('verifyOtp');
+    expect(join).toContain('/api/squad-invite-auth/request-code');
+    expect(join).toContain('/api/squad-invite-auth/verify-code');
     expect(join).toContain("await start()");
     expect(join).not.toContain('invitationToken');
   });

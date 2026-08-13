@@ -3,6 +3,18 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  async headers() {
+    const privateHeaders = [
+      { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+      { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive' },
+      { key: 'Referrer-Policy', value: 'no-referrer' },
+    ];
+    return [
+      { source: '/review/squad-invite', headers: privateHeaders },
+      { source: '/dev/squad-invite-preview', headers: privateHeaders },
+      { source: '/squad-invite/access', headers: privateHeaders },
+    ];
+  },
   async redirects() {
     return [
       {

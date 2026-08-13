@@ -1,12 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { createBuilderToken } from '@/lib/squad-invite';
 import { SQUAD_INVITE_LINK_COOKIE, UNAVAILABLE_INVITATION, hashSquadInviteLinkToken } from '@/lib/squad-invite-link';
 import { headers } from 'next/headers';
 import { consumeSquadInviteRateLimit } from '@/lib/squad-invite-rate-limit';
+import { hasValidSquadInviteCsrf } from '@/lib/squad-invite-request-security';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  if (!hasValidSquadInviteCsrf(request)) return NextResponse.json(UNAVAILABLE_INVITATION, { status: 403 });
   if (!(await consumeSquadInviteRateLimit(headers(), 'participate'))) return NextResponse.json(UNAVAILABLE_INVITATION, { status: 429 });
   const auth = createClient();
   const { data: { user } } = await auth.auth.getUser();
@@ -23,7 +25,7 @@ export async function POST() {
   const result = data as { participationId: string; created: boolean };
   const response = NextResponse.json({ participationId: result.participationId, created: result.created });
   response.cookies.set('emblem_squad_builder', builder.token, {
-    httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/squad-invite', maxAge: 60 * 60 * 48,
+    httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/', maxAge: 60 * 60 * 48,
   });
   return response;
 }

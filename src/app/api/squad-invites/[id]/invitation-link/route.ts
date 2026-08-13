@@ -27,7 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     p_expires_at: campaign.grace_ends_at, p_participation_limit: limit ?? null,
   });
   if (error) return NextResponse.json({ error: 'Invitation link could not be replaced' }, { status: 409 });
-  return NextResponse.json({ invitationPath: `/squad-invite/join/${credential.token}` });
+  return NextResponse.json({ invitationPath: `/squad-invite/access#token=${credential.token}` });
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {

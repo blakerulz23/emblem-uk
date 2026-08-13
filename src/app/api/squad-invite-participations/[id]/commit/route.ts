@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { effectiveCampaignStatus, hashBuilderToken, mayCompleteExistingBuilder } from '@/lib/squad-invite';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
+import { hasValidSquadInviteCsrf } from '@/lib/squad-invite-request-security';
 
 const REQUIRED = [
   ['child_information_authority','squad_invite_child_authority_v1'],
@@ -12,6 +13,7 @@ const REQUIRED = [
 ] as const;
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  if (!hasValidSquadInviteCsrf(request)) return NextResponse.json({ error: 'Commitment unavailable' }, { status: 403 });
   const token = cookies().get('emblem_squad_builder')?.value;
   const { data: { user } } = await createClient().auth.getUser();
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
