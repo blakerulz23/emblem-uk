@@ -34,3 +34,8 @@
 .si-photodrop span { font-size: 34px; }
 .si-photodrop b { font-size: 15px; }
 .si-photodrop small { opacity: .55; }
+.si-pay-btn {
+  font: inherit; font-size: 13px; font-weight: 800; color: #fff;
+  background: #E97435; border: none; border-radius: 999px; padding: 7px 16px; cursor: pointer;
+}
+.si-pay-btn:hover { filter: brightness(1.05); }
