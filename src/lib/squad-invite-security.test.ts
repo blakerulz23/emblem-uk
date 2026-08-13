@@ -99,13 +99,50 @@ describe('Squad Invite security correction contract', () => {
 
   it('keeps synthetic preview copy payment-neutral and navigation labels non-interactive', () => {
     const component = read('src/app/dev/squad-invite-preview/SquadInvitePreview.tsx');
-    expect(component).toContain('Each parent builds and commits individually. Payment requests are not active in this preview.');
-    expect(component).toContain('Organiser: Coach Jordan');
-    expect(component).toContain('Invitation deadline: ${dateText}');
-    expect(component).toContain('Estimated squad participation: 15');
+    expect(component).toContain('Each parent creates their child’s card individually. Parents pay after the team price is confirmed.');
+    expect(component).toContain('Synthetic product preview');
+    expect(component).toContain('No database · No payments · No real child data');
     expect(component).not.toContain('builds and pays individually');
+    expect(component).not.toContain('payment-neutral commitment');
+    expect(component).not.toContain('contacts Shopify');
     expect(component).not.toContain('className="si-help-button"');
     expect(component).not.toContain('emblem-footer-logo.png');
     expect(component).toContain('className="si-footer-identity">© Emblem');
+  });
+
+  it('uses the canonical ten-card threshold for customer-facing progress', () => {
+    const component = read('src/app/dev/squad-invite-preview/SquadInvitePreview.tsx');
+    expect(component).toContain('8 of 10');
+    expect(component).toContain('value="8" max="10"');
+    expect(component).toContain('80%');
+    expect(component).toContain('Estimated squad size: 15');
+    expect(component).not.toContain('8 / 15');
+    expect(component).not.toContain('53%');
+  });
+
+  it('keeps public invitation artwork generic and private builder artwork synthetic', () => {
+    const component = read('src/app/dev/squad-invite-preview/SquadInvitePreview.tsx');
+    expect(component).toContain('<ProductCard generic/>');
+    expect(component).toContain("generic ? 'YOUR PLAYER' : 'MAYA R.'");
+    expect(component).toContain('Generic player card example with no child identity');
+    expect(component).toContain('Upload or replace photograph');
+  });
+
+  it('uses plain parent permission and card-saved language', () => {
+    const component = read('src/app/dev/squad-invite-preview/SquadInvitePreview.tsx');
+    expect(component).toContain('Before you save the card');
+    expect(component).toContain('Save my child’s card');
+    expect(component).toContain('Your child’s card is saved');
+    expect(component).toContain('Card design saved');
+    expect(component).not.toContain('Private registration — deferred until after the pilot');
+  });
+
+  it('separates reviewer navigation and staff safeguards from customer permissions', () => {
+    const component = read('src/app/dev/squad-invite-preview/SquadInvitePreview.tsx');
+    expect(component).toContain('Reviewer navigation — synthetic preview only');
+    expect(component).toContain('Reviewer control');
+    expect(component).toContain('No child roster uploaded');
+    expect(component).toContain('Approve Squad Invite');
+    expect(component).not.toContain('DBS');
   });
 });
