@@ -116,7 +116,7 @@
 
 ## 8. Privacy and security risks introduced
 
-1. Share-link enumeration or leakage exposes campaign affiliation. Use high-entropy public IDs, uniform not-found responses, rate limits and no child metadata.
+1. Share-link enumeration or leakage exposes campaign affiliation. Keep the permanent campaign ID separate from a high-entropy, hashed, expiring and revocable invitation credential; use uniform unavailable responses, opaque rate-limit buckets and no child metadata.
 2. Cross-parent access exposes child photos/orders. Enforce server ownership and RLS; never rely on UI hiding.
 3. Organiser role creep creates a child roster. Return aggregates only until staff-approved fulfilment requires minimal labels.
 4. Threshold pressure may shame families. Never identify participants/non-participants or use manipulative countdowns.
@@ -138,7 +138,7 @@
 ```text
 Authenticated organiser
   -> create draft campaign + adult delivery recipient + authority record
-  -> publish (unguessable public ID, deadline, audit event)
+  -> publish (separate reusable invitation credential, deadline, audit event)
   -> share sanitised URL via native/WhatsApp share
 
 Public parent
@@ -182,9 +182,10 @@ Campaign state should be derived request-time for deadline expiry where possible
 
 Use one additive migration after the current latest migration; do not alter historical migrations.
 
-1. `squad_invites`: internal UUID, random public ID, organiser profile, role, display team/club, age group, optional approved badge reference, expected size, status/timestamps/deadline, terms/privacy versions, final pricing snapshot, coach eligibility/configuration state, delivery-recipient adult fields and fulfilment status. Constraints enforce timestamp/status coherence and immutable final pricing once fulfilment starts.
-2. `squad_invite_participations`: campaign, guardian/customer where authenticated, opaque builder ID, one order link, status/timestamps and unique campaign + order/player subject rules. No participant is readable by another participant or organiser.
-3. `squad_invite_permissions`: participation/campaign scope, actor, purpose enum, exact version, granted/declined/withdrawn timestamps and minimal evidence. Separate rows for organiser authority, child/order authority, photo manufacture, private registration and consolidated delivery.
+1. `squad_invites`: internal UUID, organiser profile, role, display team/club, age group, optional approved badge reference, expected size, status/timestamps/deadline, terms/privacy versions, final pricing snapshot, coach eligibility/configuration state, delivery-recipient adult fields and fulfilment status. Its permanent IDs are never invitation credentials.
+2. `squad_invite_links`: campaign association, SHA-256 token hash, active/paused/revoked state, expiry, replacement chain, last use, aggregate use count, optional participation limit and audit history. Raw tokens are returned only when created/replaced.
+3. `squad_invite_participations`: campaign, guardian/customer where authenticated, private builder credential, one order link, status/timestamps and a unique campaign + guardian rule. No participant is readable by another participant or organiser; link rotation does not delete participations.
+4. `squad_invite_permissions`: participation/campaign scope, actor, purpose enum, exact version, granted/declined/withdrawn timestamps and minimal evidence. Separate rows for organiser authority, child/order authority, photo manufacture, private registration and consolidated delivery.
 4. `squad_invite_audit_events`: campaign, actor/role, allowlisted event type, timestamp and minimised JSON metadata; service/staff access only.
 5. `campaign_fulfilment_batches` and `campaign_fulfilment_items`: exactly one active batch per campaign, final tier/version, payment gate, staff transitions, order uniqueness, package reference/inclusion/reconciliation and exception state.
 
@@ -199,8 +200,10 @@ All tables require explicit FKs/delete actions, checks, actual-query indexes, RL
 - `POST /api/squad-invites` — authenticated organiser creates draft.
 - `GET/PATCH /api/squad-invites/:id` — owner-safe management; aggregate projection only.
 - `POST /api/squad-invites/:id/publish|close|cancel` — idempotent lifecycle mutations.
-- `GET /api/squad-invites/public/:publicId` — active public projection only, rate-limited and cache-safe.
-- `POST /api/squad-invites/public/:publicId/participations` — isolated builder start.
+- `GET /squad-invite/join/:token` — rate-limited credential resolution into a clean HttpOnly cookie-backed context; uniform unavailable response.
+- `GET /api/squad-invite-links/context` — allowlisted safe projection only.
+- `POST /api/squad-invite-links/participation` — authenticated, idempotent isolated participation start/resume.
+- `POST/PATCH /api/squad-invites/:id/invitation-link` — authorised replacement, pause, resume or revocation.
 - `GET/PATCH /api/squad-invite-participations/:id` — actor-owned state only.
 - `POST /api/squad-invite-participations/:id/permissions` — versioned acknowledgements.
 - `POST /api/squad-invite-participations/:id/commit` — payment-neutral commitment and asset/order association.
@@ -225,7 +228,7 @@ Create, review/publish, share, public invitation, constrained one-child builder 
 
 ## 12. Proposed permission model
 
-- **Public:** resolve one valid active random campaign ID; view only display name, broad age group, deadline, aggregate tier/progress, delivery summary and coach incentive; start an isolated participation. No enumeration, participants, children, photos, contacts or address.
+- **Public:** resolve one valid active reusable invitation credential; view only display name, broad age group, deadline, aggregate tier/progress, delivery summary, authorised official badge and coach incentive; begin authentication for an isolated participation. The credential grants no campaign membership or builder access. No enumeration, participants, children, photos, contacts, internal IDs or address.
 - **Parent:** own participation, builder, order/payment status and private registration only. No other participation or full recipient address.
 - **Organiser:** own campaign settings within lifecycle rules, aggregate counts, share/close/cancel, one coach configuration, fulfilment status and time-limited minimal distribution labels after staff approval. No photos, parent contacts/accounts, payment instruments, consent history, private OS or roster export.
 - **Staff:** existing authenticated staff boundary plus purpose-specific operations. Sensitive access/override is logged and reviewable.

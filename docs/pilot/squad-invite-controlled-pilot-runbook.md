@@ -11,13 +11,15 @@
 ## Publish and share
 
 1. Publish only after staff approval.
-2. Copy the opaque campaign link or use the device share/WhatsApp action.
+2. Copy the high-entropy reusable invitation link or use the device share/WhatsApp action. The raw link credential is shown only when created or replaced; the database stores its hash.
 3. Check that share text contains team name, deadline and incentive only—never a child name.
 4. The campaign page is `noindex`, contains aggregates only and displays no participant list or child photograph.
+5. Pause or revoke the invitation link to stop new entry without deleting the campaign or existing private participations. Replacement permanently revokes the old link and creates a new credential.
+6. Invalid, expired, paused and revoked links use the same unavailable response. Do not troubleshoot by disclosing whether a campaign exists.
 
 ## Parent completion
 
-1. Parent starts one isolated builder before the deadline.
+1. Parent opens the reusable link, verifies the minimum email session if needed, and starts or resumes their one isolated participation before the deadline. Repeated opens must not create duplicates.
 2. Parent supplies only one child’s card fields and an authorised photograph.
 3. Parent separately accepts child-information authority, photograph manufacture, consolidated delivery and payment-neutral commitment versions. Private registration remains deferred.
 4. Commitment wording must say no charge is taken and production begins only after payment.

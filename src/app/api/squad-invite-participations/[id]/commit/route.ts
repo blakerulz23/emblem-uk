@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { effectiveCampaignStatus, hashBuilderToken, mayCompleteExistingBuilder } from '@/lib/squad-invite';
+import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 
 const REQUIRED = [
   ['child_information_authority','squad_invite_child_authority_v1'],
@@ -10,8 +12,10 @@ const REQUIRED = [
 ] as const;
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const token = request.headers.get('x-squad-invite-builder-token');
+  const token = cookies().get('emblem_squad_builder')?.value;
+  const { data: { user } } = await createClient().auth.getUser();
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (!user) return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
   if (!token || !body) return NextResponse.json({ error: 'Builder credential and commitment are required' }, { status: 400 });
   if (body.fullDateOfBirth || body.school || body.childAddress || body.preciseLocation || body.publicProfile === true) {
     return NextResponse.json({ error: 'Disallowed child fields' }, { status: 400 });
@@ -23,7 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const service = createServiceRoleClient();
   const { data: participation } = await service.from('squad_invite_participations')
     .select('id,campaign_id,status,squad_invites!inner(campaign_status,deadline_at)')
-    .eq('id', params.id).eq('builder_token_hash', hashBuilderToken(token)).maybeSingle();
+    .eq('id', params.id).eq('guardian_profile_id', user.id).eq('builder_token_hash', hashBuilderToken(token)).maybeSingle();
   if (!participation || participation.status !== 'started') return NextResponse.json({ error: 'Commitment unavailable' }, { status: 404 });
   const campaignRaw = participation.squad_invites as unknown;
   const campaign = (Array.isArray(campaignRaw) ? campaignRaw[0] : campaignRaw) as { campaign_status: Parameters<typeof effectiveCampaignStatus>[0]; deadline_at: string };
