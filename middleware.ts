@@ -1,7 +1,14 @@
-import { type NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 
 export async function middleware(request: NextRequest) {
+  if (
+    process.env.NODE_ENV === 'development'
+    && process.env.SQUAD_INVITE_PREVIEW_ENABLED === 'true'
+    && request.nextUrl.pathname.startsWith('/dev/squad-invite-preview')
+  ) {
+    return NextResponse.next();
+  }
   return await updateSession(request);
 }
 

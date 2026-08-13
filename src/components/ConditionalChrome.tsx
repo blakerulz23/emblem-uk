@@ -31,9 +31,10 @@ export default function ConditionalChrome({ children }: { children: React.ReactN
   const isOs = pathname.startsWith('/os');
   const isPlayerProfile = pathname.startsWith('/player/');
   const isHome = pathname === '/';
+  const isSyntheticSquadInvitePreview = pathname.startsWith('/dev/squad-invite-preview');
   const isMarketing = MARKETING_ROUTES.includes(pathname);
 
-  if (isBuilder || isOs || isPlayerProfile) {
+  if (isBuilder || isOs || isPlayerProfile || isSyntheticSquadInvitePreview) {
     return <main className="min-h-screen">{children}</main>;
   }
 
