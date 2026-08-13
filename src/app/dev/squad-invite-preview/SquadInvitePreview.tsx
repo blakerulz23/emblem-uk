@@ -69,7 +69,16 @@ function ProductCard({ coach = false, generic = false }: { coach?: boolean; gene
 }
 
 export default function SquadInvitePreview() {
-  const [state, setState] = useState<PreviewState>('create');
+  const [state, setState] = useState<PreviewState>(() => {
+    // Deep-linkable reviewer state: /review/squad-invite?state=board opens
+    // straight on that screen — handy when sharing a specific moment of
+    // the journey for review.
+    if (typeof window !== 'undefined') {
+      const wanted = new URLSearchParams(window.location.search).get('state');
+      if (wanted && states.some(([id]) => id === wanted)) return wanted as PreviewState;
+    }
+    return 'create';
+  });
   const [linkCopied, setLinkCopied] = useState(false);
   // Parent-flow simulation: which roster player this parent picked, and
   // whether their card has been "completed" in this preview session.
