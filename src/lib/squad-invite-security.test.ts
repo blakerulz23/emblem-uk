@@ -94,7 +94,8 @@ describe('Squad Invite security correction contract', () => {
     expect(review + component).not.toMatch(/(?:from|import\s*)['"][^'"]*(?:supabase|shopify|service-role)/i);
     const middleware = read('src/middleware.ts');
     expect(middleware).toContain('reviewMode && realSquadInviteSurface');
-    expect(middleware).toContain("path.startsWith('/api/staff/squad-invites')");
+    expect(middleware).toContain('isRealSquadInviteSurfacePath(path)');
+    expect(read('src/lib/squad-invite-preview-safety.ts')).toContain("'/api/staff/squad-invites'");
   });
 
   it('keeps synthetic preview copy payment-neutral and navigation labels non-interactive', () => {

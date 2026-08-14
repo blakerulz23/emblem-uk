@@ -2,6 +2,18 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 import { isSyntheticSquadInvitePreviewEnabled } from '@/lib/squad-invite-preview-mode';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
+import {
+  DISPOSABLE_SQUAD_INVITE_HEADERS,
+  isDisposableSquadInviteMvpPreview,
+  isRealSquadInviteSurfacePath,
+} from '@/lib/squad-invite-preview-safety';
+
+function applyDisposableSquadInviteHeaders(response: NextResponse) {
+  for (const [name, value] of Object.entries(DISPOSABLE_SQUAD_INVITE_HEADERS)) {
+    response.headers.set(name, value);
+  }
+  return response;
+}
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
@@ -17,9 +29,7 @@ export async function middleware(request: NextRequest) {
     return new NextResponse('Not Found', { status: 404, headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow, noarchive' } });
   }
   const reviewMode = process.env.SQUAD_INVITE_REVIEW_PREVIEW_ENABLED === 'true' && process.env.VERCEL_ENV !== 'production';
-  const realSquadInviteSurface = path.startsWith('/squad-invite')
-    || path.startsWith('/api/squad-invite')
-    || path.startsWith('/api/staff/squad-invites');
+  const realSquadInviteSurface = isRealSquadInviteSurfacePath(path);
   if (realSquadInviteSurface && !isSquadInviteMvpEnabled()) {
     return new NextResponse('Not Found', { status: 404, headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow, noarchive' } });
   }
@@ -31,9 +41,12 @@ export async function middleware(request: NextRequest) {
     response.headers.set('Cache-Control', 'no-store, max-age=0');
     response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
     response.headers.set('Referrer-Policy', 'no-referrer');
-    return response;
+    return isDisposableSquadInviteMvpPreview() ? applyDisposableSquadInviteHeaders(response) : response;
   }
-  return await updateSession(request);
+  const response = await updateSession(request);
+  return realSquadInviteSurface && isDisposableSquadInviteMvpPreview()
+    ? applyDisposableSquadInviteHeaders(response)
+    : response;
 }
 
 export const config = {

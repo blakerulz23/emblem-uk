@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Sora, Manrope, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import ConditionalChrome from '@/components/ConditionalChrome';
+import { isDisposableSquadInviteMvpPreview } from '@/lib/squad-invite-preview-safety';
 
 // Marketing typography (emblem.cards). Scoped to the marketing shell via
 // .marketing-shell in globals.css — Builder, Player OS and Staff tools keep
@@ -48,7 +49,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${marketingSora.variable} ${marketingManrope.variable} ${marketingJbMono.variable}`}>
       <body className="font-body text-[var(--ink)] antialiased">
-        <ConditionalChrome>{children}</ConditionalChrome>
+        <ConditionalChrome disposableSquadInvitePreview={isDisposableSquadInviteMvpPreview()}>{children}</ConditionalChrome>
       </body>
     </html>
   );
