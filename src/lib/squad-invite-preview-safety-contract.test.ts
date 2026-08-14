@@ -19,6 +19,9 @@ describe('disposable Squad Invite preview integration contract', () => {
     expect(layout).toContain('isDisposableSquadInviteMvpPreview()');
     expect(chrome).toContain('isRealSquadInviteUiPath(pathname)');
     expect(chrome).toContain('<DisposableSquadInviteNotice />');
+    expect(notice).toContain("bottom: 0");
+    expect(notice).toContain("width: '100%'");
+    expect(notice).toContain('safe-area-inset-bottom');
     expect(notice).toContain('role="status"');
     expect(notice).not.toMatch(/supabase|shopify|resend|service.role/i);
     expect(read('src/middleware.ts')).not.toContain('DisposableSquadInviteNotice');

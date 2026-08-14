@@ -41,7 +41,8 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
       <p><strong>{invitation.completedCommitments}</strong> completed commitments · Current incentive: <strong>{invitation.currentIncentive}</strong></p>
       <p>{invitation.productSummary}</p>
       <p>{invitation.deliverySummary}</p>
-      <h2>One team link. Each parent or guardian builds and pays individually.</h2>
+      <h2>One team link. Each parent or guardian builds and commits individually.</h2>
+      <p>Payment requests are not active during this test.</p>
       <p>Email verification confirms control of the address only. A separate authority declaration is required before submitting a child&apos;s information.</p>
       {step === 'ready' && <button onClick={start} style={{ width: '100%', border: 0, borderRadius: 999, padding: 16, background: '#173f2a', color: '#fff', fontWeight: 800 }}>Create your child’s card for this team order</button>}
       {step === 'email' && <form onSubmit={sendCode}><label>Email address<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label><button>Send verification code</button></form>}
