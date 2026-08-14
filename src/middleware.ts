@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 import { isSyntheticSquadInvitePreviewEnabled } from '@/lib/squad-invite-preview-mode';
+import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
@@ -19,6 +20,9 @@ export async function middleware(request: NextRequest) {
   const realSquadInviteSurface = path.startsWith('/squad-invite')
     || path.startsWith('/api/squad-invite')
     || path.startsWith('/api/staff/squad-invites');
+  if (realSquadInviteSurface && !isSquadInviteMvpEnabled()) {
+    return new NextResponse('Not Found', { status: 404, headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow, noarchive' } });
+  }
   if (reviewMode && realSquadInviteSurface) {
     return new NextResponse('Not Found', { status: 404, headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow, noarchive' } });
   }
