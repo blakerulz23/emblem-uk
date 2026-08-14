@@ -1,30 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
-import { requireStaff } from '@/lib/require-staff';
+import { requireSquadInvitePermission } from '@/lib/require-squad-invite-permission';
 import { createSquadInviteLinkToken } from '@/lib/squad-invite-link';
+import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 
 export async function POST(_request: NextRequest, { params }: { params: { id: string } }) {
+  if (!isSquadInviteMvpEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const auth = createClient();
-  const staff = await requireStaff(auth);
+  const staff = await requireSquadInvitePermission(auth, 'squad_invite_approver');
   if (!staff.ok) return NextResponse.json({ error: staff.error }, { status: staff.status });
-  const service = createServiceRoleClient();
-  const now = new Date().toISOString();
-  const { data, error } = await service.from('squad_invites').update({
-    campaign_status: 'active', approved_by_staff_profile_id: staff.userId, approved_at: now, published_at: now,
-  }).eq('id', params.id).eq('campaign_status', 'awaiting_staff_approval').select('id,grace_ends_at').maybeSingle();
-  if (error) return NextResponse.json({ error: 'Could not approve campaign' }, { status: 500 });
-  if (!data) return NextResponse.json({ error: 'Campaign is not awaiting approval' }, { status: 409 });
-  await service.from('squad_invite_audit_events').insert({
-    campaign_id: data.id, actor_profile_id: staff.userId, actor_role: 'staff', event_type: 'campaign_approved',
-  });
   const credential = createSquadInviteLinkToken();
-  const { data: link, error: linkError } = await service.from('squad_invite_links').insert({
-    campaign_id: data.id, token_hash: credential.hash, expires_at: data.grace_ends_at,
-    created_by_profile_id: staff.userId,
-  }).select('id').single();
-  if (linkError || !link) return NextResponse.json({ error: 'Campaign approved but invitation link could not be created' }, { status: 500 });
-  await service.from('squad_invite_link_audit_events').insert({
-    link_id: link.id, campaign_id: data.id, actor_profile_id: staff.userId, event_type: 'created',
+  const { data, error } = await createServiceRoleClient().rpc('approve_squad_invite_request', {
+    p_request_id: params.id, p_staff_profile_id: staff.userId, p_parent_link_hash: credential.hash,
   });
-  return NextResponse.json({ ok: true, invitationPath: `/squad-invite/access#token=${credential.token}` });
+  if (error || !data) return NextResponse.json({ error: 'Squad Invite approval unavailable' }, { status: 409 });
+  // The reserved credential is deliberately discarded. Delivery setup later
+  // rotates it and returns the newly-created parent link to the organiser.
+  return NextResponse.json({ ok: true, result: data });
 }

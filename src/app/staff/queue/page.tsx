@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
+import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
 import {
@@ -392,6 +393,7 @@ export default async function StaffQueuePage({
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const supabase = createClient();
+  const squadInviteEnabled = isSquadInviteMvpEnabled();
   const staffCheck = await requireStaff(supabase);
   if (!staffCheck.ok) {
     redirect('/staff/login?next=/staff/queue');
@@ -457,6 +459,7 @@ export default async function StaffQueuePage({
       </p>
 
       <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+        {squadInviteEnabled && <Link href="/staff/squad-invites" style={{ padding:'9px 14px',borderRadius:10,background:'var(--accent-tint)',color:'var(--accent)',fontWeight:700 }}>Squad Invites</Link>}
         <Link
           href="/staff/deletion-requests"
           style={{
