@@ -79,3 +79,5 @@
 .si-tier.active { border-color: #E97435; background: rgba(233,116,53,.05); }
 .si-tier strong { font-size: 17px; }
 .si-tier span { font-size: 12.5px; opacity: .65; }
+.si-mailto { color: #E97435; font-weight: 700; text-decoration: none; }
+.si-mailto:hover { text-decoration: underline; }
