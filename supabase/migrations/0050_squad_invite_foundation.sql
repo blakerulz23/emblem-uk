@@ -27,7 +27,7 @@ create table public.squad_invites (
     'delivered','distribution_confirmed','completed','exception','cancelled'
   )),
   deadline_at timestamptz not null,
-  grace_ends_at timestamptz generated always as (deadline_at + interval '24 hours') stored,
+  grace_ends_at timestamptz not null,
   published_at timestamptz,
   closed_at timestamptz,
   cancelled_at timestamptz,
@@ -67,6 +67,28 @@ create table public.squad_invites (
 
 create index squad_invites_organiser_idx on public.squad_invites(organiser_profile_id, created_at desc);
 create index squad_invites_public_active_idx on public.squad_invites(public_id) where campaign_status in ('active','deadline_reached','grace_period');
+
+-- PostgreSQL does not treat timestamptz + interval as immutable, so this
+-- cannot be a stored generated column. Derive it at the database boundary
+-- instead. Including grace_ends_at in the UPDATE trigger prevents even a
+-- privileged application caller from persisting a caller-selected value.
+create or replace function public.derive_squad_invite_grace_end()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.grace_ends_at := new.deadline_at + interval '24 hours';
+  return new;
+end;
+$$;
+
+alter function public.derive_squad_invite_grace_end() owner to postgres;
+revoke all on function public.derive_squad_invite_grace_end() from public, anon, authenticated, service_role;
+
+create trigger squad_invites_derive_grace_end
+before insert or update of deadline_at, grace_ends_at on public.squad_invites
+for each row execute function public.derive_squad_invite_grace_end();
 
 create table public.squad_invite_participations (
   id uuid primary key default gen_random_uuid(),
