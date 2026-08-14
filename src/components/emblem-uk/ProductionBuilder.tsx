@@ -217,7 +217,7 @@ async function uploadOrderAsset(sourceUrl: string, meta: { orderId: string; play
   return result as UploadedOrderAsset;
 }
 
-export default function ProductionBuilder() {
+export default function ProductionBuilder({ squadInviteEnabled = false }: { squadInviteEnabled?: boolean }) {
   const searchParams = useSearchParams();
   const [order, setOrder] = useState<OrderDraft>(() => {
     const draft = defaultOrder();
@@ -442,21 +442,6 @@ export default function ProductionBuilder() {
         club: current.collectionType === 'custom'
           ? (player.id === selectedId || !player.clubEdited ? club : player.club)
           : (player.clubEdited ? player.club : club),
-        updatedAt: nowIso(),
-      })),
-    }));
-  };
-
-  const assignOrderBadge = (file?: File) => {
-    if (!file) return;
-    const badgeUrl = URL.createObjectURL(file);
-    setOrder((current) => ({
-      ...current,
-      badgeUrl,
-      players: current.players.map((player) => ({
-        ...player,
-        badgeUrl: current.collectionType === 'custom' ? badgeUrl : player.badgeUrl || badgeUrl,
-        clubEdited: true,
         updatedAt: nowIso(),
       })),
     }));
@@ -1104,6 +1089,12 @@ export default function ProductionBuilder() {
                     </span>
                   </button>
                 ))}
+                {squadInviteEnabled && (
+                  <a href="/squad-invite/start" className="uk-wizard-choice-link">
+                    <span className="uk-choice-icon" aria-hidden="true">+</span>
+                    <span><strong>Invite parents to create their own cards</strong><small>Create one team link. Each parent privately creates their child&apos;s card.</small></span>
+                  </a>
+                )}
               </div>
               <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('collection')}>Continue</button>
             </section>
@@ -1858,100 +1849,6 @@ function PlayerStrip({
               <small>{statusCopy[status]}</small>
             </span>
           </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function TemplatePicker({
-  order,
-  player,
-  onPatch,
-}: {
-  order: OrderDraft;
-  player: PlayerDraft;
-  onPatch: (id: string, patch: Partial<PlayerDraft>) => void;
-}) {
-  const activeTemplateId = selectedTemplate(order, player).id;
-  const visibleTemplates = templates.filter((template) =>
-    order.collectionType === 'custom'
-      ? isCustomCollectionTemplateId(template.id)
-      : !isCustomCollectionTemplateId(template.id),
-  );
-
-  return (
-    <div className="uk-template-picker" aria-label="Card templates">
-      <div className="uk-template-picker-head">
-        <strong>Card design</strong>
-        <span>Pick the frame for this player</span>
-      </div>
-      <div className="uk-template-picker-grid">
-        {visibleTemplates.map((template) => (
-          <button
-            key={template.id}
-            type="button"
-            className={activeTemplateId === template.id ? 'active' : ''}
-            onClick={() => onPatch(player.id, { templateId: template.id })}
-          >
-            <span className="uk-template-art" style={{ background: template.background }}>
-              {template.frameAsset && <img src={template.frameAsset} alt="" />}
-            </span>
-            <span>
-              <strong>{template.name}</strong>
-              <small>{template.description}</small>
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RosterTable({
-  order,
-  selectedId,
-  onSelect,
-  onPatch,
-  onPhoto,
-  onRemove,
-  onDuplicate,
-}: {
-  order: OrderDraft;
-  selectedId: string;
-  onSelect: (id: string) => void;
-  onPatch: (id: string, patch: Partial<PlayerDraft>) => void;
-  onPhoto: (id: string, file?: File) => void;
-  onRemove: (id: string) => void;
-  onDuplicate: (player: PlayerDraft) => void;
-}) {
-  return (
-    <div className="uk-roster-table">
-      {order.players.length === 0 && (
-        <div className="uk-empty-state">
-          <strong>No players yet</strong>
-          <span>Add your first player, or import a squad later.</span>
-        </div>
-      )}
-      {order.players.map((player) => {
-        const status = derivePlayerStatus(player);
-        return (
-          <article key={player.id} className={selectedId === player.id ? 'active' : ''}>
-            <button type="button" className="uk-roster-photo" onClick={() => onSelect(player.id)}>
-              {player.photo?.srcUrl ? <img src={player.photo.srcUrl} alt="" /> : <span>No photo</span>}
-            </button>
-            <input aria-label="Player name" value={player.name} placeholder="Player name" onChange={(event) => onPatch(player.id, { name: event.target.value })} />
-            <input aria-label="Position" value={player.position} placeholder="Position" onChange={(event) => onPatch(player.id, { position: event.target.value })} />
-            <input aria-label="Kit number" value={player.kitNo} placeholder="Kit" onChange={(event) => onPatch(player.id, { kitNo: event.target.value })} />
-            <span className={statusClass(status)}>{statusCopy[status]}</span>
-            <label className="uk-mini-upload">
-              Photo
-              <input type="file" accept="image/*" hidden onChange={(event) => onPhoto(player.id, event.target.files?.[0])} />
-            </label>
-            <button type="button" onClick={() => onSelect(player.id)}>Edit</button>
-            <button type="button" onClick={() => onDuplicate(player)}>Duplicate</button>
-            <button type="button" onClick={() => onRemove(player.id)}>Remove</button>
-          </article>
         );
       })}
     </div>

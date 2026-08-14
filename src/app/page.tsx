@@ -6,6 +6,7 @@ import {
   HowItWorksSection,
   TapVideo,
 } from './HomeEffects';
+import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 
 const squadGroups = [
   {
@@ -73,6 +74,7 @@ const tiers = [
 ];
 
 export default function Home() {
+  const squadInviteEnabled = isSquadInviteMvpEnabled();
   return (
     <main className="emh-page">
       <section id="top" className="emh-hero-section">
@@ -198,6 +200,12 @@ export default function Home() {
             <Icon name="slab" size={14} />
             Full-squad orders include a free coach card
           </p>
+          {squadInviteEnabled && (
+            <Link className="emh-btn emh-btn-secondary" href="/squad-invite/start">
+              CREATE A SQUAD INVITE
+              <Icon name="chevR" size={18} />
+            </Link>
+          )}
         </div>
 
         <div className="emh-squad-panels">
