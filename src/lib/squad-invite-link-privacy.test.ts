@@ -26,9 +26,18 @@ describe('Squad Invite link route privacy contract', () => {
 
   it('requires authentication before private participation and scopes commit to guardian plus credential', () => {
     expect(source).toContain('Email verification required');
+    // Ownership/credential scoping moved from an inline Supabase query into
+    // the commit_squad_invite_participation_order RPC itself (migration
+    // 0055), so the whole guardian+order+card+card_definition write can be
+    // one atomic transaction — see migration-0055-contract.test.ts for the
+    // SQL-level assertions. The route's job is now to compute the hash
+    // server-side and pass it through, never to run the ownership query.
     const commit = readFileSync('src/app/api/squad-invite-participations/[id]/commit/route.ts', 'utf8');
-    expect(commit).toContain(".eq('guardian_profile_id', user.id)");
-    expect(commit).toContain(".eq('builder_token_hash', hashBuilderToken(token))");
+    expect(commit).toContain('p_guardian_profile_id: user.id');
+    expect(commit).toContain('p_builder_token_hash: hashBuilderToken(token)');
+    const sql = readFileSync('supabase/migrations/0055_squad_invite_order_commitment.sql', 'utf8');
+    expect(sql).toContain('v_participation.guardian_profile_id is distinct from p_guardian_profile_id');
+    expect(sql).toContain('v_participation.builder_token_hash is distinct from p_builder_token_hash');
   });
 
   it('preserves campaign context through new-parent email verification without exposing the link to client code', () => {

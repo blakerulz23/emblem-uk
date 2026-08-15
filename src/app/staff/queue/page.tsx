@@ -117,7 +117,7 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
   const supabase = createServiceRoleClient();
   let { data } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, payment_status, created_at, print_files, club_name, team_name')
+    .select('id, order_ref, purchaser_email, payment_status, created_at, print_files, club_name, team_name, source')
     .in('payment_status', ['order_intent', 'pending_payment', 'paid']);
 
   // Until migrations 0007 (print_files) / 0009 (club_name/team_name) run,
@@ -127,7 +127,7 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
   if (!data) {
     const fallback = await supabase
       .from('orders')
-      .select('id, order_ref, purchaser_email, payment_status, created_at')
+      .select('id, order_ref, purchaser_email, payment_status, created_at, source')
       .in('payment_status', ['order_intent', 'pending_payment', 'paid']);
     data = (fallback.data ?? []).map((o) => ({ ...o, print_files: null, club_name: null, team_name: null }));
   }
@@ -194,7 +194,7 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
 
   const { data: orders } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name')
+    .select('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name, source')
     .eq('payment_status', 'fulfilled')
     .order('approved_at', { ascending: false })
     // Not-searching keeps today's existing raw-fetch size (bounded, cheap);
@@ -523,6 +523,20 @@ export default async function StaffQueuePage({
               <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>
                 {order.order_ref} <span style={{ color: 'var(--ink-faint)', fontWeight: 500 }}>· {order.cardCount === 1 ? 'Single card' : order.cardCount === 0 ? 'No player yet' : `Team order (${order.cardCount} players)`}</span>
               </div>
+              {order.source === 'squad_invite' && (
+                <span
+                  style={{
+                    display: 'inline-block', marginTop: 6,
+                    fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 700,
+                    letterSpacing: '0.04em', textTransform: 'uppercase',
+                    color: '#92400e', background: '#fffbeb',
+                    padding: '3px 10px', borderRadius: 999,
+                    boxShadow: 'inset 0 0 0 1px #fde68a',
+                  }}
+                >
+                  Squad Invite · payment disabled
+                </span>
+              )}
               <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
                 {order.purchaser_email} · {order.payment_status}
               </div>
@@ -566,7 +580,7 @@ export default async function StaffQueuePage({
                 teamNameHint={order.team_name}
               />
             ) : (
-              <ApproveOrderButton orderId={order.id} />
+              <ApproveOrderButton orderId={order.id} squadInvite={order.source === 'squad_invite'} />
             )}
           </div>
         ))}
@@ -624,6 +638,20 @@ export default async function StaffQueuePage({
                 <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>
                   {order.order_ref}
                 </div>
+                {order.source === 'squad_invite' && (
+                  <span
+                    style={{
+                      display: 'inline-block', marginTop: 6,
+                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 700,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      color: '#92400e', background: '#fffbeb',
+                      padding: '3px 10px', borderRadius: 999,
+                      boxShadow: 'inset 0 0 0 1px #fde68a',
+                    }}
+                  >
+                    Squad Invite · payment disabled
+                  </span>
+                )}
                 <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
                   {recipient}
                 </div>
@@ -641,7 +669,7 @@ export default async function StaffQueuePage({
                   </span>
                 )}
               </div>
-              <ResendInviteButton orderId={order.id} />
+              {order.source !== 'squad_invite' && <ResendInviteButton orderId={order.id} />}
             </div>
           );
         })}

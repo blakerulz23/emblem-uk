@@ -3,7 +3,15 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function ApproveOrderButton({ orderId }: { orderId: string }) {
+/**
+ * squadInvite only changes the label/copy shown to staff — the endpoint is
+ * the same POST /api/orders/[id]/approve for every order; that route
+ * branches server-side on orders.source itself (see approve/route.ts) and
+ * is what actually withholds the normal guardian/team invite email for a
+ * Squad Invite order. This prop exists so staff are never told "Approve"
+ * with no further context on a pilot order that was never paid for.
+ */
+export default function ApproveOrderButton({ orderId, squadInvite = false }: { orderId: string; squadInvite?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -19,6 +27,7 @@ export default function ApproveOrderButton({ orderId }: { orderId: string }) {
       type="button"
       onClick={approve}
       disabled={busy}
+      title={squadInvite ? 'Moves this pilot card into production. No payment has been taken.' : undefined}
       style={{
         fontFamily: 'var(--font-sora), system-ui',
         fontWeight: 700,
@@ -32,7 +41,7 @@ export default function ApproveOrderButton({ orderId }: { orderId: string }) {
         whiteSpace: 'nowrap',
       }}
     >
-      {busy ? 'Approving…' : 'Approve'}
+      {busy ? 'Approving…' : squadInvite ? 'Approve for pilot production' : 'Approve'}
     </button>
   );
 }

@@ -40,6 +40,78 @@ type TeamChoice = { mode: 'existing'; id: string } | { mode: 'new'; name: string
  * invalid body on a multi-card order is rejected before anything is
  * written — the human decision is required every time, not optional.
  */
+/**
+ * Squad Invite orders (orders.source='squad_invite', migration 0055) reuse
+ * this same staff approval action to reach production, but must never take
+ * the normal-order path below: that path emails a guardian/team claim
+ * invite (createGuardianInvite/createTeamInvite) — a second, unrelated
+ * claim flow a Squad Invite guardian already has no use for, since they
+ * already hold the authenticated participation relationship the card came
+ * from. This branch instead: confirms the order is linked to exactly one
+ * Squad Invite participation that itself owns the order (the bidirectional
+ * order_id link written by commit_squad_invite_participation_order),
+ * confirms the campaign hasn't been cancelled/exceptioned, enforces the
+ * squad_invite_payment_mode_enabled() policy boundary (a no-op today since
+ * it's hardcoded false — see 0055 — but becomes a real gate the moment a
+ * future migration flips it), and records a Squad-Invite-specific audit
+ * event instead of an invite. It still flips the SAME orders.payment_status
+ * column to 'fulfilled' to enter the existing Profile Setup queue — that is
+ * a known, documented schema-semantic mismatch (this pilot's cards were
+ * never paid), never disguised as anything else in the response or copy.
+ */
+async function approveSquadInviteOrder(
+  serviceRole: ReturnType<typeof createServiceRoleClient>,
+  orderId: string,
+  staffProfileId: string,
+) {
+  const { data: participations, error: participationsError } = await serviceRole
+    .from('squad_invite_participations')
+    .select('id, campaign_id, squad_invites!inner(campaign_status)')
+    .eq('order_id', orderId);
+
+  if (participationsError || !participations || participations.length !== 1) {
+    return NextResponse.json({ error: 'This order is not linked to exactly one Squad Invite participation' }, { status: 409 });
+  }
+  const participation = participations[0];
+  const campaignRaw = participation.squad_invites as unknown;
+  const campaign = (Array.isArray(campaignRaw) ? campaignRaw[0] : campaignRaw) as { campaign_status: string } | undefined;
+  if (!campaign || campaign.campaign_status === 'cancelled' || campaign.campaign_status === 'exception') {
+    return NextResponse.json({ error: 'This Squad Invite campaign is not eligible for approval' }, { status: 409 });
+  }
+
+  const { data: orderRow } = await serviceRole.from('orders').select('id, payment_status').eq('id', orderId).maybeSingle();
+  if (!orderRow) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+
+  const { data: paymentModeEnabled } = await serviceRole.rpc('squad_invite_payment_mode_enabled');
+  if (paymentModeEnabled === true && orderRow.payment_status !== 'paid') {
+    return NextResponse.json({ error: 'Payment is required before this can be approved for production' }, { status: 409 });
+  }
+
+  const { data: updated, error } = await serviceRole
+    .from('orders')
+    .update({ payment_status: 'fulfilled', approved_by: staffProfileId, approved_at: new Date().toISOString() })
+    .eq('id', orderId)
+    .select('id')
+    .maybeSingle();
+  if (error || !updated) {
+    return NextResponse.json({ error: error?.message ?? 'Order not found' }, { status: 500 });
+  }
+
+  // Source-specific audit event — never createGuardianInvite/createTeamInvite,
+  // never an email. metadata documents that this is an unpaid pilot
+  // approval, so nothing downstream can mistake it for a paid confirmation.
+  await serviceRole.from('squad_invite_audit_events').insert({
+    campaign_id: participation.campaign_id,
+    participation_id: participation.id,
+    actor_profile_id: staffProfileId,
+    actor_role: 'staff',
+    event_type: 'fulfilment_started',
+    metadata: { action: 'pilot_production_approval', paymentStatus: 'unpaid_pilot' },
+  });
+
+  return NextResponse.json({ ok: true, orderId, source: 'squad_invite', productionQueued: true, inviteTriggered: false });
+}
+
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
   const staffCheck = await requireStaff(supabase);
@@ -48,6 +120,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   const serviceRole = createServiceRoleClient();
+
+  const { data: sourceRow } = await serviceRole.from('orders').select('source').eq('id', params.id).maybeSingle();
+  if (!sourceRow) {
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  }
+  if (sourceRow.source === 'squad_invite') {
+    return approveSquadInviteOrder(serviceRole, params.id, staffCheck.userId);
+  }
 
   const { data: cards } = await serviceRole
     .from('cards')
