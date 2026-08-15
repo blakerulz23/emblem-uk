@@ -9,6 +9,22 @@ export async function POST(request:NextRequest){
  const body=await request.json().catch(()=>null) as {email?:unknown;code?:unknown;returnTo?:unknown}|null;const email=typeof body?.email==='string'?body.email.trim().toLowerCase():'';const code=typeof body?.code==='string'?body.code.trim():'';
  if(!(await consumeSquadInviteRateLimit(request.headers,'otp-verify',email))) return NextResponse.json({error:'Verification unavailable'},{status:429});
  if(email.length<3||email.length>254||!/^\d{6,8}$/.test(code)) return NextResponse.json({error:'Verification unavailable'},{status:400});
- const {error}=await createClient().auth.verifyOtp({email,token:code,type:'email'});if(error)return NextResponse.json({error:'Verification unavailable'},{status:400});
+ const supabase=createClient();
+ const {data,error}=await supabase.auth.verifyOtp({email,token:code,type:'email'});if(error||!data.user)return NextResponse.json({error:'Verification unavailable'},{status:400});
+ // A verified auth.users row has no profiles row until something creates
+ // one — there is no database trigger for this (see profiles' own RLS-only
+ // design in migration 0001). Every other auth entry point in this repo
+ // upserts its own minimal profile right after verification; this route
+ // was the one place that didn't, which is exactly why
+ // submit_squad_invite_request could fail with a foreign_key_violation on
+ // squad_invite_requests_organiser_profile_id_fkey for a first-time
+ // organiser. ignoreDuplicates makes this a pure no-op for a returning
+ // user — role/display_name are never touched, whether the row already
+ // existed or not.
+ const {error:profileError}=await supabase.from('profiles').upsert({id:data.user.id},{onConflict:'id',ignoreDuplicates:true});
+ if(profileError){
+   console.error('squad-invite-organiser-auth/verify-code:profile-upsert',profileError.code??'unknown');
+   return NextResponse.json({error:'Verification unavailable'},{status:400});
+ }
  return NextResponse.json({ok:true,returnTo:'/squad-invite/start'},{headers:{'Cache-Control':'no-store'}});
 }
