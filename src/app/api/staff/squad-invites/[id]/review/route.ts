@@ -7,7 +7,7 @@ export async function POST(request:NextRequest,{params}:{params:{id:string}}){
   if(!isSquadInviteMvpEnabled()) return NextResponse.json({error:'Not found'},{status:404});
   const body=await request.json().catch(()=>null) as {action?:string;organiserVisibleReason?:string;restrictedNote?:string}|null;
   const action=body?.action;
-  const permission=action==='start_review'||action==='request_changes'?'squad_invite_reviewer':'squad_invite_approver';
+  const permission=['start_review','request_changes','reject'].includes(action??'')?'squad_invite_reviewer':'squad_invite_approver';
   const staff=await requireSquadInvitePermission(createClient(),permission);
   if(!staff.ok) return NextResponse.json({error:staff.error},{status:staff.status});
   if(!['start_review','request_changes','reject'].includes(action??'')) return NextResponse.json({error:'Invalid review action'},{status:400});

@@ -6,8 +6,17 @@ import ReviewActions from './ReviewActions';
 
 export default async function ReviewSquadInvite({params}:{params:{reference:string}}){
   if(!isSquadInviteMvpEnabled()) notFound();
-  const access=await requireSquadInvitePermission(createClient(),'squad_invite_reviewer');
-  if(!access.ok) redirect(`/staff/login?next=/staff/squad-invites/${encodeURIComponent(params.reference)}`);
+  // Same reviewer-OR-approver read access, and same 401-vs-403 split, as
+  // the queue page — see its comment for why a 403 must render notFound()
+  // rather than redirect to login (that would loop: /staff/login's own
+  // requireStaff() check only verifies generic staff membership, which a
+  // signed-in staff member lacking squad-invite permission already
+  // satisfies, so it would bounce them straight back here).
+  const access=await requireSquadInvitePermission(createClient(),['squad_invite_reviewer','squad_invite_approver']);
+  if(!access.ok){
+    if(access.status===401) redirect(`/staff/login?next=/staff/squad-invites/${encodeURIComponent(params.reference)}`);
+    notFound();
+  }
   const service=createServiceRoleClient();
   const {data:r}=await service.from('squad_invite_requests').select('id,public_reference,club_team_name,football_age_group,expected_squad_size,organiser_name,organiser_role,organiser_email_verified_at,proposed_deadline_at,delivery_recipient_name,delivery_recipient_role,uk_delivery_confirmed,badge_reference,badge_review_status,request_status,submission_revision,organiser_visible_reason,restricted_staff_note,submitted_at').eq('public_reference',params.reference).maybeSingle();
   if(!r) notFound();

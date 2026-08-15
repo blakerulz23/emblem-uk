@@ -8,8 +8,21 @@ export const dynamic='force-dynamic';
 function businessDaysOld(value:string|null){if(!value)return 0;let days=0;const cursor=new Date(value);const today=new Date();cursor.setHours(0,0,0,0);today.setHours(0,0,0,0);while(cursor<today){cursor.setDate(cursor.getDate()+1);if(cursor.getDay()!==0&&cursor.getDay()!==6)days++;}return days;}
 export default async function SquadInviteQueue({searchParams}:{searchParams:Record<string,string|undefined>}) {
   if(!isSquadInviteMvpEnabled()) notFound();
-  const access=await requireSquadInvitePermission(createClient(),'squad_invite_reviewer');
-  if(!access.ok) redirect('/staff/login?next=/staff/squad-invites');
+  // Read access accepts either permission — a reviewer-only or
+  // approver-only staff member can both view the queue; only the mutation
+  // endpoints (review/route.ts, approve/route.ts, etc.) require one
+  // specific permission. A 401 (not signed in) legitimately sends the
+  // visitor to login; a 403 (signed in, is staff, but holds neither
+  // squad-invite permission) must NOT redirect to login — that page's own
+  // requireStaff() check only verifies generic staff membership, which
+  // this visitor already has, so it would immediately redirect back here,
+  // looping forever. notFound() gives a denied-but-authenticated staff
+  // member one stable destination instead.
+  const access=await requireSquadInvitePermission(createClient(),['squad_invite_reviewer','squad_invite_approver']);
+  if(!access.ok){
+    if(access.status===401) redirect('/staff/login?next=/staff/squad-invites');
+    notFound();
+  }
   const status=searchParams.status;
   const {data}=await createServiceRoleClient().from('squad_invite_requests').select('public_reference,club_team_name,football_age_group,organiser_name,organiser_role,submitted_at,proposed_deadline_at,request_status,badge_review_status,delivery_recipient_name,assigned_staff_profile_id,squad_invites(campaign_status)').order('submitted_at',{ascending:true});
   const rows=(data??[]).map(r=>{const campaign=Array.isArray(r.squad_invites)?r.squad_invites[0]:r.squad_invites;const displayStatus=r.request_status==='approved'?(campaign?.campaign_status==='active'?'active':'approved_setup_required'):r.request_status;return {...r,displayStatus,age:businessDaysOld(r.submitted_at)};});
