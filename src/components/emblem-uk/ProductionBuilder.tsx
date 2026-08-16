@@ -89,7 +89,7 @@ function readSquadInviteCsrfCookie(): string {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
-type SquadInviteCommitOutcome = null | 'sign_in_required' | 'unavailable' | 'validation' | 'network';
+type SquadInviteCommitOutcome = null | 'sign_in_required' | 'unavailable' | 'validation' | 'network' | 'photo_upload_failed';
 
 const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'person' | 'group' }> = [
   { id: 'single', title: 'One player', copy: 'Create one card from one football photo.', icon: 'person' },
@@ -237,6 +237,17 @@ function isLocalAssetUrl(url?: string) {
   return Boolean(url && (url.startsWith('blob:') || url.startsWith('data:')));
 }
 
+/**
+ * Thrown only when an upload request genuinely reached /api/order-assets
+ * and the server responded with a non-ok status (e.g. storage
+ * misconfigured, file rejected) — distinct from fetch() itself rejecting
+ * (no connectivity, DNS/CORS failure), which throws a plain/native error
+ * instead. Callers use this distinction to label the two cases correctly
+ * rather than collapsing both into a generic "network problem" — an HTTP
+ * failure is a server/config issue, not the guardian's connection.
+ */
+class OrderAssetUploadHttpError extends Error {}
+
 async function uploadOrderAsset(sourceUrl: string, meta: { orderId: string; playerId: string; kind: 'photo' | 'badge'; fileName?: string }) {
   const source = await fetch(sourceUrl);
   if (!source.ok) throw new Error(`Could not read ${meta.kind} upload`);
@@ -255,7 +266,7 @@ async function uploadOrderAsset(sourceUrl: string, meta: { orderId: string; play
   });
   const result = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(result?.error || `Could not upload ${meta.kind}`);
+    throw new OrderAssetUploadHttpError(result?.error || `Could not upload ${meta.kind}`);
   }
   return result as UploadedOrderAsset;
 }
@@ -305,6 +316,11 @@ export default function ProductionBuilder({
   const [squadInviteOutcome, setSquadInviteOutcome] = useState<SquadInviteCommitOutcome>(null);
   const [squadInviteSubmitting, setSquadInviteSubmitting] = useState(false);
   const squadInviteSubmittingRef = useRef(false);
+  // Which declarations were still unchecked on the last failed submit
+  // attempt — drives the per-row invalid state and the summary error, and
+  // is cleared the moment all four are accepted again.
+  const [squadInviteDeclarationErrors, setSquadInviteDeclarationErrors] = useState<Record<string, boolean>>({});
+  const squadInviteDeclarationRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [selectedId, setSelectedId] = useState(order.players[0]?.id || '');
   const [cardSide, setCardSide] = useState<CardSide>('front');
   const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>('idle');
@@ -1057,11 +1073,21 @@ export default function ProductionBuilder({
     // above.
     if (squadInviteSubmittingRef.current) return;
     const player = order.players[0];
-    const allAccepted = SQUAD_INVITE_REQUIRED_DECLARATIONS.every((declaration) => squadInviteAccepted[declaration.purpose]);
     const nameParts = player.name.trim().split(/\s+/).filter(Boolean);
     const firstName = nameParts[0] || '';
     const surnameInitial = (nameParts.length > 1 ? nameParts[nameParts.length - 1] : firstName).charAt(0).toUpperCase();
-    if (!allAccepted || !firstName || !surnameInitial || !player.photo?.srcUrl) {
+    // Declarations are validated separately from name/photo completeness so
+    // a missing declaration can focus the first invalid row specifically,
+    // rather than a single generic message covering two unrelated causes.
+    const missingDeclarations = SQUAD_INVITE_REQUIRED_DECLARATIONS.filter((declaration) => !squadInviteAccepted[declaration.purpose]);
+    if (missingDeclarations.length > 0) {
+      setSquadInviteDeclarationErrors(Object.fromEntries(missingDeclarations.map((declaration) => [declaration.purpose, true])));
+      setSquadInviteOutcome('validation');
+      squadInviteDeclarationRefs.current[missingDeclarations[0].purpose]?.focus();
+      return;
+    }
+    setSquadInviteDeclarationErrors({});
+    if (!firstName || !surnameInitial || !player.photo?.srcUrl) {
       setSquadInviteOutcome('validation');
       return;
     }
@@ -1072,44 +1098,65 @@ export default function ProductionBuilder({
     try {
       let photo = player.photo;
       if (photo && isLocalAssetUrl(photo.srcUrl)) {
-        const asset = await uploadOrderAsset(photo.hiResUrl || photo.srcUrl, {
-          orderId: squadInviteContext.participationId,
-          playerId: 'child',
-          kind: 'photo',
-          fileName: photo.fileName,
-        });
-        photo = {
-          ...photo,
-          srcUrl: asset.url,
-          hiResUrl: asset.url,
-          storageUrl: asset.url,
-          storageKey: asset.key,
-          contentType: asset.contentType,
-          fileName: asset.fileName || photo.fileName,
-        };
-      }
-      const response = await fetch(`/api/squad-invite-participations/${encodeURIComponent(squadInviteContext.participationId)}/commit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Emblem-CSRF': readSquadInviteCsrfCookie() },
-        body: JSON.stringify({
-          templateId: selectedTemplate(order, player).id,
-          displayFirstName: firstName,
-          displaySurnameInitial: surnameInitial,
-          squadNumber: /^[0-9]+$/.test(player.kitNo.trim()) ? Number(player.kitNo.trim()) : null,
-          position: player.position,
-          printQuantity: player.prints,
-          photo: photo && {
-            storageKey: photo.storageKey,
-            storageUrl: photo.storageUrl,
-            contentType: photo.contentType,
+        // Upload is validated and reported on its own — a non-ok response
+        // from the server (storage misconfigured, upload rejected) must
+        // never be labelled a "network problem", and must never reach the
+        // commit fetch below. Nothing here mutates order/player/declaration
+        // state, so a failed attempt leaves the photo, personalise fields
+        // and declarations exactly as entered for the parent to retry.
+        try {
+          const asset = await uploadOrderAsset(photo.hiResUrl || photo.srcUrl, {
+            orderId: squadInviteContext.participationId,
+            playerId: 'child',
+            kind: 'photo',
             fileName: photo.fileName,
-            crop: photo.crop,
-            bgRemoved: photo.bgRemoved,
-          },
-          stats: player.stats,
-          accepted: Object.fromEntries(SQUAD_INVITE_REQUIRED_DECLARATIONS.map((declaration) => [declaration.purpose, Boolean(squadInviteAccepted[declaration.purpose])])),
-        }),
-      });
+          });
+          photo = {
+            ...photo,
+            srcUrl: asset.url,
+            hiResUrl: asset.url,
+            storageUrl: asset.url,
+            storageKey: asset.key,
+            contentType: asset.contentType,
+            fileName: asset.fileName || photo.fileName,
+          };
+        } catch (uploadError) {
+          setSquadInviteOutcome(uploadError instanceof OrderAssetUploadHttpError ? 'photo_upload_failed' : 'network');
+          return;
+        }
+      }
+      // The commit request itself: a genuine fetch() rejection (no
+      // connectivity, DNS/CORS) is caught here and reported as a network
+      // problem — a real HTTP response, even a rejecting one, is handled
+      // by the explicit status checks below instead, never through catch.
+      let response: Response;
+      try {
+        response = await fetch(`/api/squad-invite-participations/${encodeURIComponent(squadInviteContext.participationId)}/commit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Emblem-CSRF': readSquadInviteCsrfCookie() },
+          body: JSON.stringify({
+            templateId: selectedTemplate(order, player).id,
+            displayFirstName: firstName,
+            displaySurnameInitial: surnameInitial,
+            squadNumber: /^[0-9]+$/.test(player.kitNo.trim()) ? Number(player.kitNo.trim()) : null,
+            position: player.position,
+            printQuantity: player.prints,
+            photo: photo && {
+              storageKey: photo.storageKey,
+              storageUrl: photo.storageUrl,
+              contentType: photo.contentType,
+              fileName: photo.fileName,
+              crop: photo.crop,
+              bgRemoved: photo.bgRemoved,
+            },
+            stats: player.stats,
+            accepted: Object.fromEntries(SQUAD_INVITE_REQUIRED_DECLARATIONS.map((declaration) => [declaration.purpose, Boolean(squadInviteAccepted[declaration.purpose])])),
+          }),
+        });
+      } catch {
+        setSquadInviteOutcome('network');
+        return;
+      }
       if (response.status === 401) { setSquadInviteOutcome('sign_in_required'); return; }
       if (response.status === 400) { setSquadInviteOutcome('validation'); return; }
       if (!response.ok) { setSquadInviteOutcome('unavailable'); return; }
@@ -1118,8 +1165,6 @@ export default function ProductionBuilder({
       // submittingRef intentionally stays true on success — one-shot
       // commitment, matching the server's own one-shot semantics (a repeat
       // attempt is idempotent server-side, but the UI never offers one).
-    } catch {
-      setSquadInviteOutcome('network');
     } finally {
       setSquadInviteSubmitting(false);
       if (!succeeded) squadInviteSubmittingRef.current = false;
@@ -1183,7 +1228,7 @@ export default function ProductionBuilder({
           ))}
         </div>
       )}
-      <div className="uk-wizard-phone">
+      <div className={`uk-wizard-phone${activeStepId === 'review' && squadInviteContext ? ' uk-wizard-phone--squad-review' : ''}`}>
         <header className="uk-wizard-header">
           <div className="uk-wizard-topbar">
             <button type="button" className="uk-icon-button" onClick={goBack} aria-label="Back" disabled={activeIndex === 0}>
@@ -1674,81 +1719,148 @@ export default function ProductionBuilder({
             </section>
           )}
 
-          {activeStepId === 'review' && squadInviteContext && (
-            <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Review your child&apos;s card</p>
-              <h1>{squadInvitePhase === 'success' ? "Your child's card is saved." : 'Review before saving.'}</h1>
-              {squadInvitePhase === 'success' ? (
-                <>
-                  <ul className="uk-squad-invite-success-list">
-                    <li>No charge has been taken.</li>
-                    <li>Payment requests remain disabled during this test.</li>
-                    <li>Production begins only after payment, in a future approved live flow.</li>
-                    <li>Cards are delivered together to the approved organiser/coach.</li>
-                  </ul>
-                </>
-              ) : (
-                <>
-                  <p className="uk-wizard-copy">This is private to you. Your team organiser cannot see these details.</p>
-                  <div className="uk-edit-preview">
-                    <PlayerCard order={order} player={order.players[0]} side={cardSide} />
+          {activeStepId === 'review' && squadInviteContext && (() => {
+            const squadInvitePlayer = order.players[0];
+            const nameParts = squadInvitePlayer.name.trim().split(/\s+/).filter(Boolean);
+            const previewFirstName = nameParts[0] || '';
+            const previewSurnameInitial = (nameParts.length > 1 ? nameParts[nameParts.length - 1] : previewFirstName).charAt(0).toUpperCase();
+            const previewDisplayName = previewFirstName ? `${previewFirstName}${previewSurnameInitial ? ` ${previewSurnameInitial}.` : ''}` : 'Not yet named';
+            const previewSquadNumber = /^[0-9]+$/.test(squadInvitePlayer.kitNo.trim()) ? squadInvitePlayer.kitNo.trim() : 'Not set';
+            const hasDeclarationErrors = Object.values(squadInviteDeclarationErrors).some(Boolean);
+            return (
+              <section className="uk-wizard-panel uk-squad-review">
+                {squadInvitePhase === 'success' ? (
+                  <div className="uk-squad-review-success" role="status" aria-live="polite">
+                    <p className="uk-wizard-kicker">Squad Invite</p>
+                    <h1>Your child&apos;s card is saved.</h1>
+                    <ul className="uk-squad-invite-success-list">
+                      <li>No charge has been taken.</li>
+                      <li>Payment requests remain disabled during this test.</li>
+                      <li>Production begins only after payment, in a future approved live flow.</li>
+                      <li>Cards are delivered together to the approved organiser/coach.</li>
+                    </ul>
                   </div>
-                  <div className="uk-card-side-toggle wide" aria-label="Choose card side">
-                    <button type="button" className={cardSide === 'front' ? 'active' : ''} onClick={() => setCardSide('front')}>Front</button>
-                    <button type="button" className={cardSide === 'back' ? 'active' : ''} onClick={() => setCardSide('back')}>Back</button>
-                  </div>
-                  <div className="uk-squad-invite-payment-banner">
-                    <p><strong>Payment requests are not active during this test.</strong></p>
-                    <p>No card details are collected and nothing will be charged while this controlled pilot is running.</p>
-                  </div>
-                  {squadInviteOutcome === 'sign_in_required' && (
-                    <p role="alert" className="uk-enquiry-error">
-                      Your session has expired. <Link href="/squad-invite/join">Verify your email again</Link> to continue.
+                ) : (
+                  <>
+                    <p className="uk-wizard-kicker">Squad Invite</p>
+                    <h1>Review and save your child&apos;s card</h1>
+                    <p className="uk-wizard-copy">
+                      This creates one private Squad Invite commitment for {order.club || 'your team'}. It is private to you — your organiser sees aggregate progress only, never these details.
                     </p>
-                  )}
-                  {squadInviteOutcome === 'unavailable' && (
-                    <p role="alert" className="uk-enquiry-error">
-                      This couldn&apos;t be completed right now — it may already be saved, or the window to make changes has closed. Please try again shortly.
-                    </p>
-                  )}
-                  {squadInviteOutcome === 'validation' && (
-                    <p role="alert" className="uk-enquiry-error">
-                      Please check the photo, name and required declarations below, then try again.
-                    </p>
-                  )}
-                  {squadInviteOutcome === 'network' && (
-                    <p role="alert" className="uk-enquiry-error">
-                      A network problem stopped the request. Check your connection and try again.
-                    </p>
-                  )}
-                  <form onSubmit={submitSquadInviteCommitment} className="uk-squad-invite-declarations">
-                    <fieldset>
-                      <legend>Required declarations</legend>
-                      {SQUAD_INVITE_REQUIRED_DECLARATIONS.map((declaration) => (
-                        <label key={declaration.purpose} htmlFor={`squad-invite-${declaration.purpose}`}>
-                          <input
-                            id={`squad-invite-${declaration.purpose}`}
-                            type="checkbox"
-                            checked={Boolean(squadInviteAccepted[declaration.purpose])}
-                            onChange={(event) => setSquadInviteAccepted((current) => ({ ...current, [declaration.purpose]: event.target.checked }))}
-                          />
-                          <span>{declaration.label}</span>
-                        </label>
-                      ))}
-                    </fieldset>
-                    <button
-                      type="submit"
-                      className="uk-wizard-primary"
-                      disabled={squadInviteSubmitting}
-                      aria-busy={squadInviteSubmitting}
-                    >
-                      {squadInviteSubmitting ? 'Saving…' : "Save my child's card"}
-                    </button>
-                  </form>
-                </>
-              )}
-            </section>
-          )}
+
+                    <div className="uk-squad-review-grid">
+                      <div className="uk-squad-review-preview">
+                        <div className="uk-edit-preview">
+                          <PlayerCard order={order} player={squadInvitePlayer} side={cardSide} />
+                        </div>
+                        <div className="uk-card-side-toggle wide" aria-label="Choose card side">
+                          <button type="button" className={cardSide === 'front' ? 'active' : ''} onClick={() => setCardSide('front')}>Front</button>
+                          <button type="button" className={cardSide === 'back' ? 'active' : ''} onClick={() => setCardSide('back')}>Back</button>
+                        </div>
+                      </div>
+
+                      <div className="uk-squad-review-confirm">
+                        <dl className="uk-squad-review-summary">
+                          <div><dt>Team</dt><dd>{order.club || 'Not set'}</dd></div>
+                          <div><dt>Player</dt><dd>{previewDisplayName}</dd></div>
+                          <div><dt>Squad number</dt><dd>{previewSquadNumber}</dd></div>
+                          <div><dt>Template</dt><dd>{selectedTemplate(order, squadInvitePlayer).name}</dd></div>
+                          <div><dt>Quantity</dt><dd>{squadInvitePlayer.prints}</dd></div>
+                          <div><dt>Delivery</dt><dd>To your approved organiser/coach</dd></div>
+                          <div><dt>Payment</dt><dd>Disabled for this test</dd></div>
+                        </dl>
+
+                        <div className="uk-squad-review-callout">
+                          <p className="uk-squad-review-callout-title">Payment requests are not active during this test.</p>
+                          <p>No card details are collected and nothing will be charged while this controlled pilot is running.</p>
+                        </div>
+
+                        {squadInviteOutcome === 'sign_in_required' && (
+                          <p role="alert" className="uk-enquiry-error">
+                            Your session has expired. <Link href="/squad-invite/join">Verify your email again</Link> to continue.
+                          </p>
+                        )}
+                        {squadInviteOutcome === 'unavailable' && (
+                          <p role="alert" className="uk-enquiry-error">
+                            This couldn&apos;t be completed right now — it may already be saved, or the window to make changes has closed. Please try again shortly.
+                          </p>
+                        )}
+                        {squadInviteOutcome === 'validation' && !hasDeclarationErrors && (
+                          <p role="alert" className="uk-enquiry-error">
+                            Please check the photo and name on the personalise step, then try again.
+                          </p>
+                        )}
+                        {squadInviteOutcome === 'network' && (
+                          <p role="alert" className="uk-enquiry-error">
+                            A network problem stopped the request. Check your connection and try again.
+                          </p>
+                        )}
+                        {squadInviteOutcome === 'photo_upload_failed' && (
+                          <p role="alert" className="uk-enquiry-error">
+                            Your photo couldn&apos;t be saved. Your details and declarations are still here — please try again, or use a different photo.
+                          </p>
+                        )}
+
+                        <form onSubmit={submitSquadInviteCommitment} noValidate>
+                          <fieldset className="uk-squad-review-declarations">
+                            <legend>Required declarations</legend>
+                            {hasDeclarationErrors && (
+                              <p role="alert" id="squad-invite-declarations-error" className="uk-squad-review-declaration-error-summary">
+                                Please accept all four declarations before saving.
+                              </p>
+                            )}
+                            {SQUAD_INVITE_REQUIRED_DECLARATIONS.map((declaration) => {
+                              const checked = Boolean(squadInviteAccepted[declaration.purpose]);
+                              const invalid = Boolean(squadInviteDeclarationErrors[declaration.purpose]);
+                              return (
+                                <label
+                                  key={declaration.purpose}
+                                  htmlFor={`squad-invite-${declaration.purpose}`}
+                                  className={`uk-squad-declaration-row${checked ? ' is-checked' : ''}${invalid ? ' is-invalid' : ''}`}
+                                >
+                                  <input
+                                    ref={(el) => { squadInviteDeclarationRefs.current[declaration.purpose] = el; }}
+                                    id={`squad-invite-${declaration.purpose}`}
+                                    type="checkbox"
+                                    checked={checked}
+                                    aria-invalid={invalid}
+                                    aria-describedby={invalid ? 'squad-invite-declarations-error' : undefined}
+                                    onChange={(event) => {
+                                      setSquadInviteAccepted((current) => ({ ...current, [declaration.purpose]: event.target.checked }));
+                                      if (event.target.checked) {
+                                        setSquadInviteDeclarationErrors((current) => {
+                                          if (!current[declaration.purpose]) return current;
+                                          const next = { ...current };
+                                          delete next[declaration.purpose];
+                                          return next;
+                                        });
+                                      }
+                                    }}
+                                  />
+                                  <span>{declaration.label}</span>
+                                </label>
+                              );
+                            })}
+                          </fieldset>
+                          <button
+                            type="submit"
+                            className="uk-wizard-primary uk-squad-review-submit"
+                            disabled={squadInviteSubmitting}
+                            aria-busy={squadInviteSubmitting}
+                          >
+                            {squadInviteSubmitting ? 'Saving…' : "Save my child's card"}
+                          </button>
+                          <p className="uk-squad-review-submit-note">
+                            No payment is taken. Your child&apos;s card joins the team&apos;s production queue. Your organiser sees aggregate progress only, never these details.
+                          </p>
+                        </form>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </section>
+            );
+          })()}
 
           {activeStepId === 'review' && !squadInviteContext && (
             <section className="uk-wizard-panel">

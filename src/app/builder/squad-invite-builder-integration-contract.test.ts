@@ -38,8 +38,9 @@ describe('Squad Invite / ProductionBuilder reuse — no duplicate builder, real 
   it('reuses the same template gallery, PlayerCard rendering, photo upload/crop and background removal unchanged', () => {
     // The Squad Invite review panel renders the same local PlayerCard()
     // function component the normal review step uses — not a second one.
-    const squadInviteReview = builder.match(/\{activeStepId === 'review' && squadInviteContext && \(([\s\S]*?)\n {10}\)\}/)?.[1] ?? '';
-    expect(squadInviteReview).toContain('<PlayerCard order={order} player={order.players[0]}');
+    const squadInviteReview = builder.match(/\{activeStepId === 'review' && squadInviteContext && \(\(\) => \{([\s\S]*?)\n {10}\}\)\(\)\}/)?.[1] ?? '';
+    expect(squadInviteReview).toContain('const squadInvitePlayer = order.players[0];');
+    expect(squadInviteReview).toContain('<PlayerCard order={order} player={squadInvitePlayer}');
     expect(builder).not.toMatch(/function PlayerCard\b[\s\S]*function PlayerCard\b/); // only one definition
     // Upload / bg-removal / personalise steps have no squadInviteContext
     // branch in their JSX bodies at all (only the one club-field readOnly
@@ -71,7 +72,7 @@ describe('Squad Invite / ProductionBuilder reuse — no duplicate builder, real 
   });
 
   it('never sends payment fields and always shows payment as disabled, not offered', () => {
-    const squadInviteReview = builder.match(/\{activeStepId === 'review' && squadInviteContext && \(([\s\S]*?)\n {10}\)\}/)?.[1] ?? '';
+    const squadInviteReview = builder.match(/\{activeStepId === 'review' && squadInviteContext && \(\(\) => \{([\s\S]*?)\n {10}\}\)\(\)\}/)?.[1] ?? '';
     expect(squadInviteReview).not.toMatch(/stripe|cardNumber|cvc/i);
     expect(squadInviteReview).toContain('Payment requests are not active during this test.');
     expect(squadInviteReview).toContain('No charge has been taken.');

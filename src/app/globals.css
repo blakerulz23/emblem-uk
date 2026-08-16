@@ -1571,6 +1571,216 @@ a { text-decoration: none; color: inherit; }
   grid-template-columns: 1fr 1fr;
 }
 
+/* Squad Invite final review/commit step only — scoped entirely under
+   .uk-squad-review / .uk-wizard-phone--squad-review, both applied by
+   ProductionBuilder.tsx only when activeStepId==='review' &&
+   squadInviteContext. Every other step, and the normal paid-order review
+   step, keep using the unmodified .uk-wizard-phone/.uk-wizard-panel rules
+   above untouched. Mobile gets no override at all here (natural block
+   stacking already reads as a clean single column); the grid only turns on
+   at the desktop breakpoint below. */
+.uk-squad-review {
+  padding-bottom: 140px; /* clears the fixed disposable-preview notice — same reasoning/value as JoinSquadInvite.tsx's own pb-28 */
+}
+
+.uk-squad-review-grid {
+  display: block;
+}
+
+.uk-squad-review-preview {
+  margin-bottom: 28px;
+}
+
+.uk-squad-review-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 9px 16px;
+  margin: 0 0 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 18px;
+  background: var(--wizard-surface);
+}
+
+.uk-squad-review-summary > div {
+  display: contents;
+}
+
+.uk-squad-review-summary dt {
+  color: var(--wizard-soft);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  align-self: baseline;
+}
+
+.uk-squad-review-summary dd {
+  margin: 0;
+  color: var(--wizard-ink);
+  font-weight: 700;
+  text-align: right;
+}
+
+.uk-squad-review-callout {
+  margin: 0 0 20px;
+  border: 2px solid var(--wizard-accent);
+  border-radius: 16px;
+  background: #fff6f2;
+  padding: 14px 16px;
+}
+
+.uk-squad-review-callout-title {
+  margin: 0;
+  color: var(--wizard-ink);
+  font-weight: 800;
+}
+
+.uk-squad-review-callout p {
+  margin: 6px 0 0;
+  color: var(--wizard-soft);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.uk-squad-review-callout p:first-child {
+  margin-top: 0;
+}
+
+.uk-squad-review-declarations {
+  margin: 0 0 4px;
+  border: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.uk-squad-review-declarations legend {
+  margin: 0 0 4px;
+  padding: 0;
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.uk-squad-review-declaration-error-summary {
+  margin: 0 0 2px;
+  color: #b3261e;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.uk-squad-declaration-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  border: 1px solid var(--wizard-line);
+  border-radius: 14px;
+  background: #fff;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.uk-squad-declaration-row:hover {
+  border-color: var(--wizard-accent);
+  background: #fff8f2;
+}
+
+.uk-squad-declaration-row:focus-within {
+  outline: 2px solid var(--wizard-accent);
+  outline-offset: 2px;
+}
+
+.uk-squad-declaration-row.is-checked {
+  border-color: var(--wizard-accent);
+  background: #fff6f2;
+}
+
+.uk-squad-declaration-row.is-invalid {
+  border-color: #b3261e;
+}
+
+.uk-squad-declaration-row input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  accent-color: var(--wizard-accent);
+  cursor: pointer;
+}
+
+.uk-squad-declaration-row span {
+  color: var(--wizard-ink);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.uk-squad-review-submit {
+  margin-top: 18px;
+}
+
+.uk-squad-review-submit-note {
+  margin: 12px 0 0;
+  color: var(--wizard-soft);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.uk-squad-review-success {
+  margin: auto 0;
+  padding: 12px 0;
+}
+
+.uk-squad-review-success .uk-squad-invite-success-list {
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.uk-squad-review-success .uk-squad-invite-success-list li {
+  position: relative;
+  padding-left: 26px;
+  color: var(--wizard-soft);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.uk-squad-review-success .uk-squad-invite-success-list li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--wizard-accent);
+  font-weight: 900;
+}
+
+@media (min-width: 900px) {
+  .uk-wizard-phone--squad-review {
+    max-width: 960px;
+  }
+
+  .uk-squad-review-grid {
+    display: grid;
+    grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+    gap: 40px;
+    align-items: start;
+  }
+
+  .uk-squad-review-preview {
+    position: sticky;
+    top: 24px;
+    margin-bottom: 0;
+  }
+}
+
 .uk-review-groups {
   display: grid;
   gap: 14px;
