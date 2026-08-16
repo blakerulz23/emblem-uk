@@ -27,6 +27,11 @@ type DashboardResponse = {
 export default function CampaignDashboard({ campaignId }: { campaignId: string }) {
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [error, setError] = useState('');
+  const [csrf, setCsrf] = useState('');
+  const [concernOpen, setConcernOpen] = useState(false);
+  const [concernNote, setConcernNote] = useState('');
+  const [concernMessage, setConcernMessage] = useState('');
+  const [concernSubmitting, setConcernSubmitting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,10 +43,37 @@ export default function CampaignDashboard({ campaignId }: { campaignId: string }
       .catch(() => {
         if (!cancelled) setError('Progress is not available right now.');
       });
+    void fetch('/api/squad-invite-organiser-auth/context')
+      .then((r) => r.json())
+      .then((x) => {
+        if (!cancelled) setCsrf(x.csrfToken);
+      });
     return () => {
       cancelled = true;
     };
   }, [campaignId]);
+
+  const submitConcern = async () => {
+    if (concernSubmitting) return;
+    setConcernSubmitting(true);
+    setConcernMessage('');
+    try {
+      const r = await fetch(`/api/squad-invites/${encodeURIComponent(campaignId)}/flag-concern`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Emblem-CSRF': csrf },
+        body: JSON.stringify({ note: concernNote }),
+      });
+      if (r.ok) {
+        setConcernMessage('Sent to Emblem staff for review. Thank you for checking.');
+        setConcernNote('');
+      } else {
+        const body = await r.json().catch(() => null) as { error?: string } | null;
+        setConcernMessage(body?.error || 'Could not send that right now.');
+      }
+    } finally {
+      setConcernSubmitting(false);
+    }
+  };
 
   if (error) {
     return (
@@ -77,7 +109,35 @@ export default function CampaignDashboard({ campaignId }: { campaignId: string }
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-sm">This is shown only so you can confirm these are your own players. No photo, full surname or contact detail is ever shown here — if a name doesn&apos;t look right, please contact Emblem staff directly.</p>
+          <p className="mt-2 text-sm">This is shown only so you can confirm these are your own players. No photo, full surname or contact detail is ever shown here.</p>
+          {!concernOpen ? (
+            <button type="button" className="mt-3 text-sm font-bold text-orange-600" onClick={() => setConcernOpen(true)}>
+              A name here doesn&apos;t look right
+            </button>
+          ) : (
+            <div className="mt-3 rounded-xl border p-4">
+              <label className="block text-sm font-semibold" htmlFor="squad-progress-concern-note">
+                What doesn&apos;t look right?
+              </label>
+              <textarea
+                id="squad-progress-concern-note"
+                className="mt-1 block w-full rounded-xl border p-3"
+                value={concernNote}
+                onChange={(e) => setConcernNote(e.target.value)}
+                placeholder="e.g. I don't recognise this name as belonging to our team"
+              />
+              <p className="mt-2 text-xs">This goes straight to Emblem staff for review — never back to the family who joined.</p>
+              <button
+                type="button"
+                className="mt-3 rounded-xl bg-orange-600 p-3 font-bold text-white disabled:opacity-60"
+                disabled={!csrf || concernNote.trim().length < 3 || concernSubmitting}
+                onClick={submitConcern}
+              >
+                {concernSubmitting ? 'Sending…' : 'Send to Emblem staff'}
+              </button>
+              {concernMessage && <p role="status" className="mt-2 text-sm">{concernMessage}</p>}
+            </div>
+          )}
         </div>
       )}
       {campaign.deadlineAt && (

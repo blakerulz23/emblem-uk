@@ -25,7 +25,7 @@ describe('Squad Invite organiser/staff/public projections stay aggregate-only, e
  });
  it('the dashboard\'s exception is exactly two fields — a future edit widening its select must fail this test',()=>{
   const route=read(DASHBOARD_ROUTE);
-  const selects=[...route.matchAll(/squad_invite_participations['"]\)\s*\.select\(\s*['"]([^'"]+)['"]/g)].map(m=>m[1]);
+  const selects=Array.from(route.matchAll(/squad_invite_participations['"]\)\s*\.select\(\s*['"]([^'"]+)['"]/g)).map(m=>m[1]);
   expect(selects.sort()).toEqual(['display_first_name,display_surname_initial','id']);
  });
  it('the commit route is genuinely write-only for these fields — it forwards them into the RPC, never reads them back out in its response', () => {

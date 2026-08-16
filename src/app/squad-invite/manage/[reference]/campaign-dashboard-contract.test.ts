@@ -6,6 +6,8 @@ const read = (path: string) => readFileSync(path, 'utf8');
 const DASHBOARD_ROUTE = 'src/app/api/squad-invites/[id]/dashboard/route.ts';
 const DASHBOARD_COMPONENT = 'src/app/squad-invite/manage/[reference]/CampaignDashboard.tsx';
 const MANAGE_PAGE = 'src/app/squad-invite/manage/[reference]/page.tsx';
+const FLAG_CONCERN_ROUTE = 'src/app/api/squad-invites/[id]/flag-concern/route.ts';
+const STAFF_DETAIL_PAGE = 'src/app/staff/squad-invites/[reference]/page.tsx';
 
 describe('Squad progress — organiser-facing dashboard, bounded club-mediated identifier only', () => {
   it('the dashboard API selects only aggregate campaign fields plus first-name+surname-initial — never a full name, email, photo or guardian identity', () => {
@@ -69,5 +71,33 @@ describe('Squad progress — organiser-facing dashboard, bounded club-mediated i
     const source = read(MANAGE_PAGE);
     expect(source).toContain('isSquadInviteMvpEnabled');
     expect(source).toContain('r.organiser_profile_id!==user.id');
+  });
+
+  it('the flag-a-concern control is CSRF-protected and only reachable once a name is actually shown', () => {
+    const source = read(DASHBOARD_COMPONENT);
+    expect(source).toContain("'X-Emblem-CSRF': csrf");
+    expect(source).toContain('/flag-concern');
+    // The control lives inside the joinedPlayers.length > 0 block — there's
+    // nothing to flag a concern about before any name has been shown.
+    const joinedBlockStart = source.indexOf('campaign.joinedPlayers.length > 0');
+    const concernButtonIndex = source.indexOf('A name here doesn&apos;t look right');
+    expect(concernButtonIndex).toBeGreaterThan(joinedBlockStart);
+  });
+
+  it('the flag-concern route never returns the submitted note back to the browser', () => {
+    const source = read(FLAG_CONCERN_ROUTE);
+    expect(source).not.toMatch(/NextResponse\.json\(\{[^}]*note/);
+  });
+
+  it('the flag-concern route is ownership-scoped through the campaign, and resolves the request via campaign_id — never trusts a client-supplied request id', () => {
+    const source = read(FLAG_CONCERN_ROUTE);
+    expect(source).toContain(".eq('id', params.id).eq('organiser_profile_id', user.id)");
+    expect(source).toContain(".eq('campaign_id', campaign.id)");
+  });
+
+  it('the staff detail page selects and renders metadata only for the organiser-flagged-concern event, never generically', () => {
+    const source = read(STAFF_DETAIL_PAGE);
+    expect(source).toContain("select('event_type,actor_role,created_at,metadata')");
+    expect(source).toContain("x.event_type==='organiser_flagged_concern'");
   });
 });
