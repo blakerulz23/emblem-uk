@@ -17,6 +17,16 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
       .eq('campaign_id', campaign.id).eq('status', status);
     counts[status] = count ?? 0;
   }
+  // Club-mediated verification only — the organiser already knows their real
+  // squad, so a bounded identifier (the same first-name + last-initial shown
+  // on the card itself, nothing more) lets them notice a name that doesn't
+  // belong. Never the photo, full surname, DOB or any other field; excludes
+  // 'started' participations since display_first_name is only ever set once
+  // a parent actually reaches commit.
+  const { data: joined } = await service.from('squad_invite_participations')
+    .select('display_first_name,display_surname_initial')
+    .eq('campaign_id', campaign.id).not('display_first_name', 'is', null);
+  const joinedPlayers = (joined ?? []).map((p) => ({ firstName: p.display_first_name, surnameInitial: p.display_surname_initial }));
   return NextResponse.json({
     campaign: {
       teamName: campaign.club_team_name, ageGroup: campaign.football_age_group,
@@ -27,6 +37,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
       completedCommitments: campaign.final_commitment_count ?? counts.commitment_completed,
       paymentsConfirmed: counts.paid, squadPriceUnlocked: campaign.final_tier === 'squad',
       freeCoachCardConfirmed: campaign.coach_card_eligible,
+      joinedPlayers,
     },
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

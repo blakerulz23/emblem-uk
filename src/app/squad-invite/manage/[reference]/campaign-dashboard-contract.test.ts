@@ -7,11 +7,17 @@ const DASHBOARD_ROUTE = 'src/app/api/squad-invites/[id]/dashboard/route.ts';
 const DASHBOARD_COMPONENT = 'src/app/squad-invite/manage/[reference]/CampaignDashboard.tsx';
 const MANAGE_PAGE = 'src/app/squad-invite/manage/[reference]/page.tsx';
 
-describe('Squad progress — organiser-facing aggregate dashboard, no parent/child PII', () => {
-  it('the dashboard API selects only aggregate campaign fields, never a name, email or child detail', () => {
+describe('Squad progress — organiser-facing dashboard, bounded club-mediated identifier only', () => {
+  it('the dashboard API selects only aggregate campaign fields plus first-name+surname-initial — never a full name, email, photo or guardian identity', () => {
     const source = read(DASHBOARD_ROUTE);
-    expect(source).not.toMatch(/organiser_name|guardian|parent_email|child_name|photo|display_first_name|display_surname/i);
+    // The bounded identifier is deliberate (see the component's own
+    // comment for why); everything that would go beyond it must never
+    // appear — organiser identity of the OTHER party, email, storage
+    // keys/photos, or any field not already printed on the card itself.
+    expect(source).not.toMatch(/guardian_profile_id\s*[,)]|organiser_name|parent_email|storage_key|storage_url|content_type|email/i);
     expect(source).toContain("select('id,organiser_profile_id,club_team_name,football_age_group,deadline_at,grace_ends_at,campaign_status,payment_phase,fulfilment_status,final_tier,final_unit_price_pence,final_commitment_count,coach_card_eligible')");
+    expect(source).toContain(".select('display_first_name,display_surname_initial')");
+    expect(source).toContain(".not('display_first_name', 'is', null)");
   });
 
   it('the dashboard API is ownership-scoped to the signed-in organiser', () => {
@@ -20,15 +26,14 @@ describe('Squad progress — organiser-facing aggregate dashboard, no parent/chi
     expect(source).toContain("if (!user) return NextResponse.json({ error: 'Sign in required' }, { status: 401 })");
   });
 
-  it('CampaignDashboard renders only a count, never a per-participant field', () => {
+  it('CampaignDashboard renders the bounded first-name + surname-initial list, never a photo, full surname or contact field', () => {
     const source = read(DASHBOARD_COMPONENT);
     expect(source).toContain('completedCommitments');
-    // No .map() over individual participants and no property access shaped
-    // like a per-child/per-guardian field — this component only ever binds
-    // to the campaign-level aggregate object, never a list of people.
-    expect(source).not.toMatch(/\.map\(/);
-    expect(source).not.toMatch(/\.(displayFirstName|displaySurnameInitial|guardianEmail|childName|photoUrl|email)\b/);
-    expect(source).toContain('Player names, photos and contact details are never shown here');
+    expect(source).toContain('joinedPlayers');
+    expect(source).toContain('{p.firstName} {p.surnameInitial}.');
+    // The only .map() in this component is over the bounded joinedPlayers
+    // list itself — never a richer per-participant object.
+    expect(source).not.toMatch(/\.(photoUrl|photo|email|guardianEmail|childName|fullName|surname)\b/);
   });
 
   it('the manage page only shows the dashboard once the campaign is active, not before', () => {
