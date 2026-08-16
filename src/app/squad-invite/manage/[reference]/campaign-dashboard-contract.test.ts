@@ -33,7 +33,31 @@ describe('Squad progress — organiser-facing aggregate dashboard, no parent/chi
 
   it('the manage page only shows the dashboard once the campaign is active, not before', () => {
     const source = read(MANAGE_PAGE);
-    expect(source).toMatch(/campaign_status\s*===\s*'active'\s*&&\s*r\.campaign_id\s*&&\s*<CampaignDashboard campaignId=\{r\.campaign_id\}\/>/);
+    expect(source).toMatch(/campaignActive\s*=\s*\w+\?\.campaign_status\s*===\s*'active'/);
+    expect(source).toContain('{campaignActive&&r.campaign_id&&<CampaignDashboard campaignId={r.campaign_id}/>}');
+  });
+
+  it('Squad progress renders before the status paragraph — ahead of correction and delivery-setup sections', () => {
+    // The organiser's most-checked info (live progress) comes first, not
+    // buried below a one-time setup form that may already be done.
+    const source = read(MANAGE_PAGE);
+    const statusLineIndex = source.indexOf('Status: {r.request_status');
+    const dashboardIndex = source.indexOf('<CampaignDashboard campaignId={r.campaign_id}/>');
+    const correctionIndex = source.indexOf('<CorrectionForm');
+    const deliverySetupIndex = source.indexOf('Approved — delivery setup required');
+    expect(dashboardIndex).toBeGreaterThan(statusLineIndex);
+    expect(dashboardIndex).toBeLessThan(correctionIndex);
+    expect(dashboardIndex).toBeLessThan(deliverySetupIndex);
+  });
+
+  it('once the campaign is active, the delivery-setup form is replaced by a completion line, not shown alongside it', () => {
+    const source = read(MANAGE_PAGE);
+    expect(source).toContain('campaignActive?<section');
+    expect(source).toContain('Delivery setup complete');
+    // DeliverySetup only appears in the false branch of that ternary — the
+    // component itself is still imported and used, just not rendered
+    // alongside an already-completed setup.
+    expect(source.match(/<DeliverySetup reference=\{r\.public_reference\}\/>/g)).toHaveLength(1);
   });
 
   it('the manage page still gates on the closed pilot flag and organiser ownership, unchanged', () => {
