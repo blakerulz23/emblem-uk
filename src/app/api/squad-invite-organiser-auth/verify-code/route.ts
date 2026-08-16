@@ -1,5 +1,5 @@
 import { NextRequest,NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient,createServiceRoleClient } from '@/lib/supabase/server';
 import { consumeSquadInviteRateLimit } from '@/lib/squad-invite-rate-limit';
 import { hasValidSquadInviteCsrf } from '@/lib/squad-invite-request-security';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
@@ -26,5 +26,13 @@ export async function POST(request:NextRequest){
    console.error('squad-invite-organiser-auth/verify-code:profile-upsert',profileError.code??'unknown');
    return NextResponse.json({error:'Verification unavailable'},{status:400});
  }
- return NextResponse.json({ok:true,returnTo:'/squad-invite/start'},{headers:{'Cache-Control':'no-store'}});
+ // Read-only, scoped to exactly the user just verified above — lets the
+ // client show existing requests instead of silently starting a duplicate.
+ // Service-role because every other squad_invite_requests read in this
+ // repo goes through it (no organiser-read RLS policy exists on this
+ // table); the eq() below is what keeps this scoped to this one organiser.
+ const {data:existing}=await createServiceRoleClient().from('squad_invite_requests')
+   .select('public_reference,club_team_name,request_status').eq('organiser_profile_id',data.user.id).order('submitted_at',{ascending:false});
+ const existingRequests=(existing??[]).map(r=>({publicReference:r.public_reference,teamName:r.club_team_name,status:r.request_status}));
+ return NextResponse.json({ok:true,returnTo:'/squad-invite/start',existingRequests},{headers:{'Cache-Control':'no-store'}});
 }

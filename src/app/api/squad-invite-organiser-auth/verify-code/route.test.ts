@@ -12,9 +12,15 @@ import { POST } from './route';
  */
 const mockVerifyOtp = vi.fn();
 const mockUpsert = vi.fn();
-const mockFrom = vi.fn(() => ({ upsert: mockUpsert }));
+const mockOrder = vi.fn();
+const mockFrom = vi.fn((table: string) =>
+  table === 'squad_invite_requests'
+    ? { select: () => ({ eq: () => ({ order: mockOrder }) }) } // service-role existing-requests lookup
+    : { upsert: mockUpsert } // profiles upsert, via the auth-scoped client
+);
 vi.mock('@/lib/supabase/server', () => ({
   createClient: () => ({ auth: { verifyOtp: mockVerifyOtp }, from: mockFrom }),
+  createServiceRoleClient: () => ({ from: mockFrom }),
 }));
 vi.mock('@/lib/squad-invite-rate-limit', () => ({
   consumeSquadInviteRateLimit: vi.fn().mockResolvedValue(true),
@@ -45,9 +51,11 @@ beforeEach(() => {
   vi.stubEnv('VERCEL_ENV', '');
   mockVerifyOtp.mockReset();
   mockUpsert.mockReset();
+  mockOrder.mockReset();
   mockFrom.mockClear();
   mockVerifyOtp.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null });
   mockUpsert.mockResolvedValue({ error: null });
+  mockOrder.mockResolvedValue({ data: [] });
 });
 
 describe('POST /api/squad-invite-organiser-auth/verify-code — profile provisioning', () => {
@@ -119,5 +127,41 @@ describe('POST /api/squad-invite-organiser-auth/verify-code — profile provisio
     const res = await post(validBody);
     const body = await res.json();
     expect(body.returnTo).toBe('/squad-invite/start');
+  });
+});
+
+describe('POST /api/squad-invite-organiser-auth/verify-code — existing-request lookup', () => {
+  it('returns an empty array for a first-time organiser with no prior requests', async () => {
+    mockOrder.mockResolvedValue({ data: [] });
+    const res = await post(validBody);
+    const body = await res.json();
+    expect(body.existingRequests).toEqual([]);
+  });
+
+  it('returns a returning organiser\'s existing requests, mapped to the client-facing shape', async () => {
+    mockOrder.mockResolvedValue({
+      data: [{ public_reference: 'SI-0001', club_team_name: 'Ashton Juniors', request_status: 'approved' }],
+    });
+    const res = await post(validBody);
+    const body = await res.json();
+    expect(body.existingRequests).toEqual([{ publicReference: 'SI-0001', teamName: 'Ashton Juniors', status: 'approved' }]);
+  });
+
+  it('never fabricates a null-data response as anything other than an empty list', async () => {
+    mockOrder.mockResolvedValue({ data: null });
+    const res = await post(validBody);
+    const body = await res.json();
+    expect(body.existingRequests).toEqual([]);
+  });
+
+  it('scopes the lookup to exactly the just-verified user, via the service-role client', async () => {
+    await post(validBody);
+    expect(mockFrom).toHaveBeenCalledWith('squad_invite_requests');
+  });
+
+  it('does not look up existing requests when verification itself fails', async () => {
+    mockVerifyOtp.mockResolvedValue({ data: { user: null }, error: { message: 'invalid token' } });
+    await post(validBody);
+    expect(mockFrom).not.toHaveBeenCalledWith('squad_invite_requests');
   });
 });
