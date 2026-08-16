@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import ReviewActions from '@/app/staff/squad-invites/[reference]/ReviewActions';
+import StaffIdentityPanel from '@/app/staff/squad-invites/StaffIdentityPanel';
+import type { SquadInviteStaffPermission } from '@/lib/squad-invite-mvp';
 import { DISPOSABLE_SQUAD_INVITE_NOTICE } from '@/lib/squad-invite-preview-safety';
 
 declare global {
@@ -10,7 +12,25 @@ declare global {
   }
 }
 
-type Role = 'reviewer' | 'approver' | 'both';
+type Role = 'reviewer' | 'approver' | 'both' | 'none';
+
+// Synthetic-only — no real staff account, no real email. Mirrors the
+// shape a real signed-in identity has (email + permission list) so this
+// harness can demonstrate StaffIdentityPanel and ReviewActions' per-action
+// explanations exactly as the real, Supabase-authenticated pages would.
+const ROLE_EMAIL: Record<Role, string> = {
+  reviewer: 'reviewer.synthetic@example.invalid',
+  approver: 'approver.synthetic@example.invalid',
+  both: 'reviewer-approver.synthetic@example.invalid',
+  none: 'no-permission.synthetic@example.invalid',
+};
+
+function permissionsFor(role: Role): SquadInviteStaffPermission[] {
+  if (role === 'both') return ['squad_invite_reviewer', 'squad_invite_approver'];
+  if (role === 'reviewer') return ['squad_invite_reviewer'];
+  if (role === 'approver') return ['squad_invite_approver'];
+  return [];
+}
 type RequestStatus = 'submitted' | 'under_review' | 'changes_requested' | 'resubmitted' | 'approved' | 'rejected';
 
 type SyntheticRequest = {
@@ -196,6 +216,7 @@ export default function StaffReviewHarness() {
             <option value="both">Reviewer + approver</option>
             <option value="reviewer">Reviewer only</option>
             <option value="approver">Approver only</option>
+            <option value="none">No Squad Invite permission</option>
           </select>
         </label>
         <span aria-live="polite">Network calls logged: {logLength}</span>
@@ -211,6 +232,7 @@ export default function StaffReviewHarness() {
             <span>Profile Setup</span>
             <span>Data Requests</span>
           </nav>
+          <StaffIdentityPanel email={ROLE_EMAIL[role]} permissions={permissionsFor(role)} />
           <div className="mt-6 grid gap-3">
             <button
               type="button"
@@ -246,6 +268,7 @@ export default function StaffReviewHarness() {
           </button>
           <p className="text-sm font-bold uppercase tracking-widest text-orange-600">Review Squad Invite</p>
           <h1 className="mt-3 text-3xl font-bold">{request.club_team_name}</h1>
+          <StaffIdentityPanel email={ROLE_EMAIL[role]} permissions={permissionsFor(role)} />
           <dl className="mt-6 grid gap-3 rounded-2xl border bg-white p-6">
             <div>
               <dt>Request</dt>
@@ -295,7 +318,7 @@ export default function StaffReviewHarness() {
             </div>
           </dl>
 
-          <ReviewActions requestId={request.id} status={request.request_status} outboxId={undefined} />
+          <ReviewActions requestId={request.id} status={request.request_status} outboxId={undefined} staffEmail={ROLE_EMAIL[role]} staffPermissions={permissionsFor(role)} />
 
           {request.request_status === 'changes_requested' && (
             <div className="mt-4 rounded-xl border border-dashed p-4">
