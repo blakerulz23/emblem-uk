@@ -7,8 +7,15 @@ type ExistingRequest={publicReference:string;teamName:string;status:string};
 const roleLabels: Record<string,string>={coach_or_club_representative:'Coach or authorised club representative',team_manager:'Team manager',parent_representative:'Parent representative authorised by the team'};
 const declarationLabels: Record<(typeof ORGANISER_DECLARATIONS)[number],string>={authorityAccepted:'I confirm that I am an adult authorised to create and share this Squad Invite for the named team.',deliveryRecipientAccepted:'I confirm that the delivery recipient has agreed to receive and distribute the completed team package.',independentParticipationAccepted:'I understand that each parent decides independently whether to participate.',staffReviewAccepted:'I understand that Emblem staff must approve this request before it can be shared.'};
 
-export default function OrganiserStart(){
- const [stage,setStage]=useState<Stage>('email'); const [csrf,setCsrf]=useState(''); const [email,setEmail]=useState(''); const [code,setCode]=useState(''); const [error,setError]=useState(''); const [fieldErrors,setFieldErrors]=useState<ReturnType<typeof validateOrganiserForm>>([]); const [cooldown,setCooldown]=useState(0); const [form,setForm]=useState<OrganiserForm>(initialOrganiserForm); const [receipt,setReceipt]=useState<{publicReference:string;created:boolean}|null>(null); const [submitting,setSubmitting]=useState(false); const submissionKey=useRef<string>(); const [existingRequests,setExistingRequests]=useState<ExistingRequest[]>([]);
+// initialExistingRequests is undefined for a visitor with no verified
+// Supabase Auth session (start at 'email', exactly as before) — genuinely
+// different from an empty array, which means the session IS already
+// verified but this organiser has zero requests yet, so there is nothing
+// to re-verify: skip straight to 'details'. A non-empty array is the true
+// one-click "Back to your Squad Invites" case.
+export default function OrganiserStart({initialExistingRequests}:{initialExistingRequests?:ExistingRequest[]}={}){
+ const [stage,setStage]=useState<Stage>(initialExistingRequests===undefined?'email':initialExistingRequests.length>0?'existing':'details');
+ const [csrf,setCsrf]=useState(''); const [email,setEmail]=useState(''); const [code,setCode]=useState(''); const [error,setError]=useState(''); const [fieldErrors,setFieldErrors]=useState<ReturnType<typeof validateOrganiserForm>>([]); const [cooldown,setCooldown]=useState(0); const [form,setForm]=useState<OrganiserForm>(initialOrganiserForm); const [receipt,setReceipt]=useState<{publicReference:string;created:boolean}|null>(null); const [submitting,setSubmitting]=useState(false); const submissionKey=useRef<string>(); const [existingRequests,setExistingRequests]=useState<ExistingRequest[]>(initialExistingRequests??[]);
  useEffect(()=>{void fetch('/api/squad-invite-organiser-auth/context',{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject()).then(x=>setCsrf(x.csrfToken)).catch(()=>setError('This controlled-pilot request is unavailable.'));},[]);
  useEffect(()=>{if(!cooldown)return;const id=setInterval(()=>setCooldown(x=>Math.max(0,x-1)),1000);return()=>clearInterval(id);},[cooldown]);
  const send=async()=>{setError('');const r=await fetch('/api/squad-invite-organiser-auth/request-code',{method:'POST',headers:{'Content-Type':'application/json','X-Emblem-CSRF':csrf},body:JSON.stringify({email})});if(!r.ok&&r.status!==429){setError('We could not process that request. Please try again.');return;}setCooldown(60);setStage('otp');};
