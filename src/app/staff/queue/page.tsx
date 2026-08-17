@@ -95,6 +95,33 @@ async function getPlayerNamesByOrder(supabase: ReturnType<typeof createServiceRo
   return map;
 }
 
+/** A signed preview of each order's card design — the same durable S3
+ * reference card-definition.tsx already documents (photo.storageKey,
+ * never a URL). Exists specifically so staff can see what a Squad Invite
+ * order actually looks like before approving it: that flow never renders
+ * a print PDF (the only preview Section 1 otherwise offers), so without
+ * this, staff would be approving those orders blind. Applies to any order
+ * with a card_definitions row, not only Squad Invite ones, since the same
+ * gap exists for any pending order whose print file hasn't rendered yet. */
+async function getDesignPreviewsByOrder(supabase: ReturnType<typeof createServiceRoleClient>, orderIds: string[]) {
+  const map = new Map<string, { name: string; number: string | null; team: string | null; position: string | null; photoUrl: string | null }>();
+  if (orderIds.length === 0) return map;
+  const { data } = await supabase
+    .from('card_definitions')
+    .select('order_id, name, number, team, position, photo')
+    .in('order_id', orderIds);
+  type PhotoRef = { storageKey?: string } | null;
+  for (const row of (data ?? []) as { order_id: string | null; name: string; number: string | null; team: string | null; position: string | null; photo: PhotoRef }[]) {
+    if (!row.order_id || map.has(row.order_id)) continue; // one preview per order — first match only
+    const storageKey = row.photo?.storageKey;
+    // One bad/missing S3 object must never take down the whole queue page
+    // for every other pending order — falls back to no photo, not an error.
+    const photoUrl = storageKey ? await getSignedDownloadUrl(storageKey, 3600).catch(() => null) : null;
+    map.set(row.order_id, { name: row.name, number: row.number, team: row.team, position: row.position, photoUrl });
+  }
+  return map;
+}
+
 /** The alphabetically-first linked player name — the deterministic
  * "representative name" an order sorts by under Player name A–Z/Z–A, since
  * a squad order can have several players and sorting needs exactly one
@@ -135,6 +162,7 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
   const orderIds = (data ?? []).map((o) => o.id);
   const cardCounts = await getCardCountsByOrder(supabase, orderIds);
   const playerNamesByOrder = await getPlayerNamesByOrder(supabase, orderIds);
+  const designPreviewsByOrder = await getDesignPreviewsByOrder(supabase, orderIds);
 
   // Presigned URLs expire (SigV4 max 7 days) — re-sign from the stored S3
   // keys on every page load so the download links always work.
@@ -154,6 +182,7 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
         printFiles,
         cardCount: cardCounts.get(order.id) ?? 0,
         playerNames: playerNamesByOrder.get(order.id) ?? [],
+        designPreview: designPreviewsByOrder.get(order.id) ?? null,
       };
     })
   );
@@ -519,6 +548,21 @@ export default async function StaffQueuePage({
               background: '#fff', boxShadow: 'inset 0 0 0 1px var(--line)',
             }}
           >
+            {order.designPreview?.photoUrl && (
+              // Section 1's only other preview is the print PDF, which a
+              // Squad Invite commitment never generates — without this,
+              // staff would be clicking Approve with no way to see what
+              // they're actually approving. Links to the same signed URL
+              // full-size; the thumbnail is just a quick first look.
+              <a href={order.designPreview.photoUrl} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- signed, short-lived S3 URL; next/image can't optimize a URL that expires */}
+                <img
+                  src={order.designPreview.photoUrl}
+                  alt={`Photo submitted for ${order.designPreview.name}`}
+                  style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover', boxShadow: 'inset 0 0 0 1px var(--line)' }}
+                />
+              </a>
+            )}
             <div style={{ flex: 1 }}>
               <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>
                 {order.order_ref} <span style={{ color: 'var(--ink-faint)', fontWeight: 500 }}>· {order.cardCount === 1 ? 'Single card' : order.cardCount === 0 ? 'No player yet' : `Team order (${order.cardCount} players)`}</span>
@@ -540,6 +584,14 @@ export default async function StaffQueuePage({
               <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
                 {order.purchaser_email} · {order.payment_status}
               </div>
+              {order.designPreview && (
+                <div style={{ marginTop: 4, fontFamily: 'var(--font-manrope), system-ui', fontSize: 13, color: 'var(--ink-soft)' }}>
+                  On the card: {order.designPreview.name}
+                  {order.designPreview.number ? ` · #${order.designPreview.number}` : ''}
+                  {order.designPreview.position ? ` · ${order.designPreview.position}` : ''}
+                  {order.designPreview.team ? ` · ${order.designPreview.team}` : ''}
+                </div>
+              )}
               <div style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {order.printFiles.length > 0 ? (
                   order.printFiles.map((f, i) => (
