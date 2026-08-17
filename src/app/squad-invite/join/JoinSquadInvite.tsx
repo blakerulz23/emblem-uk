@@ -92,6 +92,33 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
 
   const deadlineText = new Date(invitation.deadlineAt).toLocaleString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' });
 
+  // The server (resolve_squad_invite_link in 0051_squad_invite_reusable_links.sql)
+  // only returns the derived tier/unlocked flags, never the raw thresholds —
+  // so a "X more joins unlocks Y" message needs its own copy of the same two
+  // numbers pricing-engine.ts defines as MULTI_MIN_PLAYERS/SQUAD_MIN_PLAYERS.
+  // Keep these in sync with both if either ever changes.
+  const MULTI_MIN_DISPLAY = 2;
+  const SQUAD_MIN_DISPLAY = 10;
+  const progressPct = Math.min(100, (invitation.completedCommitments / SQUAD_MIN_DISPLAY) * 100);
+  const multiMarkerPct = (MULTI_MIN_DISPLAY / SQUAD_MIN_DISPLAY) * 100;
+
+  let incentiveHeadline: string;
+  let incentiveDetail: string;
+  if (invitation.currentIncentive === 'squad') {
+    incentiveHeadline = 'Full Squad pricing unlocked';
+    incentiveDetail = invitation.freeCoachCardConfirmed
+      ? `${invitation.completedCommitments} joined — the lowest price per card, plus a free coach card.`
+      : `${invitation.completedCommitments} joined — the lowest price per card.`;
+  } else if (invitation.currentIncentive === 'multi') {
+    const remaining = Math.max(1, SQUAD_MIN_DISPLAY - invitation.completedCommitments);
+    incentiveHeadline = `${invitation.completedCommitments} of ${SQUAD_MIN_DISPLAY} joined`;
+    incentiveDetail = `${remaining} more ${remaining === 1 ? 'join' : 'joins'} unlocks Full Squad pricing and a free coach card.`;
+  } else {
+    const remaining = Math.max(1, MULTI_MIN_DISPLAY - invitation.completedCommitments);
+    incentiveHeadline = invitation.completedCommitments === 0 ? 'Be the first to join' : `${invitation.completedCommitments} joined so far`;
+    incentiveDetail = `${remaining} more ${remaining === 1 ? 'join' : 'joins'} unlocks better pricing for the whole team.`;
+  }
+
   return (
     // pb-28: the persistent disposable-MVP notice is a fixed bottom bar
     // rendered by shared chrome (ConditionalChrome/DisposableSquadInviteNotice),
@@ -103,7 +130,7 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
 
         <header className="mt-4 rounded-2xl bg-[#f5f0e8] p-5">
           <h1 className="text-2xl font-bold sm:text-3xl">{invitation.teamName}</h1>
-          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+          <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div>
               <dt className="text-[#5b6b60]">Age group</dt>
               <dd className="font-semibold">{invitation.ageGroup}</dd>
@@ -112,16 +139,30 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
               <dt className="text-[#5b6b60]">Deadline</dt>
               <dd className="font-semibold">{deadlineText}</dd>
             </div>
-            <div>
-              <dt className="text-[#5b6b60]">Completed commitments</dt>
-              <dd className="font-semibold">{invitation.completedCommitments}</dd>
-            </div>
-            <div>
-              <dt className="text-[#5b6b60]">Current incentive</dt>
-              <dd className="font-semibold">{invitation.currentIncentive}</dd>
-            </div>
           </dl>
         </header>
+
+        {/* Squad Invite's pricing incentive, made the headline it deserves to
+         * be instead of a small dt/dd pair — completedCommitments and
+         * currentIncentive already drove the old text version, this just
+         * makes the same live data motivating and legible at a glance. */}
+        <div className="mt-4 rounded-2xl border border-[#c9c2b3] bg-[#f5f0e8] p-5">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-lg font-bold text-[#173f2a]">{incentiveHeadline}</p>
+            <span className="rounded-full bg-[#173f2a] px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
+              {invitation.currentIncentive === 'squad' ? 'Squad' : invitation.currentIncentive === 'multi' ? 'Multi' : 'Single'}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-[#5b6b60]">{incentiveDetail}</p>
+          <div className="relative mt-3 h-2.5 w-full overflow-hidden rounded-full bg-[#e4ded2]">
+            <div className="h-full rounded-full bg-[#36754a] transition-[width]" style={{ width: `${progressPct}%` }} />
+            <div className="absolute top-0 h-full w-px bg-[#173f2a]/40" style={{ left: `${multiMarkerPct}%` }} aria-hidden="true" />
+          </div>
+          <div className="mt-1 flex justify-between text-[11px] text-[#5b6b60]">
+            <span>0 joined</span>
+            <span>{SQUAD_MIN_DISPLAY} = Full Squad</span>
+          </div>
+        </div>
 
         <div className="mt-4 rounded-2xl border-2 border-[#173f2a] bg-[#eef6f0] p-4">
           <p className="font-bold text-[#173f2a]">Payment requests are not active during this test.</p>
