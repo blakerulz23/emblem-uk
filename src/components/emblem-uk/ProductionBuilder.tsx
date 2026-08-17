@@ -1007,6 +1007,10 @@ export default function ProductionBuilder() {
     patchOrder({ templateDefault: templateId });
     if (selectedPlayer) patchPlayer(selectedPlayer.id, { templateId });
   };
+  const styleRailRef = useRef<HTMLDivElement>(null);
+  const scrollStyleRail = (direction: -1 | 1) => {
+    styleRailRef.current?.scrollBy({ left: direction * 140, behavior: 'smooth' });
+  };
   const orderedTemplates = useMemo(() => {
     const collectionTemplates = templates.filter((template) =>
       order.collectionType === 'custom'
@@ -1332,23 +1336,35 @@ export default function ProductionBuilder() {
                   </span>
                   <em>{order.collectionType === 'custom' ? 'Custom collection style' : `Best match for ${playerClubName(order, selectedPlayer)}`}</em>
                 </div>
-                <div className="uk-style-carousel compact">
-                  {orderedTemplates.map((template) => (
-                    <button
-                      key={template.id}
-                      type="button"
-                      className={selectedTemplate(order, selectedPlayer).id === template.id ? 'active' : ''}
-                      onClick={() => chooseTemplate(template.id)}
-                    >
-                      <PlayerCard
-                        order={{ ...order, templateDefault: template.id }}
-                        player={selectedPlayer ? { ...selectedPlayer, templateId: template.id } : createPlayer({ templateId: template.id })}
-                        compact
-                      />
-                      <strong>{template.name}</strong>
-                      {order.collectionType === 'official' && template.id === preferredTemplateForClub(playerClubId(order, selectedPlayer)) && <small>Best match</small>}
-                    </button>
-                  ))}
+                <div className="uk-style-rail">
+                  <button type="button" className="uk-style-rail-btn prev" aria-label="Previous style" onClick={() => scrollStyleRail(-1)}>
+                    <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                      <path d="M15 5l-7 7 7 7" />
+                    </svg>
+                  </button>
+                  <div className="uk-style-carousel compact" ref={styleRailRef}>
+                    {orderedTemplates.map((template) => (
+                      <button
+                        key={template.id}
+                        type="button"
+                        className={selectedTemplate(order, selectedPlayer).id === template.id ? 'active' : ''}
+                        onClick={() => chooseTemplate(template.id)}
+                      >
+                        <PlayerCard
+                          order={{ ...order, templateDefault: template.id }}
+                          player={selectedPlayer ? { ...selectedPlayer, templateId: template.id } : createPlayer({ templateId: template.id })}
+                          compact
+                        />
+                        <strong>{template.name}</strong>
+                        {order.collectionType === 'official' && template.id === preferredTemplateForClub(playerClubId(order, selectedPlayer)) && <small>Best match</small>}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="uk-style-rail-btn next" aria-label="Next style" onClick={() => scrollStyleRail(1)}>
+                    <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                      <path d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
                 </div>
               </div>
               <div className="uk-edit-preview">

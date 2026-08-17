@@ -1473,7 +1473,7 @@ a { text-decoration: none; color: inherit; }
 .uk-style-carousel.compact {
   gap: 10px;
   margin: 0 -12px;
-  padding: 8px 12px 4px;
+  padding: 8px 34px 4px;
   scroll-snap-type: x proximity;
 }
 
@@ -1501,6 +1501,50 @@ a { text-decoration: none; color: inherit; }
 
 .uk-style-carousel.compact small {
   font-size: 11px;
+}
+
+.uk-style-rail {
+  position: relative;
+}
+
+.uk-style-rail-btn {
+  position: absolute;
+  top: 48%;
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  transform: translateY(-50%);
+  border: 1px solid var(--wizard-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--wizard-ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(16, 16, 21, 0.14);
+}
+
+.uk-style-rail-btn:hover {
+  border-color: var(--wizard-accent);
+  color: var(--wizard-accent);
+}
+
+.uk-style-rail-btn.prev {
+  left: -2px;
+}
+
+.uk-style-rail-btn.next {
+  right: -2px;
+}
+
+.uk-style-rail-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .uk-edit-preview {
