@@ -87,3 +87,45 @@ export function formatDeadline(value: string) {
   return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
     .format(new Date(Date.UTC(year, month - 1, day)));
 }
+
+/** Mirrors pricing-engine.ts's MULTI_MIN_PLAYERS/SQUAD_MIN_PLAYERS and the
+ * same two numbers hardcoded in resolve_squad_invite_link()
+ * (0051_squad_invite_reusable_links.sql). Kept as a local copy rather than
+ * an import — pricing-engine.ts is explicitly staged as "not yet imported
+ * by any production code path" pending its own separate approval, and this
+ * is a projection from the organiser's own estimate, not the same live
+ * tier the join page computes from real commitments. Keep in sync if
+ * either source ever changes. */
+export const PROJECTED_MULTI_MIN = 2;
+export const PROJECTED_SQUAD_MIN = 10;
+
+export type SquadIncentiveProjection = { tier: 'single' | 'multi' | 'squad'; headline: string; detail: string };
+
+/** A projection only — the organiser hasn't submitted anything yet, and no
+ * parent has joined, so this must never be worded as a promise. Returns
+ * null for an empty/invalid estimate so callers can skip rendering. */
+export function projectedSquadIncentive(expectedSquadSize: string): SquadIncentiveProjection | null {
+  const count = Number(expectedSquadSize);
+  if (!expectedSquadSize.trim() || !Number.isInteger(count) || count < 1) return null;
+  if (count >= PROJECTED_SQUAD_MIN) {
+    return {
+      tier: 'squad',
+      headline: 'Projected: Full Squad pricing',
+      detail: `An estimated ${count} players would qualify for the lowest price per card, plus a free coach card.`,
+    };
+  }
+  if (count >= PROJECTED_MULTI_MIN) {
+    const remaining = PROJECTED_SQUAD_MIN - count;
+    return {
+      tier: 'multi',
+      headline: 'Projected: Multi-player pricing',
+      detail: `${remaining} more ${remaining === 1 ? 'player' : 'players'} would unlock Full Squad pricing and a free coach card.`,
+    };
+  }
+  const remaining = PROJECTED_MULTI_MIN - count;
+  return {
+    tier: 'single',
+    headline: 'Projected: Single-player pricing',
+    detail: `${remaining} more ${remaining === 1 ? 'player' : 'players'} would unlock Multi-player pricing.`,
+  };
+}
