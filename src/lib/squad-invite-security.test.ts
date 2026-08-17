@@ -28,7 +28,11 @@ describe('Squad Invite security correction contract', () => {
     expect(exchange).toContain("path: '/'");
     expect(exchange.match(/httpOnly: true/g)).toHaveLength(1);
     expect(exchange).toContain('SQUAD_INVITE_CSRF_COOKIE, csrfToken, { httpOnly: false');
-    for (const path of ['src/app/api/squad-invite-links/participation/route.ts', 'src/app/api/squad-invite-participations/[id]/commit/route.ts']) {
+    for (const path of [
+      'src/app/api/squad-invite-links/participation/route.ts',
+      'src/app/api/squad-invite-participations/[id]/commit/route.ts',
+      'src/app/api/squad-invites/[id]/invitation-link/route.ts',
+    ]) {
       expect(read(path)).toContain('hasValidSquadInviteCsrf(request)');
     }
   });
@@ -50,6 +54,11 @@ describe('Squad Invite security correction contract', () => {
     const limiter = read('src/lib/squad-invite-rate-limit.ts');
     expect(limiter).toContain("'otp-request': { ip: 5, subject: 3 }");
     expect(limiter).toContain("'otp-verify': { ip: 10, subject: 5 }");
+    // Link replacement gets its own action name and the tightest budget of
+    // any bucket here — it immediately invalidates the previous credential,
+    // so it must never share a budget with, or be looser than, OTP traffic.
+    expect(limiter).toContain("'link-replace': { ip: 5, subject: 3 }");
+    expect(read('src/app/api/squad-invites/[id]/invitation-link/route.ts')).toContain("consumeSquadInviteRateLimit(headers(), 'link-replace', user.id)");
     expect(limiter).toContain("createHmac('sha256', secret)");
     expect(limiter).not.toContain('p_bucket_hash: identifier');
     expect(limiter).toContain("process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV");

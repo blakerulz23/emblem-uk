@@ -3,7 +3,7 @@ import { createServiceRoleClient } from './supabase/server';
 
 export async function consumeSquadInviteRateLimit(
   headersLike: { get(name: string): string | null },
-  action: 'resolve' | 'participate' | 'otp-request' | 'otp-verify' | 'concern-flag',
+  action: 'resolve' | 'participate' | 'otp-request' | 'otp-verify' | 'link-replace' | 'concern-flag',
   subject?: string,
 ): Promise<boolean> {
   const secret = process.env.SQUAD_INVITE_RATE_LIMIT_SECRET;
@@ -16,6 +16,9 @@ export async function consumeSquadInviteRateLimit(
   const limits = {
     resolve: { ip: 60, subject: 60 }, participate: { ip: 12, subject: 12 },
     'otp-request': { ip: 5, subject: 3 }, 'otp-verify': { ip: 10, subject: 5 },
+    // Replacing the link immediately kills the old one — deliberately the
+    // tightest budget of any action here, tighter than OTP request/verify.
+    'link-replace': { ip: 5, subject: 3 },
     // A safety-reporting action, not a growth/auth path — generous enough
     // that a genuinely concerned organiser is never blocked, tight enough
     // to stop the field being used to spam free text into the audit log.

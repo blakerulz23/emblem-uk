@@ -1,21 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { headers } from 'next/headers';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { createSquadInviteLinkToken } from '@/lib/squad-invite-link';
+import { hasValidSquadInviteCsrf } from '@/lib/squad-invite-request-security';
+import { consumeSquadInviteRateLimit } from '@/lib/squad-invite-rate-limit';
+import { effectiveCampaignStatus, mayCompleteExistingBuilder, type CampaignStatus } from '@/lib/squad-invite';
 
 async function authorisedCampaign(userId: string, campaignId: string) {
   const service = createServiceRoleClient();
   const [{ data: campaign }, { data: staff }] = await Promise.all([
-    service.from('squad_invites').select('id,organiser_profile_id,grace_ends_at').eq('id', campaignId).maybeSingle(),
+    service.from('squad_invites').select('id,organiser_profile_id,campaign_status,deadline_at,grace_ends_at').eq('id', campaignId).maybeSingle(),
     service.from('staff_accounts').select('profile_id').eq('profile_id', userId).maybeSingle(),
   ]);
   return campaign && (campaign.organiser_profile_id === userId || Boolean(staff)) ? campaign : null;
 }
 
+/**
+ * Eligibility reuses the exact same rule the parent-completion path already
+ * enforces (mayCompleteExistingBuilder(effectiveCampaignStatus(...)) —
+ * "active or within its 24h grace window") rather than inventing a second
+ * definition of "eligible." Derived here from the freshly-read campaign
+ * row, never trusted from the request body — the client sends no campaign
+ * state at all.
+ */
+function isEligibleForLinkReplacement(campaign: { campaign_status: CampaignStatus; deadline_at: string }): boolean {
+  return mayCompleteExistingBuilder(effectiveCampaignStatus(campaign.campaign_status, campaign.deadline_at));
+}
+
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  if (!hasValidSquadInviteCsrf(request)) return NextResponse.json({ error: 'Request unavailable' }, { status: 403 });
   const { data: { user } } = await createClient().auth.getUser();
   if (!user) return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
+  // Scoped to both the request IP (opaque bucket) and the authenticated
+  // actor (opaque bucket keyed on their profile id) — a distinct action
+  // name ('link-replace') from every other rate-limited action, so this
+  // never shares a budget with OTP or participation-start traffic.
+  if (!(await consumeSquadInviteRateLimit(headers(), 'link-replace', user.id))) {
+    return NextResponse.json({ error: 'Please wait before trying again' }, { status: 429 });
+  }
   const campaign = await authorisedCampaign(user.id, params.id);
   if (!campaign) return NextResponse.json({ error: 'Campaign unavailable' }, { status: 404 });
+  if (!isEligibleForLinkReplacement(campaign)) {
+    return NextResponse.json({ error: 'Campaign is not eligible for link replacement' }, { status: 409 });
+  }
   const body = await request.json().catch(() => ({})) as { participationLimit?: number };
   const limit = body.participationLimit;
   if (limit != null && (!Number.isInteger(limit) || limit < 1 || limit > 100)) {
