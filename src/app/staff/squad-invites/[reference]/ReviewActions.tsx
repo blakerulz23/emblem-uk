@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { SquadInviteStaffPermission } from '@/lib/squad-invite-mvp';
 import {
   SQUAD_INVITE_ACTION_LABEL,
@@ -34,6 +35,7 @@ export default function ReviewActions({
   staffEmail: string;
   staffPermissions: SquadInviteStaffPermission[];
 }) {
+  const router = useRouter();
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [message, setMessage] = useState('');
@@ -46,7 +48,12 @@ export default function ReviewActions({
     const body = action === 'cancel' ? { reason } : { action, organiserVisibleReason: reason, restrictedNote: note };
     const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (r.ok) {
-      setMessage('Action recorded. Refresh to view the new state.');
+      setMessage('Action recorded.');
+      // Re-fetches this Server Component's data (status, audit history,
+      // permission-gated button availability) in place — router.refresh()
+      // only re-runs the server data fetch, it doesn't remount this client
+      // component, so the reason/note fields and this message survive it.
+      router.refresh();
       return;
     }
     // The server's own error text is already safe, specific, user-facing
@@ -66,6 +73,7 @@ export default function ReviewActions({
     const r = await fetch(`/api/staff/squad-invites/${requestId}/notifications/${outboxId}/resend`, { method: 'POST' });
     if (r.ok) {
       setMessage('Disabled/test resend prepared. No email sent.');
+      router.refresh();
       return;
     }
     const responseBody = (await r.json().catch(() => null)) as { error?: string } | null;
