@@ -409,7 +409,7 @@ Risk acceptance must not be used to bypass mandatory legal obligations or ICO pr
 
 | Action | Owner | Due date | Evidence of completion |
 |---|---|---|---|
-| Assign controller/DPIA owner and specialist reviewer | UNKNOWN | Before pilot |  |
+| Assign controller/DPIA owner and specialist reviewer | Blake (interim, self-assigned — see independence note below) | 2026-08-17 | This entry |
 | Complete before-pilot actions in section 12 | UNKNOWN | Before pilot |  |
 | Conduct child/parent/coach/welfare consultation | UNKNOWN | Before final sign-off |  |
 | Verify supplier contracts/transfers | UNKNOWN | Before live processing |  |
@@ -421,12 +421,14 @@ Risk acceptance must not be used to bypass mandatory legal obligations or ICO pr
 
 **Required approval roles:** accountable controller executive; DPO/UK data-protection specialist; safeguarding lead; security lead; product owner; operations lead; relevant Club Welfare Officer(s).
 
+**Independence note (added 2026-08-17):** Blake has provisionally named himself to the DPO/UK data-protection specialist, safeguarding lead and security lead roles below, as an interim placeholder so these roles are no longer blank — not as a substitute for genuinely independent review. This DPIA itself explains why that independence matters (§7, §11, §13 item 1): the person accountable for the product deciding whether the product is safe is exactly the conflict of interest a DPO/safeguarding/security function exists to check. Section 12's required-before-pilot actions remain open regardless of who is named here, and the draft recommendation below is unchanged by this update — assigning an owner to a gap is not the same as closing it.
+
 | Role | Name | Decision | Date/signature |
 |---|---|---|---|
 | Controller accountable executive |  |  |  |
-| DPO / UK data-protection specialist |  |  |  |
-| Safeguarding lead |  |  |  |
-| Security lead |  |  |  |
+| DPO / UK data-protection specialist | Blake (interim, self-assigned) | Not yet decided — role filled, review not yet conducted | 2026-08-17 |
+| Safeguarding lead | Blake (interim, self-assigned) | Not yet decided — role filled, review not yet conducted | 2026-08-17 |
+| Security lead | Blake (interim, self-assigned) | Not yet decided — role filled, review not yet conducted | 2026-08-17 |
 | Product owner |  |  |  |
 | Operations lead |  |  |  |
 
