@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { hasValidSquadInviteCsrf } from '@/lib/squad-invite-request-security';
+import { dispatchSquadInviteNotification } from '@/lib/dispatch-squad-invite-notification';
 
 const ALLOWED=new Set(['submissionKey','organiserName','organiserRole','teamName','ageGroup','expectedSquadSize','deadlineAt','deliveryRecipientName','deliveryRecipientRole','ukDeliveryConfirmed','authorityAccepted','deliveryRecipientAccepted','independentParticipationAccepted','staffReviewAccepted','badgeReference','badgeAuthorityAccepted']);
 
@@ -18,7 +19,12 @@ export async function POST(request:NextRequest){
   const canonical=JSON.stringify(Object.fromEntries(Object.entries(body).filter(([k])=>k!=='submissionKey').sort(([a],[b])=>a.localeCompare(b))));
   const fingerprint=createHash('sha256').update(canonical).digest('hex');
   const payload={...body}; delete payload.submissionKey;
-  const {data,error}=await createServiceRoleClient().rpc('submit_squad_invite_request',{p_profile_id:user.id,p_email:user.email,p_submission_key:body.submissionKey,p_fingerprint:fingerprint,p_payload:payload});
+  const service=createServiceRoleClient();
+  const {data,error}=await service.rpc('submit_squad_invite_request',{p_profile_id:user.id,p_email:user.email,p_submission_key:body.submissionKey,p_fingerprint:fingerprint,p_payload:payload});
   if(error||!data) return NextResponse.json({error:'Squad Invite request could not be submitted'},{status:409});
-  return NextResponse.json(data,{status:(data as {created?:boolean}).created?201:200,headers:{'Cache-Control':'no-store'}});
+  const result=data as {created?:boolean;requestId?:string;publicReference?:string};
+  if(result.created&&result.requestId&&result.publicReference){
+    await dispatchSquadInviteNotification(service,{requestId:result.requestId,eventKey:'request_received:v1',template:'request_received',teamName:String(body.teamName??''),publicReference:result.publicReference,toEmail:user.email});
+  }
+  return NextResponse.json(data,{status:result.created?201:200,headers:{'Cache-Control':'no-store'}});
 }

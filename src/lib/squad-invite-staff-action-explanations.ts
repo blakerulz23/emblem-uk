@@ -22,7 +22,7 @@ export const SQUAD_INVITE_ACTION_LABEL: Record<SquadInviteReviewAction, string> 
   reject: 'Reject',
   approve: 'Approve',
   cancel: 'Cancel approval',
-  resend: 'Prepare disabled/test resend',
+  resend: 'Resend notification email',
 };
 
 const PERMISSION_LABEL: Record<SquadInviteStaffPermission, string> = {

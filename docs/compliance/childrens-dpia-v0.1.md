@@ -27,6 +27,14 @@
 
 **REQUIRES SPECIALIST REVIEW:** delivery-address retention and field-level encryption. The repository contains no established field-level encryption convention for this data; the current design relies on server-only access, ownership checks, RLS denial and data minimisation.
 
+## Controlled-pilot Squad Invite implementation note — 17 August 2026
+
+**Status: implementation evidence only; DPIA remains unapproved. Supersedes the 14 August note's outbox line above.**
+
+- **VERIFIED IN LOCAL SOURCE:** the four organiser-facing lifecycle notifications (request received, changes requested, approved, rejected) now send a real email via Resend — the same integration already disclosed as a supplier elsewhere in this document (see the supplier list and the data table's "Invite codes" row). This is activation of an already-disclosed processor for a new event category, not a new third party.
+- **VERIFIED IN LOCAL SOURCE:** these emails carry only the organiser's own email, the team display name, and a link back to the organiser's own authenticated manage page — never a child's name, photo, delivery address, internal ID or the parent-facing invitation link itself. The approval email in particular never contains that link, since it doesn't exist yet at the point staff approve (it's generated later, once the organiser separately completes delivery setup) — see `send-squad-invite-notification-email.ts`'s header comment.
+- **VERIFIED OPERATIONAL LIMIT FOR THIS TASK:** no `RESEND_API_KEY` is configured on the disposable pilot's Vercel project (checked: Preview environment has neither `RESEND_API_KEY` nor `RESEND_FROM_EMAIL`). The send function is designed to no-op safely when the key is absent (returns `{ok:false}`, never throws), so this has not been exercised as a live send in any environment reachable from this task — only the code path, typechecking and unit assertions are verified. It activates automatically wherever `RESEND_API_KEY` is already configured (e.g. the main `emblem-uk` Vercel project's Production environment, per the existing guardian-invite email feature).
+
 ## Evidence labels and risk method
 
 - **VERIFIED** — directly supported by repository evidence cited in this document.

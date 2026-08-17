@@ -72,7 +72,7 @@ export default function ReviewActions({
     if (!outboxId) return;
     const r = await fetch(`/api/staff/squad-invites/${requestId}/notifications/${outboxId}/resend`, { method: 'POST' });
     if (r.ok) {
-      setMessage('Disabled/test resend prepared. No email sent.');
+      setMessage('Resend sent to the organiser.');
       router.refresh();
       return;
     }

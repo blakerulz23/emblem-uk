@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireSquadInvitePermission } from '@/lib/require-squad-invite-permission';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
+import { dispatchSquadInviteNotification } from '@/lib/dispatch-squad-invite-notification';
 
 export async function POST(request:NextRequest,{params}:{params:{id:string}}){
   if(!isSquadInviteMvpEnabled()) return NextResponse.json({error:'Not found'},{status:404});
@@ -16,5 +17,10 @@ export async function POST(request:NextRequest,{params}:{params:{id:string}}){
   const service=createServiceRoleClient();
   const {data,error}=await service.rpc('review_squad_invite_request',{p_request_id:params.id,p_staff_profile_id:staff.userId,p_action:action,p_visible_reason:reason||null,p_restricted_note:body?.restrictedNote?.trim()||null});
   if(error||!data) return NextResponse.json({error:'Review transition unavailable'},{status:409});
+  const result=data as {status?:string};
+  if(result.status==='changes_requested'||result.status==='rejected'){
+    const {data:r}=await service.from('squad_invite_requests').select('club_team_name,public_reference,organiser_email').eq('id',params.id).maybeSingle();
+    if(r) await dispatchSquadInviteNotification(service,{requestId:params.id,eventKey:`${result.status}:v1`,template:result.status,teamName:r.club_team_name,publicReference:r.public_reference,toEmail:r.organiser_email,reason});
+  }
   return NextResponse.json({ok:true,result:data});
 }
