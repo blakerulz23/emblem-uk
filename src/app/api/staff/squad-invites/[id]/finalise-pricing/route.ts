@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
-import { requireStaff } from '@/lib/require-staff';
+import { requireSquadInvitePermission } from '@/lib/require-squad-invite-permission';
+import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { buildSquadInvitePaymentUrl } from '@/lib/squad-invite-payment-link';
 import { sendSquadInvitePaymentRequestEmail } from '@/lib/send-squad-invite-payment-request-email';
 
@@ -21,9 +22,15 @@ import { sendSquadInvitePaymentRequestEmail } from '@/lib/send-squad-invite-paym
  * payment request was already issued (its 72h window has genuinely
  * started) is a known, not-yet-solved gap — there is no reconciliation
  * view yet to surface it to staff. See the payment-flow scoping notes.
+ *
+ * Requires Approver specifically, not just generic staff — this route
+ * genuinely issues real payment requests once the wall is on, the same
+ * financial weight as /api/orders/[id]/approve and the campaign-request
+ * approve/cancel-approval routes, all of which already require Approver.
  */
 export async function POST(_request: NextRequest, { params }: { params: { id: string } }) {
-  const staff = await requireStaff(createClient());
+  if (!isSquadInviteMvpEnabled()) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const staff = await requireSquadInvitePermission(createClient(), 'squad_invite_approver');
   if (!staff.ok) return NextResponse.json({ error: staff.error }, { status: staff.status });
   const service = createServiceRoleClient();
 
