@@ -35,6 +35,22 @@
 - **VERIFIED IN LOCAL SOURCE:** these emails carry only the organiser's own email, the team display name, and a link back to the organiser's own authenticated manage page — never a child's name, photo, delivery address, internal ID or the parent-facing invitation link itself. The approval email in particular never contains that link, since it doesn't exist yet at the point staff approve (it's generated later, once the organiser separately completes delivery setup) — see `send-squad-invite-notification-email.ts`'s header comment.
 - **VERIFIED OPERATIONAL LIMIT FOR THIS TASK:** no `RESEND_API_KEY` is configured on the disposable pilot's Vercel project (checked: Preview environment has neither `RESEND_API_KEY` nor `RESEND_FROM_EMAIL`). The send function is designed to no-op safely when the key is absent (returns `{ok:false}`, never throws), so this has not been exercised as a live send in any environment reachable from this task — only the code path, typechecking and unit assertions are verified. It activates automatically wherever `RESEND_API_KEY` is already configured (e.g. the main `emblem-uk` Vercel project's Production environment, per the existing guardian-invite email feature).
 
+## Approval note — 18 August 2026
+
+**Status: approved for the controlled pilot by Blake, 18 August 2026.** This
+supersedes the "DPIA remains unapproved" status in the 14 and 17 August
+notes above. Recorded here as told to the engineering agent working this
+session, at Blake's direction, immediately before production deployment of
+the Squad Invite feature — this document does not itself independently
+verify that safeguarding/security/DPO specialist review took place; it
+records that Blake, as assessment owner and the project's final business
+sign-off authority (see "Assessment owner" and "Who's who" in this
+project's own handoff notes), confirmed approval to proceed. The risk
+register below and its **REQUIRES SPECIALIST REVIEW** markers remain the
+accurate, current record of residual risk and open mitigation work — this
+note records authorization to launch the controlled pilot with that risk
+accepted, not that every marker has since been resolved.
+
 ## Evidence labels and risk method
 
 - **VERIFIED** — directly supported by repository evidence cited in this document.

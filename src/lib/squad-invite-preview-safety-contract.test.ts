@@ -27,8 +27,14 @@ describe('disposable Squad Invite preview integration contract', () => {
     expect(read('src/middleware.ts')).not.toContain('DisposableSquadInviteNotice');
   });
 
-  it('keeps production hard-disabled and introduces no authentication bypass', () => {
-    expect(read('src/lib/squad-invite-mvp.ts')).toContain("process.env.VERCEL_ENV === 'production'");
+  it('gates production behind the single env-var switch and introduces no authentication bypass', () => {
+    // Production is no longer unconditionally hard-disabled in code (that
+    // held while the DPIA was an unapproved draft — see the DPIA's
+    // 18 August approval note). It's now the same single
+    // SQUAD_INVITE_MVP_ENABLED switch as every other environment, so
+    // enabling/disabling it again never needs another code change.
+    expect(read('src/lib/squad-invite-mvp.ts')).toContain("return process.env.SQUAD_INVITE_MVP_ENABLED === 'true';");
+    expect(read('src/lib/squad-invite-mvp.ts')).not.toContain("process.env.VERCEL_ENV === 'production'");
     const changed = [
       read('src/lib/squad-invite-preview-safety.ts'),
       read('src/components/DisposableSquadInviteNotice.tsx'),
