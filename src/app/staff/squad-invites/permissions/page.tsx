@@ -6,6 +6,7 @@ import { listSquadInviteStaffPermissions } from '@/lib/squad-invite-staff-identi
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import StaffIdentityPanel from '../StaffIdentityPanel';
 import PermissionToggle from './PermissionToggle';
+import AddStaffForm from './AddStaffForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,6 +70,7 @@ export default async function SquadInvitePermissionsAdmin() {
     <p className="mt-4 text-sm font-bold uppercase tracking-widest text-orange-600">Staff permissions</p>
     <h1 className="mt-1 text-3xl font-bold">Manage Squad Invite access</h1>
     <StaffIdentityPanel email={staffEmail} permissions={staffPermissions} />
+    <AddStaffForm />
     <p className="mt-6 text-sm text-neutral-600">Any Approver can grant or revoke either permission for any staff account. Revoking the last remaining Approver is blocked — there must always be at least one.</p>
     <div className="mt-4 grid gap-3">
       {rows.map((r) => (
