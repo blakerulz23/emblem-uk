@@ -26,6 +26,7 @@ import BuildProfileButton from './BuildProfileButton';
 import RejectCardButton from './RejectCardButton';
 import DeleteCardButton from './DeleteCardButton';
 import CopyLinkButton from './CopyLinkButton';
+import SendClaimReminderButton from './SendClaimReminderButton';
 import SectionSearchControls from './SectionSearchControls';
 import SectionSearchEmptyState from './SectionSearchEmptyState';
 
@@ -315,7 +316,7 @@ async function getProductionQueueCards(setupQ: string, setupSort: QueueSort) {
   const { data: cardRows } = await supabase
     .from('cards')
     .select(
-      `id, order_id, claim_token, production_status, production_submitted_at, created_at, player_id,
+      `id, order_id, claim_token, status, production_status, production_submitted_at, created_at, player_id, claim_reminder_sent_at,
        players ( name, public_player_id, public_id_enabled, teams ( clubs ( name ) ) ),
        card_definitions ( team )`
     )
@@ -330,10 +331,12 @@ async function getProductionQueueCards(setupQ: string, setupSort: QueueSort) {
     id: string;
     order_id: string;
     claim_token: string;
+    status: string;
     production_status: string;
     production_submitted_at: string | null;
     created_at: string;
     player_id: string;
+    claim_reminder_sent_at: string | null;
     players: { name: string; public_player_id: string | null; public_id_enabled: boolean; teams: { clubs: { name: string } | null } | null } | null;
     card_definitions: { team: string } | null;
   };
@@ -386,6 +389,8 @@ async function getProductionQueueCards(setupQ: string, setupSort: QueueSort) {
         // card ships in the organiser's consolidated batch, not to an
         // individual customer, before they program it.
         isSquadInvite: order?.source === 'squad_invite',
+        status: c.status,
+        claimReminderSentAt: c.claim_reminder_sent_at,
       };
     })
   );
@@ -882,6 +887,7 @@ export default async function StaffQueuePage({
                 </a>
                 <CopyLinkButton url={nfcUrl} label="Copy NFC" />
                 <BuildProfileButton cardId={c.id} />
+                {c.isSquadInvite && c.status !== 'claimed' && <SendClaimReminderButton cardId={c.id} alreadySentAt={c.claimReminderSentAt} />}
               </div>
             </div>
           );
@@ -1009,6 +1015,7 @@ export default async function StaffQueuePage({
                   Open NFC Link
                 </a>
                 <CopyLinkButton url={nfcUrl} label="Copy NFC" />
+                {c.isSquadInvite && c.status !== 'claimed' && <SendClaimReminderButton cardId={c.id} alreadySentAt={c.claimReminderSentAt} />}
                 <RejectCardButton cardId={c.id} playerName={c.playerName} />
                 <DeleteCardButton cardId={c.id} playerName={c.playerName} />
               </div>
