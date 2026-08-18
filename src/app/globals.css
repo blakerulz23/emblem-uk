@@ -4330,16 +4330,8 @@ a { text-decoration: none; color: inherit; }
   text-align: center;
 }
 
-/* Eyebrow/heading/paragraph/CTA left-aligned, overriding .emh-hero's own
-   centered column (align-items/text-align: center — still correct for the
-   product image and process/proof footer below, which stay centered). */
-.emh-hero-copy {
-  align-self: flex-start;
-  text-align: left;
-}
-
 .emh-hero-copy h1 {
-  margin: 0 0 14px;
+  margin: 0 auto 14px;
   max-width: 620px;
   color: #16130f;
   font-family: var(--font-sora), system-ui, sans-serif;
@@ -4366,7 +4358,7 @@ a { text-decoration: none; color: inherit; }
    side padding, matching the reference design); held to a comfortable
    reading measure once the hero has room to spare. */
 .emh-hero-lede {
-  margin: 0 0 22px;
+  margin: 0 auto 22px;
   max-width: 480px;
   color: #5a5248;
   font-size: clamp(15px, 1.6vw, 17px);
@@ -4933,7 +4925,7 @@ a { text-decoration: none; color: inherit; }
    .emh-actions / .emh-hero .emh-actions .emh-btn) so this genuinely
    overrides them instead of silently losing the cascade. */
 .emh-hero .emh-hero-actions-single {
-  justify-content: flex-start;
+  justify-content: center;
   width: 100%;
 }
 
