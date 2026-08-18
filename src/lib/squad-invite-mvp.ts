@@ -2,8 +2,13 @@ export const SQUAD_INVITE_REQUEST_STATUSES = ['draft','ready_to_submit','submitt
 export const SQUAD_INVITE_CAMPAIGN_STATUSES = ['inactive','approved_setup_required','active','paused','closed','cancelled','expired'] as const;
 export type SquadInviteStaffPermission = 'squad_invite_reviewer' | 'squad_invite_approver';
 
+// Production previously always returned false here regardless of the env
+// var, as a hard code-level kill switch while the DPIA was still an
+// unapproved draft. The DPIA is now approved (Blake, 2026-08-18) — the
+// flag is a real, single environment-variable-controlled switch in every
+// environment now, same as preview/development, so it stays reversible
+// via Vercel env config alone rather than requiring another code change.
 export function isSquadInviteMvpEnabled() {
-  if (process.env.VERCEL_ENV === 'production') return false;
   return process.env.SQUAD_INVITE_MVP_ENABLED === 'true';
 }
 
