@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import type { SquadInviteStaffPermission } from '@/lib/squad-invite-mvp';
 
 const PERMISSION_BADGES: { key: SquadInviteStaffPermission; label: string }[] = [
@@ -33,6 +34,11 @@ export default function StaffIdentityPanel({ email, permissions }: { email: stri
           <span className="rounded-full border border-red-600 bg-red-50 px-3 py-1 text-xs font-bold text-red-800">No Squad Invite permission</span>
         )}
       </p>
+      {permissions.includes('squad_invite_approver') && (
+        <p className="mt-3">
+          <Link href="/staff/squad-invites/permissions" className="text-xs font-bold text-orange-600 hover:text-orange-700">Manage permissions</Link>
+        </p>
+      )}
     </section>
   );
 }

@@ -7,6 +7,7 @@ const read = (path: string) => readFileSync(path, 'utf8');
 const PANEL = 'src/app/staff/squad-invites/StaffIdentityPanel.tsx';
 const QUEUE_PAGE = 'src/app/staff/squad-invites/page.tsx';
 const DETAIL_PAGE = 'src/app/staff/squad-invites/[reference]/page.tsx';
+const PERMISSIONS_PAGE = 'src/app/staff/squad-invites/permissions/page.tsx';
 const REVIEW_ACTIONS = 'src/app/staff/squad-invites/[reference]/ReviewActions.tsx';
 const HARNESS = 'src/app/dev/squad-invite-preview/staff-review-harness/StaffReviewHarness.tsx';
 const EXPLANATIONS_LIB = 'src/lib/squad-invite-staff-action-explanations.ts';
@@ -15,7 +16,7 @@ const IDENTITY_LIB = 'src/lib/squad-invite-staff-identity.ts';
 // Every file allowed to reference the staff-only identity panel — anything
 // outside this set that imports it would mean a public, organiser or
 // parent surface picked up staff email display, which must never happen.
-const ALLOWED_IDENTITY_PANEL_FILES = new Set([PANEL, QUEUE_PAGE, DETAIL_PAGE, HARNESS]);
+const ALLOWED_IDENTITY_PANEL_FILES = new Set([PANEL, QUEUE_PAGE, DETAIL_PAGE, PERMISSIONS_PAGE, HARNESS]);
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -70,8 +71,12 @@ describe('Staff identity panel — shown only on authenticated Squad Invite staf
 
   it('the identity panel is never imported outside the staff pages, the panel itself, or the database-free staff harness', () => {
     const THIS_TEST_FILE = 'src/app/staff/squad-invites/staff-identity-panel-contract.test.ts';
+    // Other *.test.ts files are allowed to reference the panel by name in
+    // their own assertions (e.g. permissions-admin-contract.test.ts
+    // checking StaffIdentityPanel is rendered on the new permissions page)
+    // without that counting as a new import site.
     const offenders = walk('src/app').filter((file) => {
-      if (ALLOWED_IDENTITY_PANEL_FILES.has(file) || file === THIS_TEST_FILE) return false;
+      if (ALLOWED_IDENTITY_PANEL_FILES.has(file) || file === THIS_TEST_FILE || file.endsWith('.test.ts')) return false;
       return read(file).includes('StaffIdentityPanel');
     });
     expect(offenders).toEqual([]);
