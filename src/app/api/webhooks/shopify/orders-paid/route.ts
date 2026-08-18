@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   const supabase = createServiceRoleClient();
   const { data: existing, error: lookupError } = await supabase
     .from('orders')
-    .select('id, payment_status')
+    .select('id, payment_status, source')
     .eq('order_ref', orderRef)
     .maybeSingle();
 
@@ -96,6 +96,21 @@ export async function POST(req: NextRequest) {
 
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  // 5b) Squad Invite bookkeeping — links this real payment to its
+  //     participation and recomputes free-coach-card eligibility
+  //     (mark_squad_invite_participation_paid, migration 0059). A no-op for
+  //     every other order (the function itself checks order_id against
+  //     squad_invite_participations and returns harmlessly if there's no
+  //     match), so this is safe to call unconditionally rather than gating
+  //     on `source` first. Never lets a failure here affect the response —
+  //     the payment itself already succeeded above; this is bookkeeping on
+  //     top of it, and failing the webhook would just cause Shopify to
+  //     retry a payment event that has nothing left to apply.
+  if (existing.source === 'squad_invite') {
+    const { error: coachCardError } = await supabase.rpc('mark_squad_invite_participation_paid', { p_order_id: existing.id });
+    if (coachCardError) console.warn('shopify webhook: mark_squad_invite_participation_paid failed', { orderId: existing.id });
   }
 
   // 6) TODO(Phase 4 outbox): emit order.paid event here once the outbox

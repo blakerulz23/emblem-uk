@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
+import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
 import {
@@ -20,11 +21,13 @@ import {
 } from '@/lib/staff-queue-search';
 import ApproveOrderButton from './ApproveOrderButton';
 import ApproveTeamOrderButton from './ApproveTeamOrderButton';
+import RejectPhotoButton from './RejectPhotoButton';
 import ResendInviteButton from './ResendInviteButton';
 import BuildProfileButton from './BuildProfileButton';
 import RejectCardButton from './RejectCardButton';
 import DeleteCardButton from './DeleteCardButton';
 import CopyLinkButton from './CopyLinkButton';
+import SendClaimReminderButton from './SendClaimReminderButton';
 import SectionSearchControls from './SectionSearchControls';
 import SectionSearchEmptyState from './SectionSearchEmptyState';
 
@@ -94,6 +97,33 @@ async function getPlayerNamesByOrder(supabase: ReturnType<typeof createServiceRo
   return map;
 }
 
+/** A signed preview of each order's card design — the same durable S3
+ * reference card-definition.tsx already documents (photo.storageKey,
+ * never a URL). Exists specifically so staff can see what a Squad Invite
+ * order actually looks like before approving it: that flow never renders
+ * a print PDF (the only preview Section 1 otherwise offers), so without
+ * this, staff would be approving those orders blind. Applies to any order
+ * with a card_definitions row, not only Squad Invite ones, since the same
+ * gap exists for any pending order whose print file hasn't rendered yet. */
+async function getDesignPreviewsByOrder(supabase: ReturnType<typeof createServiceRoleClient>, orderIds: string[]) {
+  const map = new Map<string, { name: string; number: string | null; team: string | null; position: string | null; photoUrl: string | null; photoStatus: string }>();
+  if (orderIds.length === 0) return map;
+  const { data } = await supabase
+    .from('card_definitions')
+    .select('order_id, name, number, team, position, photo, status')
+    .in('order_id', orderIds);
+  type PhotoRef = { storageKey?: string } | null;
+  for (const row of (data ?? []) as { order_id: string | null; name: string; number: string | null; team: string | null; position: string | null; photo: PhotoRef; status: string }[]) {
+    if (!row.order_id || map.has(row.order_id)) continue; // one preview per order — first match only
+    const storageKey = row.photo?.storageKey;
+    // One bad/missing S3 object must never take down the whole queue page
+    // for every other pending order — falls back to no photo, not an error.
+    const photoUrl = storageKey ? await getSignedDownloadUrl(storageKey, 3600).catch(() => null) : null;
+    map.set(row.order_id, { name: row.name, number: row.number, team: row.team, position: row.position, photoUrl, photoStatus: row.status });
+  }
+  return map;
+}
+
 /** The alphabetically-first linked player name — the deterministic
  * "representative name" an order sorts by under Player name A–Z/Z–A, since
  * a squad order can have several players and sorting needs exactly one
@@ -116,7 +146,7 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
   const supabase = createServiceRoleClient();
   let { data } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, payment_status, created_at, print_files, club_name, team_name')
+    .select('id, order_ref, purchaser_email, payment_status, created_at, print_files, club_name, team_name, source')
     .in('payment_status', ['order_intent', 'pending_payment', 'paid']);
 
   // Until migrations 0007 (print_files) / 0009 (club_name/team_name) run,
@@ -126,7 +156,7 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
   if (!data) {
     const fallback = await supabase
       .from('orders')
-      .select('id, order_ref, purchaser_email, payment_status, created_at')
+      .select('id, order_ref, purchaser_email, payment_status, created_at, source')
       .in('payment_status', ['order_intent', 'pending_payment', 'paid']);
     data = (fallback.data ?? []).map((o) => ({ ...o, print_files: null, club_name: null, team_name: null }));
   }
@@ -134,6 +164,7 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
   const orderIds = (data ?? []).map((o) => o.id);
   const cardCounts = await getCardCountsByOrder(supabase, orderIds);
   const playerNamesByOrder = await getPlayerNamesByOrder(supabase, orderIds);
+  const designPreviewsByOrder = await getDesignPreviewsByOrder(supabase, orderIds);
 
   // Presigned URLs expire (SigV4 max 7 days) — re-sign from the stored S3
   // keys on every page load so the download links always work.
@@ -153,6 +184,7 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
         printFiles,
         cardCount: cardCounts.get(order.id) ?? 0,
         playerNames: playerNamesByOrder.get(order.id) ?? [],
+        designPreview: designPreviewsByOrder.get(order.id) ?? null,
       };
     })
   );
@@ -193,7 +225,7 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
 
   const { data: orders } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name')
+    .select('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name, source')
     .eq('payment_status', 'fulfilled')
     .order('approved_at', { ascending: false })
     // Not-searching keeps today's existing raw-fetch size (bounded, cheap);
@@ -277,7 +309,7 @@ async function getProductionQueueCards(setupQ: string, setupSort: QueueSort) {
 
   const { data: fulfilledOrders } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, print_files')
+    .select('id, order_ref, purchaser_email, print_files, source')
     .eq('payment_status', 'fulfilled');
   if (!fulfilledOrders?.length) return empty;
   const orderById = new Map(fulfilledOrders.map((o) => [o.id, o]));
@@ -285,7 +317,7 @@ async function getProductionQueueCards(setupQ: string, setupSort: QueueSort) {
   const { data: cardRows } = await supabase
     .from('cards')
     .select(
-      `id, order_id, claim_token, production_status, production_submitted_at, created_at, player_id,
+      `id, order_id, claim_token, status, production_status, production_submitted_at, created_at, player_id, claim_reminder_sent_at,
        players ( name, public_player_id, public_id_enabled, teams ( clubs ( name ) ) ),
        card_definitions ( team )`
     )
@@ -300,10 +332,12 @@ async function getProductionQueueCards(setupQ: string, setupSort: QueueSort) {
     id: string;
     order_id: string;
     claim_token: string;
+    status: string;
     production_status: string;
     production_submitted_at: string | null;
     created_at: string;
     player_id: string;
+    claim_reminder_sent_at: string | null;
     players: { name: string; public_player_id: string | null; public_id_enabled: boolean; teams: { clubs: { name: string } | null } | null } | null;
     card_definitions: { team: string } | null;
   };
@@ -351,6 +385,13 @@ async function getProductionQueueCards(setupQ: string, setupSort: QueueSort) {
         printUrl,
         publicPlayerId: c.players?.public_player_id ?? null,
         publicIdEnabled: c.players?.public_id_enabled ?? false,
+        // Same orders.source ground truth Section 1/2 already badge —
+        // whoever's about to write a physical NFC chip needs to know this
+        // card ships in the organiser's consolidated batch, not to an
+        // individual customer, before they program it.
+        isSquadInvite: order?.source === 'squad_invite',
+        status: c.status,
+        claimReminderSentAt: c.claim_reminder_sent_at,
       };
     })
   );
@@ -392,6 +433,7 @@ export default async function StaffQueuePage({
   searchParams: Record<string, string | string[] | undefined>;
 }) {
   const supabase = createClient();
+  const squadInviteEnabled = isSquadInviteMvpEnabled();
   const staffCheck = await requireStaff(supabase);
   if (!staffCheck.ok) {
     redirect('/staff/login?next=/staff/queue');
@@ -457,6 +499,7 @@ export default async function StaffQueuePage({
       </p>
 
       <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+        {squadInviteEnabled && <Link href="/staff/squad-invites" style={{ padding:'9px 14px',borderRadius:10,background:'var(--accent-tint)',color:'var(--accent)',fontWeight:700 }}>Squad Invites</Link>}
         <Link
           href="/staff/deletion-requests"
           style={{
@@ -516,13 +559,64 @@ export default async function StaffQueuePage({
               background: '#fff', boxShadow: 'inset 0 0 0 1px var(--line)',
             }}
           >
+            {order.designPreview?.photoUrl && (
+              // Section 1's only other preview is the print PDF, which a
+              // Squad Invite commitment never generates — without this,
+              // staff would be clicking Approve with no way to see what
+              // they're actually approving. Links to the same signed URL
+              // full-size; the thumbnail is just a quick first look.
+              <a href={order.designPreview.photoUrl} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- signed, short-lived S3 URL; next/image can't optimize a URL that expires */}
+                <img
+                  src={order.designPreview.photoUrl}
+                  alt={`Photo submitted for ${order.designPreview.name}`}
+                  style={{ width: 56, height: 56, borderRadius: 12, objectFit: 'cover', boxShadow: 'inset 0 0 0 1px var(--line)' }}
+                />
+              </a>
+            )}
             <div style={{ flex: 1 }}>
               <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>
                 {order.order_ref} <span style={{ color: 'var(--ink-faint)', fontWeight: 500 }}>· {order.cardCount === 1 ? 'Single card' : order.cardCount === 0 ? 'No player yet' : `Team order (${order.cardCount} players)`}</span>
               </div>
+              {order.source === 'squad_invite' && (
+                <span
+                  style={{
+                    display: 'inline-block', marginTop: 6,
+                    fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 700,
+                    letterSpacing: '0.04em', textTransform: 'uppercase',
+                    color: '#92400e', background: '#fffbeb',
+                    padding: '3px 10px', borderRadius: 999,
+                    boxShadow: 'inset 0 0 0 1px #fde68a',
+                  }}
+                >
+                  Squad Invite · payment disabled
+                </span>
+              )}
               <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
                 {order.purchaser_email} · {order.payment_status}
               </div>
+              {order.designPreview && (
+                <div style={{ marginTop: 4, fontFamily: 'var(--font-manrope), system-ui', fontSize: 13, color: 'var(--ink-soft)' }}>
+                  On the card: {order.designPreview.name}
+                  {order.designPreview.number ? ` · #${order.designPreview.number}` : ''}
+                  {order.designPreview.position ? ` · ${order.designPreview.position}` : ''}
+                  {order.designPreview.team ? ` · ${order.designPreview.team}` : ''}
+                </div>
+              )}
+              {order.designPreview?.photoStatus === 'rejected' && (
+                <span
+                  style={{
+                    display: 'inline-block', marginTop: 6,
+                    fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 700,
+                    letterSpacing: '0.04em', textTransform: 'uppercase',
+                    color: '#c2410c', background: '#fff7ed',
+                    padding: '3px 10px', borderRadius: 999,
+                    boxShadow: 'inset 0 0 0 1px #fed7aa',
+                  }}
+                >
+                  Photo rejected — contact guardian
+                </span>
+              )}
               <div style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {order.printFiles.length > 0 ? (
                   order.printFiles.map((f, i) => (
@@ -555,15 +649,20 @@ export default async function StaffQueuePage({
                 )}
               </div>
             </div>
-            {order.cardCount > 1 ? (
-              <ApproveTeamOrderButton
-                orderId={order.id}
-                purchaserEmail={order.purchaser_email}
-                clubNameHint={order.club_name}
-                teamNameHint={order.team_name}
-              />
-            ) : (
-              <ApproveOrderButton orderId={order.id} />
+            {order.designPreview?.photoStatus !== 'rejected' && (
+              order.cardCount > 1 ? (
+                <ApproveTeamOrderButton
+                  orderId={order.id}
+                  purchaserEmail={order.purchaser_email}
+                  clubNameHint={order.club_name}
+                  teamNameHint={order.team_name}
+                />
+              ) : (
+                <ApproveOrderButton orderId={order.id} squadInvite={order.source === 'squad_invite'} />
+              )
+            )}
+            {order.source === 'squad_invite' && order.designPreview?.photoStatus !== 'rejected' && (
+              <RejectPhotoButton orderId={order.id} />
             )}
           </div>
         ))}
@@ -621,6 +720,20 @@ export default async function StaffQueuePage({
                 <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 16, color: 'var(--ink)' }}>
                   {order.order_ref}
                 </div>
+                {order.source === 'squad_invite' && (
+                  <span
+                    style={{
+                      display: 'inline-block', marginTop: 6,
+                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 700,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      color: '#92400e', background: '#fffbeb',
+                      padding: '3px 10px', borderRadius: 999,
+                      boxShadow: 'inset 0 0 0 1px #fde68a',
+                    }}
+                  >
+                    Squad Invite · payment disabled
+                  </span>
+                )}
                 <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
                   {recipient}
                 </div>
@@ -638,7 +751,7 @@ export default async function StaffQueuePage({
                   </span>
                 )}
               </div>
-              <ResendInviteButton orderId={order.id} />
+              {order.source !== 'squad_invite' && <ResendInviteButton orderId={order.id} />}
             </div>
           );
         })}
@@ -745,6 +858,20 @@ export default async function StaffQueuePage({
                 <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
                   {c.purchaserEmail} · order {c.shortOrderRef} · card {c.shortCardRef} · {c.claimToken}
                 </div>
+                {c.isSquadInvite && (
+                  <span
+                    style={{
+                      display: 'inline-block', marginTop: 6,
+                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 700,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      color: '#92400e', background: '#fffbeb',
+                      padding: '3px 10px', borderRadius: 999,
+                      boxShadow: 'inset 0 0 0 1px #fde68a',
+                    }}
+                  >
+                    Squad Invite · payment disabled
+                  </span>
+                )}
                 {!c.hasArtwork && (
                   <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 11.5, color: 'var(--ink-faint)' }}>
                     No card artwork on file
@@ -780,6 +907,7 @@ export default async function StaffQueuePage({
                 </a>
                 <CopyLinkButton url={nfcUrl} label="Copy NFC" />
                 <BuildProfileButton cardId={c.id} />
+                {c.isSquadInvite && c.status !== 'claimed' && <SendClaimReminderButton cardId={c.id} alreadySentAt={c.claimReminderSentAt} />}
               </div>
             </div>
           );
@@ -845,6 +973,19 @@ export default async function StaffQueuePage({
                   >
                     {statusBadge.label}
                   </span>
+                  {c.isSquadInvite && (
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 700,
+                        letterSpacing: '0.04em', textTransform: 'uppercase',
+                        color: '#92400e', background: '#fffbeb',
+                        padding: '4px 10px', borderRadius: 999,
+                        boxShadow: 'inset 0 0 0 1px #fde68a',
+                      }}
+                    >
+                      Squad Invite · payment disabled
+                    </span>
+                  )}
                   {!c.hasArtwork && (
                     <span style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 11.5, color: 'var(--ink-faint)' }}>
                       No card artwork on file
@@ -894,6 +1035,7 @@ export default async function StaffQueuePage({
                   Open NFC Link
                 </a>
                 <CopyLinkButton url={nfcUrl} label="Copy NFC" />
+                {c.isSquadInvite && c.status !== 'claimed' && <SendClaimReminderButton cardId={c.id} alreadySentAt={c.claimReminderSentAt} />}
                 <RejectCardButton cardId={c.id} playerName={c.playerName} />
                 <DeleteCardButton cardId={c.id} playerName={c.playerName} />
               </div>

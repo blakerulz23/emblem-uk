@@ -66,8 +66,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not upload order asset';
+    const storageNotConfigured = message.includes('AWS_S3_BUCKET');
+    // Fixed route label + a safe category only — matches the pattern
+    // established for squad-invite-auth/request-code. Never the raw error
+    // message (which can include S3/SDK detail), never a filename, S3 key,
+    // order/player id, email, or request body.
+    console.error('order-assets:upload', storageNotConfigured ? 'storage_not_configured' : 'upload_failed');
     return NextResponse.json(
-      { error: message.includes('AWS_S3_BUCKET') ? 'Production asset storage is not configured' : message },
+      { error: storageNotConfigured ? 'Production asset storage is not configured' : message },
       { status: 500 },
     );
   }

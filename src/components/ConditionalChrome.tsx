@@ -4,6 +4,8 @@ import { usePathname } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import AnnouncementBar from '@/components/AnnouncementBar';
+import DisposableSquadInviteNotice from '@/components/DisposableSquadInviteNotice';
+import { isRealSquadInviteUiPath } from '@/lib/squad-invite-preview-safety';
 
 /**
  * The home page, the builder flow, Emblem OS, and a player's public profile
@@ -25,16 +27,26 @@ import AnnouncementBar from '@/components/AnnouncementBar';
 // Navbar/Footer chrome.
 const MARKETING_ROUTES = ['/', '/about', '/pricing', '/privacy', '/terms', '/card-setup-preview'];
 
-export default function ConditionalChrome({ children }: { children: React.ReactNode }) {
+export default function ConditionalChrome({
+  children,
+  disposableSquadInvitePreview = false,
+}: {
+  children: React.ReactNode;
+  disposableSquadInvitePreview?: boolean;
+}) {
   const pathname = usePathname() || '/';
   const isBuilder = pathname.startsWith('/builder');
   const isOs = pathname.startsWith('/os');
   const isPlayerProfile = pathname.startsWith('/player/');
   const isHome = pathname === '/';
+  const isSyntheticSquadInvitePreview = pathname.startsWith('/dev/squad-invite-preview') || pathname.startsWith('/review/squad-invite');
   const isMarketing = MARKETING_ROUTES.includes(pathname);
+  const notice = disposableSquadInvitePreview && isRealSquadInviteUiPath(pathname)
+    ? <DisposableSquadInviteNotice />
+    : null;
 
-  if (isBuilder || isOs || isPlayerProfile) {
-    return <main className="min-h-screen">{children}</main>;
+  if (isBuilder || isOs || isPlayerProfile || isSyntheticSquadInvitePreview) {
+    return <main className="min-h-screen">{children}{notice}</main>;
   }
 
   if (isHome) {
@@ -47,6 +59,7 @@ export default function ConditionalChrome({ children }: { children: React.ReactN
         <Navbar sticky />
         <main className="emh-home-shell">{children}</main>
         <Footer />
+        {notice}
       </div>
     );
   }
@@ -56,6 +69,7 @@ export default function ConditionalChrome({ children }: { children: React.ReactN
       <Navbar />
       <main className="pt-16">{children}</main>
       <Footer />
+      {notice}
     </div>
   );
 }

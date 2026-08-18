@@ -48,6 +48,49 @@ import {
   type CoachCardDraft,
 } from '@/lib/coach-card-draft';
 
+/**
+ * Squad Invite mode — reached from JoinSquadInvite's
+ * router.push(`/builder?squadParticipation=${id}`), resolved server-side by
+ * builder/page.tsx (which verifies the authenticated guardian owns this
+ * participation before ever rendering the builder). Deliberately just a
+ * context object plus a few branches in THIS component, not a second
+ * builder: templates, PlayerCard rendering, photo upload/crop, background
+ * removal and personalisation below are the exact same code path a normal
+ * order uses. Only three things are genuinely different in this mode: the
+ * step list (no order-type/team choice — always one locked child), the
+ * review step's submit target (the authenticated Squad Invite commit route,
+ * not /api/order-enquiry), and payment being shown as disabled rather than
+ * offered. See supabase/migrations/0055_squad_invite_order_commitment.sql
+ * for how that commit route's RPC still lands in the same orders/cards/
+ * card_definitions tables and staff approval/production queues a normal
+ * order does.
+ */
+export type SquadInviteBuilderContext = {
+  participationId: string;
+  campaignClubName: string;
+};
+
+const SQUAD_INVITE_STEP_ORDER: StepId[] = ['upload', 'bg-removal', 'personalise', 'review'];
+
+const SQUAD_INVITE_REQUIRED_DECLARATIONS: { purpose: string; label: string }[] = [
+  { purpose: 'child_information_authority', label: "I am this child's parent/guardian, or have their parent/guardian's permission to submit these details." },
+  { purpose: 'photograph_manufacture', label: 'I have permission for any photograph provided to be used in manufacturing this printed card.' },
+  { purpose: 'consolidated_delivery', label: 'I understand this card will be delivered together with the team’s order to the approved organiser/coach, not to me directly.' },
+  { purpose: 'payment_neutral_commitment', label: 'I understand I am not paying today. Payment requests remain disabled during this test.' },
+];
+
+// emblem_squad_csrf is deliberately non-httpOnly (see
+// squad-invite-request-security.ts) specifically so client code can echo it
+// back as a header — the same double-submit-cookie pattern every other
+// Squad Invite form in this repo uses.
+function readSquadInviteCsrfCookie(): string {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(/(?:^|; )emblem_squad_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+type SquadInviteCommitOutcome = null | 'sign_in_required' | 'unavailable' | 'validation' | 'network' | 'photo_upload_failed';
+
 const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'person' | 'group' }> = [
   { id: 'single', title: 'One player', copy: 'Create one card from one football photo.', icon: 'person' },
   { id: 'squad', title: 'A whole team', copy: 'Build sibling sets, friend groups, or the full squad in one session.', icon: 'group' },
@@ -194,6 +237,17 @@ function isLocalAssetUrl(url?: string) {
   return Boolean(url && (url.startsWith('blob:') || url.startsWith('data:')));
 }
 
+/**
+ * Thrown only when an upload request genuinely reached /api/order-assets
+ * and the server responded with a non-ok status (e.g. storage
+ * misconfigured, file rejected) — distinct from fetch() itself rejecting
+ * (no connectivity, DNS/CORS failure), which throws a plain/native error
+ * instead. Callers use this distinction to label the two cases correctly
+ * rather than collapsing both into a generic "network problem" — an HTTP
+ * failure is a server/config issue, not the guardian's connection.
+ */
+class OrderAssetUploadHttpError extends Error {}
+
 async function uploadOrderAsset(sourceUrl: string, meta: { orderId: string; playerId: string; kind: 'photo' | 'badge'; fileName?: string }) {
   const source = await fetch(sourceUrl);
   if (!source.ok) throw new Error(`Could not read ${meta.kind} upload`);
@@ -212,15 +266,28 @@ async function uploadOrderAsset(sourceUrl: string, meta: { orderId: string; play
   });
   const result = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(result?.error || `Could not upload ${meta.kind}`);
+    throw new OrderAssetUploadHttpError(result?.error || `Could not upload ${meta.kind}`);
   }
   return result as UploadedOrderAsset;
 }
 
-export default function ProductionBuilder() {
+export default function ProductionBuilder({
+  squadInviteEnabled = false,
+  squadInviteContext,
+}: {
+  squadInviteEnabled?: boolean;
+  squadInviteContext?: SquadInviteBuilderContext;
+}) {
   const searchParams = useSearchParams();
   const [order, setOrder] = useState<OrderDraft>(() => {
     const draft = defaultOrder();
+    if (squadInviteContext) {
+      // Locked: one child, Custom Collection, club name fixed to the
+      // campaign's own club/team — never the curated EMJFL official-league
+      // picker (a Squad Invite campaign's club is organiser-typed free
+      // text, not necessarily one of that curated list).
+      return { ...draft, type: 'single', collectionType: 'custom', collectionName: 'Custom Collection', club: squadInviteContext.campaignClubName };
+    }
     const mode = searchParams.get('mode');
     if (mode === 'set' || mode === 'friend-set' || mode === 'siblings') {
       return { ...draft, type: 'set' };
@@ -237,8 +304,23 @@ export default function ProductionBuilder() {
   // initial-state-from-searchParams pattern as `mode` above rather than
   // adding a second entry flow. No current CTA uses it: the homepage hero
   // link now points at plain /builder so every marketing entry point lands
-  // on Step 1 (order-type) consistently.
-  const [activeStepId, setActiveStepId] = useState<StepId>(() => (searchParams.get('step') === 'upload' ? 'upload' : 'order-type'));
+  // on Step 1 (order-type) consistently. Squad Invite mode always starts on
+  // Upload — order-type/collection are never reachable steps in that mode
+  // (see stepOrder below), not merely hidden.
+  const [activeStepId, setActiveStepId] = useState<StepId>(() => {
+    if (squadInviteContext) return 'upload';
+    return searchParams.get('step') === 'upload' ? 'upload' : 'order-type';
+  });
+  const [squadInviteAccepted, setSquadInviteAccepted] = useState<Record<string, boolean>>({});
+  const [squadInvitePhase, setSquadInvitePhase] = useState<'form' | 'success'>('form');
+  const [squadInviteOutcome, setSquadInviteOutcome] = useState<SquadInviteCommitOutcome>(null);
+  const [squadInviteSubmitting, setSquadInviteSubmitting] = useState(false);
+  const squadInviteSubmittingRef = useRef(false);
+  // Which declarations were still unchecked on the last failed submit
+  // attempt — drives the per-row invalid state and the summary error, and
+  // is cleared the moment all four are accepted again.
+  const [squadInviteDeclarationErrors, setSquadInviteDeclarationErrors] = useState<Record<string, boolean>>({});
+  const squadInviteDeclarationRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [selectedId, setSelectedId] = useState(order.players[0]?.id || '');
   const [cardSide, setCardSide] = useState<CardSide>('front');
   const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>('idle');
@@ -312,7 +394,12 @@ export default function ProductionBuilder() {
   const selectedPlayer = order.players.find((player) => player.id === selectedId) || order.players[0];
   // Single-player orders skip the team-only "approve" gate (6 steps total);
   // set/squad orders keep it (7 steps) — see stepsFor() in emblem-uk-builder.
-  const stepOrder = useMemo(() => stepsFor(order.type), [order.type]);
+  // Squad Invite mode uses its own fixed 4-step list — order-type/collection
+  // are never reachable (order.type/collectionType are locked at init
+  // above), and 'approve' never applies since it is always exactly one
+  // child, matching the personalise step's existing single-order behaviour
+  // of auto-approving on Continue.
+  const stepOrder = useMemo(() => (squadInviteContext ? SQUAD_INVITE_STEP_ORDER : stepsFor(order.type)), [order.type, squadInviteContext]);
   const activeIndex = stepOrder.indexOf(activeStepId);
   const summary = useMemo(() => summarizeOrder(order), [order]);
   // Authoritative pricing — server-only. paidPlayerCount/totalPrintQuantity
@@ -442,21 +529,6 @@ export default function ProductionBuilder() {
         club: current.collectionType === 'custom'
           ? (player.id === selectedId || !player.clubEdited ? club : player.club)
           : (player.clubEdited ? player.club : club),
-        updatedAt: nowIso(),
-      })),
-    }));
-  };
-
-  const assignOrderBadge = (file?: File) => {
-    if (!file) return;
-    const badgeUrl = URL.createObjectURL(file);
-    setOrder((current) => ({
-      ...current,
-      badgeUrl,
-      players: current.players.map((player) => ({
-        ...player,
-        badgeUrl: current.collectionType === 'custom' ? badgeUrl : player.badgeUrl || badgeUrl,
-        clubEdited: true,
         updatedAt: nowIso(),
       })),
     }));
@@ -987,6 +1059,118 @@ export default function ProductionBuilder() {
     setEnquiryError('');
   };
 
+  // Squad Invite's own submit path — entirely separate from submitEnquiry
+  // above (which stays untouched: no shared state, no shared guard ref).
+  // Reuses the same uploadOrderAsset() helper the normal flow uses for
+  // photos, then posts to the authenticated Squad Invite commit route
+  // instead of /api/order-enquiry. No pricing quote, no Shopify handoff, no
+  // contact form — payment is shown as disabled, never collected.
+  const submitSquadInviteCommitment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!squadInviteContext) return;
+    // Ref guard, not just squadInviteSubmitting state — same same-tick
+    // double-invocation race this file already documents at submittingRef
+    // above.
+    if (squadInviteSubmittingRef.current) return;
+    const player = order.players[0];
+    const nameParts = player.name.trim().split(/\s+/).filter(Boolean);
+    const firstName = nameParts[0] || '';
+    const surnameInitial = (nameParts.length > 1 ? nameParts[nameParts.length - 1] : firstName).charAt(0).toUpperCase();
+    // Declarations are validated separately from name/photo completeness so
+    // a missing declaration can focus the first invalid row specifically,
+    // rather than a single generic message covering two unrelated causes.
+    const missingDeclarations = SQUAD_INVITE_REQUIRED_DECLARATIONS.filter((declaration) => !squadInviteAccepted[declaration.purpose]);
+    if (missingDeclarations.length > 0) {
+      setSquadInviteDeclarationErrors(Object.fromEntries(missingDeclarations.map((declaration) => [declaration.purpose, true])));
+      setSquadInviteOutcome('validation');
+      squadInviteDeclarationRefs.current[missingDeclarations[0].purpose]?.focus();
+      return;
+    }
+    setSquadInviteDeclarationErrors({});
+    if (!firstName || !surnameInitial || !player.photo?.srcUrl) {
+      setSquadInviteOutcome('validation');
+      return;
+    }
+    squadInviteSubmittingRef.current = true;
+    setSquadInviteSubmitting(true);
+    setSquadInviteOutcome(null);
+    let succeeded = false;
+    try {
+      let photo = player.photo;
+      if (photo && isLocalAssetUrl(photo.srcUrl)) {
+        // Upload is validated and reported on its own — a non-ok response
+        // from the server (storage misconfigured, upload rejected) must
+        // never be labelled a "network problem", and must never reach the
+        // commit fetch below. Nothing here mutates order/player/declaration
+        // state, so a failed attempt leaves the photo, personalise fields
+        // and declarations exactly as entered for the parent to retry.
+        try {
+          const asset = await uploadOrderAsset(photo.hiResUrl || photo.srcUrl, {
+            orderId: squadInviteContext.participationId,
+            playerId: 'child',
+            kind: 'photo',
+            fileName: photo.fileName,
+          });
+          photo = {
+            ...photo,
+            srcUrl: asset.url,
+            hiResUrl: asset.url,
+            storageUrl: asset.url,
+            storageKey: asset.key,
+            contentType: asset.contentType,
+            fileName: asset.fileName || photo.fileName,
+          };
+        } catch (uploadError) {
+          setSquadInviteOutcome(uploadError instanceof OrderAssetUploadHttpError ? 'photo_upload_failed' : 'network');
+          return;
+        }
+      }
+      // The commit request itself: a genuine fetch() rejection (no
+      // connectivity, DNS/CORS) is caught here and reported as a network
+      // problem — a real HTTP response, even a rejecting one, is handled
+      // by the explicit status checks below instead, never through catch.
+      let response: Response;
+      try {
+        response = await fetch(`/api/squad-invite-participations/${encodeURIComponent(squadInviteContext.participationId)}/commit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Emblem-CSRF': readSquadInviteCsrfCookie() },
+          body: JSON.stringify({
+            templateId: selectedTemplate(order, player).id,
+            displayFirstName: firstName,
+            displaySurnameInitial: surnameInitial,
+            squadNumber: /^[0-9]+$/.test(player.kitNo.trim()) ? Number(player.kitNo.trim()) : null,
+            position: player.position,
+            printQuantity: player.prints,
+            photo: photo && {
+              storageKey: photo.storageKey,
+              storageUrl: photo.storageUrl,
+              contentType: photo.contentType,
+              fileName: photo.fileName,
+              crop: photo.crop,
+              bgRemoved: photo.bgRemoved,
+            },
+            stats: player.stats,
+            accepted: Object.fromEntries(SQUAD_INVITE_REQUIRED_DECLARATIONS.map((declaration) => [declaration.purpose, Boolean(squadInviteAccepted[declaration.purpose])])),
+          }),
+        });
+      } catch {
+        setSquadInviteOutcome('network');
+        return;
+      }
+      if (response.status === 401) { setSquadInviteOutcome('sign_in_required'); return; }
+      if (response.status === 400) { setSquadInviteOutcome('validation'); return; }
+      if (!response.ok) { setSquadInviteOutcome('unavailable'); return; }
+      setSquadInvitePhase('success');
+      succeeded = true;
+      // submittingRef intentionally stays true on success — one-shot
+      // commitment, matching the server's own one-shot semantics (a repeat
+      // attempt is idempotent server-side, but the UI never offers one).
+    } finally {
+      setSquadInviteSubmitting(false);
+      if (!succeeded) squadInviteSubmittingRef.current = false;
+    }
+  };
+
   const progress = ((activeIndex + 1) / stepOrder.length) * 100;
   const progressLabel = activeStepId === 'approve' || activeStepId === 'review'
     ? `${order.players.length} player${order.players.length === 1 ? '' : 's'} - ${summary.counts.approved} approved`
@@ -1048,7 +1232,7 @@ export default function ProductionBuilder() {
           ))}
         </div>
       )}
-      <div className="uk-wizard-phone">
+      <div className={`uk-wizard-phone${activeStepId === 'review' && squadInviteContext ? ' uk-wizard-phone--squad-review' : ''}`}>
         <header className="uk-wizard-header">
           <div className="uk-wizard-topbar">
             <button type="button" className="uk-icon-button" onClick={goBack} aria-label="Back" disabled={activeIndex === 0}>
@@ -1108,6 +1292,12 @@ export default function ProductionBuilder() {
                     </span>
                   </button>
                 ))}
+                {squadInviteEnabled && (
+                  <a href="/squad-invite/start" className="uk-wizard-choice-link">
+                    <span className="uk-choice-icon" aria-hidden="true">+</span>
+                    <span><strong>Invite parents to create their own cards</strong><small>Create one team link. Each parent privately creates their child&apos;s card.</small></span>
+                  </a>
+                )}
               </div>
               <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('collection')}>Continue</button>
             </section>
@@ -1311,11 +1501,13 @@ export default function ProductionBuilder() {
                 ) : (
                   <div className="uk-wizard-custom-card">
                     <label>
-                      Club / team name <em>optional</em>
+                      Club / team name {squadInviteContext ? <em>set by your organiser</em> : <em>optional</em>}
                       <input
                         value={order.club}
                         onChange={(event) => updateCustomClub(event.target.value)}
                         placeholder="Enter your club or team name"
+                        readOnly={Boolean(squadInviteContext)}
+                        aria-readonly={squadInviteContext ? true : undefined}
                       />
                     </label>
                   </div>
@@ -1543,7 +1735,156 @@ export default function ProductionBuilder() {
             </section>
           )}
 
-          {activeStepId === 'review' && (
+          {activeStepId === 'review' && squadInviteContext && (() => {
+            const squadInvitePlayer = order.players[0];
+            const nameParts = squadInvitePlayer.name.trim().split(/\s+/).filter(Boolean);
+            const previewFirstName = nameParts[0] || '';
+            const previewSurnameInitial = (nameParts.length > 1 ? nameParts[nameParts.length - 1] : previewFirstName).charAt(0).toUpperCase();
+            const previewDisplayName = previewFirstName ? `${previewFirstName}${previewSurnameInitial ? ` ${previewSurnameInitial}.` : ''}` : 'Not yet named';
+            const previewSquadNumber = /^[0-9]+$/.test(squadInvitePlayer.kitNo.trim()) ? squadInvitePlayer.kitNo.trim() : 'Not set';
+            const hasDeclarationErrors = Object.values(squadInviteDeclarationErrors).some(Boolean);
+            return (
+              <section className="uk-wizard-panel uk-squad-review">
+                {squadInvitePhase === 'success' ? (
+                  <div className="uk-squad-review-success" role="status" aria-live="polite">
+                    <p className="uk-wizard-kicker">Squad Invite</p>
+                    <h1>Your child&apos;s card is saved.</h1>
+                    {order.club && <p className="uk-squad-invite-success-team">{order.club}</p>}
+                    <ul className="uk-squad-invite-success-list">
+                      <li>No payment is taken — payment requests remain disabled during this test.</li>
+                      <li>Emblem staff review this card before it goes into production.</li>
+                      <li>Production begins only after payment, in a future approved live flow.</li>
+                      <li>Cards are delivered together to the approved organiser/coach.</li>
+                      <li>Your organiser sees aggregate team progress only — never this card&apos;s details.</li>
+                    </ul>
+                    <div className="uk-squad-invite-success-actions">
+                      <a className="uk-wizard-primary" href="/squad-invite/join">Return to Squad Invite</a>
+                      <a className="uk-squad-invite-success-secondary" href="/">Return to Emblem homepage</a>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="uk-wizard-kicker">Squad Invite</p>
+                    <h1>Review and save your child&apos;s card</h1>
+                    <p className="uk-wizard-copy">
+                      This creates one private Squad Invite commitment for {order.club || 'your team'}. It is private to you — your organiser sees aggregate progress only, never these details.
+                    </p>
+
+                    <div className="uk-squad-review-grid">
+                      <div className="uk-squad-review-preview">
+                        <div className="uk-edit-preview">
+                          <PlayerCard order={order} player={squadInvitePlayer} side={cardSide} />
+                        </div>
+                        <div className="uk-card-side-toggle wide" aria-label="Choose card side">
+                          <button type="button" className={cardSide === 'front' ? 'active' : ''} onClick={() => setCardSide('front')}>Front</button>
+                          <button type="button" className={cardSide === 'back' ? 'active' : ''} onClick={() => setCardSide('back')}>Back</button>
+                        </div>
+                      </div>
+
+                      <div className="uk-squad-review-confirm">
+                        <dl className="uk-squad-review-summary">
+                          <div><dt>Team</dt><dd>{order.club || 'Not set'}</dd></div>
+                          <div><dt>Player</dt><dd>{previewDisplayName}</dd></div>
+                          <div><dt>Squad number</dt><dd>{previewSquadNumber}</dd></div>
+                          <div><dt>Template</dt><dd>{selectedTemplate(order, squadInvitePlayer).name}</dd></div>
+                          <div><dt>Quantity</dt><dd>{squadInvitePlayer.prints}</dd></div>
+                          <div><dt>Delivery</dt><dd>To your approved organiser/coach</dd></div>
+                          <div><dt>Payment</dt><dd>Disabled for this test</dd></div>
+                        </dl>
+
+                        <div className="uk-squad-review-callout">
+                          <p className="uk-squad-review-callout-title">Payment requests are not active during this test.</p>
+                          <p>No card details are collected and nothing will be charged while this controlled pilot is running.</p>
+                        </div>
+
+                        {squadInviteOutcome === 'sign_in_required' && (
+                          <p role="alert" className="uk-enquiry-error">
+                            Your session has expired. <Link href="/squad-invite/join">Verify your email again</Link> to continue.
+                          </p>
+                        )}
+                        {squadInviteOutcome === 'unavailable' && (
+                          <p role="alert" className="uk-enquiry-error">
+                            This couldn&apos;t be completed right now — it may already be saved, or the window to make changes has closed. Please try again shortly.
+                          </p>
+                        )}
+                        {squadInviteOutcome === 'validation' && !hasDeclarationErrors && (
+                          <p role="alert" className="uk-enquiry-error">
+                            Please check the photo and name on the personalise step, then try again.
+                          </p>
+                        )}
+                        {squadInviteOutcome === 'network' && (
+                          <p role="alert" className="uk-enquiry-error">
+                            A network problem stopped the request. Check your connection and try again.
+                          </p>
+                        )}
+                        {squadInviteOutcome === 'photo_upload_failed' && (
+                          <p role="alert" className="uk-enquiry-error">
+                            Your photo couldn&apos;t be saved. Your details and declarations are still here — please try again, or use a different photo.
+                          </p>
+                        )}
+
+                        <form onSubmit={submitSquadInviteCommitment} noValidate>
+                          <fieldset className="uk-squad-review-declarations">
+                            <legend>Required declarations</legend>
+                            {hasDeclarationErrors && (
+                              <p role="alert" id="squad-invite-declarations-error" className="uk-squad-review-declaration-error-summary">
+                                Please accept all four declarations before saving.
+                              </p>
+                            )}
+                            {SQUAD_INVITE_REQUIRED_DECLARATIONS.map((declaration) => {
+                              const checked = Boolean(squadInviteAccepted[declaration.purpose]);
+                              const invalid = Boolean(squadInviteDeclarationErrors[declaration.purpose]);
+                              return (
+                                <label
+                                  key={declaration.purpose}
+                                  htmlFor={`squad-invite-${declaration.purpose}`}
+                                  className={`uk-squad-declaration-row${checked ? ' is-checked' : ''}${invalid ? ' is-invalid' : ''}`}
+                                >
+                                  <input
+                                    ref={(el) => { squadInviteDeclarationRefs.current[declaration.purpose] = el; }}
+                                    id={`squad-invite-${declaration.purpose}`}
+                                    type="checkbox"
+                                    checked={checked}
+                                    aria-invalid={invalid}
+                                    aria-describedby={invalid ? 'squad-invite-declarations-error' : undefined}
+                                    onChange={(event) => {
+                                      setSquadInviteAccepted((current) => ({ ...current, [declaration.purpose]: event.target.checked }));
+                                      if (event.target.checked) {
+                                        setSquadInviteDeclarationErrors((current) => {
+                                          if (!current[declaration.purpose]) return current;
+                                          const next = { ...current };
+                                          delete next[declaration.purpose];
+                                          return next;
+                                        });
+                                      }
+                                    }}
+                                  />
+                                  <span>{declaration.label}</span>
+                                </label>
+                              );
+                            })}
+                          </fieldset>
+                          <button
+                            type="submit"
+                            className="uk-wizard-primary uk-squad-review-submit"
+                            disabled={squadInviteSubmitting}
+                            aria-busy={squadInviteSubmitting}
+                          >
+                            {squadInviteSubmitting ? 'Saving…' : "Save my child's card"}
+                          </button>
+                          <p className="uk-squad-review-submit-note">
+                            No payment is taken. Your child&apos;s card joins the team&apos;s production queue. Your organiser sees aggregate progress only, never these details.
+                          </p>
+                        </form>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </section>
+            );
+          })()}
+
+          {activeStepId === 'review' && !squadInviteContext && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Review order</p>
               <h1>{enquiryStatus === 'sent' ? 'Order received.' : 'Review your order.'}</h1>
@@ -1874,100 +2215,6 @@ function PlayerStrip({
               <small>{statusCopy[status]}</small>
             </span>
           </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function TemplatePicker({
-  order,
-  player,
-  onPatch,
-}: {
-  order: OrderDraft;
-  player: PlayerDraft;
-  onPatch: (id: string, patch: Partial<PlayerDraft>) => void;
-}) {
-  const activeTemplateId = selectedTemplate(order, player).id;
-  const visibleTemplates = templates.filter((template) =>
-    order.collectionType === 'custom'
-      ? isCustomCollectionTemplateId(template.id)
-      : !isCustomCollectionTemplateId(template.id),
-  );
-
-  return (
-    <div className="uk-template-picker" aria-label="Card templates">
-      <div className="uk-template-picker-head">
-        <strong>Card design</strong>
-        <span>Pick the frame for this player</span>
-      </div>
-      <div className="uk-template-picker-grid">
-        {visibleTemplates.map((template) => (
-          <button
-            key={template.id}
-            type="button"
-            className={activeTemplateId === template.id ? 'active' : ''}
-            onClick={() => onPatch(player.id, { templateId: template.id })}
-          >
-            <span className="uk-template-art" style={{ background: template.background }}>
-              {template.frameAsset && <img src={template.frameAsset} alt="" />}
-            </span>
-            <span>
-              <strong>{template.name}</strong>
-              <small>{template.description}</small>
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RosterTable({
-  order,
-  selectedId,
-  onSelect,
-  onPatch,
-  onPhoto,
-  onRemove,
-  onDuplicate,
-}: {
-  order: OrderDraft;
-  selectedId: string;
-  onSelect: (id: string) => void;
-  onPatch: (id: string, patch: Partial<PlayerDraft>) => void;
-  onPhoto: (id: string, file?: File) => void;
-  onRemove: (id: string) => void;
-  onDuplicate: (player: PlayerDraft) => void;
-}) {
-  return (
-    <div className="uk-roster-table">
-      {order.players.length === 0 && (
-        <div className="uk-empty-state">
-          <strong>No players yet</strong>
-          <span>Add your first player, or import a squad later.</span>
-        </div>
-      )}
-      {order.players.map((player) => {
-        const status = derivePlayerStatus(player);
-        return (
-          <article key={player.id} className={selectedId === player.id ? 'active' : ''}>
-            <button type="button" className="uk-roster-photo" onClick={() => onSelect(player.id)}>
-              {player.photo?.srcUrl ? <img src={player.photo.srcUrl} alt="" /> : <span>No photo</span>}
-            </button>
-            <input aria-label="Player name" value={player.name} placeholder="Player name" onChange={(event) => onPatch(player.id, { name: event.target.value })} />
-            <input aria-label="Position" value={player.position} placeholder="Position" onChange={(event) => onPatch(player.id, { position: event.target.value })} />
-            <input aria-label="Kit number" value={player.kitNo} placeholder="Kit" onChange={(event) => onPatch(player.id, { kitNo: event.target.value })} />
-            <span className={statusClass(status)}>{statusCopy[status]}</span>
-            <label className="uk-mini-upload">
-              Photo
-              <input type="file" accept="image/*" hidden onChange={(event) => onPhoto(player.id, event.target.files?.[0])} />
-            </label>
-            <button type="button" onClick={() => onSelect(player.id)}>Edit</button>
-            <button type="button" onClick={() => onDuplicate(player)}>Duplicate</button>
-            <button type="button" onClick={() => onRemove(player.id)}>Remove</button>
-          </article>
         );
       })}
     </div>
