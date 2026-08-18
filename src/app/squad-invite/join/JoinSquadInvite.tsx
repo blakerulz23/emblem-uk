@@ -132,7 +132,7 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
     // final control on short viewports rather than trying to alter it.
     <div className="min-h-screen bg-[#f5f0e8] px-4 py-8 pb-28 text-[#17251d] sm:px-6 sm:py-12">
       <section className="mx-auto max-w-xl rounded-3xl bg-white p-6 shadow-sm sm:p-10">
-        <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-[#36754a]">Emblem Squad Invite</p>
+        <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-orange-600">Emblem Squad Invite</p>
 
         <header className="mt-4 rounded-2xl bg-[#f5f0e8] p-5">
           <h1 className="text-2xl font-bold sm:text-3xl">{invitation.teamName}</h1>
@@ -154,15 +154,15 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
          * makes the same live data motivating and legible at a glance. */}
         <div className="mt-4 rounded-2xl border border-[#c9c2b3] bg-[#f5f0e8] p-5">
           <div className="flex items-baseline justify-between gap-2">
-            <p className="text-lg font-bold text-[#173f2a]">{incentiveHeadline}</p>
-            <span className="rounded-full bg-[#173f2a] px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
+            <p className="text-lg font-bold text-orange-700">{incentiveHeadline}</p>
+            <span className="rounded-full bg-orange-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white">
               {invitation.currentIncentive === 'squad' ? 'Squad' : invitation.currentIncentive === 'multi' ? 'Multi' : 'Single'}
             </span>
           </div>
           <p className="mt-1 text-sm text-[#5b6b60]">{incentiveDetail}</p>
           <div className="relative mt-3 h-2.5 w-full overflow-hidden rounded-full bg-[#e4ded2]">
-            <div className="h-full rounded-full bg-[#36754a] transition-[width]" style={{ width: `${progressPct}%` }} />
-            <div className="absolute top-0 h-full w-px bg-[#173f2a]/40" style={{ left: `${multiMarkerPct}%` }} aria-hidden="true" />
+            <div className="h-full rounded-full bg-orange-500 transition-[width]" style={{ width: `${progressPct}%` }} />
+            <div className="absolute top-0 h-full w-px bg-orange-900/30" style={{ left: `${multiMarkerPct}%` }} aria-hidden="true" />
           </div>
           <div className="mt-1 flex justify-between text-[11px] text-[#5b6b60]">
             <span>0 joined</span>
@@ -170,9 +170,9 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
           </div>
         </div>
 
-        <div className="mt-4 rounded-2xl border-2 border-[#173f2a] bg-[#eef6f0] p-4">
-          <p className="font-bold text-[#173f2a]">Payment requests are not active during this test.</p>
-          <p className="mt-1 text-sm text-[#173f2a]">No payment is taken at this stage. No card details are collected and nothing is charged while this controlled pilot is running.</p>
+        <div className="mt-4 rounded-2xl border-2 border-orange-200 bg-orange-50 p-4">
+          <p className="font-bold text-orange-900">Payment requests are not active during this test.</p>
+          <p className="mt-1 text-sm text-orange-900">No payment is taken at this stage. No card details are collected and nothing is charged while this controlled pilot is running.</p>
         </div>
 
         <section className="mt-5 grid gap-3 text-sm">
@@ -198,7 +198,7 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
               onClick={start}
               disabled={submitting}
               aria-busy={submitting}
-              className="w-full rounded-full bg-[#173f2a] p-4 font-bold text-white transition hover:bg-[#0f2c1d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#173f2a] disabled:opacity-60"
+              className="w-full rounded-full bg-orange-600 p-4 font-bold text-white transition hover:bg-orange-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 disabled:opacity-60"
             >
               {submitting ? 'Please wait…' : "Create your child's card for this team order"}
             </button>
@@ -210,7 +210,7 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
                 Email address
                 <input
                   id="join-email"
-                  className="mt-1 block w-full rounded-xl border border-[#c9c2b3] p-3 focus-visible:border-[#173f2a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#173f2a]"
+                  className="mt-1 block w-full rounded-xl border border-[#c9c2b3] p-3 focus-visible:border-orange-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"
                   type="email"
                   autoComplete="email"
                   inputMode="email"
@@ -242,7 +242,7 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
                 Verification code
                 <input
                   id="join-code"
-                  className="mt-1 block w-full rounded-xl border border-[#c9c2b3] p-3 focus-visible:border-[#173f2a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#173f2a]"
+                  className="mt-1 block w-full rounded-xl border border-[#c9c2b3] p-3 focus-visible:border-orange-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600"
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   required
@@ -261,12 +261,12 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
                 {submitting ? 'Verifying…' : 'Verify and continue'}
               </button>
               <div className="flex flex-wrap gap-4 text-sm">
-                <button type="button" className="font-semibold text-[#173f2a] underline disabled:opacity-50" disabled={cooldown > 0 || submitting} onClick={() => void requestCode()}>
+                <button type="button" className="font-semibold text-orange-700 underline disabled:opacity-50" disabled={cooldown > 0 || submitting} onClick={() => void requestCode()}>
                   {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend code'}
                 </button>
                 <button
                   type="button"
-                  className="font-semibold text-[#173f2a] underline"
+                  className="font-semibold text-orange-700 underline"
                   onClick={() => {
                     setStep('email');
                     setCode('');
