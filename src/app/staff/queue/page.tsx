@@ -307,7 +307,7 @@ async function getProductionQueueCards(setupQ: string, setupSort: QueueSort) {
 
   const { data: fulfilledOrders } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, print_files')
+    .select('id, order_ref, purchaser_email, print_files, source')
     .eq('payment_status', 'fulfilled');
   if (!fulfilledOrders?.length) return empty;
   const orderById = new Map(fulfilledOrders.map((o) => [o.id, o]));
@@ -381,6 +381,11 @@ async function getProductionQueueCards(setupQ: string, setupSort: QueueSort) {
         printUrl,
         publicPlayerId: c.players?.public_player_id ?? null,
         publicIdEnabled: c.players?.public_id_enabled ?? false,
+        // Same orders.source ground truth Section 1/2 already badge —
+        // whoever's about to write a physical NFC chip needs to know this
+        // card ships in the organiser's consolidated batch, not to an
+        // individual customer, before they program it.
+        isSquadInvite: order?.source === 'squad_invite',
       };
     })
   );
@@ -828,6 +833,20 @@ export default async function StaffQueuePage({
                 <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
                   {c.purchaserEmail} · order {c.shortOrderRef} · card {c.shortCardRef} · {c.claimToken}
                 </div>
+                {c.isSquadInvite && (
+                  <span
+                    style={{
+                      display: 'inline-block', marginTop: 6,
+                      fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 700,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
+                      color: '#92400e', background: '#fffbeb',
+                      padding: '3px 10px', borderRadius: 999,
+                      boxShadow: 'inset 0 0 0 1px #fde68a',
+                    }}
+                  >
+                    Squad Invite · payment disabled
+                  </span>
+                )}
                 {!c.hasArtwork && (
                   <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 11.5, color: 'var(--ink-faint)' }}>
                     No card artwork on file
@@ -928,6 +947,19 @@ export default async function StaffQueuePage({
                   >
                     {statusBadge.label}
                   </span>
+                  {c.isSquadInvite && (
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 700,
+                        letterSpacing: '0.04em', textTransform: 'uppercase',
+                        color: '#92400e', background: '#fffbeb',
+                        padding: '4px 10px', borderRadius: 999,
+                        boxShadow: 'inset 0 0 0 1px #fde68a',
+                      }}
+                    >
+                      Squad Invite · payment disabled
+                    </span>
+                  )}
                   {!c.hasArtwork && (
                     <span style={{ fontFamily: 'var(--font-jbmono), monospace', fontSize: 11.5, color: 'var(--ink-faint)' }}>
                       No card artwork on file

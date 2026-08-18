@@ -16,9 +16,18 @@ describe('Staff queue — Squad Invite orders are clearly labeled, never silentl
     expect(page).toMatch(/\.select\('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name, source'\)/);
   });
 
-  it('renders a visible "Squad Invite · payment disabled" badge in both sections', () => {
+  it('renders a visible "Squad Invite · payment disabled" badge in every section, including the Profile Setup Queue', () => {
+    // 2 in the pending/recently-approved sections + 2 in the Profile Setup
+    // Queue (Waiting for Setup and Ready for Programming) — added so
+    // whoever writes a physical NFC chip can tell a Squad Invite card
+    // needs the organiser's consolidated batch, not individual dispatch.
     const badgeCount = (page.match(/Squad Invite · payment disabled/g) ?? []).length;
-    expect(badgeCount).toBe(2);
+    expect(badgeCount).toBe(4);
+  });
+
+  it('the Profile Setup Queue selects orders.source so its cards can be labelled too', () => {
+    expect(page).toContain("select('id, order_ref, purchaser_email, print_files, source')");
+    expect(page).toContain('isSquadInvite: order?.source === \'squad_invite\'');
   });
 
   it('passes squadInvite down to ApproveOrderButton based on orders.source', () => {
