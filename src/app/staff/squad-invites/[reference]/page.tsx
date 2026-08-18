@@ -7,6 +7,7 @@ import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import StaffIdentityPanel from '../StaffIdentityPanel';
 import ReviewActions from './ReviewActions';
 import FinalisePricingButton from './FinalisePricingButton';
+import CoachCardReviewActions from './CoachCardReviewActions';
 
 // Staff-facing labels for the stored declaration `purpose` values (see
 // submit_squad_invite_request in 0054_squad_invite_concurrent_submission_idempotency.sql).
@@ -43,7 +44,7 @@ export default async function ReviewSquadInvite({params}:{params:{reference:stri
   const service=createServiceRoleClient();
   const {data:r}=await service.from('squad_invite_requests').select('id,public_reference,club_team_name,football_age_group,expected_squad_size,organiser_name,organiser_role,organiser_email_verified_at,proposed_deadline_at,delivery_recipient_name,delivery_recipient_role,uk_delivery_confirmed,badge_reference,badge_review_status,request_status,submission_revision,organiser_visible_reason,restricted_staff_note,submitted_at,campaign_id').eq('public_reference',params.reference).maybeSingle();
   if(!r) notFound();
-  const [{data:outbox},{data:declarations},{data:audit},{count:duplicates},{data:participations},{data:campaign}]=await Promise.all([service.from('squad_invite_notification_outbox').select('id,status,template_key,attempt_count').eq('request_id',r.id).order('created_at',{ascending:false}).limit(5),service.from('squad_invite_request_declarations').select('purpose,policy_version,accepted_at,submission_revision').eq('request_id',r.id).eq('submission_revision',r.submission_revision),service.from('squad_invite_request_audit_events').select('event_type,actor_role,created_at,metadata').eq('request_id',r.id).order('created_at',{ascending:true}),service.from('squad_invite_requests').select('id',{count:'exact',head:true}).eq('club_team_name',r.club_team_name).neq('id',r.id).in('request_status',['submitted','under_review','resubmitted','approved']),r.campaign_id?service.from('squad_invite_participations').select('payment_request_status,payment_deadline_at,print_quantity,status,commitment_completed_at').eq('campaign_id',r.campaign_id).order('created_at',{ascending:true}):Promise.resolve({data:null}),r.campaign_id?service.from('squad_invites').select('delivery_address,delivery_postcode,delivery_contact,delivery_instructions,deadline_at,grace_ends_at,pricing_finalised_at,campaign_status,final_tier,final_unit_price_pence').eq('id',r.campaign_id).maybeSingle():Promise.resolve({data:null})]);
+  const [{data:outbox},{data:declarations},{data:audit},{count:duplicates},{data:participations},{data:campaign},{data:coachCard}]=await Promise.all([service.from('squad_invite_notification_outbox').select('id,status,template_key,attempt_count').eq('request_id',r.id).order('created_at',{ascending:false}).limit(5),service.from('squad_invite_request_declarations').select('purpose,policy_version,accepted_at,submission_revision').eq('request_id',r.id).eq('submission_revision',r.submission_revision),service.from('squad_invite_request_audit_events').select('event_type,actor_role,created_at,metadata').eq('request_id',r.id).order('created_at',{ascending:true}),service.from('squad_invite_requests').select('id',{count:'exact',head:true}).eq('club_team_name',r.club_team_name).neq('id',r.id).in('request_status',['submitted','under_review','resubmitted','approved']),r.campaign_id?service.from('squad_invite_participations').select('payment_request_status,payment_deadline_at,print_quantity,status,commitment_completed_at').eq('campaign_id',r.campaign_id).order('created_at',{ascending:true}):Promise.resolve({data:null}),r.campaign_id?service.from('squad_invites').select('delivery_address,delivery_postcode,delivery_contact,delivery_instructions,deadline_at,grace_ends_at,pricing_finalised_at,campaign_status,final_tier,final_unit_price_pence,coach_card_eligible').eq('id',r.campaign_id).maybeSingle():Promise.resolve({data:null}),r.campaign_id?service.from('squad_invite_coach_cards').select('full_name,role_title,configuration_status').eq('campaign_id',r.campaign_id).maybeSingle():Promise.resolve({data:null})]);
   // Payment status only — never a child field. "Staff decides manually"
   // (see the payment-flow scoping notes): nothing here auto-cancels or
   // auto-extends an overdue payment request, this section only makes one
@@ -109,6 +110,13 @@ export default async function ReviewSquadInvite({params}:{params:{reference:stri
         finalTier={campaign?.final_tier??null}
         finalUnitPricePence={campaign?.final_unit_price_pence??null}
       />
+      <div className="mt-4 rounded-2xl border border-neutral-200 p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-neutral-500">Coach card</p>
+        {!campaign?.coach_card_eligible&&<p className="mt-1 text-sm text-neutral-600">Not yet — unlocks once 10 participations are paid.</p>}
+        {campaign?.coach_card_eligible&&!coachCard&&<p className="mt-1 text-sm text-neutral-600">Unlocked — awaiting the organiser to submit the coach&apos;s details.</p>}
+        {coachCard&&<p className="mt-1 text-sm">{coachCard.full_name}, {coachCard.role_title} — <span className="font-semibold">{coachCard.configuration_status}</span></p>}
+        {coachCard&&coachCard.configuration_status==='submitted'&&<CoachCardReviewActions campaignId={r.campaign_id}/>}
+      </div>
     </section>}
 
     <details className="mt-6 rounded-2xl border bg-neutral-50">

@@ -15,6 +15,7 @@ const mockGetUser = vi.fn();
 const mockCampaignMaybeSingle = vi.fn();
 const mockCountResolve = vi.fn();
 const mockJoinedResolve = vi.fn();
+const mockCoachCardMaybeSingle = vi.fn();
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: () => ({ auth: { getUser: mockGetUser } }),
@@ -23,6 +24,9 @@ vi.mock('@/lib/supabase/server', () => ({
       select: (_columns: string, opts?: { head?: boolean }) => {
         if (table === 'squad_invites') {
           return { eq: () => ({ eq: () => ({ maybeSingle: mockCampaignMaybeSingle }) }) };
+        }
+        if (table === 'squad_invite_coach_cards') {
+          return { eq: () => ({ maybeSingle: mockCoachCardMaybeSingle }) };
         }
         if (opts?.head) {
           return { eq: () => ({ eq: () => mockCountResolve() }) };
@@ -52,10 +56,12 @@ beforeEach(() => {
   mockCampaignMaybeSingle.mockReset();
   mockCountResolve.mockReset();
   mockJoinedResolve.mockReset();
+  mockCoachCardMaybeSingle.mockReset();
   mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } } });
   mockCampaignMaybeSingle.mockResolvedValue({ data: CAMPAIGN_ROW });
   mockCountResolve.mockResolvedValue({ count: 0 });
   mockJoinedResolve.mockResolvedValue({ data: [] });
+  mockCoachCardMaybeSingle.mockResolvedValue({ data: null });
 });
 
 describe('GET /api/squad-invites/[id]/dashboard', () => {
@@ -120,5 +126,22 @@ describe('GET /api/squad-invites/[id]/dashboard', () => {
   it('sets no-store cache headers on the response', async () => {
     const res = await get();
     expect(res.headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('returns coachCard as null when no submission exists yet', async () => {
+    const res = await get();
+    const body = await res.json();
+    expect(body.campaign.coachCard).toBeNull();
+  });
+
+  it('maps a submitted coach card to exactly {fullName, roleTitle, configurationStatus} — never the photo key', async () => {
+    mockCoachCardMaybeSingle.mockResolvedValue({
+      data: { full_name: 'Jane Smith', role_title: 'Head Coach', configuration_status: 'submitted', photo_key: 'squad-invite-coach-cards/leak/1.jpg' },
+    });
+    const res = await get();
+    const body = await res.json();
+    expect(body.campaign.coachCard).toEqual({ fullName: 'Jane Smith', roleTitle: 'Head Coach', configurationStatus: 'submitted' });
+    expect(JSON.stringify(body)).not.toContain('photo_key');
+    expect(JSON.stringify(body)).not.toContain('squad-invite-coach-cards/leak');
   });
 });

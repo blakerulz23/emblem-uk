@@ -27,6 +27,14 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     .select('display_first_name,display_surname_initial')
     .eq('campaign_id', campaign.id).not('display_first_name', 'is', null);
   const joinedPlayers = (joined ?? []).map((p) => ({ firstName: p.display_first_name, surnameInitial: p.display_surname_initial }));
+  // Never photo_key — this is the organiser's own submission, but the
+  // dashboard response only ever needs enough to show status, same
+  // never-more-than-necessary boundary as everything else this route returns.
+  const { data: coachCardRow } = await service.from('squad_invite_coach_cards')
+    .select('full_name,role_title,configuration_status').eq('campaign_id', campaign.id).maybeSingle();
+  const coachCard = coachCardRow
+    ? { fullName: coachCardRow.full_name, roleTitle: coachCardRow.role_title, configurationStatus: coachCardRow.configuration_status }
+    : null;
   return NextResponse.json({
     campaign: {
       teamName: campaign.club_team_name, ageGroup: campaign.football_age_group,
@@ -37,6 +45,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
       completedCommitments: campaign.final_commitment_count ?? counts.commitment_completed,
       paymentsConfirmed: counts.paid, squadPriceUnlocked: campaign.final_tier === 'squad',
       freeCoachCardConfirmed: campaign.coach_card_eligible,
+      coachCard,
       joinedPlayers,
     },
   }, { headers: { 'Cache-Control': 'no-store' } });

@@ -1,7 +1,9 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import CoachCardForm from './CoachCardForm';
 
 type JoinedPlayer = { firstName: string; surnameInitial: string };
+type CoachCardStatus = { fullName: string; roleTitle: string; configurationStatus: string } | null;
 
 type DashboardResponse = {
   campaign: {
@@ -11,7 +13,14 @@ type DashboardResponse = {
     campaignStatus: string;
     completedCommitments: number;
     joinedPlayers: JoinedPlayer[];
+    freeCoachCardConfirmed: boolean;
+    coachCard: CoachCardStatus;
   };
+};
+
+const COACH_CARD_STATUS_LABEL: Record<string, string> = {
+  submitted: 'Submitted — awaiting Emblem staff review.',
+  locked: 'Locked for production ✓',
 };
 
 // Organiser-facing progress, deliberately bounded. The API this calls
@@ -33,25 +42,29 @@ export default function CampaignDashboard({ campaignId }: { campaignId: string }
   const [concernMessage, setConcernMessage] = useState('');
   const [concernSubmitting, setConcernSubmitting] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadDashboard = useCallback((cancelledRef?: { cancelled: boolean }) => {
     fetch(`/api/squad-invites/${encodeURIComponent(campaignId)}/dashboard`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((body) => {
-        if (!cancelled) setData(body);
+        if (!cancelledRef?.cancelled) setData(body);
       })
       .catch(() => {
-        if (!cancelled) setError('Progress is not available right now.');
+        if (!cancelledRef?.cancelled) setError('Progress is not available right now.');
       });
+  }, [campaignId]);
+
+  useEffect(() => {
+    const cancelledRef = { cancelled: false };
+    loadDashboard(cancelledRef);
     void fetch('/api/squad-invite-organiser-auth/context')
       .then((r) => r.json())
       .then((x) => {
-        if (!cancelled) setCsrf(x.csrfToken);
+        if (!cancelledRef.cancelled) setCsrf(x.csrfToken);
       });
     return () => {
-      cancelled = true;
+      cancelledRef.cancelled = true;
     };
-  }, [campaignId]);
+  }, [campaignId, loadDashboard]);
 
   const submitConcern = async () => {
     if (concernSubmitting) return;
@@ -144,6 +157,15 @@ export default function CampaignDashboard({ campaignId }: { campaignId: string }
         <p className="mt-3 text-sm">
           Deadline: {new Date(campaign.deadlineAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
         </p>
+      )}
+      {campaign.freeCoachCardConfirmed && csrf && (!campaign.coachCard || campaign.coachCard.configurationStatus === 'draft') && (
+        <CoachCardForm campaignId={campaignId} csrf={csrf} initialStatus={campaign.coachCard} onSubmitted={() => loadDashboard()} />
+      )}
+      {campaign.freeCoachCardConfirmed && campaign.coachCard && campaign.coachCard.configurationStatus !== 'draft' && (
+        <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+          <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Free coach card</p>
+          <p className="mt-1 text-sm text-emerald-900">{campaign.coachCard.fullName}, {campaign.coachCard.roleTitle} — {COACH_CARD_STATUS_LABEL[campaign.coachCard.configurationStatus] ?? campaign.coachCard.configurationStatus}</p>
+        </div>
       )}
     </section>
   );

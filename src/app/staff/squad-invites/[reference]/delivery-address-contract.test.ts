@@ -13,9 +13,10 @@ describe('Staff request detail — the campaign\'s real delivery address is now 
   it('selects the delivery fields from squad_invites, scoped to this campaign, only once a campaign exists', () => {
     // deadline_at/grace_ends_at/pricing_finalised_at/campaign_status/
     // final_tier/final_unit_price_pence were added for the Finalise pricing
-    // workflow card's availability preview — same table, same row, same
-    // read-only query, no new field type.
-    expect(source).toContain("r.campaign_id?service.from('squad_invites').select('delivery_address,delivery_postcode,delivery_contact,delivery_instructions,deadline_at,grace_ends_at,pricing_finalised_at,campaign_status,final_tier,final_unit_price_pence').eq('id',r.campaign_id).maybeSingle()");
+    // workflow card's availability preview; coach_card_eligible was added
+    // for the Coach card section (migration 0059) — same table, same row,
+    // same read-only query, no new field type.
+    expect(source).toContain("r.campaign_id?service.from('squad_invites').select('delivery_address,delivery_postcode,delivery_contact,delivery_instructions,deadline_at,grace_ends_at,pricing_finalised_at,campaign_status,final_tier,final_unit_price_pence,coach_card_eligible').eq('id',r.campaign_id).maybeSingle()");
   });
 
   it('shows a clear placeholder before delivery setup is complete, never a blank or misleading line', () => {

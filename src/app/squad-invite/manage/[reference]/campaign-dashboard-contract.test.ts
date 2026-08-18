@@ -28,14 +28,19 @@ describe('Squad progress — organiser-facing dashboard, bounded club-mediated i
     expect(source).toContain("if (!user) return NextResponse.json({ error: 'Sign in required' }, { status: 401 })");
   });
 
-  it('CampaignDashboard renders the bounded first-name + surname-initial list, never a photo, full surname or contact field', () => {
+  it('CampaignDashboard renders the bounded first-name + surname-initial list, never a photo, full surname or contact field for a participant', () => {
     const source = read(DASHBOARD_COMPONENT);
     expect(source).toContain('completedCommitments');
     expect(source).toContain('joinedPlayers');
     expect(source).toContain('{p.firstName} {p.surnameInitial}.');
     // The only .map() in this component is over the bounded joinedPlayers
-    // list itself — never a richer per-participant object.
-    expect(source).not.toMatch(/\.(photoUrl|photo|email|guardianEmail|childName|fullName|surname)\b/);
+    // list itself — never a richer per-participant object. campaign.coachCard's
+    // fullName/roleTitle are deliberately excluded from this check: that's
+    // the coach's own organiser-submitted, print-bound identity (see
+    // CoachCardForm.tsx) — a different data category from a participant's
+    // child, not a privacy regression.
+    const withoutCoachCardFields = source.replace(/campaign\.coachCard\.\w+/g, '').replace(/coachCard\?\.\w+/g, '');
+    expect(withoutCoachCardFields).not.toMatch(/\.(photoUrl|photo|email|guardianEmail|childName|fullName|surname)\b/);
   });
 
   it('the manage page only shows the dashboard once the campaign is active, not before', () => {
