@@ -1,3 +1,14 @@
+// Presentation-layer option lists only — football_age_group and
+// delivery_recipient_role stay genuinely free text at every layer (client
+// validation below, the /api/squad-invite-requests route's key-allowlist,
+// and the DB's char_length(2..30)/(2..80) check constraints in
+// 0050/0052_squad_invite_*.sql). No canonical enum existed before this, so
+// these lists are additive: the UI offers a dropdown for the common case
+// and an "Other" free-text fallback for anything outside it, but a value
+// outside this list was always valid and still is.
+export const FOOTBALL_AGE_GROUPS = ['U6', 'U7', 'U8', 'U9', 'U10', 'U11', 'U12', 'U13', 'U14', 'U15', 'U16', 'U17', 'U18'] as const;
+export const DELIVERY_RECIPIENT_ROLES = ['Head coach', 'Assistant coach', 'Team manager', 'Club secretary or official'] as const;
+
 export const ORGANISER_DECLARATIONS = [
   'authorityAccepted',
   'deliveryRecipientAccepted',

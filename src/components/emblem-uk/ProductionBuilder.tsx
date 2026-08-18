@@ -1733,12 +1733,18 @@ export default function ProductionBuilder({
                   <div className="uk-squad-review-success" role="status" aria-live="polite">
                     <p className="uk-wizard-kicker">Squad Invite</p>
                     <h1>Your child&apos;s card is saved.</h1>
+                    {order.club && <p className="uk-squad-invite-success-team">{order.club}</p>}
                     <ul className="uk-squad-invite-success-list">
-                      <li>No charge has been taken.</li>
-                      <li>Payment requests remain disabled during this test.</li>
+                      <li>No payment is taken — payment requests remain disabled during this test.</li>
+                      <li>Emblem staff review this card before it goes into production.</li>
                       <li>Production begins only after payment, in a future approved live flow.</li>
                       <li>Cards are delivered together to the approved organiser/coach.</li>
+                      <li>Your organiser sees aggregate team progress only — never this card&apos;s details.</li>
                     </ul>
+                    <div className="uk-squad-invite-success-actions">
+                      <a className="uk-wizard-primary" href="/squad-invite/join">Return to Squad Invite</a>
+                      <a className="uk-squad-invite-success-secondary" href="/">Return to Emblem homepage</a>
+                    </div>
                   </div>
                 ) : (
                   <>

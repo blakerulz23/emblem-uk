@@ -20,5 +20,5 @@ export default async function SquadInviteStartPage(){
   const {data:existing}=await createServiceRoleClient().from('squad_invite_requests')
     .select('public_reference,club_team_name,request_status').eq('organiser_profile_id',user.id).order('submitted_at',{ascending:false});
   const initialExistingRequests=(existing??[]).map(r=>({publicReference:r.public_reference,teamName:r.club_team_name,status:r.request_status}));
-  return <OrganiserStart initialExistingRequests={initialExistingRequests}/>;
+  return <OrganiserStart initialExistingRequests={initialExistingRequests} initialSignedInEmail={user.email}/>;
 }

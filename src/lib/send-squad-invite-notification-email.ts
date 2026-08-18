@@ -36,13 +36,13 @@ export async function sendSquadInviteNotificationEmail(params: {
   const from = process.env.RESEND_FROM_EMAIL || 'Emblem <onboarding@resend.dev>';
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk-lauda-collectives-projects.vercel.app';
   const manageUrl = `${siteUrl}/squad-invite/manage/${encodeURIComponent(params.publicReference)}`;
-  const { subject, html } = buildSquadInviteEmail(params, manageUrl);
+  const { subject, html, text } = buildSquadInviteEmail(params, manageUrl);
 
   try {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to: params.toEmail, subject, html }),
+      body: JSON.stringify({ from, to: params.toEmail, subject, html, text }),
     });
     if (!res.ok) {
       console.warn('Resend Squad Invite email failed', await res.text().catch(() => ''));
@@ -56,32 +56,44 @@ export async function sendSquadInviteNotificationEmail(params: {
   }
 }
 
+function ctaButtonHtml(url: string, label: string): string {
+  return `<p><a href="${url}" style="display:inline-block;padding:12px 20px;background:#E97435;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">${escapeHtml(label)}</a></p>`;
+}
+
+function ctaLineText(url: string, label: string): string {
+  return `${label}: ${url}`;
+}
+
 function buildSquadInviteEmail(
-  params: { template: SquadInviteEmailTemplate; teamName: string; reason?: string },
+  params: { template: SquadInviteEmailTemplate; teamName: string; publicReference: string; reason?: string },
   manageUrl: string,
-): { subject: string; html: string } {
+): { subject: string; html: string; text: string } {
   const team = escapeHtml(params.teamName);
-  const button = `<p><a href="${manageUrl}" style="display:inline-block;padding:12px 20px;background:#E97435;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">View your Squad Invite</a></p>`;
+  const ref = escapeHtml(params.publicReference);
   switch (params.template) {
     case 'request_received':
       return {
         subject: `We've received your Squad Invite request for ${params.teamName}`,
-        html: `<h2>Request received</h2><p>Your Squad Invite request for <strong>${team}</strong> has been received. Emblem staff aim to review controlled-pilot requests within two business days.</p>${button}`,
+        html: `<h2>Request received</h2><p>We've received your Squad Invite request for <strong>${team}</strong>. Reference: <strong>${ref}</strong>.</p><p>We aim to review controlled-pilot requests within two business days. We'll email you at this address once it has been reviewed.</p><p>If approved, you'll sign in to add delivery details and receive the link to share with parents.</p>${ctaButtonHtml(manageUrl, 'View request status')}`,
+        text: `Request received\n\nWe've received your Squad Invite request for ${params.teamName}. Reference: ${params.publicReference}.\n\nWe aim to review controlled-pilot requests within two business days. We'll email you at this address once it has been reviewed.\n\nIf approved, you'll sign in to add delivery details and receive the link to share with parents.\n\n${ctaLineText(manageUrl, 'View request status')}`,
       };
     case 'changes_requested':
       return {
         subject: `Action needed on your Squad Invite request for ${params.teamName}`,
-        html: `<h2>Changes requested</h2><p>Emblem staff have asked for changes to your Squad Invite request for <strong>${team}</strong>:</p><p style="padding:12px;background:#fff7ed;border-radius:8px">${escapeHtml(params.reason ?? '')}</p><p>Sign in to review and resubmit.</p>${button}`,
+        html: `<h2>Changes requested</h2><p>Emblem staff have asked for changes to your Squad Invite request for <strong>${team}</strong> (Reference: <strong>${ref}</strong>):</p><p style="padding:12px;background:#fff7ed;border-radius:8px">${escapeHtml(params.reason ?? '')}</p><p>Sign in to review and resubmit.</p>${ctaButtonHtml(manageUrl, 'Review and resubmit')}`,
+        text: `Changes requested\n\nEmblem staff have asked for changes to your Squad Invite request for ${params.teamName} (Reference: ${params.publicReference}):\n\n${params.reason ?? ''}\n\nSign in to review and resubmit.\n\n${ctaLineText(manageUrl, 'Review and resubmit')}`,
       };
     case 'approved_link_ready':
       return {
-        subject: `Your Squad Invite request for ${params.teamName} has been approved`,
-        html: `<h2>Approved</h2><p>Your Squad Invite request for <strong>${team}</strong> has been approved. Sign in to complete delivery setup and get your parent invitation link.</p>${button}`,
+        subject: `Your Squad Invite for ${params.teamName} has been approved`,
+        html: `<h2>Your Squad Invite has been approved</h2><p><strong>${team}</strong> · Reference: <strong>${ref}</strong></p><p>Here's what happens next: sign in and complete delivery setup. Once delivery details are added, the link to share with parents becomes available — it isn't ready before then.</p>${ctaButtonHtml(manageUrl, 'Complete setup and get your parent link')}<p style="color:#6b7280;font-size:13px">If you weren't expecting this email, please contact Emblem support before continuing.</p>`,
+        text: `Your Squad Invite has been approved\n\n${params.teamName} · Reference: ${params.publicReference}\n\nHere's what happens next: sign in and complete delivery setup. Once delivery details are added, the link to share with parents becomes available — it isn't ready before then.\n\n${ctaLineText(manageUrl, 'Complete setup and get your parent link')}\n\nIf you weren't expecting this email, please contact Emblem support before continuing.`,
       };
     case 'rejected':
       return {
         subject: `Update on your Squad Invite request for ${params.teamName}`,
-        html: `<h2>Request not approved</h2><p>Your Squad Invite request for <strong>${team}</strong> was not approved:</p><p style="padding:12px;background:#fef2f2;border-radius:8px">${escapeHtml(params.reason ?? '')}</p>${button}`,
+        html: `<h2>Request not approved</h2><p>Your Squad Invite request for <strong>${team}</strong> (Reference: <strong>${ref}</strong>) was not approved:</p><p style="padding:12px;background:#fef2f2;border-radius:8px">${escapeHtml(params.reason ?? '')}</p>${ctaButtonHtml(manageUrl, 'View request status')}`,
+        text: `Request not approved\n\nYour Squad Invite request for ${params.teamName} (Reference: ${params.publicReference}) was not approved:\n\n${params.reason ?? ''}\n\n${ctaLineText(manageUrl, 'View request status')}`,
       };
   }
 }

@@ -43,6 +43,14 @@ describe('JoinSquadInvite — real, styled, accessible interactive controls', ()
     expect(source).not.toContain('pays individually');
   });
 
+  it('states the future-compatible pricing/payment sequence and the disposable-pilot payment state once, coherently', () => {
+    expect(source).toContain('Pricing is confirmed for the squad before any payment is requested.');
+    expect(source).toContain('No payment is taken at this stage.');
+    // Not contradictory: never claims parents pay individually while also
+    // saying payments are disabled.
+    expect(source).not.toContain('pay individually');
+  });
+
   it('renders the campaign header fields required by the fix', () => {
     expect(source).toContain('invitation.teamName');
     expect(source).toContain('invitation.ageGroup');

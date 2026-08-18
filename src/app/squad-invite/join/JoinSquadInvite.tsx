@@ -120,11 +120,17 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
   }
 
   return (
+    // A <div>, not <main> — the real page already has exactly one <main>
+    // landmark from shared chrome (ConditionalChrome's `<main className="pt-16">`
+    // wrapping every non-builder/os/player-profile route); a second nested
+    // <main> here was a real accessibility defect (two "main content"
+    // landmarks on one page), found via live rendering with real chrome —
+    // the harness never catches this since it bypasses that chrome entirely.
     // pb-28: the persistent disposable-MVP notice is a fixed bottom bar
     // rendered by shared chrome (ConditionalChrome/DisposableSquadInviteNotice),
     // not by this component — this padding keeps it from covering the
     // final control on short viewports rather than trying to alter it.
-    <main className="min-h-screen bg-[#f5f0e8] px-4 py-8 pb-28 text-[#17251d] sm:px-6 sm:py-12">
+    <div className="min-h-screen bg-[#f5f0e8] px-4 py-8 pb-28 text-[#17251d] sm:px-6 sm:py-12">
       <section className="mx-auto max-w-xl rounded-3xl bg-white p-6 shadow-sm sm:p-10">
         <p className="text-xs font-extrabold uppercase tracking-[0.2em] text-[#36754a]">Emblem Squad Invite</p>
 
@@ -166,7 +172,7 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
 
         <div className="mt-4 rounded-2xl border-2 border-[#173f2a] bg-[#eef6f0] p-4">
           <p className="font-bold text-[#173f2a]">Payment requests are not active during this test.</p>
-          <p className="mt-1 text-sm text-[#173f2a]">No card details are collected and nothing will be charged while this controlled pilot is running.</p>
+          <p className="mt-1 text-sm text-[#173f2a]">No payment is taken at this stage. No card details are collected and nothing is charged while this controlled pilot is running.</p>
         </div>
 
         <section className="mt-5 grid gap-3 text-sm">
@@ -180,7 +186,7 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
           </div>
           <div className="rounded-xl border border-[#e4ded2] p-4">
             <h2 className="font-bold">Privacy &amp; participation</h2>
-            <p className="mt-1">One team link. Each parent or guardian builds and commits individually.</p>
+            <p className="mt-1">One team link. Each parent or guardian builds and commits individually. Pricing is confirmed for the squad before any payment is requested.</p>
             <p className="mt-2">Email verification confirms control of the address only. A separate authority declaration is required before submitting a child&apos;s information.</p>
           </div>
         </section>
@@ -280,6 +286,6 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
           )}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

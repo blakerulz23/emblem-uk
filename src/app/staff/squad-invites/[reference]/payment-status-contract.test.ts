@@ -11,9 +11,13 @@ const source = readFileSync('src/app/staff/squad-invites/[reference]/page.tsx', 
 // contract.test.ts), which doesn't scan this file since it's a page, not
 // an API route.
 describe('Staff request detail — payment status is visible, never automated, never a child field', () => {
-  it('selects only payment/print fields from squad_invite_participations — never a display/child field', () => {
+  it('selects only payment/print/commitment-status fields from squad_invite_participations — never a display/child field', () => {
+    // status/commitment_completed_at were added for the Finalise pricing
+    // workflow card's "completed commitments" count — same table, same
+    // read-only query, no new field type (status is the same enum column
+    // finalise_squad_invite_pricing() itself filters on).
     const select = source.match(/squad_invite_participations['"]\)\.select\('([^']+)'\)/)?.[1] ?? '';
-    expect(select).toBe('payment_request_status,payment_deadline_at,print_quantity');
+    expect(select).toBe('payment_request_status,payment_deadline_at,print_quantity,status,commitment_completed_at');
     expect(select).not.toMatch(/display_first_name|display_surname_initial|guardian|email|photo/);
   });
 
