@@ -21,6 +21,7 @@ import {
 } from '@/lib/staff-queue-search';
 import ApproveOrderButton from './ApproveOrderButton';
 import ApproveTeamOrderButton from './ApproveTeamOrderButton';
+import RejectPhotoButton from './RejectPhotoButton';
 import ResendInviteButton from './ResendInviteButton';
 import BuildProfileButton from './BuildProfileButton';
 import RejectCardButton from './RejectCardButton';
@@ -105,20 +106,20 @@ async function getPlayerNamesByOrder(supabase: ReturnType<typeof createServiceRo
  * with a card_definitions row, not only Squad Invite ones, since the same
  * gap exists for any pending order whose print file hasn't rendered yet. */
 async function getDesignPreviewsByOrder(supabase: ReturnType<typeof createServiceRoleClient>, orderIds: string[]) {
-  const map = new Map<string, { name: string; number: string | null; team: string | null; position: string | null; photoUrl: string | null }>();
+  const map = new Map<string, { name: string; number: string | null; team: string | null; position: string | null; photoUrl: string | null; photoStatus: string }>();
   if (orderIds.length === 0) return map;
   const { data } = await supabase
     .from('card_definitions')
-    .select('order_id, name, number, team, position, photo')
+    .select('order_id, name, number, team, position, photo, status')
     .in('order_id', orderIds);
   type PhotoRef = { storageKey?: string } | null;
-  for (const row of (data ?? []) as { order_id: string | null; name: string; number: string | null; team: string | null; position: string | null; photo: PhotoRef }[]) {
+  for (const row of (data ?? []) as { order_id: string | null; name: string; number: string | null; team: string | null; position: string | null; photo: PhotoRef; status: string }[]) {
     if (!row.order_id || map.has(row.order_id)) continue; // one preview per order — first match only
     const storageKey = row.photo?.storageKey;
     // One bad/missing S3 object must never take down the whole queue page
     // for every other pending order — falls back to no photo, not an error.
     const photoUrl = storageKey ? await getSignedDownloadUrl(storageKey, 3600).catch(() => null) : null;
-    map.set(row.order_id, { name: row.name, number: row.number, team: row.team, position: row.position, photoUrl });
+    map.set(row.order_id, { name: row.name, number: row.number, team: row.team, position: row.position, photoUrl, photoStatus: row.status });
   }
   return map;
 }
@@ -602,6 +603,20 @@ export default async function StaffQueuePage({
                   {order.designPreview.team ? ` · ${order.designPreview.team}` : ''}
                 </div>
               )}
+              {order.designPreview?.photoStatus === 'rejected' && (
+                <span
+                  style={{
+                    display: 'inline-block', marginTop: 6,
+                    fontFamily: 'var(--font-jbmono), monospace', fontSize: 11, fontWeight: 700,
+                    letterSpacing: '0.04em', textTransform: 'uppercase',
+                    color: '#c2410c', background: '#fff7ed',
+                    padding: '3px 10px', borderRadius: 999,
+                    boxShadow: 'inset 0 0 0 1px #fed7aa',
+                  }}
+                >
+                  Photo rejected — contact guardian
+                </span>
+              )}
               <div style={{ marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {order.printFiles.length > 0 ? (
                   order.printFiles.map((f, i) => (
@@ -634,15 +649,20 @@ export default async function StaffQueuePage({
                 )}
               </div>
             </div>
-            {order.cardCount > 1 ? (
-              <ApproveTeamOrderButton
-                orderId={order.id}
-                purchaserEmail={order.purchaser_email}
-                clubNameHint={order.club_name}
-                teamNameHint={order.team_name}
-              />
-            ) : (
-              <ApproveOrderButton orderId={order.id} squadInvite={order.source === 'squad_invite'} />
+            {order.designPreview?.photoStatus !== 'rejected' && (
+              order.cardCount > 1 ? (
+                <ApproveTeamOrderButton
+                  orderId={order.id}
+                  purchaserEmail={order.purchaser_email}
+                  clubNameHint={order.club_name}
+                  teamNameHint={order.team_name}
+                />
+              ) : (
+                <ApproveOrderButton orderId={order.id} squadInvite={order.source === 'squad_invite'} />
+              )
+            )}
+            {order.source === 'squad_invite' && order.designPreview?.photoStatus !== 'rejected' && (
+              <RejectPhotoButton orderId={order.id} />
             )}
           </div>
         ))}

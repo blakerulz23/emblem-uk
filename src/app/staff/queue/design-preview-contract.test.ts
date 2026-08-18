@@ -11,7 +11,7 @@ const page = readFileSync('src/app/staff/queue/page.tsx', 'utf8');
 // getPlayerNamesByOrder), none of which have a behavioural unit test either.
 describe('Staff queue — design preview never breaks the page or leaks across orders', () => {
   it('scopes the card_definitions lookup to the given order ids', () => {
-    expect(page).toMatch(/\.from\('card_definitions'\)\s*\.select\('order_id, name, number, team, position, photo'\)\s*\.in\('order_id', orderIds\)/);
+    expect(page).toMatch(/\.from\('card_definitions'\)\s*\.select\('order_id, name, number, team, position, photo, status'\)\s*\.in\('order_id', orderIds\)/);
   });
 
   it('keeps exactly one preview per order — first match only, never overwritten', () => {

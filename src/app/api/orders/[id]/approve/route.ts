@@ -82,6 +82,21 @@ async function approveSquadInviteOrder(
   const { data: orderRow } = await serviceRole.from('orders').select('id, payment_status').eq('id', orderId).maybeSingle();
   if (!orderRow) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
 
+  // Defends the API directly, not just the UI's badge/hidden-button
+  // treatment (staff/queue/page.tsx) — a rejected photo (reject-photo
+  // route, migration 0063) must never be approvable into production even
+  // via a direct call or a stale page.
+  const { data: rejectedPhoto } = await serviceRole
+    .from('card_definitions')
+    .select('id')
+    .eq('order_id', orderId)
+    .eq('status', 'rejected')
+    .limit(1)
+    .maybeSingle();
+  if (rejectedPhoto) {
+    return NextResponse.json({ error: "This order's photo was rejected — cannot approve until it's replaced" }, { status: 409 });
+  }
+
   const { data: paymentModeEnabled } = await serviceRole.rpc('squad_invite_payment_mode_enabled');
   if (paymentModeEnabled === true && orderRow.payment_status !== 'paid') {
     return NextResponse.json({ error: 'Payment is required before this can be approved for production' }, { status: 409 });
