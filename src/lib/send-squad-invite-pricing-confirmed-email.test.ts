@@ -61,7 +61,7 @@ describe('sendSquadInvitePricingConfirmedEmail', () => {
     expect(raw).not.toContain('£18.99');
   });
 
-  it('squad/multi tier: states the committed count and frames it as a reward for committing early', async () => {
+  it('squad/multi tier: frames it as a static group-vs-solo price comparison, never as a price that changed or "came down"', async () => {
     process.env.RESEND_API_KEY = 'test-key';
     let capturedBody: { html?: string; text?: string } = {};
     vi.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
@@ -69,10 +69,27 @@ describe('sendSquadInvitePricingConfirmedEmail', () => {
       return new Response(JSON.stringify({ id: 'test' }), { status: 200 });
     });
     await sendSquadInvitePricingConfirmedEmail(SQUAD_PARAMS);
-    expect(capturedBody.html).toContain('12 players');
-    expect(capturedBody.html).toMatch(/committed early/i);
-    expect(capturedBody.html).toMatch(/less than ordering on your own/i);
-    expect(capturedBody.text).toMatch(/committed early/i);
+    const raw = `${capturedBody.html} ${capturedBody.text}`;
+    expect(capturedBody.html).toContain('12 of you');
+    expect(capturedBody.html).toMatch(/ordered together/i);
+    expect(capturedBody.html).toMatch(/less than ordering alone/i);
+    expect(capturedBody.text).toMatch(/ordered together/i);
+    expect(raw).not.toMatch(/came down|dropped|fell|lower(ed)? (from|to)/i);
+  });
+
+  it('computes the savings against SINGLE_UNIT_PRICE_PENCE at runtime rather than a hardcoded figure', async () => {
+    process.env.RESEND_API_KEY = 'test-key';
+    let capturedBody: { html?: string } = {};
+    vi.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
+      capturedBody = JSON.parse(String((init as RequestInit).body));
+      return new Response(JSON.stringify({ id: 'test' }), { status: 200 });
+    });
+    // SINGLE_UNIT_PRICE_PENCE is 2499 (see pricing-engine.ts); at 2199 the
+    // saving must read as exactly £3.00, derived from the constant, not
+    // written anywhere as a literal.
+    await sendSquadInvitePricingConfirmedEmail({ ...SQUAD_PARAMS, tier: 'multi', unitPricePence: 2199 });
+    expect(capturedBody.html).toContain('£3.00');
+    expect(capturedBody.html).toMatch(/£3\.00<\/strong> less than ordering alone/);
   });
 
   it("single tier: never says the team finished with 1 player — orders are closed, nothing to act on, not a penalty", async () => {
