@@ -4,8 +4,6 @@ import { hashBuilderToken } from '@/lib/squad-invite';
 import { cookies } from 'next/headers';
 import { hasValidSquadInviteCsrf } from '@/lib/squad-invite-request-security';
 import { headObject } from '@/lib/s3-client';
-import { buildNfcCardUrl } from '@/lib/nfc-link';
-import { sendSquadInviteEarlyPreviewEmail } from '@/lib/send-squad-invite-early-preview-email';
 
 const REQUIRED = [
   ['child_information_authority', 'squad_invite_child_authority_v1'],
@@ -105,32 +103,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   const result = data as { created: boolean; orderId: string; cardId: string | null; participationId: string };
 
-  // Awaited, not detached — a truly fire-and-forget async call risks the
-  // serverless function freezing before it completes (same reasoning as
-  // the orders-paid webhook's mark_squad_invite_participation_paid call).
-  // Only on a genuine first commit (never an idempotent retry —
-  // result.created already distinguishes these, no new tracking column
-  // needed), and never allowed to fail or change this response — a
-  // guardian not getting this early-look email is a much smaller problem
-  // than the commit response itself failing because of it.
-  if (result.created && result.cardId && user.email) {
-    try {
-      const { data: card } = await service.from('cards')
-        .select('claim_token,card_definitions(team)')
-        .eq('id', result.cardId).maybeSingle();
-      if (card) {
-        const definitionRaw = card.card_definitions as unknown;
-        const definition = (Array.isArray(definitionRaw) ? definitionRaw[0] : definitionRaw) as { team: string } | null;
-        await sendSquadInviteEarlyPreviewEmail({
-          toEmail: user.email,
-          teamName: definition?.team || 'your team',
-          claimUrl: buildNfcCardUrl(card.claim_token),
-        });
-      }
-    } catch (err) {
-      console.warn('early preview email failed', err);
-    }
-  }
-
+  // The early-preview email used to send from here, at commit time — moved
+  // to the approve route (approveSquadInviteOrder) because a card created
+  // by this RPC isn't claimable yet (resolveCardCode requires the order's
+  // payment_status to already be 'fulfilled'), so an email sent from this
+  // point always linked to a card that couldn't actually be opened until
+  // staff approved it. See commit/route.test.ts's "early preview email
+  // ownership" test for the guard against this regressing back here.
   return NextResponse.json({ ok: true, status: 'commitment_completed', paymentTaken: false, created: result.created, orderId: result.orderId });
 }

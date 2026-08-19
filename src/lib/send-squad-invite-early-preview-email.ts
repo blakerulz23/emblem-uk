@@ -1,18 +1,18 @@
 /**
- * Sends a Squad Invite guardian an early look at their child's card the
- * moment they commit it — before staff approval, before physical
- * production. "Claiming" (digital identity/Player OS access) and
- * production status are independent in this schema (see
- * commit_squad_invite_participation_order, migration 0055): the card row
- * and its claim_token already exist at commit time, and /os?card=...
- * already resolves an unclaimed card through the normal activation flow
- * with no approval/production precondition. Deliberately never says "tap
- * to activate" or otherwise implies a physical card exists yet — that's
- * the later, staff-triggered claim-reminder email's job
- * (send-squad-invite-card-claim-reminder-email.ts), once production is
- * real. Same {toEmail, teamName, claimUrl} shape and never-throws
- * contract as that sibling module, deliberately not sharing one function
- * — different copy, different point in the lifecycle.
+ * Sends a Squad Invite guardian an early look at their child's card once
+ * staff approve it for production — triggered from the approve route
+ * (src/app/api/orders/[id]/approve/route.ts's approveSquadInviteOrder),
+ * not from commit. It originally fired at commit time, before staff had
+ * reviewed anything; that broke the link entirely, since resolveCardCode
+ * (src/lib/card-lookup.ts) requires the order's payment_status to already
+ * be 'fulfilled' before a card resolves at all — staff approval is what
+ * sets that. Deliberately never says "tap to activate" or otherwise
+ * implies the *physical* card is ready — that's the later, separately
+ * staff-triggered claim-reminder email's job
+ * (send-squad-invite-card-claim-reminder-email.ts), sent once the card is
+ * actually produced. Same {toEmail, teamName, claimUrl} shape and
+ * never-throws contract as that sibling module, deliberately not sharing
+ * one function — different copy, different point in the lifecycle.
  */
 export async function sendSquadInviteEarlyPreviewEmail(params: {
   toEmail: string;
@@ -27,9 +27,9 @@ export async function sendSquadInviteEarlyPreviewEmail(params: {
 
   const from = process.env.RESEND_FROM_EMAIL || 'Emblem <onboarding@resend.dev>';
   const team = escapeHtml(params.teamName);
-  const subject = `Get an early look at your Squad Invite card for ${params.teamName}`;
-  const html = `<h2>Your card design is saved</h2><p>Your child's card for <strong>${team}</strong> is saved. Emblem staff review it before it goes into production, but you can already preview the digital card and start exploring Player OS now.</p><p><a href="${params.claimUrl}" style="display:inline-block;padding:12px 20px;background:#E97435;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Preview your card</a></p><p style="color:#6b7280;font-size:13px">No payment has been taken. If you weren't expecting this email, you can ignore it.</p>`;
-  const text = `Your card design is saved\n\nYour child's card for ${params.teamName} is saved. Emblem staff review it before it goes into production, but you can already preview the digital card and start exploring Player OS now.\n\nPreview your card: ${params.claimUrl}\n\nNo payment has been taken. If you weren't expecting this email, you can ignore it.`;
+  const subject = `Your Squad Invite card for ${params.teamName} has been approved`;
+  const html = `<h2>Your card's been approved</h2><p>Emblem staff have reviewed and approved your child's card for <strong>${team}</strong> — it's now queued for production.</p><p>While you wait for the physical card, you can already preview the digital card and start exploring Player OS.</p><p><a href="${params.claimUrl}" style="display:inline-block;padding:12px 20px;background:#E97435;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Preview your card</a></p><p style="color:#6b7280;font-size:13px">No payment has been taken. If you weren't expecting this email, you can ignore it.</p>`;
+  const text = `Your card's been approved\n\nEmblem staff have reviewed and approved your child's card for ${params.teamName} — it's now queued for production.\n\nWhile you wait for the physical card, you can already preview the digital card and start exploring Player OS.\n\nPreview your card: ${params.claimUrl}\n\nNo payment has been taken. If you weren't expecting this email, you can ignore it.`;
 
   try {
     const res = await fetch('https://api.resend.com/emails', {
