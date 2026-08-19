@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { randomBytes } from 'crypto';
@@ -19,15 +20,10 @@ import { POST } from './route';
  */
 const mockGetUser = vi.fn();
 const mockRpc = vi.fn();
-const mockCardMaybeSingle = vi.fn();
 vi.mock('@/lib/supabase/server', () => ({
   createClient: () => ({ auth: { getUser: mockGetUser } }),
   createServiceRoleClient: () => ({
     rpc: (...args: unknown[]) => mockRpc(...args),
-    from: (table: string) => {
-      if (table === 'cards') return { select: () => ({ eq: () => ({ maybeSingle: mockCardMaybeSingle }) }) };
-      throw new Error(`unexpected table ${table}`);
-    },
   }),
 }));
 
@@ -39,11 +35,6 @@ vi.mock('next/headers', () => ({
 const mockHeadObject = vi.fn();
 vi.mock('@/lib/s3-client', () => ({
   headObject: (...args: unknown[]) => mockHeadObject(...args),
-}));
-
-const mockSendEarlyPreviewEmail = vi.fn();
-vi.mock('@/lib/send-squad-invite-early-preview-email', () => ({
-  sendSquadInviteEarlyPreviewEmail: (...args: unknown[]) => mockSendEarlyPreviewEmail(...args),
 }));
 
 const CSRF_TOKEN = randomBytes(32).toString('base64url');
@@ -91,14 +82,10 @@ beforeEach(() => {
   mockRpc.mockReset();
   mockCookieGet.mockReset();
   mockHeadObject.mockReset();
-  mockCardMaybeSingle.mockReset();
-  mockSendEarlyPreviewEmail.mockReset();
   mockGetUser.mockResolvedValue({ data: { user: { id: GUARDIAN_ID, email: 'guardian@example.test' } } });
   mockCookieGet.mockReturnValue({ value: BUILDER_TOKEN });
   mockHeadObject.mockResolvedValue({ exists: true });
   mockRpc.mockResolvedValue({ data: { created: true, orderId: 'order-1', cardId: 'card-1', participationId: PARTICIPATION_ID }, error: null });
-  mockCardMaybeSingle.mockResolvedValue({ data: { claim_token: 'CLAIM123', card_definitions: { team: 'Ashton Juniors U10' } } });
-  mockSendEarlyPreviewEmail.mockResolvedValue({ ok: true });
 });
 
 describe('POST /api/squad-invite-participations/[id]/commit — RPC boundary', () => {
@@ -183,35 +170,21 @@ describe('POST /api/squad-invite-participations/[id]/commit — RPC boundary', (
     expect(body).toEqual({ error: 'Commitment unavailable' });
     errorSpy.mockRestore();
   });
+});
 
-  it('sends the early preview email with the team name and claim URL on a genuine first commit', async () => {
-    const res = await commit(VALID_BODY);
-    expect(res.status).toBe(200);
-    expect(mockSendEarlyPreviewEmail).toHaveBeenCalledWith({
-      toEmail: 'guardian@example.test',
-      teamName: 'Ashton Juniors U10',
-      claimUrl: expect.stringContaining('CLAIM123'),
-    });
-  });
-
-  it('never sends the early preview email on an idempotent retry (created:false)', async () => {
-    mockRpc.mockResolvedValue({ data: { created: false, orderId: 'order-1', cardId: 'card-1', participationId: PARTICIPATION_ID }, error: null });
-    await commit(VALID_BODY);
-    expect(mockSendEarlyPreviewEmail).not.toHaveBeenCalled();
-  });
-
-  it('a failed early preview email never changes the response — the commit itself already succeeded', async () => {
-    mockSendEarlyPreviewEmail.mockRejectedValue(new Error('resend down'));
-    const res = await commit(VALID_BODY);
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual({ ok: true, status: 'commitment_completed', paymentTaken: false, created: true, orderId: 'order-1' });
-  });
-
-  it('never lets a missing card row throw — just skips the email', async () => {
-    mockCardMaybeSingle.mockResolvedValue({ data: null });
-    const res = await commit(VALID_BODY);
-    expect(res.status).toBe(200);
-    expect(mockSendEarlyPreviewEmail).not.toHaveBeenCalled();
+describe('POST /api/squad-invite-participations/[id]/commit — early preview email ownership', () => {
+  // The email used to send from this route at commit time — before staff
+  // had reviewed anything, which produced a claim link that couldn't
+  // actually be opened (resolveCardCode requires the order's
+  // payment_status to already be 'fulfilled', which only staff approval
+  // sets). It now sends from the approve route instead
+  // (src/app/api/orders/[id]/approve/route.ts's approveSquadInviteOrder).
+  // A dynamic mock here would only prove this test's fixtures don't
+  // happen to trigger a send — it wouldn't catch someone re-adding the
+  // import. Reading the route's own source text does.
+  it('no longer imports or references the early preview email module', () => {
+    const source = readFileSync('src/app/api/squad-invite-participations/[id]/commit/route.ts', 'utf8');
+    expect(source).not.toContain('send-squad-invite-early-preview-email');
+    expect(source).not.toContain('sendSquadInviteEarlyPreviewEmail');
   });
 });

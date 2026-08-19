@@ -5,6 +5,8 @@ import { createGuardianInvite } from '@/lib/create-guardian-invite';
 import { createTeamInvite } from '@/lib/create-team-invite';
 import { currentUkFootballSeason } from '@/lib/season';
 import { resolveOrCreateSeason } from '@/lib/resolve-season';
+import { buildNfcCardUrl } from '@/lib/nfc-link';
+import { sendSquadInviteEarlyPreviewEmail } from '@/lib/send-squad-invite-early-preview-email';
 
 export const runtime = 'nodejs';
 
@@ -58,6 +60,12 @@ type TeamChoice = { mode: 'existing'; id: string } | { mode: 'new'; name: string
  * column to 'fulfilled' to enter the existing Profile Setup queue — that is
  * a known, documented schema-semantic mismatch (this pilot's cards were
  * never paid), never disguised as anything else in the response or copy.
+ *
+ * Also sends the guardian's early-preview email (moved here from the
+ * commit route — see commit/route.ts's comment) now that this is the
+ * actual moment the card becomes claimable: resolveCardCode requires
+ * payment_status='fulfilled' before a card resolves at all, so sending
+ * this any earlier produced a link the guardian couldn't open.
  */
 async function approveSquadInviteOrder(
   serviceRole: ReturnType<typeof createServiceRoleClient>,
@@ -79,7 +87,7 @@ async function approveSquadInviteOrder(
     return NextResponse.json({ error: 'This Squad Invite campaign is not eligible for approval' }, { status: 409 });
   }
 
-  const { data: orderRow } = await serviceRole.from('orders').select('id, payment_status').eq('id', orderId).maybeSingle();
+  const { data: orderRow } = await serviceRole.from('orders').select('id, payment_status, purchaser_email, team_name').eq('id', orderId).maybeSingle();
   if (!orderRow) return NextResponse.json({ error: 'Order not found' }, { status: 404 });
 
   // Defends the API directly, not just the UI's badge/hidden-button
@@ -123,6 +131,25 @@ async function approveSquadInviteOrder(
     event_type: 'fulfilment_started',
     metadata: { action: 'pilot_production_approval', paymentStatus: 'unpaid_pilot' },
   });
+
+  // Awaited, not detached — a truly fire-and-forget async call risks the
+  // serverless function freezing before it completes. Never allowed to
+  // fail or change this response — a guardian not getting this email is a
+  // much smaller problem than approval itself failing because of it.
+  if (orderRow.purchaser_email) {
+    try {
+      const { data: card } = await serviceRole.from('cards').select('claim_token').eq('order_id', orderId).maybeSingle();
+      if (card?.claim_token) {
+        await sendSquadInviteEarlyPreviewEmail({
+          toEmail: orderRow.purchaser_email,
+          teamName: orderRow.team_name || 'your team',
+          claimUrl: buildNfcCardUrl(card.claim_token),
+        });
+      }
+    } catch (err) {
+      console.warn('early preview email failed', err);
+    }
+  }
 
   return NextResponse.json({ ok: true, orderId, source: 'squad_invite', productionQueued: true, inviteTriggered: false });
 }

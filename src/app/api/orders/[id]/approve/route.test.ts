@@ -20,15 +20,24 @@ vi.mock('@/lib/create-team-invite', () => ({ createTeamInvite: (...args: unknown
 vi.mock('@/lib/season', () => ({ currentUkFootballSeason: () => '2026/27' }));
 vi.mock('@/lib/resolve-season', () => ({ resolveOrCreateSeason: vi.fn(async () => ({ ok: true, id: 'season-1' })) }));
 
+const mockSendEarlyPreviewEmail = vi.fn();
+vi.mock('@/lib/send-squad-invite-early-preview-email', () => ({
+  sendSquadInviteEarlyPreviewEmail: (...args: unknown[]) => mockSendEarlyPreviewEmail(...args),
+}));
+
 type Fixture = {
   orderSource: string;
   cards?: { player_id: string | null }[];
-  orderRow?: { id: string; purchaser_email: string; intended_guardian_email: string | null; payment_status?: string };
+  orderRow?: { id: string; purchaser_email: string; intended_guardian_email: string | null; payment_status?: string; team_name?: string };
   participations?: Array<{ id: string; campaign_id: string; squad_invites: { campaign_status: string } }> | null;
   participationsError?: boolean;
   paymentModeEnabled?: boolean;
   // migration 0063 — a rejected card_definitions row for this order
   rejectedPhoto?: boolean;
+  // the Squad Invite card the approve route looks up to send the early
+  // preview email — distinct from `cards`, which is only the normal-order
+  // branch's player_id list
+  squadInviteCard?: { claim_token: string } | null;
 };
 
 let fixture: Fixture;
@@ -42,7 +51,14 @@ vi.mock('@/lib/supabase/server', () => ({
     rpc: (...args: unknown[]) => mockRpc(...args),
     from: (table: string) => {
       if (table === 'cards') {
-        return { select: () => ({ eq: () => ({ not: async () => ({ data: fixture.cards ?? [] }) }) }) };
+        return {
+          select: () => ({
+            eq: () => ({
+              not: async () => ({ data: fixture.cards ?? [] }),
+              maybeSingle: async () => ({ data: fixture.squadInviteCard ?? null }),
+            }),
+          }),
+        };
       }
       if (table === 'orders') {
         return {
@@ -107,10 +123,12 @@ beforeEach(() => {
   mockCreateGuardianInvite.mockReset();
   mockCreateTeamInvite.mockReset();
   mockRpc.mockReset();
+  mockSendEarlyPreviewEmail.mockReset();
   auditInserts.length = 0;
   orderUpdates.length = 0;
   mockRequireStaff.mockResolvedValue({ ok: true, userId: STAFF_ID });
   mockRpc.mockResolvedValue({ data: false, error: null });
+  mockSendEarlyPreviewEmail.mockResolvedValue({ ok: true });
   fixture = { orderSource: 'team_order' };
 });
 
@@ -138,6 +156,7 @@ describe('POST /api/orders/[id]/approve — normal orders (unchanged)', () => {
     // Never routed through the Squad Invite branch's own audit trail.
     expect(auditInserts).toHaveLength(0);
     expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockSendEarlyPreviewEmail).not.toHaveBeenCalled();
   });
 
   it('a standalone-source order is treated identically to a team_order (normal path, not squad_invite)', async () => {
@@ -158,8 +177,9 @@ describe('POST /api/orders/[id]/approve — Squad Invite orders (source-aware br
   beforeEach(() => {
     fixture = {
       orderSource: 'squad_invite',
-      orderRow: { id: ORDER_ID, purchaser_email: 'guardian@example.test', intended_guardian_email: null, payment_status: 'order_intent' },
+      orderRow: { id: ORDER_ID, purchaser_email: 'guardian@example.test', intended_guardian_email: null, payment_status: 'order_intent', team_name: 'Ashton Juniors U10' },
       participations: [PARTICIPATION],
+      squadInviteCard: { claim_token: 'CLAIM123' },
     };
   });
 
@@ -276,5 +296,55 @@ describe('POST /api/orders/[id]/approve — Squad Invite orders (source-aware br
     fixture.rejectedPhoto = false;
     const res = await approve();
     expect(res.status).toBe(200);
+  });
+
+  it('sends the early preview email to the purchaser with the order team name and the approved card claim URL', async () => {
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect(mockSendEarlyPreviewEmail).toHaveBeenCalledWith({
+      toEmail: 'guardian@example.test',
+      teamName: 'Ashton Juniors U10',
+      claimUrl: expect.stringContaining('CLAIM123'),
+    });
+  });
+
+  it('never sends the early preview email when approval itself is rejected (not linked to exactly one participation)', async () => {
+    fixture.participations = [];
+    await approve();
+    expect(mockSendEarlyPreviewEmail).not.toHaveBeenCalled();
+  });
+
+  it('never sends the early preview email when the photo was rejected (migration 0063 guard)', async () => {
+    fixture.rejectedPhoto = true;
+    await approve();
+    expect(mockSendEarlyPreviewEmail).not.toHaveBeenCalled();
+  });
+
+  it('never sends the early preview email when the payment-mode gate blocks approval', async () => {
+    mockRpc.mockResolvedValue({ data: true, error: null });
+    fixture.orderRow = { ...fixture.orderRow!, payment_status: 'order_intent' };
+    await approve();
+    expect(mockSendEarlyPreviewEmail).not.toHaveBeenCalled();
+  });
+
+  it('a failed early preview email never changes the response — approval itself already succeeded', async () => {
+    mockSendEarlyPreviewEmail.mockRejectedValue(new Error('resend down'));
+    const res = await approve();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ ok: true, source: 'squad_invite', productionQueued: true });
+  });
+
+  it('never lets a missing card row throw — just skips the email', async () => {
+    fixture.squadInviteCard = null;
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect(mockSendEarlyPreviewEmail).not.toHaveBeenCalled();
+  });
+
+  it('never sends the early preview email when the order has no purchaser email on file', async () => {
+    fixture.orderRow = { ...fixture.orderRow!, purchaser_email: '' };
+    await approve();
+    expect(mockSendEarlyPreviewEmail).not.toHaveBeenCalled();
   });
 });

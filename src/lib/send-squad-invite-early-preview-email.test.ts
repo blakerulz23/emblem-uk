@@ -37,7 +37,7 @@ describe('sendSquadInviteEarlyPreviewEmail', () => {
     expect((capturedBody.text ?? '').length).toBeGreaterThan(0);
   });
 
-  it('explicitly states no payment has been taken — this fires right after the payment-neutral commitment declaration', async () => {
+  it('explicitly states no payment has been taken — this fires right after staff approval, still before any physical production or payment', async () => {
     process.env.RESEND_API_KEY = 'test-key';
     let capturedBody: { html?: string; text?: string } = {};
     vi.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
@@ -63,6 +63,21 @@ describe('sendSquadInviteEarlyPreviewEmail', () => {
     });
     const raw = `${capturedBody.subject} ${capturedBody.html} ${capturedBody.text}`;
     expect(raw).not.toMatch(/tap to activate|card is ready/i);
+  });
+
+  it('says the card has been approved and is queued for production — this now fires from staff approval, not commit', async () => {
+    process.env.RESEND_API_KEY = 'test-key';
+    let capturedBody: { subject?: string; html?: string; text?: string } = {};
+    vi.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
+      capturedBody = JSON.parse(String((init as RequestInit).body));
+      return new Response(JSON.stringify({ id: 'test' }), { status: 200 });
+    });
+    await sendSquadInviteEarlyPreviewEmail({
+      toEmail: 'guardian@example.org', teamName: 'Ashton Juniors U10', claimUrl: 'https://emblem-uk.example/os?card=abc123',
+    });
+    const raw = `${capturedBody.subject} ${capturedBody.html} ${capturedBody.text}`;
+    expect(raw).toMatch(/approved/i);
+    expect(raw).toMatch(/queued for production/i);
   });
 
   it('escapes the team name before embedding it in the HTML body', async () => {
