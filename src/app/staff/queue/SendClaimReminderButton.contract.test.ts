@@ -20,6 +20,16 @@ describe('SendClaimReminderButton — manual, Squad Invite cards only, never for
     expect(buttonSource).toContain("role={messageIsError ? 'alert' : 'status'}");
   });
 
+  it('handles a quiet already-claimed skip without claiming an email was sent, and without refreshing on nothing changed', () => {
+    expect(buttonSource).toContain("body?.skipped === 'already_claimed'");
+    const skipBranch = buttonSource.slice(
+      buttonSource.indexOf("body?.skipped === 'already_claimed'"),
+      buttonSource.indexOf('setMessage(\'Reminder sent.\')')
+    );
+    expect(skipBranch).not.toMatch(/reminder sent/i);
+    expect(skipBranch).not.toContain('router.refresh()');
+  });
+
   it('is rendered in both Profile Setup Queue sections, gated on Squad Invite and not-yet-claimed', () => {
     const occurrences = pageSource.split("c.isSquadInvite && c.status !== 'claimed' && <SendClaimReminderButton").length - 1;
     expect(occurrences).toBe(2);

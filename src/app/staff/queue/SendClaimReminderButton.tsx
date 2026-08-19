@@ -24,10 +24,18 @@ export default function SendClaimReminderButton({ cardId, alreadySentAt }: { car
     setMessageIsError(false);
     try {
       const response = await fetch(`/api/staff/cards/${cardId}/send-claim-reminder`, { method: 'POST' });
-      const body = await response.json().catch(() => null) as { error?: string } | null;
+      const body = await response.json().catch(() => null) as { error?: string; skipped?: string } | null;
       if (!response.ok) {
         setMessage(body?.error || 'Could not send the reminder.');
         setMessageIsError(true);
+        return;
+      }
+      // The route quietly skips (ok:true) rather than erroring when the
+      // page's own stale render let this get clicked after the guardian
+      // already claimed elsewhere — nothing was sent, so the message must
+      // never say "sent" here, and nothing changed server-side to refresh.
+      if (body?.skipped === 'already_claimed') {
+        setMessage('Already claimed — no reminder needed.');
         return;
       }
       setMessage('Reminder sent.');
