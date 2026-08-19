@@ -25,7 +25,14 @@ export async function POST(_request: Request, { params }: { params: { id: string
     .select('id,claim_token,status,order_id,card_definitions(team)')
     .eq('id', params.id).maybeSingle();
   if (!card) return NextResponse.json({ error: 'Card not found' }, { status: 404 });
-  if (card.status === 'claimed') return NextResponse.json({ error: 'This card has already been claimed' }, { status: 400 });
+  // Not an error — the staff queue's own button rendering already hides
+  // this action once a card is claimed (page.tsx: `c.status !== 'claimed'`),
+  // so the only way to reach this branch is stale page state (the parent
+  // claimed via the early-preview/pricing-confirmed link after this page
+  // loaded, before staff clicked). A quiet, successful skip rather than a
+  // 400 — there is genuinely nothing wrong here, just nothing left to do:
+  // the guardian already has full Player OS access, so no email is owed.
+  if (card.status === 'claimed') return NextResponse.json({ ok: true, skipped: 'already_claimed' });
 
   const { data: order } = await service.from('orders').select('purchaser_email,source').eq('id', card.order_id).maybeSingle();
   if (!order || order.source !== 'squad_invite') {
