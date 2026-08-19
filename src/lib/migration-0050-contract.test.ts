@@ -1,5 +1,9 @@
 import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
+import {
+  SINGLE_UNIT_PRICE_PENCE, MULTI_UNIT_PRICE_PENCE, SQUAD_UNIT_PRICE_PENCE,
+  MULTI_MIN_PLAYERS, SQUAD_MIN_PLAYERS,
+} from './pricing-engine';
 
 const sql = readFileSync('supabase/migrations/0050_squad_invite_foundation.sql', 'utf8');
 const sql51 = readFileSync('supabase/migrations/0051_squad_invite_reusable_links.sql', 'utf8');
@@ -19,6 +23,26 @@ describe('migration 0050 Squad Invite contract', () => {
     expect(sql).toContain('squad_invite_commitment_pricing_v1');
     expect(sql).toContain("final_unit_price_pence in (2499,2199,1899)");
     expect(sql).toContain("final_commitment_count = 1 and final_tier = 'single'");
+  });
+
+  // Two independently hand-maintained copies of the same commercial rules
+  // (finalise_squad_invite_pricing here, pricing-engine.ts's exported
+  // constants) — neither generates the other. This is the same shape as
+  // the 0058 payment-mode incident: a silent drift between two "sources of
+  // truth" that nothing catches until it's live. Deriving the expected SQL
+  // substrings FROM the imported constants (not from hardcoded literals)
+  // means this fails in both directions — change either file's numbers
+  // without updating the other, and this test is what breaks.
+  it('keeps finalise_squad_invite_pricing\'s thresholds and unit prices in sync with pricing-engine.ts', () => {
+    expect(sql).toContain(
+      `v_count >= ${SQUAD_MIN_PLAYERS} then v_tier := 'squad'; v_unit := ${SQUAD_UNIT_PRICE_PENCE};`
+    );
+    expect(sql).toContain(
+      `elsif v_count >= ${MULTI_MIN_PLAYERS} then v_tier := 'multi'; v_unit := ${MULTI_UNIT_PRICE_PENCE};`
+    );
+    expect(sql).toContain(
+      `else v_tier := 'single'; v_unit := ${SINGLE_UNIT_PRICE_PENCE};`
+    );
   });
 
   it('derives the 24-hour grace deadline with a server-authoritative trigger', () => {
