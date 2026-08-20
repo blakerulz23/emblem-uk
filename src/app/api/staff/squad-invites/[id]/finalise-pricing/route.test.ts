@@ -144,6 +144,27 @@ describe('POST /api/staff/squad-invites/[id]/finalise-pricing — access gates (
     expect(res.status).toBe(409);
     expect(mockSendPricingConfirmedEmail).not.toHaveBeenCalled();
   });
+
+  it('calls finalise_squad_invite_pricing with only the campaign id — never sends campaign status or grace timing, so eligibility (including the closed-campaign grace bypass from 0066) is decided entirely inside the RPC, not duplicated here', async () => {
+    await finalisePricing();
+    expect(mockRpc).toHaveBeenCalledWith('finalise_squad_invite_pricing', { p_campaign_id: CAMPAIGN_ID });
+  });
+
+  it('succeeds on a campaign the RPC finalises despite grace not having ended by the clock — proving the route has no independent grace gate of its own that could shadow a closed-campaign early finalisation', async () => {
+    // The route never reads campaign_status or grace_ends_at itself, so
+    // there is nothing here to distinguish "closed, grace not over" from
+    // any other successful finalisation — this fixture stands in for it,
+    // and the real bypass is proven against the SQL text in
+    // migration-0066-contract.test.ts.
+    fixture.finalisePricingResult = {
+      data: { created: true, commitmentCount: 9, printQuantity: 9, tier: 'multi', unitPricePence: 2199 },
+      error: null,
+    };
+    const res = await finalisePricing();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.pricing).toEqual(fixture.finalisePricingResult.data);
+  });
 });
 
 describe('POST /api/staff/squad-invites/[id]/finalise-pricing — pricing-confirmed email (payment mode off)', () => {

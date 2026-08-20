@@ -3,7 +3,7 @@ import { createServiceRoleClient } from './supabase/server';
 
 export async function consumeSquadInviteRateLimit(
   headersLike: { get(name: string): string | null },
-  action: 'resolve' | 'participate' | 'otp-request' | 'otp-verify' | 'link-replace' | 'concern-flag' | 'coach-card-submit',
+  action: 'resolve' | 'participate' | 'otp-request' | 'otp-verify' | 'link-replace' | 'concern-flag' | 'coach-card-submit' | 'campaign-close' | 'campaign-reopen',
   subject?: string,
 ): Promise<boolean> {
   const secret = process.env.SQUAD_INVITE_RATE_LIMIT_SECRET;
@@ -27,6 +27,12 @@ export async function consumeSquadInviteRateLimit(
     // few times before staff lock it, tight enough to stop the upload path
     // being used to spam S3 writes.
     'coach-card-submit': { ip: 10, subject: 6 },
+    // Real, meaningful state changes (0066) but not security-sensitive the
+    // way link-replace is — generous enough for a coach genuinely toggling
+    // close/reopen a couple of times, tight enough to stop either being
+    // used to spam the audit trail.
+    'campaign-close': { ip: 10, subject: 6 },
+    'campaign-reopen': { ip: 10, subject: 6 },
   }[action];
   const opaqueBucket = (scope: 'ip' | 'subject', value: string) =>
     createHmac('sha256', secret).update(`${action}:${scope}:${value}`).digest('hex');

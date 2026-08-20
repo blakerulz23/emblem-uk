@@ -43,10 +43,14 @@ describe('Squad progress — organiser-facing dashboard, bounded club-mediated i
     expect(withoutCoachCardFields).not.toMatch(/\.(photoUrl|photo|email|guardianEmail|childName|fullName|surname)\b/);
   });
 
-  it('the manage page only shows the dashboard once the campaign is active, not before', () => {
+  it('the manage page only shows the dashboard once the campaign is active or closed (0066), not before', () => {
     const source = read(MANAGE_PAGE);
     expect(source).toMatch(/campaignActive\s*=\s*\w+\?\.campaign_status\s*===\s*'active'/);
-    expect(source).toContain('{campaignActive&&r.campaign_id&&<CampaignDashboard campaignId={r.campaign_id}/>}');
+    // 'closed' (early closure, 0066) means delivery setup already happened —
+    // the campaign just isn't accepting new commits any more, so it must
+    // keep showing the dashboard rather than regressing to "setup required".
+    expect(source).toMatch(/deliverySetupDone\s*=\s*campaignActive\s*\|\|\s*\w+\?\.campaign_status\s*===\s*'closed'/);
+    expect(source).toContain('{deliverySetupDone&&r.campaign_id&&<CampaignDashboard campaignId={r.campaign_id}/>}');
   });
 
   it('Squad progress renders before the status paragraph — ahead of correction and delivery-setup sections', () => {
@@ -62,9 +66,9 @@ describe('Squad progress — organiser-facing dashboard, bounded club-mediated i
     expect(dashboardIndex).toBeLessThan(deliverySetupIndex);
   });
 
-  it('once the campaign is active, the delivery-setup form is replaced by a completion line, not shown alongside it', () => {
+  it('once delivery setup is done (active or closed, 0066), the delivery-setup form is replaced by a completion line, not shown alongside it', () => {
     const source = read(MANAGE_PAGE);
-    expect(source).toContain('campaignActive?<section');
+    expect(source).toContain('deliverySetupDone?<section');
     expect(source).toContain('Delivery setup complete');
     // DeliverySetup only appears in the false branch of that ternary — the
     // component itself is still imported and used, just not rendered

@@ -89,7 +89,7 @@ function readSquadInviteCsrfCookie(): string {
   return match ? decodeURIComponent(match[1]) : '';
 }
 
-type SquadInviteCommitOutcome = null | 'sign_in_required' | 'unavailable' | 'validation' | 'network' | 'photo_upload_failed';
+type SquadInviteCommitOutcome = null | 'sign_in_required' | 'unavailable' | 'validation' | 'network' | 'photo_upload_failed' | 'campaign_closed';
 
 const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'person' | 'group' }> = [
   { id: 'single', title: 'One player', copy: 'Create one card from one football photo.', icon: 'person' },
@@ -1159,7 +1159,14 @@ export default function ProductionBuilder({
       }
       if (response.status === 401) { setSquadInviteOutcome('sign_in_required'); return; }
       if (response.status === 400) { setSquadInviteOutcome('validation'); return; }
-      if (!response.ok) { setSquadInviteOutcome('unavailable'); return; }
+      if (!response.ok) {
+        // The one rejection reason worth telling apart from every other
+        // generic ineligibility case — "try again shortly" is wrong once
+        // the organiser has closed the campaign (see commit/route.ts).
+        const body = await response.json().catch(() => null) as { reason?: string } | null;
+        setSquadInviteOutcome(body?.reason === 'campaign_closed' ? 'campaign_closed' : 'unavailable');
+        return;
+      }
       setSquadInvitePhase('success');
       succeeded = true;
       // submittingRef intentionally stays true on success — one-shot
@@ -1805,6 +1812,11 @@ export default function ProductionBuilder({
                         {squadInviteOutcome === 'unavailable' && (
                           <p role="alert" className="uk-enquiry-error">
                             This couldn&apos;t be completed right now — it may already be saved, or the window to make changes has closed. Please try again shortly.
+                          </p>
+                        )}
+                        {squadInviteOutcome === 'campaign_closed' && (
+                          <p role="alert" className="uk-enquiry-error">
+                            This team&apos;s Squad Invite has been closed by their organiser. Please contact them directly if you believe this is a mistake.
                           </p>
                         )}
                         {squadInviteOutcome === 'validation' && !hasDeclarationErrors && (

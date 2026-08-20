@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import CoachCardForm from './CoachCardForm';
+import CloseCampaignButton from './CloseCampaignButton';
 
 type JoinedPlayer = { firstName: string; surnameInitial: string };
 type CoachCardStatus = { fullName: string; roleTitle: string; configurationStatus: string } | null;
@@ -41,6 +42,8 @@ export default function CampaignDashboard({ campaignId }: { campaignId: string }
   const [concernNote, setConcernNote] = useState('');
   const [concernMessage, setConcernMessage] = useState('');
   const [concernSubmitting, setConcernSubmitting] = useState(false);
+  const [reopening, setReopening] = useState(false);
+  const [reopenError, setReopenError] = useState('');
 
   const loadDashboard = useCallback((cancelledRef?: { cancelled: boolean }) => {
     fetch(`/api/squad-invites/${encodeURIComponent(campaignId)}/dashboard`, { cache: 'no-store' })
@@ -88,6 +91,31 @@ export default function CampaignDashboard({ campaignId }: { campaignId: string }
     }
   };
 
+  // Lighter-weight than CloseCampaignButton's two-step confirm — reopening
+  // is the safe/reversible direction, and the server (reopen_squad_invite_
+  // campaign, migration 0066) is the actual guard against reopening once
+  // pricing has been finalised, not this button.
+  const reopenCampaign = async () => {
+    if (reopening) return;
+    setReopening(true);
+    setReopenError('');
+    try {
+      const r = await fetch(`/api/squad-invites/${encodeURIComponent(campaignId)}/reopen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Emblem-CSRF': csrf },
+        body: JSON.stringify({}),
+      });
+      if (r.ok) {
+        loadDashboard();
+      } else {
+        const body = await r.json().catch(() => null) as { error?: string } | null;
+        setReopenError(body?.error || 'This campaign could not be reopened right now.');
+      }
+    } finally {
+      setReopening(false);
+    }
+  };
+
   if (error) {
     return (
       <section className="mt-8 rounded-2xl border bg-white p-6">
@@ -107,8 +135,26 @@ export default function CampaignDashboard({ campaignId }: { campaignId: string }
   }
 
   const { campaign } = data;
+  const isClosed = campaign.campaignStatus === 'closed';
   return (
     <section className="mt-8 rounded-2xl border bg-white p-6">
+      {isClosed && (
+        <div className="mb-6 rounded-2xl border-2 border-neutral-400 bg-neutral-50 p-4">
+          <p className="font-bold text-neutral-900">Closed</p>
+          <p className="mt-1 text-sm text-neutral-700">
+            Nobody else can join or finish their card while this is closed. You can reopen it yourself, unless Emblem staff have already finalised pricing.
+          </p>
+          <button
+            type="button"
+            disabled={reopening || !csrf}
+            className="mt-3 rounded-xl border-2 border-orange-600 px-4 py-2 font-bold text-orange-700 disabled:opacity-60"
+            onClick={reopenCampaign}
+          >
+            {reopening ? 'Reopening…' : 'Reopen campaign'}
+          </button>
+          {reopenError && <p role="alert" className="mt-2 text-sm text-red-800">{reopenError}</p>}
+        </div>
+      )}
       <h2 className="text-2xl font-bold">Squad progress</h2>
       <p className="mt-3 text-4xl font-bold">{campaign.completedCommitments}</p>
       <p className="mt-1 text-sm">{campaign.completedCommitments === 1 ? 'child has' : 'children have'} joined and saved their card so far.</p>
@@ -166,6 +212,9 @@ export default function CampaignDashboard({ campaignId }: { campaignId: string }
           <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Free coach card</p>
           <p className="mt-1 text-sm text-emerald-900">{campaign.coachCard.fullName}, {campaign.coachCard.roleTitle} — {COACH_CARD_STATUS_LABEL[campaign.coachCard.configurationStatus] ?? campaign.coachCard.configurationStatus}</p>
         </div>
+      )}
+      {!isClosed && (
+        <CloseCampaignButton campaignId={campaignId} completedCommitments={campaign.completedCommitments} onClosed={() => loadDashboard()} />
       )}
     </section>
   );

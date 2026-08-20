@@ -46,12 +46,19 @@ export default function FinalisePricingButton({
   const [messageIsError, setMessageIsError] = useState(false);
 
   const graceOver = graceEndsAt ? new Date(graceEndsAt) <= new Date() : false;
+  // A campaign the organiser has closed early (0066) is immediately
+  // finalisable — finalise_squad_invite_pricing itself bypasses the grace
+  // wait for campaign_status='closed'. This is display-only preview logic
+  // matching that same bypass, so staff don't see a misleading "still
+  // waiting on grace period" message on a campaign that's actually already
+  // finalisable; the route/RPC remain the real authority either way.
+  const graceSatisfied = graceOver || campaignStatus === 'closed';
   const campaignBlocked = campaignStatus === 'cancelled' || campaignStatus === 'expired';
   const unavailableReason = alreadyFinalised
     ? null
     : campaignBlocked
       ? 'This campaign was cancelled or expired and cannot be priced.'
-      : !graceOver
+      : !graceSatisfied
         ? `Available once the completion grace period ends${graceEndsAt ? ` (${new Date(graceEndsAt).toLocaleString('en-GB')})` : ''}.`
         : eligibleCommitments < 1
           ? 'No completed commitments yet — nothing eligible to price.'

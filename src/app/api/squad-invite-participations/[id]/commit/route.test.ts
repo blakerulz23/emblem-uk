@@ -168,6 +168,29 @@ describe('POST /api/squad-invite-participations/[id]/commit — RPC boundary', (
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body).toEqual({ error: 'Commitment unavailable' });
+    expect(body.reason).toBeUndefined();
+    errorSpy.mockRestore();
+  });
+
+  it('surfaces the closed-campaign rejection (0066) with a distinct machine-readable reason, so the builder can show accurate copy instead of "try again"', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'campaign closed by organiser' } });
+    const res = await commit(VALID_BODY);
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body).toEqual({ error: 'Commitment unavailable', reason: 'campaign_closed' });
+    errorSpy.mockRestore();
+  });
+
+  it('does not attach the campaign_closed reason to any other RPC rejection message', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const message of ['campaign not eligible', 'commitment unavailable', 'invalid submission', 'could not generate a unique claim token']) {
+      mockRpc.mockResolvedValue({ data: null, error: { message } });
+      const res = await commit(VALID_BODY);
+      const body = await res.json();
+      expect(body.reason).toBeUndefined();
+      expect(res.status).toBe(409);
+    }
     errorSpy.mockRestore();
   });
 });
