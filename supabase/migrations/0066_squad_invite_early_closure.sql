@@ -84,6 +84,14 @@ begin
   if v_campaign.campaign_status <> 'closed' then
     raise exception 'campaign is not closed';
   end if;
+  -- Currently unreachable in practice: finalise_squad_invite_pricing always
+  -- moves campaign_status from 'closed' to 'pricing_finalised' on success,
+  -- so the campaign_status <> 'closed' check above always fires first once
+  -- pricing has been finalised — this branch never runs. Kept anyway as a
+  -- defensive guard in case that coupling ever changes (e.g. a future path
+  -- that finalises pricing without also leaving 'closed'), so reopening a
+  -- priced campaign stays refused on its own terms, not only as a side
+  -- effect of the status check above.
   if v_campaign.pricing_finalised_at is not null then
     raise exception 'campaign pricing has already been finalised';
   end if;
