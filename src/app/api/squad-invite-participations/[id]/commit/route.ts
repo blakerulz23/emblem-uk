@@ -96,8 +96,16 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   });
 
   if (error || !data) {
-    // Never leak internal database error detail to the client.
+    // Never leak internal database error detail to the client — except
+    // this one specific, safe, machine-readable reason (0066). "Retry
+    // shortly" is actively wrong once an organiser has closed the
+    // campaign, so this is the one rejection worth telling apart from
+    // every other generic ineligibility reason, which all still return
+    // the same unchanged generic body below.
     console.error('commit_squad_invite_participation_order failed', error?.message);
+    if (error?.message === 'campaign closed by organiser') {
+      return NextResponse.json({ error: 'Commitment unavailable', reason: 'campaign_closed' }, { status: 409 });
+    }
     return NextResponse.json({ error: 'Commitment unavailable' }, { status: 409 });
   }
 

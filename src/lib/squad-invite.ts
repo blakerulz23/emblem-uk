@@ -3,9 +3,14 @@ import { createHash, randomBytes } from 'crypto';
 export const COMPLETION_GRACE_HOURS = 24;
 export const PAYMENT_WINDOW_HOURS = 72;
 
+// Matches the live squad_invites_campaign_status_check constraint exactly
+// (migration 0052, the latest redefinition) — 'inactive', 'approved_setup_
+// required', 'paused' and 'closed' were added to the database enum there
+// but never added here until 0066 needed 'closed' for early closure.
 export type CampaignStatus =
-  | 'draft' | 'awaiting_staff_approval' | 'active' | 'deadline_reached'
-  | 'grace_period' | 'pricing_finalised' | 'expired' | 'cancelled' | 'exception';
+  | 'draft' | 'awaiting_staff_approval' | 'inactive' | 'approved_setup_required'
+  | 'active' | 'deadline_reached' | 'grace_period' | 'pricing_finalised'
+  | 'paused' | 'closed' | 'cancelled' | 'expired' | 'exception';
 
 export type OrganiserRole =
   | 'coach_or_club_representative' | 'team_manager'
