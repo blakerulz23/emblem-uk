@@ -1314,9 +1314,12 @@ export default function ProductionBuilder({
                   >
                     <span className="uk-choice-icon" aria-hidden="true">
                       <svg viewBox="0 0 24 24" role="img">
-                        <path d="M9 15l6-6" />
-                        <path d="M8 12a4 4 0 0 1 0-6l2-2a4 4 0 0 1 6 6l-1 1" />
-                        <path d="M16 12a4 4 0 0 1 0 6l-2 2a4 4 0 0 1-6-6l1-1" />
+                        <circle cx="7" cy="5" r="1.5" />
+                        <circle cx="12" cy="4" r="1.5" />
+                        <circle cx="17" cy="5" r="1.5" />
+                        <path d="M10.5 17.5l3-3" />
+                        <path d="M9.8 15.8a2.2 2.2 0 0 1 0-3.1l1.1-1.1a2.2 2.2 0 0 1 3.1 3.1" />
+                        <path d="M14.2 19.2a2.2 2.2 0 0 0 0-3.1l-1.1-1.1a2.2 2.2 0 0 0-3.1 0" />
                       </svg>
                     </span>
                     <span>
