@@ -1,6 +1,6 @@
 # Squad Invite controlled-pilot runbook
 
-**Status:** Local implementation guide. Payment requests are disabled pending verified Shopify capability. Legal, safeguarding and security review markers remain open.
+**Status:** Local implementation guide. Payment requests went live in migration 0067, after the Shopify webhook signing secret and Squad Invite variant IDs were verified working in production. Legal, safeguarding and security review markers remain open.
 
 ## Create and approve
 
@@ -23,7 +23,7 @@
 2. Parent builds the card in the same production builder every normal order uses (`/builder?squadParticipation=<id>`, `ProductionBuilder.tsx` with `squadInviteContext` set) — the real templates, photo upload/crop, background removal and personalisation, not a separate or lookalike tool. Order-type and team selection are not offered: the mode is locked to exactly one child, and the club/team field is locked to the campaign's own club name.
 3. Parent supplies only one child’s card fields and an authorised photograph.
 4. Parent separately accepts child-information authority, photograph manufacture, consolidated delivery and payment-neutral commitment versions. Private registration remains deferred.
-5. Commitment wording must say no charge is taken and production begins only after payment.
+5. Commitment wording must say plainly that a payment request follows once the team's price is confirmed, and that nothing is charged today (0067 consent version `squad_invite_commitment_v2`, up from `_v1`'s "not paying today" wording).
 6. At deadline, block new builders. Existing builders may complete for 24 hours; do not advertise the grace as an invitation to delay.
 
 ## Card production integration
@@ -42,19 +42,19 @@
 
 ## Staff approval (source-aware)
 
-1. A Squad Invite order reaches the same staff card-approval queue as normal orders (`/staff/queue`), clearly labelled "Squad Invite · payment disabled." The approve action for it reads "Approve for pilot production," never "Approve" alone — nothing in the label or copy may claim or imply payment was received.
+1. A Squad Invite order reaches the same staff card-approval queue as normal orders (`/staff/queue`), clearly labelled "Squad Invite · consolidated delivery" (renamed from "payment disabled" in 0067 — the badge's real job was always flagging consolidated-batch shipping, not payment status). The approve action for it reads "Approve for pilot production," and is now only reachable once the order is genuinely `payment_status = 'paid'`.
 2. `POST /api/orders/[id]/approve` branches on `orders.source`. Normal orders keep their exact existing behaviour, including the guardian/team claim invitation email. A `squad_invite` order takes a separate branch that: confirms the order is linked to exactly one participation that itself owns it; confirms the campaign hasn't been cancelled or exceptioned; and **never calls the general claim-invitation path** (`createGuardianInvite`/`createTeamInvite`) and **never sends an email** — the guardian already holds the authenticated participation relationship the card came from, so a second claim flow would be confusing and redundant, not additive.
-3. The Squad Invite branch records its own audit event (`squad_invite_audit_events`, `event_type = 'fulfilment_started'`, `metadata.paymentStatus = 'unpaid_pilot'`) in place of an invitation, so the unpaid nature of the approval is explicit in the trail, not inferred.
-4. Approving a Squad Invite order still flips the same `orders.payment_status` column to `'fulfilled'` to enter the existing Profile Setup production queue — this is a known, deliberate schema-semantic mismatch (the column's only other meaning elsewhere in this codebase is "paid and approved"). It is mitigated by the staff-facing labelling above and the audit metadata, never hidden. Do not "fix" this by inventing a new payment_status value without also auditing every other consumer of that column.
+3. The Squad Invite branch records its own audit event (`squad_invite_audit_events`, `event_type = 'fulfilment_started'`, `metadata.paymentStatus` set to the order's own real `payment_status`) in place of an invitation — the audit trail records what actually happened, not an assumption.
+4. Approving a Squad Invite order still flips the same `orders.payment_status` column to `'fulfilled'` to enter the existing Profile Setup production queue — as of 0067 this only happens once the order was genuinely `'paid'` first, matching every other order this column is used for.
 5. The Resend-invitation action is not offered for a Squad Invite order — none was ever sent, so there is nothing to resend.
 
 ## Payment boundary
 
-1. The adapter is disabled. Do not claim requests can be issued until Shopify price, VAT, included delivery, permissions and paid/cancelled/refunded/expired webhooks are verified.
+1. The adapter is live as of migration 0067 — Shopify price (the three Squad Invite variant IDs), the webhook signing secret and its `orders/paid` handler are verified working in production. VAT/included-delivery framing and the cancelled/refunded/expired webhook paths still need the same review as any other Shopify order type.
 2. Once an adapter is separately approved, each request lasts exactly 72 hours and retains the frozen price.
 3. Late payment enters staff exception; it never automatically enters production.
 4. Reissue is staff-only, audited and cannot reprice.
-5. A single server-only function, `squad_invite_payment_mode_enabled()`, is the one policy boundary for whether payment is required before a Squad Invite order can be approved for production. It is hardcoded `false` for the entire pilot — no environment variable, request header or client-supplied flag can change it; changing it requires a new, separately reviewed migration. While `false`, the staff approval branch above may move an order straight from `order_intent` to `fulfilled` with no payment. Once flipped to `true`, that same branch must reject approval unless `payment_status = 'paid'` first — this is already implemented and tested, just inert until the boundary changes.
+5. A single server-only function, `squad_invite_payment_mode_enabled()`, is the one policy boundary for whether payment is required before a Squad Invite order can be approved for production. It was hardcoded `false` from launch through migration 0064 (after 0058's premature flip caused the 2026-08-18 incident — nothing had ever marked an order `'paid'`, so every approval was rejected). Migration 0067 flipped it to `true` for real, only after the missing plumbing (webhook secret, variant IDs) was verified working — no environment variable, request header or client-supplied flag can change it either way; changing it always requires a new, separately reviewed migration.
 
 ## Coach card
 

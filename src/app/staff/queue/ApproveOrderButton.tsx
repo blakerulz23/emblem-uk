@@ -45,7 +45,7 @@ export default function ApproveOrderButton({ orderId, squadInvite = false }: { o
         onClick={approve}
         disabled={busy}
         aria-busy={busy}
-        title={squadInvite ? 'Moves this pilot card into production. No payment has been taken.' : undefined}
+        title={squadInvite ? 'Moves this pilot card into production. Payment has already been confirmed for this order.' : undefined}
         style={{
           fontFamily: 'var(--font-sora), system-ui',
           fontWeight: 700,

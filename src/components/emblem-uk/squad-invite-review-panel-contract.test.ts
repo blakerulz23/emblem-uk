@@ -39,11 +39,11 @@ describe('Squad Invite final review/commit panel — polish contract', () => {
     expect(review).toMatch(/previewFirstName[\s\S]*previewSurnameInitial[\s\S]*previewDisplayName/);
   });
 
-  it('shows payment-disabled as a designed callout, not loose paragraph text, and reuses the exact established copy', () => {
+  it('shows the payment-required callout as a designed callout, not loose paragraph text, and states the real requirement', () => {
     const review = reviewBlock();
     expect(review).toContain('uk-squad-review-callout');
-    expect(review).toContain('Payment requests are not active during this test.');
-    expect(review).toContain('No card details are collected and nothing will be charged while this controlled pilot is running.');
+    expect(review).toContain("Payment is required once your team&apos;s price is confirmed.");
+    expect(review).toContain("No card details are collected here — you&apos;ll be sent a separate payment request by email once your team&apos;s final price is confirmed.");
     expect(css).toMatch(/\.uk-squad-review-callout \{[\s\S]*?border: 2px solid var\(--wizard-accent\);/);
   });
 
@@ -51,7 +51,7 @@ describe('Squad Invite final review/commit panel — polish contract', () => {
     const review = reviewBlock();
     const matches = review.match(/organiser sees aggregate progress only, never these details/g) ?? [];
     expect(matches.length).toBe(2);
-    expect(review).toContain('No payment is taken.');
+    expect(review).toContain("Your child&apos;s card joins the team&apos;s production queue now.");
     expect(review).toContain("card joins the team&apos;s production queue");
   });
 

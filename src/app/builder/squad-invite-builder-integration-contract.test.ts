@@ -71,15 +71,14 @@ describe('Squad Invite / ProductionBuilder reuse — no duplicate builder, real 
     expect(builder).toContain('if (squadInviteSubmittingRef.current) return;');
   });
 
-  it('never sends payment fields and always shows payment as disabled, not offered', () => {
+  it('never sends payment fields directly, and states plainly that payment is required once pricing is confirmed', () => {
     const squadInviteReview = builder.match(/\{activeStepId === 'review' && squadInviteContext && \(\(\) => \{([\s\S]*?)\n {10}\}\)\(\)\}/)?.[1] ?? '';
     expect(squadInviteReview).not.toMatch(/stripe|cardNumber|cvc/i);
-    expect(squadInviteReview).toContain('Payment requests are not active during this test.');
-    // The success screen's own payment line was consolidated from two
-    // near-duplicate bullets ("No charge has been taken." + "Payment
-    // requests remain disabled...") into one, per the UI polish pass —
-    // still asserts no charge/payment took place, just without the repeat.
-    expect(squadInviteReview).toContain('No payment is taken — payment requests remain disabled during this test.');
+    expect(squadInviteReview).toContain("Payment is required once your team&apos;s price is confirmed.");
+    // The success screen's own payment line (0067): states a payment
+    // request will follow by email once pricing is confirmed, now that
+    // squad_invite_payment_mode_enabled() is genuinely true.
+    expect(squadInviteReview).toContain("A payment request will be emailed to you once your team&apos;s price is confirmed — nothing is charged today.");
   });
 
   it('requires every declaration accepted separately before submit is possible, matching the commit route contract', () => {

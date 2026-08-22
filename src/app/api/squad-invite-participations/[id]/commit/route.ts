@@ -9,7 +9,7 @@ const REQUIRED = [
   ['child_information_authority', 'squad_invite_child_authority_v1'],
   ['photograph_manufacture', 'squad_invite_photo_manufacture_v1'],
   ['consolidated_delivery', 'squad_invite_team_delivery_v1'],
-  ['payment_neutral_commitment', 'squad_invite_commitment_v1'],
+  ['payment_neutral_commitment', 'squad_invite_commitment_v2'],
 ] as const;
 
 type CommitBody = {

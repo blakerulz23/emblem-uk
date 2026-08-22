@@ -76,7 +76,7 @@ const SQUAD_INVITE_REQUIRED_DECLARATIONS: { purpose: string; label: string }[] =
   { purpose: 'child_information_authority', label: "I am this child's parent/guardian, or have their parent/guardian's permission to submit these details." },
   { purpose: 'photograph_manufacture', label: 'I have permission for any photograph provided to be used in manufacturing this printed card.' },
   { purpose: 'consolidated_delivery', label: 'I understand this card will be delivered together with the team’s order to the approved organiser/coach, not to me directly.' },
-  { purpose: 'payment_neutral_commitment', label: 'I understand I am not paying today. Payment requests remain disabled during this test.' },
+  { purpose: 'payment_neutral_commitment', label: "I understand this is a paid order. A payment request will be emailed to me once the team's price is confirmed, and this card enters production only after that payment is completed." },
 ];
 
 // emblem_squad_csrf is deliberately non-httpOnly (see
@@ -1758,7 +1758,7 @@ export default function ProductionBuilder({
                     <h1>Your child&apos;s card is saved.</h1>
                     {order.club && <p className="uk-squad-invite-success-team">{order.club}</p>}
                     <ul className="uk-squad-invite-success-list">
-                      <li>No payment is taken — payment requests remain disabled during this test.</li>
+                      <li>A payment request will be emailed to you once your team&apos;s price is confirmed — nothing is charged today.</li>
                       <li>Emblem staff review this card before it goes into production.</li>
                       <li>Production begins only after payment, in a future approved live flow.</li>
                       <li>Cards are delivered together to the approved organiser/coach.</li>
@@ -1796,12 +1796,12 @@ export default function ProductionBuilder({
                           <div><dt>Template</dt><dd>{selectedTemplate(order, squadInvitePlayer).name}</dd></div>
                           <div><dt>Quantity</dt><dd>{squadInvitePlayer.prints}</dd></div>
                           <div><dt>Delivery</dt><dd>To your approved organiser/coach</dd></div>
-                          <div><dt>Payment</dt><dd>Disabled for this test</dd></div>
+                          <div><dt>Payment</dt><dd>Requested once team price is confirmed</dd></div>
                         </dl>
 
                         <div className="uk-squad-review-callout">
-                          <p className="uk-squad-review-callout-title">Payment requests are not active during this test.</p>
-                          <p>No card details are collected and nothing will be charged while this controlled pilot is running.</p>
+                          <p className="uk-squad-review-callout-title">Payment is required once your team&apos;s price is confirmed.</p>
+                          <p>No card details are collected here — you&apos;ll be sent a separate payment request by email once your team&apos;s final price is confirmed.</p>
                         </div>
 
                         {squadInviteOutcome === 'sign_in_required' && (
@@ -1885,7 +1885,7 @@ export default function ProductionBuilder({
                             {squadInviteSubmitting ? 'Saving…' : "Save my child's card"}
                           </button>
                           <p className="uk-squad-review-submit-note">
-                            No payment is taken. Your child&apos;s card joins the team&apos;s production queue. Your organiser sees aggregate progress only, never these details.
+                            Your child&apos;s card joins the team&apos;s production queue now. You&apos;ll be sent a payment request by email once the team&apos;s price is confirmed — your organiser sees aggregate progress only, never these details.
                           </p>
                         </form>
                       </div>

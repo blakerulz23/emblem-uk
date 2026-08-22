@@ -45,7 +45,7 @@ export default function OrganiserStart({initialExistingRequests,initialSignedInE
  const squadSizeNum=Number(form.expectedSquadSize);
 
  return <div className="mx-auto min-h-screen max-w-2xl px-5 py-12 pb-28">
- <p className="text-sm font-bold uppercase tracking-widest text-orange-600">Controlled pilot · payment disabled</p>
+ <p className="text-sm font-bold uppercase tracking-widest text-orange-600">Controlled pilot · payment required</p>
  <h1 className="mt-3 text-4xl font-bold text-balance">Start your Squad Invite</h1>
  <p className="mt-4 text-neutral-700">One team link lets each parent privately create their child&apos;s card. No child information or roster is requested from the organiser.</p>
  {signedInEmail&&(stage==='existing'||stage==='details'||stage==='review')&&<p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm">Signed in as: <strong>{signedInEmail}</strong></p>}
@@ -145,7 +145,7 @@ export default function OrganiserStart({initialExistingRequests,initialSignedInE
    <a className="mt-5 inline-block font-bold text-orange-600 hover:text-orange-700" href={`/squad-invite/manage/${receipt.publicReference}`}>View request status</a>
  </section>}
  {stage!=='details'&&stage!=='review'&&error&&<p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-800">{error}</p>}
- <p className="mt-8 text-sm text-neutral-600">Payments and public profiles remain disabled during this test. Parent participation becomes available only after staff approval and organiser setup.</p>
+ <p className="mt-8 text-sm text-neutral-600">Payment is required once your team&apos;s price is confirmed, and public profiles remain disabled during this test. Parent participation becomes available only after staff approval and organiser setup.</p>
  </div>;
 }
 function ErrorSummary({error,errors}:{error:string;errors:ReturnType<typeof validateOrganiserForm>}){return <div role="alert" tabIndex={-1} className="rounded-xl bg-red-50 p-3 text-red-800"><p className="font-bold">{error}</p><ul className="mt-1 list-disc pl-5">{errors.map(item=><li key={item.field}>{item.message}</li>)}</ul></div>}
