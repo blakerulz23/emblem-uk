@@ -58,7 +58,6 @@ function Card({ p }: { p: Player }) {
 }
 
 export default function CustomerMarquee() {
-  const loop = [...PLAYERS, ...PLAYERS]; // duplicate for a seamless -50% scroll
   return (
     <section className="cm-section">
       <div className="cm-head">

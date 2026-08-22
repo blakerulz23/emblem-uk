@@ -19,7 +19,6 @@ export default function StickerArt({
 }) {
   const border = Math.max(5, Math.round(size * 0.055));  // white die-cut border
   const cardW  = Math.round((size - border * 2) * 0.74); // card fits inside circle
-  const radius = size / 2;
 
   return (
     <div

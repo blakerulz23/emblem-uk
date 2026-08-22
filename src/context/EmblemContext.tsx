@@ -25,7 +25,6 @@ import {
   SIZES,
   buildSteps,
   type Bobblehead,
-  SPORT_STATS,
   type CardTemplate,
   type Details,
   type Jewelry,
