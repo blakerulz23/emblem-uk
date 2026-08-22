@@ -859,6 +859,98 @@ a { text-decoration: none; color: inherit; }
   line-height: 1.38;
 }
 
+/* Third order-type option ("Invite your squad") — a real <a> (not a
+   <button>) so it keeps native link behaviour (right-click/copy-link,
+   open-in-new-tab, works with no JS) while still reaching the exact
+   button card's dimensions/border-radius/spacing/shadow via a duplicated
+   rule, never by editing the shared button selector the first two
+   options rely on. */
+.uk-wizard-choice-list a.uk-wizard-choice-invite {
+  width: 100%;
+  min-height: 118px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 22px;
+  background: var(--wizard-surface);
+  color: var(--wizard-ink);
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 86px 1fr 24px;
+  align-items: center;
+  gap: 18px;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 14px 30px rgba(16,16,21,0.04);
+  text-decoration: none;
+}
+
+.uk-wizard-choice-list a.uk-wizard-choice-invite:hover,
+.uk-wizard-choice-list a.uk-wizard-choice-invite:focus-visible {
+  border-color: var(--wizard-accent);
+  background: #fff7f1;
+  box-shadow: inset 0 0 0 1px var(--wizard-accent), 0 18px 38px var(--wizard-glow);
+  outline: none;
+}
+
+.uk-choice-badge {
+  display: block;
+  margin: 0 0 4px;
+  color: var(--wizard-accent);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-style: normal;
+}
+
+.uk-choice-radio {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--wizard-line);
+  justify-self: end;
+  position: relative;
+}
+
+.uk-wizard-choice-invite:hover .uk-choice-radio,
+.uk-wizard-choice-invite:focus-visible .uk-choice-radio {
+  border-color: var(--wizard-accent);
+}
+
+.uk-wizard-choice-invite:hover .uk-choice-radio::after,
+.uk-wizard-choice-invite:focus-visible .uk-choice-radio::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: var(--wizard-accent);
+}
+
+/* Privacy reassurance beneath the three choice cards — new, additive,
+   never hidden by selection state (order.type changes don't touch this). */
+.uk-choice-reassurance {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 18px 0 4px;
+  color: var(--wizard-soft);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.uk-choice-reassurance svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  stroke: var(--wizard-accent);
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .uk-style-carousel small {
   max-width: 150px;
   color: var(--wizard-accent);
