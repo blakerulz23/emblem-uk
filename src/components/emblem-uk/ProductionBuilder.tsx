@@ -1270,7 +1270,7 @@ export default function ProductionBuilder({
               <p className="uk-wizard-kicker">Start order</p>
               <h1>Who are you building for?</h1>
               <p className="uk-wizard-copy">Are you creating one card, or a whole team?</p>
-              <div className="uk-wizard-choice-list">
+              <div className="uk-wizard-choice-list" role="radiogroup" aria-label="Who are you building for?">
                 {orderTypes.map((type) => (
                   <button
                     key={type.id}
@@ -1300,12 +1300,43 @@ export default function ProductionBuilder({
                   </button>
                 ))}
                 {squadInviteEnabled && (
-                  <a href="/squad-invite/start" className="uk-wizard-choice-link">
-                    <span className="uk-choice-icon" aria-hidden="true">+</span>
-                    <span><strong>Invite parents to create their own cards</strong><small>Create one team link. Each parent privately creates their child&apos;s card.</small></span>
+                  <a
+                    href="/squad-invite/start"
+                    className="uk-wizard-choice-invite"
+                    role="radio"
+                    aria-checked="false"
+                    onKeyDown={(event) => {
+                      if (event.key === ' ' || event.key === 'Spacebar') {
+                        event.preventDefault();
+                        window.location.assign('/squad-invite/start');
+                      }
+                    }}
+                  >
+                    <span className="uk-choice-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" role="img">
+                        <path d="M9 15l6-6" />
+                        <path d="M8 12a4 4 0 0 1 0-6l2-2a4 4 0 0 1 6 6l-1 1" />
+                        <path d="M16 12a4 4 0 0 1 0 6l-2 2a4 4 0 0 1-6-6l1-1" />
+                      </svg>
+                    </span>
+                    <span>
+                      <em className="uk-choice-badge">Best for clubs</em>
+                      <strong>Invite your squad</strong>
+                      <small>Share a private link so each parent creates their child&apos;s card.</small>
+                    </span>
+                    <span className="uk-choice-radio" aria-hidden="true" />
                   </a>
                 )}
               </div>
+              {squadInviteEnabled && (
+                <div className="uk-choice-reassurance">
+                  <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                    <path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z" />
+                    <path d="M9 12l2 2 4-4" />
+                  </svg>
+                  <span>Parents only see their own child&apos;s details.</span>
+                </div>
+              )}
               <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('collection')}>Continue</button>
             </section>
           )}
