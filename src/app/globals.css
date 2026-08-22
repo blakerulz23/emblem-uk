@@ -804,7 +804,7 @@ a { text-decoration: none; color: inherit; }
   color: var(--wizard-ink);
   padding: 20px;
   display: grid;
-  grid-template-columns: 86px 1fr;
+  grid-template-columns: 86px 1fr 24px;
   align-items: center;
   gap: 18px;
   text-align: left;
@@ -839,6 +839,15 @@ a { text-decoration: none; color: inherit; }
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+/* Supplied raster icon (Invite your squad) sized/centred identically to
+   the other two options' hand-drawn SVGs above — object-fit: contain
+   keeps its real aspect ratio, never stretched or cropped. */
+.uk-choice-icon img {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
 }
 
 .uk-wizard-choice-list strong,
@@ -903,6 +912,13 @@ a { text-decoration: none; color: inherit; }
   font-style: normal;
 }
 
+/* One shared control for all three order-type options: an empty
+   light-grey ring by default, filled with an orange ring + centred dot
+   once selected. "Selected" means different things per card — a real,
+   persistent app-state match for the two buttons (order.type), a
+   transient hover/focus-visible highlight for the link card, since
+   clicking it navigates away rather than staying "selected" — but the
+   visual treatment itself is identical everywhere via this one class. */
 .uk-choice-radio {
   width: 22px;
   height: 22px;
@@ -912,11 +928,13 @@ a { text-decoration: none; color: inherit; }
   position: relative;
 }
 
+.uk-wizard-choice-list button.active .uk-choice-radio,
 .uk-wizard-choice-invite:hover .uk-choice-radio,
 .uk-wizard-choice-invite:focus-visible .uk-choice-radio {
   border-color: var(--wizard-accent);
 }
 
+.uk-wizard-choice-list button.active .uk-choice-radio::after,
 .uk-wizard-choice-invite:hover .uk-choice-radio::after,
 .uk-wizard-choice-invite:focus-visible .uk-choice-radio::after {
   content: '';
