@@ -1276,6 +1276,8 @@ export default function ProductionBuilder({
                     key={type.id}
                     type="button"
                     className={visibleOrderType === type.id ? 'active' : ''}
+                    role="radio"
+                    aria-checked={visibleOrderType === type.id}
                     onClick={() => patchOrder({ type: type.id })}
                   >
                     <span className="uk-choice-icon" aria-hidden="true">
@@ -1297,6 +1299,7 @@ export default function ProductionBuilder({
                       <strong>{type.title}</strong>
                       <small>{type.copy}</small>
                     </span>
+                    <span className="uk-choice-radio" aria-hidden="true" />
                   </button>
                 ))}
                 {squadInviteEnabled && (
@@ -1313,14 +1316,13 @@ export default function ProductionBuilder({
                     }}
                   >
                     <span className="uk-choice-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" role="img">
-                        <circle cx="7" cy="5" r="1.5" />
-                        <circle cx="12" cy="4" r="1.5" />
-                        <circle cx="17" cy="5" r="1.5" />
-                        <path d="M10.5 17.5l3-3" />
-                        <path d="M9.8 15.8a2.2 2.2 0 0 1 0-3.1l1.1-1.1a2.2 2.2 0 0 1 3.1 3.1" />
-                        <path d="M14.2 19.2a2.2 2.2 0 0 0 0-3.1l-1.1-1.1a2.2 2.2 0 0 0-3.1 0" />
-                      </svg>
+                      {/* eslint-disable-next-line @next/next/no-img-element -- a
+                          fixed 38px decorative icon inside a small circular
+                          badge; next/image's overhead (loader, layout shift
+                          reservation) isn't warranted here, matching how this
+                          same badge already renders hand-drawn SVGs for the
+                          other two options via a plain element, not <Image>. */}
+                      <img src="/invite-squad-icon.png" alt="" />
                     </span>
                     <span>
                       <em className="uk-choice-badge">Best for clubs</em>
