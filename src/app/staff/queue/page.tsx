@@ -589,7 +589,7 @@ export default async function StaffQueuePage({
                     boxShadow: 'inset 0 0 0 1px #fde68a',
                   }}
                 >
-                  Squad Invite · payment disabled
+                  Squad Invite · consolidated delivery
                 </span>
               )}
               <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
@@ -731,7 +731,7 @@ export default async function StaffQueuePage({
                       boxShadow: 'inset 0 0 0 1px #fde68a',
                     }}
                   >
-                    Squad Invite · payment disabled
+                    Squad Invite · consolidated delivery
                   </span>
                 )}
                 <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
@@ -869,7 +869,7 @@ export default async function StaffQueuePage({
                       boxShadow: 'inset 0 0 0 1px #fde68a',
                     }}
                   >
-                    Squad Invite · payment disabled
+                    Squad Invite · consolidated delivery
                   </span>
                 )}
                 {!c.hasArtwork && (
@@ -983,7 +983,7 @@ export default async function StaffQueuePage({
                         boxShadow: 'inset 0 0 0 1px #fde68a',
                       }}
                     >
-                      Squad Invite · payment disabled
+                      Squad Invite · consolidated delivery
                     </span>
                   )}
                   {!c.hasArtwork && (

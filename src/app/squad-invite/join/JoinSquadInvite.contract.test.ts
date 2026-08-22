@@ -43,9 +43,9 @@ describe('JoinSquadInvite — real, styled, accessible interactive controls', ()
     expect(source).toMatch(/bg-orange-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-white/);
   });
 
-  it('never states or implies payment is currently active', () => {
+  it('states payment is required once pricing is confirmed, never that it is active right now', () => {
     expect(source).not.toMatch(/pay(s|ment)? (now|today)/i);
-    expect(source).toContain('Payment requests are not active during this test.');
+    expect(source).toContain("Payment is required once your team&apos;s price is confirmed.");
     expect(source).not.toContain('pays individually');
   });
 

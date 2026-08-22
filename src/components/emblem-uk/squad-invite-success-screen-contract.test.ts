@@ -21,9 +21,9 @@ describe('Squad Invite builder completion screen — a real next step, not a dea
     expect(successBlock).toContain('Emblem staff review this card before it goes into production.');
   });
 
-  it('states the payment/delivery state once, without repeating the same no-charge fact twice', () => {
-    expect(successBlock).toContain('No payment is taken — payment requests remain disabled during this test.');
-    expect(successBlock).not.toContain('No charge has been taken.');
+  it('states the payment/delivery state once, without repeating the same fact twice', () => {
+    expect(successBlock).toContain('A payment request will be emailed to you once your team&apos;s price is confirmed — nothing is charged today.');
+    expect(successBlock).not.toContain('No payment is taken — payment requests remain disabled during this test.');
     expect(successBlock).toContain('Cards are delivered together to the approved organiser/coach.');
   });
 

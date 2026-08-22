@@ -16,12 +16,14 @@ describe('Staff queue — Squad Invite orders are clearly labeled, never silentl
     expect(page).toMatch(/\.select\('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name, source'\)/);
   });
 
-  it('renders a visible "Squad Invite · payment disabled" badge in every section, including the Profile Setup Queue', () => {
+  it('renders a visible "Squad Invite · consolidated delivery" badge in every section, including the Profile Setup Queue', () => {
     // 2 in the pending/recently-approved sections + 2 in the Profile Setup
-    // Queue (Waiting for Setup and Ready for Programming) — added so
-    // whoever writes a physical NFC chip can tell a Squad Invite card
-    // needs the organiser's consolidated batch, not individual dispatch.
-    const badgeCount = (page.match(/Squad Invite · payment disabled/g) ?? []).length;
+    // Queue (Waiting for Setup and Ready for Programming) — tells whoever
+    // writes a physical NFC chip that a Squad Invite card needs the
+    // organiser's consolidated batch, not individual dispatch. Renamed from
+    // "payment disabled" (0067): the badge's real job was never about
+    // payment status, and payment is genuinely required now.
+    const badgeCount = (page.match(/Squad Invite · consolidated delivery/g) ?? []).length;
     expect(badgeCount).toBe(4);
   });
 

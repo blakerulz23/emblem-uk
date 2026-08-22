@@ -37,7 +37,7 @@ describe('sendSquadInviteEarlyPreviewEmail', () => {
     expect((capturedBody.text ?? '').length).toBeGreaterThan(0);
   });
 
-  it('explicitly states no payment has been taken — this fires right after staff approval, still before any physical production or payment', async () => {
+  it('explicitly confirms payment has been received — this fires only once payment_status is genuinely paid, per the approve route\'s gate', async () => {
     process.env.RESEND_API_KEY = 'test-key';
     let capturedBody: { html?: string; text?: string } = {};
     vi.spyOn(global, 'fetch').mockImplementation(async (_url, init) => {
@@ -47,8 +47,8 @@ describe('sendSquadInviteEarlyPreviewEmail', () => {
     await sendSquadInviteEarlyPreviewEmail({
       toEmail: 'guardian@example.org', teamName: 'Ashton Juniors U10', claimUrl: 'https://emblem-uk.example/os?card=abc123',
     });
-    expect(capturedBody.html).toMatch(/no payment has been taken/i);
-    expect(capturedBody.text).toMatch(/no payment has been taken/i);
+    expect(capturedBody.html).toMatch(/payment.*has already been received/i);
+    expect(capturedBody.text).toMatch(/payment.*has already been received/i);
   });
 
   it('never implies a physical card is ready — that is the later, staff-triggered claim-reminder email only', async () => {

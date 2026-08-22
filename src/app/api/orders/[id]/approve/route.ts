@@ -53,13 +53,14 @@ type TeamChoice = { mode: 'existing'; id: string } | { mode: 'new'; name: string
  * Squad Invite participation that itself owns the order (the bidirectional
  * order_id link written by commit_squad_invite_participation_order),
  * confirms the campaign hasn't been cancelled/exceptioned, enforces the
- * squad_invite_payment_mode_enabled() policy boundary (a no-op today since
- * it's hardcoded false — see 0055 — but becomes a real gate the moment a
- * future migration flips it), and records a Squad-Invite-specific audit
- * event instead of an invite. It still flips the SAME orders.payment_status
- * column to 'fulfilled' to enter the existing Profile Setup queue — that is
- * a known, documented schema-semantic mismatch (this pilot's cards were
- * never paid), never disguised as anything else in the response or copy.
+ * squad_invite_payment_mode_enabled() policy boundary (hardcoded false from
+ * 0055 through 0064's revert of the 2026-08-18 incident; flipped to true for
+ * real by 0067, once the Shopify webhook and variant configuration behind it
+ * were verified working) — this branch is now only reachable once
+ * orderRow.payment_status is genuinely 'paid' — and records a Squad-Invite-
+ * specific audit event instead of an invite. It still flips the SAME
+ * orders.payment_status column to 'fulfilled' to enter the existing Profile
+ * Setup queue, exactly as every other order does once approved.
  *
  * Also sends the guardian's early-preview email (moved here from the
  * commit route — see commit/route.ts's comment) now that this is the
@@ -121,15 +122,19 @@ async function approveSquadInviteOrder(
   }
 
   // Source-specific audit event — never createGuardianInvite/createTeamInvite,
-  // never an email. metadata documents that this is an unpaid pilot
-  // approval, so nothing downstream can mistake it for a paid confirmation.
+  // never an email. metadata.paymentStatus reads the order's own real
+  // payment_status rather than assuming 'paid' — this branch is only
+  // reachable unconditionally when the payment wall is off (a state this
+  // codebase treats as a reviewed-migration-only revert, not expected in
+  // normal operation post-0067), so the audit trail stays honest either way
+  // instead of hardcoding a claim that could be wrong during that window.
   await serviceRole.from('squad_invite_audit_events').insert({
     campaign_id: participation.campaign_id,
     participation_id: participation.id,
     actor_profile_id: staffProfileId,
     actor_role: 'staff',
     event_type: 'fulfilment_started',
-    metadata: { action: 'pilot_production_approval', paymentStatus: 'unpaid_pilot' },
+    metadata: { action: 'squad_invite_production_approval', paymentStatus: orderRow.payment_status },
   });
 
   // Awaited, not detached — a truly fire-and-forget async call risks the

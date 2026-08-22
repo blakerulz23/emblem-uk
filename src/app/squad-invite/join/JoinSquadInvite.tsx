@@ -171,8 +171,8 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
         </div>
 
         <div className="mt-4 rounded-2xl border-2 border-orange-200 bg-orange-50 p-4">
-          <p className="font-bold text-orange-900">Payment requests are not active during this test.</p>
-          <p className="mt-1 text-sm text-orange-900">No payment is taken at this stage. No card details are collected and nothing is charged while this controlled pilot is running.</p>
+          <p className="font-bold text-orange-900">Payment is required once your team&apos;s price is confirmed.</p>
+          <p className="mt-1 text-sm text-orange-900">No payment is taken at this stage. You&apos;ll be sent a separate payment request by email once your team&apos;s final price is confirmed.</p>
         </div>
 
         <section className="mt-5 grid gap-3 text-sm">
