@@ -8,8 +8,9 @@ import type { CardFaceData } from '@/lib/card-definition';
 import { isCustomCollectionTemplateId } from '@/lib/custom-collection-manifest';
 import { resolveCustomCollectionBadge } from '@/lib/badge-resolution';
 import { DEFAULT_EMJFL_CLUB, EAST_MANCHESTER_LEAGUE, EMJFL_CLUBS, getEmjflClub, preferredTemplateForClub } from '@/lib/emjfl-clubs';
+import { DIRECT_BUILDER_MAX_PAID_PLAYERS } from '@/lib/order-enquiry-validation';
 import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
-import { captureElementToPng, renderPrintFile } from '@/lib/print-capture';
+import { captureElementToPng, renderPrintFile, BUILDER_CSRF_HEADER, readBuilderCsrfCookie } from '@/lib/print-capture';
 import { buildUkCardCartUrl } from '@/lib/shopify';
 import {
   createPlayer,
@@ -111,10 +112,16 @@ const collections = [
   },
 ] as const;
 
+// squad's maxPlayers matches DIRECT_BUILDER_MAX_PAID_PLAYERS exactly — the
+// same server-enforced pilot cap (order-enquiry-validation.ts), not a
+// second, independently-chosen number. A customer who somehow reaches
+// this client-side ceiling still can't exceed it server-side either way,
+// but keeping the two in sync means they're stopped with an
+// understandable message here rather than a late rejection at submit.
 const orderModeLimits: Record<OrderType, { maxPlayers: number; rosterCopy: string }> = {
   single: { maxPlayers: 1, rosterCopy: 'Single orders are capped at one approved card.' },
   set: { maxPlayers: 6, rosterCopy: 'Sets are built for two to six cards in one session.' },
-  squad: { maxPlayers: 40, rosterCopy: 'Squad orders support bulk photo upload and team-level approval.' },
+  squad: { maxPlayers: DIRECT_BUILDER_MAX_PAID_PLAYERS, rosterCopy: 'Squad orders support bulk photo upload and team-level approval.' },
 };
 
 type CardSide = 'front' | 'back';
@@ -262,6 +269,7 @@ async function uploadOrderAsset(sourceUrl: string, meta: { orderId: string; play
 
   const response = await fetch('/api/order-assets', {
     method: 'POST',
+    headers: { [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
     body: form,
   });
   const result = await response.json().catch(() => null);
@@ -332,7 +340,46 @@ export default function ProductionBuilder({
   // under order-assets/<submissionKey>/, so no two customers can ever
   // collide, and the server rejects any submitted photo key that doesn't
   // start with this exact prefix.
-  const [submissionKey, setSubmissionKey] = useState(() => crypto.randomUUID());
+  //
+  // Gate 1 residual pass: this used to be a bare crypto.randomUUID()
+  // generated here in the browser and trusted directly by the server —
+  // anyone could invent any value. It's now the PUBLIC id of a real,
+  // server-issued capability (see /api/builder-submissions and
+  // src/lib/builder-submission-capability.ts); the actual secret that
+  // authorises order-assets/render-print calls lives only in an httpOnly
+  // cookie the browser attaches automatically, never read or held by this
+  // component. ensureSubmissionKey() below issues it once (kicked off
+  // eagerly on mount) and every submit path awaits it before proceeding.
+  // No component state here deliberately — nothing renders this id, every
+  // consumer is inside an async submit path that awaits ensureSubmissionKey()
+  // directly, so a cached Promise in a ref is sufficient and avoids an
+  // unused, write-only state variable.
+  const submissionCapabilityRef = useRef<Promise<string> | null>(null);
+  const ensureSubmissionKey = async (): Promise<string> => {
+    if (submissionCapabilityRef.current) return submissionCapabilityRef.current;
+    const promise = (async () => {
+      const response = await fetch('/api/builder-submissions', {
+        method: 'POST',
+        headers: { [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
+      });
+      if (!response.ok) throw new Error('Could not start a new order session');
+      const data = await response.json();
+      return data.submissionId as string;
+    })();
+    submissionCapabilityRef.current = promise;
+    promise.catch(() => {
+      // Allow a later retry to re-issue rather than staying poisoned by one
+      // transient failure.
+      submissionCapabilityRef.current = null;
+    });
+    return promise;
+  };
+  useEffect(() => {
+    ensureSubmissionKey().catch(() => {});
+    // Mount-once: issuance itself is idempotent-safe to retry from any
+    // later call site, so this deliberately doesn't re-run on state change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Set only on a 409 "same key, different content" response — a genuine
   // conflict, not an ordinary retryable network/server failure. Distinct
   // from enquiryStatus === 'error' so the UI never tells a customer to
@@ -694,7 +741,7 @@ export default function ProductionBuilder({
     patchPlayer(id, { badgeUrl: URL.createObjectURL(file), clubEdited: true });
   };
 
-  const orderWithUploadedAssets = async () => {
+  const orderWithUploadedAssets = async (submissionId: string) => {
     const approvedIds = new Set(summary.approvedPlayers.map((player) => player.id));
     const uploaded = uploadedAssetsRef.current;
 
@@ -705,9 +752,13 @@ export default function ProductionBuilder({
         // submissionKey, never order.id (a constant placeholder — see
         // defaultOrder() in emblem-uk-builder.ts), so the server can
         // verify every photoKey it receives genuinely belongs to this
-        // one submission and reject anything that doesn't.
+        // one submission and reject anything that doesn't. submissionId is
+        // passed in explicitly (never read from the outer submissionKey
+        // state/closure here) so this always uses the exact value the
+        // caller already resolved via ensureSubmissionKey(), never a
+        // stale pre-resolution closure.
         const attempt = uploadOrderAsset(url, {
-          orderId: submissionKey,
+          orderId: submissionId,
           playerId: meta.playerId,
           kind: meta.kind,
           fileName: meta.fileName,
@@ -891,6 +942,14 @@ export default function ProductionBuilder({
     setEnquiryError('');
 
     try {
+      // Resolved once per submit, then used as a plain local value for the
+      // rest of this function — never the outer submissionKey state/
+      // closure, which could still be '' if this fires unusually early
+      // (issuance is kicked off on mount, well before a real customer
+      // could realistically reach this button, but this makes the
+      // function correct regardless of timing rather than reliant on it).
+      const submissionKey = await ensureSubmissionKey();
+
       // One order reference, generated once, reused everywhere: the print
       // PDF metadata, the orders row, and the Shopify cart attribute the
       // paid-webhook later matches on (Checkout Phase 0 defect #1). Derived
@@ -950,7 +1009,7 @@ export default function ProductionBuilder({
       setCaptureMode(false);
 
       // 2) Upload source assets (photos/badges) to S3.
-      const productionOrder = await orderWithUploadedAssets();
+      const productionOrder = await orderWithUploadedAssets(submissionKey);
 
       // 2b) Coach-card photo, uploaded through the exact same order-assets
       //     pipeline as player photos — this is just an S3 key segment (see
@@ -999,7 +1058,7 @@ export default function ProductionBuilder({
       //    separate, clearly-labelled block, never merged into players.
       const response = await fetch('/api/order-enquiry', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
         body: JSON.stringify({
           contact: enquiry,
           submittedAt: nowIso(),
@@ -1050,7 +1109,15 @@ export default function ProductionBuilder({
   // blob URL, which hasn't changed, so without this a "new" submission
   // would still resolve to the old (now-conflicting) S3 keys.
   const startNewOrder = () => {
-    setSubmissionKey(crypto.randomUUID());
+    // The old capability is deliberately left to expire/hit its ceiling
+    // naturally rather than explicitly revoked from the client — there is
+    // no legitimate client-authenticated way to prove which capability to
+    // revoke that isn't itself just the cookie the server already trusts,
+    // and doing it server-side here would need a dedicated endpoint for a
+    // rare, low-severity edge case (a customer abandoning one order for
+    // another in the same session).
+    submissionCapabilityRef.current = null;
+    ensureSubmissionKey().catch(() => {});
     uploadedAssetsRef.current.clear();
     printFilesRef.current.clear();
     submittingRef.current = false;
@@ -1682,6 +1749,11 @@ export default function ProductionBuilder({
                   <button type="button" onClick={addTeam} disabled={!canAddPlayer({ ...order, type: order.type === 'single' ? 'set' : order.type })}>
                     Add another team
                   </button>
+                  {!canAddPlayer({ ...order, type: order.type === 'single' ? 'set' : order.type }) && (
+                    <p style={{ fontSize: 13, opacity: 0.7, margin: '8px 0 0', flexBasis: '100%' }}>
+                      This order has reached the {DIRECT_BUILDER_MAX_PAID_PLAYERS}-player limit for this pilot.
+                    </p>
+                  )}
                 </div>
               ) : null}
               <div className="uk-review-groups">

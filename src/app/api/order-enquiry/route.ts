@@ -1,8 +1,10 @@
 import { createHash } from 'crypto';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { headObject } from '@/lib/s3-client';
 import { validateOrderEnquiry, verifySubmittedAssetKeys, type EnquiryBody } from '@/lib/order-enquiry-validation';
+import { beginBuilderSubmissionFinalising, finishBuilderSubmissionFinalising } from '@/lib/builder-submission-capability';
+import { hasValidBuilderCsrf } from '@/lib/builder-request-security';
 
 export const runtime = 'nodejs';
 
@@ -27,7 +29,13 @@ export const runtime = 'nodejs';
  * and shaping the response. It never reads body.pricing for anything
  * persisted.
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  // CSRF fails before body parsing, asset verification, order creation or
+  // capability finalisation — Gate 1 closure pass.
+  if (!hasValidBuilderCsrf(request)) {
+    return NextResponse.json({ error: 'Request unavailable' }, { status: 403 });
+  }
+
   let body: EnquiryBody;
 
   try {
@@ -42,6 +50,24 @@ export async function POST(request: Request) {
 
   if (!validated.ok) {
     return NextResponse.json({ error: validated.error }, { status: validated.status });
+  }
+
+  const submissionKey = validated.params.p_submission_key;
+
+  // Begins the finalising transition before any further work — the
+  // instant this commits, the capability stops authorising any further
+  // /api/order-assets or /api/render-print call (Gate 1 closure pass:
+  // replaces a purely best-effort, post-success-only revoke, which left a
+  // window open for those calls to race in and succeed while this route
+  // was still creating the order). 'submitted' means an earlier call
+  // already completed this exact submission — still proceed, since
+  // create_authoritative_order's own content-fingerprint idempotency (not
+  // a second guard here) is what makes that safe. Anything else (revoked,
+  // expired, or a submissionKey that was never a real capability at all)
+  // is rejected before ever touching S3 or the database.
+  const capabilityState = submissionKey ? await beginBuilderSubmissionFinalising(submissionKey) : null;
+  if (submissionKey && capabilityState !== 'finalising' && capabilityState !== 'submitted') {
+    return NextResponse.json({ error: 'This order session is no longer available — please start a new order' }, { status: 409 });
   }
 
   console.info('Emblem production request received', {
@@ -74,8 +100,21 @@ export async function POST(request: Request) {
   const serviceRole = createServiceRoleClient();
   const { data, error } = await serviceRole.rpc('create_authoritative_order', validated.params);
 
+  // Only finish the transition if THIS call actually started it — a
+  // capabilityState of 'submitted' means an earlier call already finished
+  // it, so there is nothing to release back to 'active' or advance again.
+  const justStartedFinalising = submissionKey !== undefined && capabilityState === 'finalising';
+
   if (error) {
     const message = error.message || '';
+    // A failed create_authoritative_order call (transient DB error, or a
+    // genuine content-mismatch retry) must not permanently strand the
+    // customer's capability in 'finalising' — release it back to 'active'
+    // so the same capability can be retried (with corrected content, if
+    // that was the issue). Awaited, not fire-and-forget: the whole point
+    // of this state machine is that the transition genuinely lands before
+    // the response does.
+    if (justStartedFinalising) await finishBuilderSubmissionFinalising(submissionKey, false);
     if (message.includes('reused with different content')) {
       return NextResponse.json({ error: 'This submission was already sent with different details' }, { status: 409 });
     }
@@ -86,9 +125,21 @@ export async function POST(request: Request) {
 
   const result = data as { orderId: string; orderRef: string; created: boolean } | null;
   if (!result?.orderId) {
+    if (justStartedFinalising) await finishBuilderSubmissionFinalising(submissionKey, false);
     console.error('create_authoritative_order returned an unexpected result', data);
     return NextResponse.json({ error: 'Could not save your order — please try again' }, { status: 500 });
   }
+
+  // The submission has genuinely completed — its builder capability moves
+  // to 'submitted', permanently blocking any further
+  // /api/order-assets or /api/render-print call for it (verified by
+  // verify_and_touch_builder_submission_capability's own state='active'
+  // check). A failure here is logged (inside
+  // finishBuilderSubmissionFinalising) but never blocks the customer's
+  // order confirmation — and never leaves uploads/render open either,
+  // since the capability simply stays in the already-blocking
+  // 'finalising' state rather than reverting to 'active'.
+  if (justStartedFinalising) await finishBuilderSubmissionFinalising(submissionKey, true);
 
   return NextResponse.json({
     ok: true,

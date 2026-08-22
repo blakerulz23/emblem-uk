@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 
@@ -32,6 +32,26 @@ export async function uploadObject(key: string, buffer: Buffer, contentType = 'a
 /** Upload a PDF Buffer to S3 and return the S3 key. */
 export async function uploadPdf(key: string, buffer: Buffer, contentType = 'application/pdf'): Promise<string> {
   return uploadObject(key, buffer, contentType);
+}
+
+/**
+ * Copies one S3 object to another key within the same bucket — used to
+ * promote a reservation-specific temporary upload to its slot's stable
+ * final key only once the ledger confirms that reservation is still the
+ * current one for that slot (see builder-submission-capability.ts /
+ * squad-invite-participation-assets.ts). Never used to move anything
+ * between submissions/participations — both keys are always derived from
+ * the same verified namespace.
+ */
+export async function copyObject(sourceKey: string, destinationKey: string): Promise<void> {
+  if (!bucket) throw new Error('AWS_S3_BUCKET is not set');
+  await s3.send(
+    new CopyObjectCommand({
+      Bucket: bucket,
+      CopySource: `${bucket}/${sourceKey}`,
+      Key: destinationKey,
+    })
+  );
 }
 
 /**
