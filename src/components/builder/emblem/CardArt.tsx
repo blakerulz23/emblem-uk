@@ -123,12 +123,6 @@ function RealCardArt({
   const isVintage = template.family === 'Vintage';
   const isChampions = template.family === 'Champions';
   const frontStats = SPORT_STATS[sport] || SPORT_STATS.basketball;
-  const galaxyVariant = template.id.replace('galaxy-', '');
-  const galaxyLightVariants = new Set(['bronze', 'gold', 'ice', 'lime', 'mint', 'neon-cyan', 'neon-green', 'silver', 'sky-blue', 'teal', 'white']);
-  const galaxyMetaColor = galaxyLightVariants.has(galaxyVariant) ? '#050505' : '#ffffff';
-  const galaxyMetaShadow = galaxyLightVariants.has(galaxyVariant)
-    ? '0 1px 0 rgba(255,255,255,.75), 0 2px 6px rgba(255,255,255,.45)'
-    : '0 1px 0 rgba(0,0,0,.9), 0 2px 7px rgba(0,0,0,.85)';
 
   const layer: CSSProperties = {
     position: 'absolute',
@@ -1003,7 +997,6 @@ function RealCardBack({
 
 function RealGalaxyBack({
   details,
-  logo,
   stats,
   backText,
   physical,

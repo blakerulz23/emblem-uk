@@ -53,14 +53,6 @@ export default function EditScreen() {
   const sizes = SIZES[product] || ['One size'];
   const sportStats = SPORT_STATS[sport];
 
-  const flip = useCallback(() => {
-    setFlipping(true);
-    setTimeout(() => {
-      setSide(s => s === 'front' ? 'back' : 'front');
-      setFlipping(false);
-    }, 180);
-  }, []);
-
   const handleLogoUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;

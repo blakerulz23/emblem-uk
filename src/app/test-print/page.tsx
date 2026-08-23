@@ -93,9 +93,9 @@ export default function TestPrintPage() {
       setDownloadUrl(out.downloadUrl);
       const sizeKb = (out.bytes / 1024).toFixed(1);
       setStatus('Success: ' + sizeKb + ' KB PDF generated and uploaded');
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('[print] error:', e);
-      const msg = e?.message || String(e) || 'unknown error';
+      const msg = (e as { message?: string })?.message || String(e) || 'unknown error';
       setError(msg);
       setStatus('Failed');
     } finally {

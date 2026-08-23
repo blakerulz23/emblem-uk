@@ -327,7 +327,7 @@ export default function BobbleheadEditScreen() {
             Quantity
           </Mono>
           <Mono style={{ display: 'block', fontSize: 10.5, color: 'var(--ink-faint)', marginTop: 2 }}>
-            7" figurine · hand-painted · 3-week build
+            7&quot; figurine · hand-painted · 3-week build
           </Mono>
         </div>
         <Stepper value={qty} onChange={setQty} />

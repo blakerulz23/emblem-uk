@@ -9,8 +9,6 @@ import CardArt from '../CardArt';
 import AIMockupBlock from '../AIMockupBlock';
 import { removeBackgroundSmart, readBlobAsDataUrl } from '../bgRemoval';
 import {
-  KEYCHAIN_SHAPES,
-  type KeychainShape,
   CARD_TEMPLATES,
 } from '../data';
 
@@ -110,12 +108,6 @@ export default function KeychainEditScreen() {
       />
     </label>
   );
-
-  const shapePreviewSize: Record<KeychainShape, number> = {
-    circular: 220,
-    rectangular: 180,
-    slab: 170,
-  };
 
   return (
     <Screen

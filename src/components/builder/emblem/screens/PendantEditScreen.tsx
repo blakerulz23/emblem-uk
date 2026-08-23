@@ -42,7 +42,7 @@ export default function PendantEditScreen() {
           setPendant({ progress: data.progress ?? 0 });
           pollRef.current = setTimeout(poll, 3000);
         }
-      } catch (e) {
+      } catch {
         if (!cancelled) {
           setPendant({ status: 'ready-2d', error: 'Polling failed', meshyJobId: null });
         }

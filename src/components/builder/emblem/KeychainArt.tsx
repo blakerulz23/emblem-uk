@@ -8,8 +8,6 @@ import type { CardTemplate, Details, KeychainShape } from './data';
 
 // 3D chrome split-ring rendered in SVG
 function SplitRing({ size }: { size: number }) {
-  const r  = size / 2;
-  const sw = Math.max(2, size * 0.18); // stroke weight
   return (
     <svg
       width={size} height={size}

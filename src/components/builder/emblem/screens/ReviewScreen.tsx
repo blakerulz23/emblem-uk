@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useEmblem } from '@/context/EmblemContext';
 import { Screen, Kicker } from '../Screen';
-import { Btn, Mono } from '../primitives';
+import { Mono } from '../primitives';
 import Icon from '../Icon';
 import CardArt from '../CardArt';
 import ProductMock from '../ProductMock';
@@ -27,7 +27,7 @@ const MAX_CODES = 5;
 
 export default function ReviewScreen() {
   const {
-    photo, details, product, template, size, qty, addToCart,
+    photo, details, product, template, size, qty,
     wristband, keychain, jewelry, pin, magnet, plushie, bobblehead,
     logo, stats, sport, backText, physical,
     photoScale, photoOffsetX, photoOffsetY,
@@ -244,7 +244,7 @@ export default function ReviewScreen() {
     const fabric = PLUSHIE_FABRICS.find((f) => f.id === plushie.fabric);
     detailLines = (
       <>
-        6" plush keychain
+        6&quot; plush keychain
         <br />
         Fabric: {fabric?.name}
         <br />
@@ -256,7 +256,7 @@ export default function ReviewScreen() {
   } else if (product === 'bobbleheads') {
     detailLines = (
       <>
-        7" hand-painted figurine
+        7&quot; hand-painted figurine
         <br />
         {bobblehead.modelUrl
           ? '3D model ready · ships in 3 weeks'
@@ -429,9 +429,9 @@ export default function ReviewScreen() {
           <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 18, color: 'var(--ink)' }}>{pr.name}</div>
           {product === 'cards' && (<Mono style={{ fontSize: 12, color: 'var(--ink-faint)' }}>{template.family} · {template.theme}</Mono>)}
           {product === 'wristbands' && (<Mono style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Elastic band · NFC patch</Mono>)}
-          {product === 'keychains' && (<Mono style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Acrylic · 3" · double-sided</Mono>)}
+          {product === 'keychains' && (<Mono style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Acrylic · 3&quot; · double-sided</Mono>)}
           {product === 'jewelry' && (<Mono style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Stainless steel · adjustable chain</Mono>)}
-          {product === 'pins' && (<Mono style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Hard enamel · 1.25"</Mono>)}
+          {product === 'pins' && (<Mono style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Hard enamel · 1.25&quot;</Mono>)}
           {product === 'magnets' && (<Mono style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Photo magnet · vinyl laminate</Mono>)}
           {product === 'plushies' && (<Mono style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Hand-sewn · 14-day turnaround</Mono>)}
           {product === 'bobbleheads' && (<Mono style={{ fontSize: 12, color: 'var(--ink-faint)' }}>3D printed · hand-painted</Mono>)}

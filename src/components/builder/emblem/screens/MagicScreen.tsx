@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useEmblem } from '@/context/EmblemContext';
 import { Screen, Kicker } from '../Screen';
-import { Btn } from '../primitives';
 import { removeBackgroundSmart } from '../bgRemoval';
 
 async function dataUrlToFile(dataUrl: string, name = 'photo.jpg'): Promise<File> {

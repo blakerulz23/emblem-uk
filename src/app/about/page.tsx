@@ -30,7 +30,7 @@ export default function AboutPage() {
           lineHeight: 1.05,
           letterSpacing: '-0.025em',
           color: 'var(--ink)',
-          textWrap: 'balance' as 'balance',
+          textWrap: 'balance' as const,
           margin: 0,
         }}
       >
@@ -127,7 +127,7 @@ export default function AboutPage() {
       >
         Trading cards have been a collector format for a hundred years. Nobody had made them
         personal and connected. Every Emblem piece comes with a real NFC chip built in. Tap it
-        with a phone and whatever profile, highlights, or links you've set come up instantly. We
+        with a phone and whatever profile, highlights, or links you&apos;ve set come up instantly. We
         started with cards and kept going: posters, wristbands, stickers, keychains and more. One
         photo, every format.
       </p>

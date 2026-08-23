@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useEmblem } from '@/context/EmblemContext';
 import { Screen, Kicker } from '../Screen';
-import { Mono } from '../primitives';
 
 const PhotoIcon = ({ size = 36 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
