@@ -18,12 +18,24 @@ export function hasSafeRequestOrigin(request: NextRequest): boolean {
   }
 }
 
-export function hasValidSquadInviteCsrf(request: NextRequest): boolean {
+/**
+ * Generic double-submit-cookie CSRF check, extracted from this file's own
+ * hasValidSquadInviteCsrf below (now a thin wrapper around this) so the
+ * builder capability flow (src/lib/builder-request-security.ts) can reuse
+ * the exact same, already-reviewed verification logic under its own
+ * cookie/header names instead of a second, parallel implementation.
+ * Behaviour is unchanged for every existing Squad Invite caller.
+ */
+export function hasValidDoubleSubmitCsrf(request: NextRequest, cookieName: string, headerName: string): boolean {
   if (!hasSafeRequestOrigin(request)) return false;
-  const cookieToken = request.cookies.get(SQUAD_INVITE_CSRF_COOKIE)?.value ?? '';
-  const headerToken = request.headers.get(SQUAD_INVITE_CSRF_HEADER) ?? '';
+  const cookieToken = request.cookies.get(cookieName)?.value ?? '';
+  const headerToken = request.headers.get(headerName) ?? '';
   if (!/^[A-Za-z0-9_-]{43}$/.test(cookieToken) || cookieToken.length !== headerToken.length) return false;
   return timingSafeEqual(Buffer.from(cookieToken), Buffer.from(headerToken));
+}
+
+export function hasValidSquadInviteCsrf(request: NextRequest): boolean {
+  return hasValidDoubleSubmitCsrf(request, SQUAD_INVITE_CSRF_COOKIE, SQUAD_INVITE_CSRF_HEADER);
 }
 
 export function safeSquadInviteReturnPath(value: unknown): '/squad-invite/join' {

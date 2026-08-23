@@ -2,6 +2,23 @@
 
 import html2canvas from 'html2canvas';
 
+/**
+ * emblem_builder_csrf is deliberately non-httpOnly (see
+ * src/lib/builder-request-security.ts and src/middleware.ts's
+ * ensureBuilderCsrfCookie) specifically so client code can echo it back as
+ * a header — the same double-submit-cookie pattern Squad Invite's own
+ * readSquadInviteCsrfCookie (ProductionBuilder.tsx) uses. Shared here
+ * because both ProductionBuilder.tsx and the test-print dev harness call
+ * into this module.
+ */
+export const BUILDER_CSRF_HEADER = 'x-emblem-builder-csrf';
+
+export function readBuilderCsrfCookie(): string {
+  if (typeof document === 'undefined') return '';
+  const match = document.cookie.match(/(?:^|; )emblem_builder_csrf=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 export interface CaptureOptions {
   pixelRatio?: number;
   quality?: number;
@@ -37,17 +54,18 @@ export async function renderPrintFile(
   frontImageDataUrl: string,
   meta?: { playerName?: string; teamName?: string; template?: string; orderRef?: string },
   backImageDataUrl?: string,
-  /** Required for a real order submission (see ProductionBuilder.tsx) —
-   *  namespaces the print-file key by order-enquiry-validation.ts's
-   *  expected print-files/<submissionKey>/ prefix. Left undefined by the
-   *  other two callers of this function (src/app/test-print, src/
-   *  components/builder/emblem/PrintFileBlock.tsx), which aren't part of
-   *  any order submission and never need that prefix. */
+  /** Optional here only for parameter-ordering reasons (it must follow
+   *  the already-optional meta/backImageDataUrl) — /api/render-print
+   *  itself now rejects any call that omits it. Namespaces the print-file
+   *  key by order-enquiry-validation.ts's expected
+   *  print-files/<submissionKey>/ prefix. A real order submission uses
+   *  ProductionBuilder.tsx's own crypto.randomUUID(); src/app/test-print
+   *  generates its own dev-only key for the same reason. */
   submissionKey?: string
 ): Promise<RenderPrintResponse> {
   const r = await fetch('/api/render-print', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
     body: JSON.stringify({ product, frontImageDataUrl, backImageDataUrl, meta, submissionKey }),
   });
   if (!r.ok) {

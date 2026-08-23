@@ -1,15 +1,41 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
+  images: {
+    // Gate 1 residual pass — route-level mitigation for GHSA-3x4c-7xq6-9pq8
+    // (unbounded next/image disk-cache growth) and GHSA-h64f-5h5j-jqjh (DoS
+    // in the Image Optimization API), both unresolved on Next 14.2.35
+    // without a major-version bump this pass explicitly doesn't perform.
+    // /_next/image is a public, unauthenticated endpoint whenever
+    // next/image is used ANYWHERE in the app (currently 2 spots:
+    // src/app/HomeEffects.tsx on the real homepage, and the Squad Invite
+    // dev-preview harness), regardless of whether those specific images
+    // are local or remote — an attacker can still hit it directly with
+    // arbitrary width/quality query params. Disabling the optimizer
+    // entirely removes that endpoint's attack surface at the cost of
+    // serving those two images unresized/unconverted, which this app
+    // already does everywhere else (see the many @next/next/no-img-element
+    // lint warnings — plain <img> is already the dominant pattern here).
+    unoptimized: true,
   },
   async headers() {
+    // Baseline browser security headers for every route. Listed first so
+    // the more specific entries below (which repeat Referrer-Policy with a
+    // stricter 'no-referrer' for a handful of private preview/access paths)
+    // apply afterwards and win for those exact paths — Next.js applies
+    // matching header sets in array order, last write wins per key.
+    const securityHeaders = [
+      { key: 'X-Frame-Options', value: 'DENY' },
+      { key: 'X-Content-Type-Options', value: 'nosniff' },
+      { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+      { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+    ];
     const privateHeaders = [
       { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
       { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive' },
       { key: 'Referrer-Policy', value: 'no-referrer' },
     ];
     return [
+      { source: '/:path*', headers: securityHeaders },
       { source: '/review/squad-invite', headers: privateHeaders },
       { source: '/dev/squad-invite-preview', headers: privateHeaders },
       { source: '/squad-invite/access', headers: privateHeaders },

@@ -4,17 +4,13 @@ import Link from 'next/link';
 import { useRef } from 'react';
 import {
   CARD_TEMPLATES,
-  DEFAULT_JEWELRY,
-  DEFAULT_MAGNET,
   DEFAULT_PIN,
   EMPTY_LOGO,
   SAMPLE_PHOTO,
   type CardTemplate,
 } from '@/components/builder/emblem/data';
 import CardArt from '@/components/builder/emblem/CardArt';
-import ProductMock from '@/components/builder/emblem/ProductMock';
 import WristbandPreview from '@/components/builder/emblem/WristbandPreview';
-import JewelryPreview from '@/components/builder/emblem/JewelryPreview';
 import PhotoCharmPreview from '@/components/builder/emblem/PhotoCharmPreview';
 import Icon from '@/components/builder/emblem/Icon';
 import HappyCustomers from '@/components/CustomerMarquee';
@@ -141,12 +137,12 @@ function Lineup() {
             <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--accent)' }} />
             ONE PHOTO, A WHOLE LINEUP
           </span>
-          <h2 style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 'clamp(26px, 3.6vw, 40px)', lineHeight: 1.08, letterSpacing: '-0.025em', margin: 0, color: 'var(--ink)', textWrap: 'balance' as 'balance' }}>
+          <h2 style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 'clamp(26px, 3.6vw, 40px)', lineHeight: 1.08, letterSpacing: '-0.025em', margin: 0, color: 'var(--ink)', textWrap: 'balance' as const }}>
             Show your Last Shot pride.
           </h2>
         </div>
         <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
-          {([['Previous', -1 as -1, 'chevL'], ['Next', 1 as 1, 'chevR']] as const).map(([label, dir, icon]) => (
+          {([['Previous', -1 as -1, 'chevL'], ['Next', 1 as const, 'chevR']] as const).map(([label, dir, icon]) => (
             <button
               key={label}
               type="button"
@@ -238,7 +234,7 @@ export default function Home() {
   ];
 
   return (
-    <div style={{ overflowX: 'clip' as 'clip' }}>
+    <div style={{ overflowX: 'clip' as const }}>
       <section style={{ maxWidth: 1140, margin: '0 auto', padding: 'clamp(40px, 6vw, 72px) 28px clamp(48px, 7vw, 88px)' }}>
         <div className="hero-grid">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -246,10 +242,10 @@ export default function Home() {
               <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--accent)' }} />
               OFFICIAL TIE-IN - LAST SHOT FILM
             </span>
-            <h1 style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 'clamp(34px, 5.4vw, 58px)', lineHeight: 1.02, letterSpacing: '-0.03em', margin: 0, color: 'var(--ink)', textWrap: 'balance' as 'balance' }}>
+            <h1 style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 'clamp(34px, 5.4vw, 58px)', lineHeight: 1.02, letterSpacing: '-0.03em', margin: 0, color: 'var(--ink)', textWrap: 'balance' as const }}>
               Make your card like the players in Last Shot.
             </h1>
-            <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 'clamp(16px, 1.5vw, 18.5px)', lineHeight: 1.5, color: 'var(--ink-soft)', margin: 0, maxWidth: '46ch', textWrap: 'pretty' as 'pretty' }}>
+            <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 'clamp(16px, 1.5vw, 18.5px)', lineHeight: 1.5, color: 'var(--ink-soft)', margin: 0, maxWidth: '46ch', textWrap: 'pretty' as const }}>
               Trading cards, posters, stickers, and keychains â designed in the style of the film. Upload one photo and become a Last Shot player. In theaters April 8, 2026.
             </p>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 4 }} className="cta-row">
@@ -346,10 +342,10 @@ export default function Home() {
               <span style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--accent)' }} />
               THE TAP
             </span>
-            <h2 style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 'clamp(26px, 3.6vw, 40px)', lineHeight: 1.08, letterSpacing: '-0.025em', margin: 0, color: '#fff', textWrap: 'balance' as 'balance' }}>
+            <h2 style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 'clamp(26px, 3.6vw, 40px)', lineHeight: 1.08, letterSpacing: '-0.025em', margin: 0, color: '#fff', textWrap: 'balance' as const }}>
               A card with a hidden surprise.
             </h2>
-            <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 'clamp(16px, 1.5vw, 18.5px)', lineHeight: 1.5, color: 'rgba(255,255,255,.72)', margin: 0, maxWidth: '46ch', textWrap: 'pretty' as 'pretty' }}>
+            <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 'clamp(16px, 1.5vw, 18.5px)', lineHeight: 1.5, color: 'rgba(255,255,255,.72)', margin: 0, maxWidth: '46ch', textWrap: 'pretty' as const }}>
               Tap any card with a phone and a digital profile springs to life â stats, highlight clips, social links, the whole story. No app, no setup. Just a fun bonus on top of a card they already love.
             </p>
             <Link href="/builder" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 9, fontFamily: 'var(--font-manrope), system-ui', fontWeight: 700, borderRadius: 14, height: 52, padding: '0 22px', fontSize: 16, background: 'var(--accent)', color: '#fff', boxShadow: '0 8px 24px var(--accent-glow)' }}>

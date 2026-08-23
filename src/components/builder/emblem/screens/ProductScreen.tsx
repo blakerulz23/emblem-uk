@@ -8,18 +8,8 @@ import { Screen, Kicker } from '../Screen';
 import { Mono } from '../primitives';
 import Icon from '../Icon';
 import CardArt from '../CardArt';
-import PosterArt from '../PosterArt';
-import StickerArt from '../StickerArt';
-import KeychainArt from '../KeychainArt';
-import MagnetArt from '../MagnetArt';
-import PhotoCharmPreview from '../PhotoCharmPreview';
-import WristbandPreview from '../WristbandPreview';
-import JewelryPreview from '../JewelryPreview';
 import {
   CARD_TEMPLATES,
-  DEFAULT_JEWELRY,
-  DEFAULT_PIN,
-  DEFAULT_WRISTBAND,
   PRODUCTS,
   type CardTemplate,
   type Details,
@@ -56,8 +46,6 @@ const OTHER_PRODUCTS: ProductId[] = [
   'bobbleheads',
   'figurinez',
 ];
-
-const AI_PRODUCTS = new Set<ProductId>(['plushies', 'bobbleheads']);
 
 // Per-product family color palette for the compact chip tiles.
 const STAGE_BG: Record<ProductId, string> = {

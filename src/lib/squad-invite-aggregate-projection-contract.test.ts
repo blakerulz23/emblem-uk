@@ -37,10 +37,16 @@ describe('Squad Invite organiser/staff/public projections stay aggregate-only, e
   const route=read('src/app/api/squad-invites/[id]/dashboard/route.ts');
   for (const table of ['orders','players','cards','card_definitions']) expect(route).not.toContain(`.from('${table}')`);
  });
- it('the new commit RPC boundary itself never appears in any organiser-reachable route', () => {
+ it('the new commit RPC boundary itself never appears in any organiser-reachable route’s live code (comments may still name it for documentation)', () => {
   const roots=['src/app/api/squad-invites','src/app/api/squad-invite-requests','src/app/api/squad-invite-links'];
   const offenders:string[]=[];
-  for(const root of roots){for(const file of squadInviteApiRouteFiles(root)){const content=read(file);if(content.includes('commit_squad_invite_participation_order'))offenders.push(file);}}
+  // Strip block and line comments before scanning — close/route.ts (the
+  // organiser self-service campaign-close action) has an accurate doc
+  // comment explaining that closing immediately makes
+  // commit_squad_invite_participation_order start rejecting new commits;
+  // that's documentation, not the route calling or exposing the RPC.
+  const stripComments=(src:string)=>src.replace(/\/\*[\s\S]*?\*\//g,'').replace(/(^|[^:])\/\/.*$/gm,'$1');
+  for(const root of roots){for(const file of squadInviteApiRouteFiles(root)){const content=stripComments(read(file));if(content.includes('commit_squad_invite_participation_order'))offenders.push(file);}}
   expect(offenders).toEqual([]);
  });
 });

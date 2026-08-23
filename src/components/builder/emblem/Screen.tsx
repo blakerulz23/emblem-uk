@@ -59,7 +59,7 @@ export function Kicker({
           letterSpacing: '-0.025em',
           color: 'var(--ink)',
           margin: 0,
-          textWrap: 'balance' as 'balance',
+          textWrap: 'balance' as const,
         }}
       >
         {title}
@@ -72,7 +72,7 @@ export function Kicker({
             lineHeight: 1.45,
             color: 'var(--ink-soft)',
             margin: '10px 0 0',
-            textWrap: 'pretty' as 'pretty',
+            textWrap: 'pretty' as const,
           }}
         >
           {sub}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useEmblem } from '@/context/EmblemContext';
 import { Screen, Kicker } from '../Screen';
@@ -32,7 +32,7 @@ export default function RushmoreEditScreen() {
           setRushmore({ progress: data.progress ?? 0 });
           pollRef.current = setTimeout(poll, 3000);
         }
-      } catch (e) {
+      } catch {
         if (!cancelled) {
           setRushmore({ status: 'ready-2d', error: 'Polling failed', meshyJobId: null });
         }
@@ -57,7 +57,7 @@ export default function RushmoreEditScreen() {
       const next: [string | null, string | null, string | null] = [...rushmore.extraPhotos] as [string | null, string | null, string | null];
       next[slotIdx] = data;
       setRushmore({ extraPhotos: next });
-    } catch (e) {
+    } catch {
       // ignore
     }
   }

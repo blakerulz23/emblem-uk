@@ -5,8 +5,8 @@ import { useEmblem } from '@/context/EmblemContext';
 import ProductArt from './ProductArt';
 import CardArt from './CardArt';
 import { captureElementToPng, renderPrintFile, PrintProduct } from '@/lib/print-capture';
-import { buildCartUrl, PUZZLE_VARIANT_BY_STYLE, SHOPIFY_SHOP } from '@/lib/shopify';
-import { type ProductId } from './data';
+import { buildCartUrl, PUZZLE_VARIANT_BY_STYLE } from '@/lib/shopify';
+import { type ProductId, type CharmShape } from './data';
 
 const PRODUCT_MAP: Partial<Record<ProductId, PrintProduct>> = {
   cards: 'card',
@@ -24,11 +24,15 @@ const POSTER_SIZES: { id: PosterSize; label: string; dim: string }[] = [
 ];
 
 export default function PrintFileBlock() {
-  const ctx = useEmblem() as any;
+  const ctx = useEmblem();
   const product: ProductId = ctx.product;
   const template = ctx.template;
   const photo = ctx.photo;
-  const details = ctx.details;
+  // Details predates a later playerName/teamName -> name/team rename;
+  // this file is unreachable dead code (see .eslintignore) so the rename
+  // was never applied here — narrow bridge cast, not a claim these fields
+  // exist on the current Details type.
+  const details = ctx.details as (typeof ctx.details & { playerName?: string; teamName?: string });
   const logo = ctx.logo;
   const stats = ctx.stats;
   const sport = ctx.sport;
@@ -41,7 +45,9 @@ export default function PrintFileBlock() {
   const referralCode = ctx.referralCode as string | null | undefined;
   const referralCodes = (ctx.referralCodes as string[] | undefined) ?? (referralCode ? [referralCode] : []);
   const puzzleStyle = ctx.puzzle?.style;
-  const charmShape = ctx.charm?.shape;
+  // 'charm' predates this context shape too — same dead-code drift as
+  // details above.
+  const charmShape = (ctx as typeof ctx & { charm?: { shape?: CharmShape } }).charm?.shape;
 
   const hiddenRef = useRef<HTMLDivElement | null>(null);
   const hiddenBackRef = useRef<HTMLDivElement | null>(null);
@@ -79,21 +85,6 @@ export default function PrintFileBlock() {
       orderRef,
     }, backDataUrl);
     return { key: out.key, downloadUrl: out.downloadUrl };
-  };
-
-  const onPreview = async () => {
-    setBusy(true); setError(''); setDownloadUrl('');
-    try {
-      const out = await generate('BUILDER-' + Date.now().toString(36));
-      if (out) {
-        setDownloadUrl(out.downloadUrl);
-        setStatus('Print file ready');
-      }
-    } catch (e: any) {
-      setError(e?.message || 'unknown error');
-    } finally {
-      setBusy(false);
-    }
   };
 
   const onBuy = async () => {
@@ -149,8 +140,8 @@ export default function PrintFileBlock() {
         cartUrl = cartUrl.replace(/\/cart\/\d+:/, '/cart/' + variantId + ':');
       }
       window.location.href = cartUrl;
-    } catch (e: any) {
-      setError(e?.message || 'unknown error');
+    } catch (e: unknown) {
+      setError((e as { message?: string })?.message || 'unknown error');
       setBusy(false);
     }
   };

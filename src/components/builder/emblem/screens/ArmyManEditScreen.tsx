@@ -56,7 +56,7 @@ export default function ArmyManEditScreen() {
           setArmyman({ progress: data.progress ?? 0 });
           pollRef.current = setTimeout(poll, 3000);
         }
-      } catch (e) {
+      } catch {
         if (!cancelled) {
           setArmyman({ status: 'ready-2d', error: 'Polling failed', meshyJobId: null });
         }

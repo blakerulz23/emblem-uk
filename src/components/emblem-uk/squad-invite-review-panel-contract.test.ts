@@ -150,7 +150,11 @@ describe('Squad Invite final review/commit panel — polish contract', () => {
   });
 
   it('a photo-upload HTTP failure is never labelled a network problem in the outcome type or the rendered copy', () => {
-    expect(builder).toContain("type SquadInviteCommitOutcome = null | 'sign_in_required' | 'unavailable' | 'validation' | 'network' | 'photo_upload_failed';");
+    // 'campaign_closed' was added alongside the organiser self-service
+    // close feature (src/app/api/squad-invites/[id]/close/route.ts) — a
+    // real, deliberate fifth-then-sixth outcome, not a regression of this
+    // photo-upload/network distinction.
+    expect(builder).toContain("type SquadInviteCommitOutcome = null | 'sign_in_required' | 'unavailable' | 'validation' | 'network' | 'photo_upload_failed' | 'campaign_closed';");
     const review = reviewBlock();
     expect(review).toContain("squadInviteOutcome === 'photo_upload_failed'");
     const photoFailureMessage = review.match(/squadInviteOutcome === 'photo_upload_failed' && \(\s*<p[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '';
@@ -165,7 +169,15 @@ describe('Squad Invite final review/commit panel — polish contract', () => {
     expect(afterCommitFetch).toMatch(/\} catch \{\s*setSquadInviteOutcome\('network'\);\s*return;\s*\}/);
     expect(afterCommitFetch).toContain("if (response.status === 401) { setSquadInviteOutcome('sign_in_required'); return; }");
     expect(afterCommitFetch).toContain("if (response.status === 400) { setSquadInviteOutcome('validation'); return; }");
-    expect(afterCommitFetch).toContain("if (!response.ok) { setSquadInviteOutcome('unavailable'); return; }");
+    // !response.ok now branches once more between the organiser having
+    // closed the campaign (a real, deliberate outcome — see
+    // close/route.ts) and every other generic rejection, but still never
+    // reaches this branch via a caught throw, and still always returns.
+    const notOkIndex = afterCommitFetch.indexOf('if (!response.ok) {');
+    expect(notOkIndex).toBeGreaterThan(-1);
+    const notOkBlock = afterCommitFetch.slice(notOkIndex, afterCommitFetch.indexOf('setSquadInvitePhase(\'success\');'));
+    expect(notOkBlock).toContain("body?.reason === 'campaign_closed' ? 'campaign_closed' : 'unavailable'");
+    expect(notOkBlock).toContain('return;');
   });
 
   it('a failed submit attempt (either category) never clears the photo, personalise fields or declarations — state is preserved for retry', () => {

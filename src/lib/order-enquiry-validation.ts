@@ -29,9 +29,37 @@ import { EMJFL_CLUBS } from './emjfl-clubs';
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_PLAYERS = 200;
+
+/**
+ * Approved MVP pilot decision: the direct multi-player builder ("Build
+ * several cards") may contain at most this many distinct paid players per
+ * order — replaces the previous 200, which was an untested architectural
+ * ceiling rather than a real product decision. Does NOT apply to Squad
+ * Invite, which has its own, independent per-campaign/per-participation
+ * limits (squad_invites/squad_invite_participations) and is unaffected by
+ * this constant.
+ *
+ * Exported so the ONE other place this number matters —
+ * ProductionBuilder.tsx's client-side 'squad' order-type roster limit —
+ * imports it directly rather than risking a second, hardcoded 30 drifting
+ * out of sync with this authoritative, server-enforced value.
+ *
+ * migration 0048_authoritative_order_persistence.sql's own
+ * create_authoritative_order RPC still has its own, wider `> 200` guard
+ * (an applied migration — not edited here, per the rule against modifying
+ * an already-applied migration). That check is now permanently
+ * unreachable in practice: this validation always runs first and rejects
+ * anything over 30 before the RPC is ever called. Left as a harmless,
+ * looser defence-in-depth backstop, not a second source of truth.
+ */
+export const DIRECT_BUILDER_MAX_PAID_PLAYERS = 30;
 const MAX_PRINTS_PER_PLAYER = 100;
-const MAX_BODY_PLAYERS_FIELD = 500;
+// Bounds the raw request body's players array BEFORE the loop below even
+// runs — a coarse DoS guard, not the real business rule (that's
+// DIRECT_BUILDER_MAX_PAID_PLAYERS, checked per-player below). Kept at a
+// modest multiple of the real cap rather than the previous 500 (16x),
+// which was disproportionate once the real cap dropped to 30.
+const MAX_BODY_PLAYERS_FIELD = 60;
 
 const TEMPLATE_IDS = new Set(templates.map((template) => template.id));
 const OFFICIAL_BADGE_PATHS = new Set(EMJFL_CLUBS.map((club) => club.badgePath));
@@ -318,8 +346,8 @@ export function validateOrderEnquiry(
       stats: raw.stats ?? null,
     });
   }
-  if (players.length > MAX_PLAYERS) {
-    return fail(400, 'Too many players in one submission');
+  if (players.length > DIRECT_BUILDER_MAX_PAID_PLAYERS) {
+    return fail(400, `Orders are limited to ${DIRECT_BUILDER_MAX_PAID_PLAYERS} players during this pilot`);
   }
 
   const coachCardRaw = body.coachCard;

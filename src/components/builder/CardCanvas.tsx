@@ -3,7 +3,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { CardData, SPORT_INFO, SPORT_STATS } from '@/lib/types';
 import { GHB_LAYERS, drawGalaxyHoloBack } from '@/lib/galaxyHoloBackLayers';
-import { CHROME_LEGACY_BACK_CANVAS } from '@/lib/chromeLegacyBackLayers';
 
 interface CardCanvasProps {
   card: CardData;
@@ -1735,32 +1734,6 @@ const CHL_SPORT_STATS: Record<string, { key: string; label: string }[]> = {
   football:   [{ key: 'yds',   label: 'YDS'   }, { key: 'td',      label: 'TD'  }, { key: 'tkl',  label: 'TCK' }],
 };
 
-// ─── Chrome Legacy back coordinate space (from CHROME_LEGACY_BACK_CANVAS) ───
-const CHLB_W = CHROME_LEGACY_BACK_CANVAS.width;   // 1054
-const CHLB_H = CHROME_LEGACY_BACK_CANVAS.height;  // 1492
-
-// All positions in CHLB_W × CHLB_H space — scaled at render time.
-// Sections top→bottom: brand header · player name · story · DNA · NFC/unlock · collection footer.
-const CHLB_LAYOUT = {
-  brandLogo:     { cx: 527, cy: 90 },
-  playerName:    { cx: 527, cy: 228, maxW: 900 },
-  storyTitle:    { cx: 527, cy: 305 },
-  storyText:     { cx: 527, startY: 345, lineH: 44, maxLines: 6, maxW: 894 },
-  dnaTitle:      { cx: 527, cy: 638 },
-  dnaRows:       [{ cy: 704 }, { cy: 766 }, { cy: 828 }, { cy: 890 }, { cy: 952 }],
-  dnaLabelX:     100,
-  dnaBarX:       340,
-  dnaBarW:       540,
-  dnaBarH:       20,
-  dnaScoreX:     960,
-  nfcPanel:      { x: 60, y: 1008, w: 934, h: 340 },
-  nfcBadge:      { cx: 143, cy: 1055 },
-  unlockTitle:   { cx: 527, cy: 1055 },
-  unlockItems:   [{ cy: 1112 }, { cy: 1162 }, { cy: 1212 }, { cy: 1262 }, { cy: 1312 }],
-  unlockItemX:   160,
-  collectionName:{ cx: 527, cy: 1435 },
-};
-
 // DNA trait defaults — schema example values (chromeLegacyBackSchema.json example_payload).
 // Rendered when card model has no trait scores; scores map to DATA_DNA_*_SCORE layers.
 const CHLB_DNA_DEFAULTS = [
@@ -1769,15 +1742,6 @@ const CHLB_DNA_DEFAULTS = [
   { label: 'COACHABILITY',      score: 4 },
   { label: 'COMPETITIVE DRIVE', score: 5 },
   { label: 'TEAM FIRST',        score: 5 },
-];
-
-// DATA_UNLOCK_ITEM_*_LABEL defaults (5 rows matching schema example_payload).
-const CHLB_UNLOCK_DEFAULTS = [
-  'FULL ATHLETE PROFILE',
-  'SOCIAL LINKS',
-  'VIDEO HIGHLIGHTS',
-  'EXCLUSIVE CONTENT',
-  'LATEST UPDATES',
 ];
 
 function drawChromeLegacyFront(

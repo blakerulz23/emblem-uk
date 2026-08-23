@@ -45,7 +45,7 @@ export default function AIMockupBlock({
     try {
       dataUrl = await fileToResizedDataUrl(file);
       setSrc(dataUrl);
-    } catch (e) {
+    } catch {
       setStatus('error');
       setError('Could not read that image. Try another.');
       return;

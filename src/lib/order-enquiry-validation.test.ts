@@ -4,6 +4,7 @@ import {
   isValidNamespacedKey,
   validateOrderEnquiry,
   verifySubmittedAssetKeys,
+  DIRECT_BUILDER_MAX_PAID_PLAYERS,
   type AssetChecker,
   type EnquiryBody,
   type EnquiryPlayer,
@@ -166,6 +167,77 @@ describe('validateOrderEnquiry — player validation', () => {
   it('accepts a player with no templateId (optional)', () => {
     const result = validate(baseBody({ players: [validPlayer({ templateId: undefined })] }));
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('validateOrderEnquiry — 30-player MVP pilot maximum (DIRECT_BUILDER_MAX_PAID_PLAYERS)', () => {
+  it('the constant is exactly 30 (the approved pilot decision)', () => {
+    expect(DIRECT_BUILDER_MAX_PAID_PLAYERS).toBe(30);
+  });
+
+  // 29 and 30 players are both >= SQUAD_MIN_PLAYERS (10), so — same as the
+  // existing "Squad tier" pricing test above — a real coach card is
+  // required, not optional; omitting it fails for an unrelated reason
+  // (coach card, not the player cap) and would give a false negative here.
+  const squadCoachCard = { fullName: 'Alex Coach', roleTitle: 'Coach', clubName: 'Sunday League FC', teamName: 'Sunday League FC', photoKey: photoKey('coach.jpg') };
+
+  it('accepts an order one player under the limit (29)', () => {
+    const result = validate(baseBody({ players: nPlayers(DIRECT_BUILDER_MAX_PAID_PLAYERS - 1), coachCard: squadCoachCard }));
+    expect(result.ok).toBe(true);
+  });
+
+  it('accepts an order at exactly the limit (30)', () => {
+    const result = validate(baseBody({ players: nPlayers(DIRECT_BUILDER_MAX_PAID_PLAYERS), coachCard: squadCoachCard }));
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects an order one player over the limit (31), consistently', () => {
+    const result = validate(baseBody({ players: nPlayers(DIRECT_BUILDER_MAX_PAID_PLAYERS + 1) }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain(String(DIRECT_BUILDER_MAX_PAID_PLAYERS));
+  });
+
+  it('rejects the same way well beyond the limit — not merely "off by one"', () => {
+    const result = validate(baseBody({ players: nPlayers(DIRECT_BUILDER_MAX_PAID_PLAYERS + 50) }));
+    expect(result.ok).toBe(false);
+  });
+
+  it('duplicate player identifiers cannot be used to represent more distinct players than actually exist, nor to evade the cap', () => {
+    // 30 genuinely distinct players plus one attempt to "add" a 31st by
+    // reusing an existing id — already-existing duplicate-id rejection
+    // (line ~254) fires before the count check ever needs to.
+    const players = nPlayers(DIRECT_BUILDER_MAX_PAID_PLAYERS);
+    const withDuplicate = [...players, validPlayer({ id: players[0].id })];
+    const result = validate(baseBody({ players: withDuplicate }));
+    expect(result.ok).toBe(false);
+  });
+
+  it('a free coach card never counts toward the paid-player cap — 30 real players plus a coach card still succeeds', () => {
+    const result = validate(
+      baseBody({
+        players: nPlayers(DIRECT_BUILDER_MAX_PAID_PLAYERS),
+        coachCard: { fullName: 'Alex Coach', roleTitle: 'Coach', clubName: 'Sunday League FC', teamName: 'Sunday League FC', photoKey: photoKey('coach.jpg') },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.params.p_paid_player_count).toBe(DIRECT_BUILDER_MAX_PAID_PLAYERS);
+      expect(result.params.p_coach_card).not.toBeNull();
+    }
+  });
+
+  it('canonical pricing tiers are unaffected by the new cap: 1 player is Single (£24.99), 2+ distinct players is Multi (£21.99), 10+ is Squad (£18.99)', () => {
+    const single = validate(baseBody({ players: nPlayers(1) }));
+    const multi = validate(baseBody({ players: nPlayers(2) }));
+    const squad = validate(
+      baseBody({
+        players: nPlayers(DIRECT_BUILDER_MAX_PAID_PLAYERS),
+        coachCard: { fullName: 'Alex Coach', roleTitle: 'Coach', clubName: 'Sunday League FC', teamName: 'Sunday League FC', photoKey: photoKey('coach.jpg') },
+      }),
+    );
+    expect(single.ok && single.params.p_unit_price_pence).toBe(2499);
+    expect(multi.ok && multi.params.p_unit_price_pence).toBe(2199);
+    expect(squad.ok && squad.params.p_unit_price_pence).toBe(1899);
   });
 });
 

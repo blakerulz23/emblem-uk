@@ -11,7 +11,6 @@ import {
   CARD_TEMPLATES,
   DEFAULT_EMJFL_CLUB,
   REAL_FAMILIES,
-  KEYCHAIN_SHAPES,
   CHARM_SHAPES,
   type CardTemplate,
   type CharmShape,
@@ -333,7 +332,7 @@ export default function GalleryScreen() {
             marginTop: 14,
           }}
         >
-          That's everything · {choices.length} {product === 'keychains' || product === 'magnets' ? 'combos' : 'designs'}
+          That&apos;s everything · {choices.length} {product === 'keychains' || product === 'magnets' ? 'combos' : 'designs'}
         </Mono>
       )}
     
