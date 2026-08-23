@@ -1,5 +1,16 @@
 # Children's-data compliance checklist — Emblem OS
 
+> **SUPERSEDED — 24 August 2026.** This document describes an early build
+> state ("no public-profile toggle," "no retention policy or deletion job
+> exists") that no longer reflects the codebase. The current, actively
+> maintained record is
+> [`childrens-dpia-v0.2.md`](./childrens-dpia-v0.2.md), together with the
+> [founder decision register](./founder-decision-register-v1.md), the
+> [Gate 2 controls-and-tests matrix](./gate2-controls-tests-matrix-v1.md),
+> the [retention schedule](./retention-schedule-v1.md) and the
+> [supplier register](./supplier-register-v1.md). Kept here only as a
+> historical record — do not rely on any claim below.
+
 > **This is a draft for a solicitor or Data Protection Officer to review. It
 > is not a compliance sign-off.** It maps this codebase's current state
 > against the UK ICO's [Age Appropriate Design Code](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/childrens-information/childrens-code-guidance-and-resources/)
