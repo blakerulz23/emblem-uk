@@ -1,4 +1,3 @@
-import { randomBytes } from 'crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { updateSession } from '@/lib/supabase/middleware';
 import { isSyntheticSquadInvitePreviewEnabled } from '@/lib/squad-invite-preview-mode';
@@ -27,6 +26,22 @@ function applyDisposableSquadInviteHeaders(response: NextResponse) {
 }
 
 /**
+ * 32 random bytes as unpadded base64url, using only Edge Runtime-safe Web
+ * APIs (globalThis.crypto.getRandomValues + btoa) — Middleware always runs
+ * in the Edge Runtime, which has no Node.js `crypto` or `Buffer`. 32 bytes
+ * encodes to exactly 43 base64url characters with no padding.
+ */
+export function generateBuilderCsrfToken(): string {
+  const bytes = new Uint8Array(32);
+  globalThis.crypto.getRandomValues(bytes);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
  * Establishes CSRF context for the anonymous builder flow the same way
  * Squad Invite's exchange/route.ts establishes its own — a random,
  * non-httpOnly, sameSite:strict double-submit token set on first legitimate
@@ -38,7 +53,7 @@ function applyDisposableSquadInviteHeaders(response: NextResponse) {
  */
 function ensureBuilderCsrfCookie(request: NextRequest, response: NextResponse): NextResponse {
   if (request.cookies.get(BUILDER_CSRF_COOKIE)?.value) return response;
-  response.cookies.set(BUILDER_CSRF_COOKIE, randomBytes(32).toString('base64url'), {
+  response.cookies.set(BUILDER_CSRF_COOKIE, generateBuilderCsrfToken(), {
     httpOnly: false,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
