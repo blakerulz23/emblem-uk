@@ -12,11 +12,16 @@ type ClaimResult = { ok: true; playerId: string } | { ok: false; status: number;
  */
 export async function claimPlayerForCard(
   serviceRole: SupabaseClient,
-  card: { id: string; status: string; player_id: string | null },
+  card: { id: string; status: string; player_id: string | null; access_status: string | null },
   userId: string,
   relationship: string | null = null
 ): Promise<ClaimResult> {
-  if (!card.player_id || card.status === 'claimed') {
+  // access_status (migration 0075) is a separate axis from status: a
+  // suspended or revoked card — including one superseded by a replacement —
+  // must never become claimable, even if its own status column still says
+  // 'assigned'. Same generic message as the already-claimed case, so this
+  // never signals which reason applies.
+  if (!card.player_id || card.status === 'claimed' || card.access_status) {
     return { ok: false, status: 400, error: "This card isn't available to claim" };
   }
 

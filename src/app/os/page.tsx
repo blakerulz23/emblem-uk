@@ -7,6 +7,7 @@ import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/
 import { resolveCardCode } from '@/lib/card-lookup';
 import { resolvePlayerCapabilities } from '@/lib/player-capabilities';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
+import CardAccessNotice from './CardAccessNotice';
 
 export default async function OsPage({
   searchParams,
@@ -58,12 +59,31 @@ export default async function OsPage({
         } else {
           redirect(`/player/${result.publicPlayerId}`);
         }
+      } else if (result.status === 'card_unavailable') {
+        // Suspended/revoked (migration 0075). A stranger, an unrelated
+        // authenticated account, or a card with no linked player at all
+        // (e.g. staff suspended it before it was ever claimed) all fall
+        // through to the exact same generic, no-signal experience as
+        // not_found below — no distinction is ever surfaced to anyone who
+        // isn't the linked guardian. Only the guardian sees a reassuring,
+        // specific screen with a self-service action where one exists.
+        if (result.playerId) {
+          const supabase = createClient();
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          const capabilities = await resolvePlayerCapabilities(createServiceRoleClient(), result.playerId, user?.id ?? null);
+          if (capabilities.isGuardian) {
+            return <CardAccessNotice cardId={result.cardId} accessStatus={result.accessStatus} />;
+          }
+        }
+        // Falls through with everyone else, below.
       }
     }
-    // Rate-limited, unclaimed, not found, or claimed-but-unavailable all
-    // fall through — ActivationGate's own ?card= handling (unclaimed) or
-    // ClaimCodeEntry's auto-lookup (claimed_unavailable's neutral message)
-    // takes it from here, exactly as before.
+    // Rate-limited, unclaimed, not found, claimed-but-unavailable, or
+    // card_unavailable-to-a-non-guardian all fall through — ActivationGate's
+    // own ?card= handling (unclaimed) or ClaimCodeEntry's auto-lookup
+    // (neutral message) takes it from here, exactly as before.
   }
 
   const { session, profileRole, hasClaimedPlayer, hasTeam } = await getOsAccount();

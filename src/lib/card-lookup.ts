@@ -5,6 +5,7 @@ type CardLookupRow = {
   status: 'unassigned' | 'assigned' | 'claimed';
   player_id: string | null;
   order_id: string | null;
+  access_status: 'suspended' | 'revoked' | null;
   orders: { payment_status: string } | null;
   players: {
     name: string;
@@ -22,7 +23,14 @@ export type CardLookupResult =
   | { status: 'not_found' }
   | { status: 'unclaimed'; claimToken: string; player: { firstName: string; lastInitial: string; team: { name: string; season?: string } | null; club: { name: string; badgeUrl: string | null } | null } }
   | { status: 'claimed'; playerId: string; publicPlayerId: string }
-  | { status: 'claimed_unavailable' };
+  | { status: 'claimed_unavailable' }
+  // Card lifecycle controls (migration 0075): a suspended or revoked card
+  // resolves here regardless of its unassigned/assigned/claimed progress,
+  // BEFORE any player preview data is ever read out of `data`. cardId and
+  // playerId are only ever used server-side (to check whether the tapper
+  // is the linked guardian, and to target the card in a status-management
+  // API call) — never serialized into an unauthenticated HTTP response.
+  | { status: 'card_unavailable'; cardId: string; playerId: string | null; accessStatus: 'suspended' | 'revoked' };
 
 /**
  * The one place a card's claim_token is resolved — shared by GET
@@ -44,7 +52,7 @@ export async function resolveCardCode(code: string): Promise<CardLookupResult> {
   const { data } = await serviceRole
     .from('cards')
     .select(
-      `id, status, player_id, order_id,
+      `id, status, player_id, order_id, access_status,
        orders ( payment_status ),
        players ( name, position, public_player_id,
          teams ( name, clubs ( name, badge_url ), seasons ( label ) )
@@ -54,12 +62,27 @@ export async function resolveCardCode(code: string): Promise<CardLookupResult> {
     .neq('status', 'unassigned')
     .maybeSingle<CardLookupRow>();
 
+  if (!data) {
+    return { status: 'not_found' };
+  }
+
+  // Suspended/revoked is checked first, before the order-approval check and
+  // before any preview data is read out of `data` below — a lifecycle-
+  // gated card must never expose so much as a first-name preview, and this
+  // takes priority regardless of how far along its unassigned/assigned/
+  // claimed progress otherwise is. See os/page.tsx for how the caller
+  // decides between the guardian-facing reassurance screen and the fully
+  // generic response everyone else gets.
+  if (data.access_status === 'suspended' || data.access_status === 'revoked') {
+    return { status: 'card_unavailable', cardId: data.id, playerId: data.player_id, accessStatus: data.access_status };
+  }
+
   // A card produced by a team/squad order isn't claimable until staff
   // approves that order on /staff/queue — a card with no order_id at all
   // (e.g. a coach's manual "+Add Player") has nothing to approve and is
   // claimable immediately.
-  const orderApproved = !data?.order_id || data.orders?.payment_status === 'fulfilled';
-  if (!data || !orderApproved) {
+  const orderApproved = !data.order_id || data.orders?.payment_status === 'fulfilled';
+  if (!orderApproved) {
     return { status: 'not_found' };
   }
 
