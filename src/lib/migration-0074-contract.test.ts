@@ -1,10 +1,10 @@
 import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 
-const sql = readFileSync('supabase/migrations/0073_remove_exact_dob_stage_a.sql', 'utf8');
+const sql = readFileSync('supabase/migrations/0074_remove_exact_dob_stage_a.sql', 'utf8');
 const migration0036 = readFileSync('supabase/migrations/0036_player_coach_fields_secure_expand.sql', 'utf8');
 
-describe('migration 0073 remove exact dob (Stage A) contract', () => {
+describe('migration 0074 remove exact dob (Stage A) contract', () => {
   it('is transactional', () => {
     expect(sql).toMatch(/^begin;/m);
     expect(sql).toMatch(/^commit;/m);
@@ -93,7 +93,7 @@ describe('migration 0073 remove exact dob (Stage A) contract', () => {
     expect(sql).toContain('grant execute on function public.update_player_coach_fields(uuid, text, int, text, text) to authenticated;');
   });
 
-  it('does not touch migrations earlier than 0073 — the original 5-argument function still exists verbatim in 0036', () => {
+  it('does not touch migrations earlier than 0074 — the original 5-argument function still exists verbatim in 0036', () => {
     expect(migration0036).toContain('create or replace function public.update_player_coach_fields(\n  p_player_id uuid,\n  p_date_of_birth date,');
   });
 

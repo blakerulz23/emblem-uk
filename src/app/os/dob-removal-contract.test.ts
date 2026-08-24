@@ -56,20 +56,20 @@ describe('Gate 2 — exact date of birth removal (Stage A) product contract', ()
     // ageGroupDraft/footballAgeGroup being set.
     expect(coachDetail).toContain('setAgeGroupDraft(null)');
 
-    const migration = read('supabase/migrations/0073_remove_exact_dob_stage_a.sql');
+    const migration = read('supabase/migrations/0074_remove_exact_dob_stage_a.sql');
     expect(migration).toContain('p_football_age_group is not null');
     expect(migration).not.toMatch(/football_age_group\s+is\s+null\s+then\s+raise/i);
   });
 
   it('keeps football age group coach-controlled only, via the same authorization check as the other three remaining coach fields', () => {
-    const migration = read('supabase/migrations/0073_remove_exact_dob_stage_a.sql');
+    const migration = read('supabase/migrations/0074_remove_exact_dob_stage_a.sql');
     expect(migration).toContain("raise exception 'Not authorized to update this player''s details';");
   });
 
   it('never derives football age group from a date, DOB or the current date anywhere in the app or this migration', () => {
     const coachFields = read('src/app/os/coachFields.ts');
     expect(coachFields).not.toMatch(/footballAgeGroup\s*=.*new Date/i);
-    const migration = read('supabase/migrations/0073_remove_exact_dob_stage_a.sql');
+    const migration = read('supabase/migrations/0074_remove_exact_dob_stage_a.sql');
     expect(migration).not.toMatch(/football_age_group\s*=\s*.*current_date/i);
     expect(migration).not.toMatch(/regexp_match/i);
   });
