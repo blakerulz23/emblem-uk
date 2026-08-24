@@ -401,7 +401,15 @@ begin
   end if;
 
   if v_request.status <> 'pending' or v_request.expires_at < now() then
-    return jsonb_build_object('ok', false, 'status', v_request.status);
+    -- Same jsonb_build_object('ok', false) shape as the malformed-hash and
+    -- unknown-token branches above — this used to also return the row's
+    -- real status ('expired'/'revoked'/'approved'/'declined'), which let a
+    -- caller with the RPC's raw return value distinguish "this token once
+    -- existed" from "this token never existed", a minor existence oracle.
+    -- The real status is still visible to staff via a direct row read
+    -- (service-role only) — it is only withheld from this function's return
+    -- value, which is what an untrusted caller ultimately sees.
+    return jsonb_build_object('ok', false);
   end if;
 
   update public.builder_guardian_approval_requests

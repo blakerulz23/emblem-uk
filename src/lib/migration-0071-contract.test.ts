@@ -89,6 +89,29 @@ describe('migration 0071 builder order authority contract', () => {
     expect(lockIndex).toBeLessThan(pendingCheckIndex);
   });
 
+  it('respond_to_builder_guardian_approval returns a byte-identical shape for every unavailable-token reason (no existence oracle)', () => {
+    const start = sql.indexOf('create or replace function public.respond_to_builder_guardian_approval');
+    const end = sql.indexOf('$$;', start);
+    const body = sql.slice(start, end);
+    const returns = Array.from(body.matchAll(/return\s+jsonb_build_object\(([^)]*)\);/g)).map((m) => m[1].trim());
+    // Exactly three "unavailable" returns (malformed hash, unknown token,
+    // not-pending/expired) plus the one success return — four total.
+    expect(returns).toHaveLength(4);
+    const unavailableReturns = returns.filter((r) => r.includes("'ok', false"));
+    expect(unavailableReturns).toHaveLength(3);
+    // Every one of them must be the exact same literal call — not just
+    // "no status field", but genuinely identical text, so a future edit to
+    // one branch can't silently reintroduce a difference in the others.
+    const distinct = new Set(unavailableReturns);
+    expect(distinct.size).toBe(1);
+    expect(Array.from(distinct)[0]).toBe("'ok', false");
+    // None of the unavailable branches may include the row's real status,
+    // order id, or guardian existence.
+    for (const r of unavailableReturns) {
+      expect(r).not.toMatch(/status|order_id|guardian_email/);
+    }
+  });
+
   it('a declined guardian decision is documented as permanent and unblockable by staff', () => {
     expect(sql).toContain('Staff review cannot override a guardian refusal');
   });
