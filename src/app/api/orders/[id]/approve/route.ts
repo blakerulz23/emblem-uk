@@ -168,12 +168,31 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   const serviceRole = createServiceRoleClient();
 
-  const { data: sourceRow } = await serviceRole.from('orders').select('source').eq('id', params.id).maybeSingle();
+  const { data: sourceRow } = await serviceRole.from('orders').select('source, authority_status').eq('id', params.id).maybeSingle();
   if (!sourceRow) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   }
   if (sourceRow.source === 'squad_invite') {
     return approveSquadInviteOrder(serviceRole, params.id, staffCheck.userId);
+  }
+
+  // Safeguarding gate (migration 0071): an ordinary-builder order must
+  // have a confirmed adult declaration, or a guardian's own approval, on
+  // record before staff can move it into production. A declined guardian
+  // decision is permanent — no staff action can move an order out of
+  // guardian_declined, matching respond_to_builder_guardian_approval's own
+  // comment. A null authority_status (declaration missing/not yet linked)
+  // fails closed the same as every other non-confirmed state.
+  if (sourceRow.source !== 'squad_invite' && sourceRow.authority_status !== 'confirmed' && sourceRow.authority_status !== 'guardian_approved') {
+    await serviceRole.from('builder_authority_audit_events').insert({
+      order_id: params.id,
+      event_type: 'staff_approval_blocked',
+      metadata: { authorityStatus: sourceRow.authority_status },
+    });
+    return NextResponse.json(
+      { error: 'This order cannot be approved until adult permission is confirmed' },
+      { status: 409 }
+    );
   }
 
   const { data: cards } = await serviceRole

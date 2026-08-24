@@ -30,10 +30,16 @@ import { POST } from './route';
 const mockCreateAuthoritativeOrder = vi.fn();
 const mockBeginFinalising = vi.fn();
 const mockFinishFinalising = vi.fn();
+// migration 0071 — called once after create_authoritative_order succeeds,
+// for every submissionKey. Defaulted to a successful 'confirmed' link so
+// every pre-existing test (written before this call existed) keeps working
+// unchanged; tests that care about this call configure/inspect it directly.
+const mockLinkBuilderOrderAuthority = vi.fn();
 const mockRpc = vi.fn((fn: string, params: unknown) => {
   if (fn === 'create_authoritative_order') return mockCreateAuthoritativeOrder(params);
   if (fn === 'begin_builder_submission_finalising') return mockBeginFinalising(params);
   if (fn === 'finish_builder_submission_finalising') return mockFinishFinalising(params);
+  if (fn === 'link_builder_order_authority') return mockLinkBuilderOrderAuthority(params);
   throw new Error(`unexpected rpc call in test: ${fn}`);
 });
 vi.mock('@/lib/supabase/server', () => ({
@@ -104,6 +110,7 @@ beforeEach(() => {
   mockCreateAuthoritativeOrder.mockReset();
   mockBeginFinalising.mockReset().mockResolvedValue({ data: 'finalising', error: null });
   mockFinishFinalising.mockReset().mockResolvedValue({ data: null, error: null });
+  mockLinkBuilderOrderAuthority.mockReset().mockResolvedValue({ data: { authorityStatus: 'confirmed' }, error: null });
   mockHeadObject.mockReset();
   mockValidAssets();
 });
@@ -243,6 +250,39 @@ describe('POST /api/order-enquiry — RPC result mapping', () => {
     const body = await res.json();
     expect(res.status).toBe(500);
     expect(body.error).not.toContain('orders_pricing_snapshot_arithmetic');
+  });
+});
+
+describe('POST /api/order-enquiry — safeguarding authority link (migration 0071)', () => {
+  it('links the new order to its authority declaration by submission_key, after order creation', async () => {
+    mockValidAssets();
+    mockCreateAuthoritativeOrder.mockResolvedValue({ data: { orderId: 'order-1', orderRef: 'emblem-abc', created: true }, error: null });
+    await post(validBody());
+    expect(mockLinkBuilderOrderAuthority).toHaveBeenCalledWith({
+      p_order_id: 'order-1',
+      p_submission_key: SUBMISSION_KEY,
+    });
+  });
+
+  it('surfaces authorityStatus from the link call in the response', async () => {
+    mockValidAssets();
+    mockCreateAuthoritativeOrder.mockResolvedValue({ data: { orderId: 'order-1', orderRef: 'emblem-abc', created: true }, error: null });
+    mockLinkBuilderOrderAuthority.mockResolvedValue({ data: { authorityStatus: 'guardian_approval_pending' }, error: null });
+    const res = await post(validBody());
+    const body = await res.json();
+    expect(body.authorityStatus).toBe('guardian_approval_pending');
+  });
+
+  it('never fails the order response just because the authority link call errors — the order already committed', async () => {
+    mockValidAssets();
+    mockCreateAuthoritativeOrder.mockResolvedValue({ data: { orderId: 'order-1', orderRef: 'emblem-abc', created: true }, error: null });
+    mockLinkBuilderOrderAuthority.mockResolvedValue({ data: null, error: { message: 'no authority declaration found for this submission' } });
+    const res = await post(validBody());
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.orderId).toBe('order-1');
+    expect(body.authorityStatus).toBeUndefined();
   });
 });
 
