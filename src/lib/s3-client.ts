@@ -74,6 +74,21 @@ export interface ObjectMetadata {
 }
 
 /**
+ * True only for a provider response that conclusively means the object
+ * does not exist (a 404, or the SDK's own NotFound/NoSuchKey error name) —
+ * never for a permission, network, timeout, or other transient failure.
+ * Shared by headObject below and by the abandoned-upload sweep
+ * (sweep-abandoned-uploads/route.ts), which must not treat every S3 error
+ * as "already gone" — only this narrow, conclusive case is safe to treat
+ * the same as a successful delete.
+ */
+export function isS3NotFoundError(err: unknown): boolean {
+  const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+  const name = (err as { name?: string })?.name;
+  return status === 404 || name === 'NotFound' || name === 'NoSuchKey';
+}
+
+/**
  * Confirms a key genuinely exists in the bucket (and returns its stored
  * content type/size), rather than trusting that a well-formed-looking key
  * string was actually uploaded. A namespace-prefix check alone (see
@@ -89,9 +104,7 @@ export async function headObject(key: string): Promise<ObjectMetadata> {
     const result = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
     return { exists: true, contentType: result.ContentType, contentLength: result.ContentLength };
   } catch (err) {
-    const status = (err as { $metadata?: { httpStatusCode?: number }; name?: string })?.$metadata?.httpStatusCode;
-    const name = (err as { name?: string })?.name;
-    if (status === 404 || name === 'NotFound' || name === 'NoSuchKey') {
+    if (isS3NotFoundError(err)) {
       return { exists: false };
     }
     throw err;

@@ -257,6 +257,54 @@ describe('migration 0076 child-data erasure contract', () => {
     }
   });
 
+  const RPCS_STORAGE_ATTEMPT = ['record_player_deletion_storage_attempt', 'record_squad_invite_deletion_storage_attempt'];
+
+  it('record_*_storage_attempt RPCs are staff-only SECURITY DEFINER with an explicit empty search_path', () => {
+    for (const name of RPCS_STORAGE_ATTEMPT) {
+      const start = sql.indexOf(`create function public.${name}(`);
+      expect(start, `${name} should be declared`).toBeGreaterThan(-1);
+      const end = sql.indexOf('revoke all on function', start);
+      const body = sql.slice(start, end);
+      expect(body).toContain('security definer');
+      expect(body).toContain("set search_path = ''");
+      expect(body, `${name} should check staff_accounts`).toContain('staff_accounts');
+      expect(body, `${name} should check auth.uid() is null`).toContain('if auth.uid() is null then');
+    }
+  });
+
+  it('record_*_storage_attempt RPCs increment attempts atomically in a single UPDATE, never a client-supplied value', () => {
+    for (const name of RPCS_STORAGE_ATTEMPT) {
+      const start = sql.indexOf(`create function public.${name}(`);
+      const end = sql.indexOf('revoke all on function', start);
+      const signature = sql.slice(start, sql.indexOf(')', start) + 1);
+      const body = sql.slice(start, end);
+      // No p_attempts (or similarly named) parameter — the count can only
+      // ever move via the function's own `attempts + 1` expression.
+      expect(signature).not.toMatch(/p_attempts/i);
+      expect(body).toContain('attempts = attempts + 1');
+      // The increment must live inside a single `update ... set` statement
+      // with no earlier `select`/`into` of `attempts` in this body — a
+      // read-then-write split across two statements is exactly the race
+      // this RPC exists to avoid.
+      const updateIdx = body.indexOf('update public.');
+      const priorSelectOfAttempts = body.slice(0, updateIdx).match(/attempts/);
+      expect(priorSelectOfAttempts, `${name} should not read attempts before its atomic update`).toBeNull();
+    }
+  });
+
+  it('record_*_storage_attempt RPCs grant execute only to authenticated, matching every other client-facing RPC in this migration — not broadened to service_role or public', () => {
+    for (const name of RPCS_STORAGE_ATTEMPT) {
+      const revokeIdx = sql.indexOf(`revoke all on function public.${name}(`);
+      expect(revokeIdx, `${name} should have an explicit revoke`).toBeGreaterThan(-1);
+      const revokeLine = sql.slice(revokeIdx, sql.indexOf(';', revokeIdx) + 1);
+      expect(revokeLine).toContain('public, anon, authenticated');
+      const grantIdx = sql.indexOf(`grant execute on function public.${name}(`);
+      const grantLine = sql.slice(grantIdx, sql.indexOf(';', grantIdx) + 1);
+      expect(grantLine).toContain('to authenticated');
+      expect(grantLine).not.toContain('service_role');
+    }
+  });
+
   it('does not modify any migration earlier than 0076', () => {
     for (const earlier of ['0071_builder_order_authority', '0073_restrict_authenticated_card_column_access', '0075_card_lifecycle_controls']) {
       expect(sql).not.toContain(earlier);

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { deleteObject } from '@/lib/s3-client';
 
@@ -42,20 +42,25 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ ok: true, state: 'completed' });
   }
 
-  const serviceRole = createServiceRoleClient();
+  // Same atomic-increment RPC pattern as /api/staff/deletion-requests/
+  // [id]/complete — record_squad_invite_deletion_storage_attempt does a
+  // single `attempts = attempts + 1` update, staff-gated, never a
+  // client-supplied count.
   for (const object of result.inventory) {
     try {
       await deleteObject(object.s3Key);
-      await serviceRole
-        .from('squad_invite_participation_deletion_storage_objects')
-        .update({ status: 'deleted', deleted_at: new Date().toISOString() })
-        .eq('id', object.id);
+      await supabase.rpc('record_squad_invite_deletion_storage_attempt', {
+        p_object_id: object.id,
+        p_deleted: true,
+        p_error: null,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown S3 error';
-      await serviceRole
-        .from('squad_invite_participation_deletion_storage_objects')
-        .update({ status: 'failed', last_error: message, attempts: 1 })
-        .eq('id', object.id);
+      await supabase.rpc('record_squad_invite_deletion_storage_attempt', {
+        p_object_id: object.id,
+        p_deleted: false,
+        p_error: message,
+      });
     }
   }
 

@@ -727,6 +727,53 @@ $$;
 revoke all on function public.finalize_player_deletion_erasure(uuid) from public, anon, authenticated;
 grant execute on function public.finalize_player_deletion_erasure(uuid) to authenticated;
 
+-- Records one genuine S3-delete attempt for a single inventoried storage
+-- object. A single UPDATE ... SET attempts = attempts + 1 is atomic under
+-- Postgres' own per-row locking — no read-then-write round trip, so two
+-- concurrent calls for the same object can never lose an increment. The
+-- caller (the staff execute route) supplies only whether the delete
+-- succeeded and, if not, the error text; it can never set attempts
+-- directly, so the count always reflects genuine calls, not client input.
+create function public.record_player_deletion_storage_attempt(
+  p_object_id uuid,
+  p_deleted boolean,
+  p_error text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row public.player_deletion_storage_objects;
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+  if not exists (select 1 from public.staff_accounts sa where sa.profile_id = auth.uid()) then
+    raise exception 'Staff access required';
+  end if;
+
+  update public.player_deletion_storage_objects
+  set
+    attempts = attempts + 1,
+    status = case when p_deleted then 'deleted' else 'failed' end,
+    deleted_at = case when p_deleted then now() else deleted_at end,
+    last_error = case when p_deleted then null else p_error end
+  where id = p_object_id
+  returning * into v_row;
+
+  if v_row.id is null then
+    raise exception 'Storage object not found';
+  end if;
+
+  return jsonb_build_object('id', v_row.id, 'status', v_row.status, 'attempts', v_row.attempts);
+end;
+$$;
+
+revoke all on function public.record_player_deletion_storage_attempt(uuid, boolean, text) from public, anon, authenticated;
+grant execute on function public.record_player_deletion_storage_attempt(uuid, boolean, text) to authenticated;
+
 -- ----------------------------------------------------------------------------
 -- Part 8 — Squad Invite participation erasure. Authority is derived
 -- entirely from squad_invite_participations.guardian_profile_id = auth.
@@ -1038,6 +1085,49 @@ $$;
 
 revoke all on function public.finalize_squad_invite_participation_erasure(uuid) from public, anon, authenticated;
 grant execute on function public.finalize_squad_invite_participation_erasure(uuid) to authenticated;
+
+-- Squad Invite counterpart to record_player_deletion_storage_attempt
+-- above — same atomic single-UPDATE increment, same staff-only gate, same
+-- refusal to accept a client-supplied attempts value.
+create function public.record_squad_invite_deletion_storage_attempt(
+  p_object_id uuid,
+  p_deleted boolean,
+  p_error text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row public.squad_invite_participation_deletion_storage_objects;
+begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+  if not exists (select 1 from public.staff_accounts sa where sa.profile_id = auth.uid()) then
+    raise exception 'Staff access required';
+  end if;
+
+  update public.squad_invite_participation_deletion_storage_objects
+  set
+    attempts = attempts + 1,
+    status = case when p_deleted then 'deleted' else 'failed' end,
+    deleted_at = case when p_deleted then now() else deleted_at end,
+    last_error = case when p_deleted then null else p_error end
+  where id = p_object_id
+  returning * into v_row;
+
+  if v_row.id is null then
+    raise exception 'Storage object not found';
+  end if;
+
+  return jsonb_build_object('id', v_row.id, 'status', v_row.status, 'attempts', v_row.attempts);
+end;
+$$;
+
+revoke all on function public.record_squad_invite_deletion_storage_attempt(uuid, boolean, text) from public, anon, authenticated;
+grant execute on function public.record_squad_invite_deletion_storage_attempt(uuid, boolean, text) to authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Part 9 — delete_own_guardian_account: extended to cover every profile-

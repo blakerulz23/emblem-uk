@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { deleteObject } from '@/lib/s3-client';
 
@@ -57,26 +57,29 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   // player_deletion_storage_objects grants select/insert/update to
-  // service_role only (0076) — never to authenticated, even a staff
-  // session — so these status writes must go through the service-role
-  // client. requireStaff() above is what actually authorises this route;
-  // this client is not a new authorization boundary, the same pattern
-  // every other staff route in this codebase already uses.
-  const serviceRole = createServiceRoleClient();
-
+  // service_role only (0076) — never a direct client write, even from a
+  // staff session. The status/attempts write goes through
+  // record_player_deletion_storage_attempt, a staff-gated SECURITY
+  // DEFINER RPC that does a single atomic `attempts = attempts + 1`
+  // update, so this route never reads-then-writes a count that a
+  // concurrent retry could race. requireStaff() above is what actually
+  // authorises this route; the RPC's own staff_accounts check is a second,
+  // independent gate rather than a new authorization boundary.
   for (const object of result.inventory) {
     try {
       await deleteObject(object.s3Key);
-      await serviceRole
-        .from('player_deletion_storage_objects')
-        .update({ status: 'deleted', deleted_at: new Date().toISOString() })
-        .eq('id', object.id);
+      await supabase.rpc('record_player_deletion_storage_attempt', {
+        p_object_id: object.id,
+        p_deleted: true,
+        p_error: null,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown S3 error';
-      await serviceRole
-        .from('player_deletion_storage_objects')
-        .update({ status: 'failed', last_error: message, attempts: 1 })
-        .eq('id', object.id);
+      await supabase.rpc('record_player_deletion_storage_attempt', {
+        p_object_id: object.id,
+        p_deleted: false,
+        p_error: message,
+      });
     }
   }
 
