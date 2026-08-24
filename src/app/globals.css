@@ -3381,6 +3381,126 @@ a { text-decoration: none; color: inherit; }
   color: #8f1f1f;
 }
 
+/* Adult Permission step + Guardian Pending screen + Guardian's own approval
+   page (migration 0071). One clear card/panel, single-column, large
+   controls — deliberately not the two-column .uk-enquiry-form grid, since
+   this step's fields are sequential (email, then code, then relationship
+   and confirmations) rather than side-by-side. Reuses the same design
+   tokens (--wizard-ink/--wizard-soft/--wizard-line/--wizard-accent, the
+   Sora/JetBrains Mono/Manrope font stack) as every other builder step. */
+.uk-adult-permission-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border: 1px solid #eadfce;
+  border-radius: 16px;
+  background: #fffaf3;
+  padding: 16px;
+}
+
+.uk-adult-permission-card label {
+  display: grid;
+  gap: 7px;
+  color: var(--wizard-faint);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.uk-adult-permission-card input,
+.uk-adult-permission-card select {
+  width: 100%;
+  min-height: 50px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 13px;
+  background: #fff;
+  color: var(--wizard-ink);
+  padding: 12px 13px;
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.uk-adult-permission-confirmations {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.uk-adult-permission-checkbox {
+  display: flex !important;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 13px;
+  background: #fff;
+  padding: 13px;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-family: var(--font-manrope), system-ui, sans-serif !important;
+  cursor: pointer;
+}
+
+.uk-adult-permission-checkbox input {
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  flex: none;
+  margin-top: 1px;
+  accent-color: var(--wizard-accent);
+}
+
+.uk-adult-permission-checkbox span {
+  color: var(--wizard-ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.uk-adult-permission-details {
+  border-top: 1px solid var(--wizard-line);
+  padding-top: 12px;
+}
+
+.uk-adult-permission-details summary {
+  cursor: pointer;
+  color: var(--wizard-accent);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  list-style: none;
+}
+
+.uk-adult-permission-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.uk-adult-permission-details p {
+  margin: 10px 0 0;
+  color: var(--wizard-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.uk-adult-permission-back {
+  border: 0;
+  background: none;
+  color: var(--wizard-soft);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 8px 0;
+  align-self: center;
+}
+
 /* Stage 4 — authoritative pricing summary (PricingSummaryCard). Reuses the
    builder's existing warm-cream card/border palette and JetBrains
    Mono/Sora label-value pattern (see .uk-order-summary-card,

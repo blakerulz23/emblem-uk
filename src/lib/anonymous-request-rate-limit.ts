@@ -26,15 +26,52 @@ import { createServiceRoleClient } from './supabase/server';
  * caller's IP, never the raw address — nothing here ever persists a raw
  * IP anywhere.
  */
-export type AnonymousRequestAction = 'builder-submission-issue' | 'render-print' | 'order-asset-upload';
+export type AnonymousRequestAction =
+  | 'builder-submission-issue'
+  | 'render-print'
+  | 'order-asset-upload'
+  // Ordinary-builder Adult Permission step (migration 0071) — same
+  // "anonymous, pre-order-or-auth, builder pipeline" description this
+  // module's own header comment already covers, added here rather than
+  // to squad-invite-rate-limit.ts for the same reason builder-submission-
+  // issue etc. already live here and not there.
+  | 'builder-authority-otp-request'
+  | 'builder-authority-otp-verify'
+  | 'builder-authority-declare'
+  | 'builder-guardian-email-set'
+  | 'builder-guardian-respond';
 
-const LIMITS: Record<'render-print' | 'order-asset-upload', { ip: number; subject?: number }> = {
+const LIMITS: Record<
+  | 'render-print'
+  | 'order-asset-upload'
+  | 'builder-authority-otp-request'
+  | 'builder-authority-otp-verify'
+  | 'builder-authority-declare'
+  | 'builder-guardian-email-set'
+  | 'builder-guardian-respond',
+  { ip: number; subject?: number }
+> = {
   'render-print': { ip: 30, subject: 20 },
   // Generous enough for the largest real order this app already supports
   // (order-enquiry-validation.ts's own MAX_PLAYERS=200, up to two asset
   // categories each) spread across a realistic builder session, tight
   // enough that one capability can't be used to spam S3 writes.
   'order-asset-upload': { ip: 60, subject: 50 },
+  // Same shape as Squad Invite's own otp-request/otp-verify budgets
+  // (squad-invite-rate-limit.ts) — deliberately not reused directly, see
+  // this file's own header comment on why this module stays separate.
+  'builder-authority-otp-request': { ip: 5, subject: 3 },
+  'builder-authority-otp-verify': { ip: 10, subject: 5 },
+  // One real declaration per session in the ordinary case; generous
+  // enough for a genuine correction (picked the wrong relationship, wants
+  // to redo it) without being an obvious spam vector.
+  'builder-authority-declare': { ip: 10, subject: 6 },
+  'builder-guardian-email-set': { ip: 10, subject: 6 },
+  // A guardian's own click from an emailed link — IP-keyed only in
+  // practice (no reliable "subject" exists at this point beyond the order
+  // id, which is not a value worth bucketing on), generous enough that a
+  // guardian mis-clicking or retrying isn't blocked.
+  'builder-guardian-respond': { ip: 20 },
 };
 
 /**

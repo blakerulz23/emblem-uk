@@ -12,8 +12,11 @@ export type TemplateId = 'emjfl-official' | HollinwoodTemplateId | CustomCollect
 // Guided builder flow. `approve` is a team-only gate (siblings/squad — more
 // than one card genuinely benefits from a review-and-approve pass before the
 // final order screen); single-player orders skip straight from Personalise
-// to Review, keeping the flow to 6 steps as specified.
-export type StepId = 'order-type' | 'collection' | 'upload' | 'bg-removal' | 'personalise' | 'approve' | 'review';
+// to Review, keeping the flow to 6 steps as specified. `adult-permission`
+// (migration 0071) is the last step for every order type — the short Adult
+// Permission confirmation shown after Review, immediately before the order
+// is actually created.
+export type StepId = 'order-type' | 'collection' | 'upload' | 'bg-removal' | 'personalise' | 'approve' | 'review' | 'adult-permission';
 
 export const STEP_LABEL: Record<StepId, string> = {
   'order-type': 'Choose order type',
@@ -23,11 +26,12 @@ export const STEP_LABEL: Record<StepId, string> = {
   personalise: 'Personalise cards',
   approve: 'Approve cards',
   review: 'Review order',
+  'adult-permission': 'Confirm permission',
 };
 
 export function stepsFor(orderType: OrderType): StepId[] {
   const base: StepId[] = ['order-type', 'collection', 'upload', 'bg-removal', 'personalise'];
-  return orderType === 'single' ? [...base, 'review'] : [...base, 'approve', 'review'];
+  return orderType === 'single' ? [...base, 'review', 'adult-permission'] : [...base, 'approve', 'review', 'adult-permission'];
 }
 
 export type CropTransform = {

@@ -33,6 +33,8 @@ import {
   type TemplateId,
 } from '@/lib/emblem-uk-builder';
 import BackgroundRemovalStep from './builder-steps/BackgroundRemovalStep';
+import AdultPermissionStep from './builder-steps/AdultPermissionStep';
+import GuardianPendingScreen from './builder-steps/GuardianPendingScreen';
 import CoachCardSection from './CoachCardSection';
 import PricingSummaryCard from './PricingSummaryCard';
 import { useOrderPricingQuote } from './useOrderPricingQuote';
@@ -332,6 +334,17 @@ export default function ProductionBuilder({
   const [selectedId, setSelectedId] = useState(order.players[0]?.id || '');
   const [cardSide, setCardSide] = useState<CardSide>('front');
   const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>('idle');
+  // Adult Permission step (migration 0071) — set once record_builder_authority_declaration
+  // has genuinely succeeded server-side, never just because the three
+  // checkboxes are ticked client-side. Gates the review form's actual
+  // submission (handleReviewFormSubmit below); the checkboxes themselves
+  // are UX, this flag plus the server-side RPC check are the real gate.
+  const [adultPermissionConfirmed, setAdultPermissionConfirmed] = useState(false);
+  // Captured from /api/order-enquiry's response once an order is created,
+  // so the review step can show the Guardian Pending screen instead of the
+  // ordinary "Order received" success content for a non-guardian submitter.
+  const [submittedOrderId, setSubmittedOrderId] = useState<string | null>(null);
+  const [submittedAuthorityStatus, setSubmittedAuthorityStatus] = useState<string | null>(null);
   // Stage 6 — one cryptographically random idempotency key per builder
   // submission attempt, generated once and reused for every retry (never
   // regenerated just because a network response was lost, never the old
@@ -1084,6 +1097,8 @@ export default function ProductionBuilder({
 
       setOrder(productionOrder);
       setEnquiryStatus('sent');
+      setSubmittedOrderId(result.orderId);
+      setSubmittedAuthorityStatus(typeof result.authorityStatus === 'string' ? result.authorityStatus : null);
 
       // 4) Hand off to Shopify checkout when the UK card variant is
       //    configured. The paid-webhook flips this order to 'paid' when
@@ -1252,6 +1267,25 @@ export default function ProductionBuilder({
   const goBack = () => {
     const previous = stepOrder[Math.max(0, activeIndex - 1)];
     setActiveStepId(previous);
+  };
+  // The review form's actual onSubmit — submitEnquiry itself is untouched
+  // and never called directly from JSX any more. The first time this fires
+  // per order it only advances to the Adult Permission step (migration
+  // 0071); every existing field, quote and coach-card state on the review
+  // screen is left exactly as-is (no state is cleared here), so returning
+  // to Review after the permission step — or if verification is
+  // interrupted — shows the same order the customer already built.
+  // adultPermissionConfirmed only ever becomes true immediately before the
+  // one place that calls submitEnquiry directly (AdultPermissionStep's
+  // onConfirmed below), so this branch existing at all is just defence —
+  // in practice this handler runs the real submission exactly once.
+  const handleReviewFormSubmit = (event: FormEvent<HTMLFormElement>) => {
+    if (!adultPermissionConfirmed) {
+      event.preventDefault();
+      setActiveStepId('adult-permission');
+      return;
+    }
+    submitEnquiry(event);
   };
   const approveOrReviewStep: StepId = stepOrder.includes('approve') ? 'approve' : 'review';
   const prePersonaliseSteps: StepId[] = ['order-type', 'collection', 'upload', 'bg-removal'];
@@ -2004,7 +2038,22 @@ export default function ProductionBuilder({
             );
           })()}
 
-          {activeStepId === 'review' && !squadInviteContext && (
+          {activeStepId === 'review' && !squadInviteContext && enquiryStatus === 'sent' && submittedAuthorityStatus === 'guardian_approval_pending' && (
+            <GuardianPendingScreen orderId={submittedOrderId} />
+          )}
+
+          {activeStepId === 'adult-permission' && !squadInviteContext && (
+            <AdultPermissionStep
+              getSubmissionKey={ensureSubmissionKey}
+              onBack={() => setActiveStepId('review')}
+              onConfirmed={() => {
+                setAdultPermissionConfirmed(true);
+                submitEnquiry({ preventDefault: () => {} } as FormEvent<HTMLFormElement>);
+              }}
+            />
+          )}
+
+          {activeStepId === 'review' && !squadInviteContext && !(enquiryStatus === 'sent' && submittedAuthorityStatus === 'guardian_approval_pending') && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Review order</p>
               <h1>{enquiryStatus === 'sent' ? 'Order received.' : 'Review your order.'}</h1>
@@ -2091,7 +2140,7 @@ export default function ProductionBuilder({
                 onChange={patchCoachCardDraft}
                 onSelectTeam={(option) => setCoachCardDraft((current) => selectCoachCardTeam(current, option))}
               />
-              <form className="uk-enquiry-form" onSubmit={submitEnquiry}>
+              <form className="uk-enquiry-form" onSubmit={handleReviewFormSubmit}>
                 <div className="uk-enquiry-form-head">
                   <h3>Where should we send the order link?</h3>
                   <p>We already have the club and badge for each card. Use this to confirm delivery timing and the payment link.</p>
