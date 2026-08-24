@@ -51,6 +51,79 @@ accurate, current record of residual risk and open mitigation work — this
 note records authorization to launch the controlled pilot with that risk
 accepted, not that every marker has since been resolved.
 
+## Gate 2 — exact date of birth removal, Stage A — 24 August 2026
+
+**Status: implementation evidence only; this is not an ICO approval, ICO
+certification, formal compliance sign-off, or a statement that Emblem is
+pilot-ready. Independent DPIA and safeguarding specialist review remain
+outstanding, exactly as section 12 and the risk register below already
+state.**
+
+Founder decision (Blake, on behalf of Lauda Cartoons Ltd):
+
+> Lauda Cartoons Ltd has identified no printing, NFC, delivery, payment,
+> safeguarding or football-card purpose requiring Emblem to store a child's
+> exact date of birth. Football age group is sufficient for Emblem's
+> product. Any club registration requirement remains outside Emblem.
+
+This acts directly on the minimisation gap this DPIA's own risk register
+already identified (risk R19, and the "Exact DOB and physical/sporting
+attributes" row of the section 8 lawful-basis table) — it is not a new
+finding, and this note does not claim the DPIA recommended this specific
+implementation in advance, only that the direction is consistent with it.
+
+Six decisions were treated as approved requirements for this work:
+
+1. The guardian-facing chronological "Age" tile on the Player OS card is
+   replaced with "Football age group" (e.g. U8, U10).
+2. There is no exceptional workflow anywhere in Emblem for a guardian,
+   coach or staff member to store a child's exact date of birth.
+3. Clubs that need date of birth for their own registration purposes must
+   manage it outside Emblem — this is explicitly out of Emblem's scope.
+4. A player with no football age group set continues to work normally
+   (loads, displays, is printable and NFC-usable); the field is never
+   inferred from date of birth or the current date.
+5. Active application storage was searched for a second copy of exact DOB
+   beyond `players.date_of_birth` — none was found (see below).
+6. Supplier/third-party involvement was checked — no evidence was found
+   that exact DOB was ever sent to Resend, Shopify, Google Gemini, Meshy,
+   AWS or any other third party; no supplier deletion request is required
+   as a result of this work.
+
+**Removal status (Stage A of two):** `players.date_of_birth` values were
+erased (`UPDATE ... SET date_of_birth = NULL`, migration
+`0073_remove_exact_dob_stage_a.sql`, aggregate counts only — no individual
+value was read at any point in this work). Both DOB-reading functions
+(`get_player_age`, `get_player_date_of_birth`) were revoked and dropped.
+`update_player_coach_fields` was replaced with a signature that no longer
+accepts a date of birth at all. The coach-only date-of-birth input field
+and the guardian-facing calculated-age tile were removed from the
+application. The `players.date_of_birth` column itself, and its CHECK
+constraint, are deliberately still present after Stage A — column removal
+is Stage B, a separate, later migration, planned only after Stage A has
+been released and independently verified in production.
+
+**Second-copy / backup search:** no second copy of exact DOB was found in
+application-reachable storage (no cache, export, log, audit-metadata
+field, email template or test fixture was found to include it — see the
+Gate 2 discovery report for the full inventory). This work did **not**
+check Supabase's own database backups or point-in-time-recovery snapshots
+— those exist outside application code and outside this task's reach;
+whether any pre-migration backup retains a since-erased date-of-birth
+value is genuinely **unknown** and is not resolved by this migration. This
+is the same "UNKNOWN — backup/DR copies" gap this DPIA's section 13
+(item 18) already recorded before this work began; Stage A narrows it
+(no *new* backups will contain the value once retained backups age out
+under Supabase's own retention window) but does not close it.
+
+**Residual risk after Stage A:** the `players.date_of_birth` column
+remains in the schema, permanently null, pending Stage B's drop; no
+application-role path can currently read or write it, but the column's
+mere continued existence is itself a smaller residual footprint than
+before Stage A, not a fully closed one. Backup-retention exposure (above)
+is unresolved. All other section 12 "required before the pilot" items are
+unaffected by this work and remain open.
+
 ## Evidence labels and risk method
 
 - **VERIFIED** — directly supported by repository evidence cited in this document.
@@ -147,7 +220,7 @@ All retention periods below are **proposals**, not verified policy, and require 
 | Data field/category | Child? | Source and purpose | Storage / access / recipients | Public status | Proposed retention and deletion |
 |---|---:|---|---|---|---|
 | Player name, position, secondary position, squad number | Yes | Adult order/coach/guardian; card production and profile | DB; guardians, eligible coaches, staff; selected fields public if enabled | Private by default; name/positions/number public when enabled | Active relationship + defined dormant period (propose 12 months), then delete/anonymise; player deletion cascades where configured |
-| Exact date of birth, derived age, football age group | Yes | Coach-entered; age/context for coaching | DB; exact DOB via coach-authorised RPC; derived age may be visible to guardian/coach | Explicitly excluded from public DTO | Review necessity; propose remove exact DOB after age-band derivation unless justified; delete with player |
+| Football age group (exact date of birth and derived age removed, Gate 2 Stage A, 24 August 2026 — see the dated note above) | Yes | Coach-entered; age-group context for coaching | DB; coach-authorised RPC only | Excluded from public DTO | Active profile; delete with player. Column removal (Stage B) still pending |
 | Height/height_cm, preferred foot, favourite player, football ambition | Yes | Guardian/coach; sporting profile | DB; guardians/eligible coaches | Excluded from public DTO | Review each field; active profile only; delete with player |
 | Player and coach photographs, crop/background-removal state | Yes for player; coach personal data | Order/builder/OS; card/profile/production | Browser, Gemini when invoked, S3, DB keys/card-definition JSON; staff/guardian/coach according to workflow | Public player/card photo via 15-minute signed URL if sharing enabled; coach card production-only | Original and derivatives: fulfilment + short dispute window (propose 30–90 days) unless retained for active OS with explicit purpose; delete S3 keys and DB references |
 | Moment title, date, note, trust/source, verification status | Yes | Guardian/coach/system; memories and achievements | DB; guardian/eligible coach; selected entries public | Default private; guardian can choose public | Active profile; per-moment deletion available; delete with player; consider age-based review |
@@ -270,7 +343,7 @@ No basis below is final. Record one basis per distinct purpose in the Article 30
 | Guardian account and requested Player OS features | Contract and/or legitimate interests | Confirm whether child directly uses service; provide age-appropriate notice |
 | Claim/activation security, abuse logs, audit | Legitimate interests | Hash/redact codes/IPs, short retention, child-weighted balancing |
 | Coach roster access and development records | Legitimate interests; possibly consent for optional features | Power imbalance means consent may not be freely given; define club/Emblem roles |
-| Exact DOB and physical/sporting attributes | Legitimate interests only if necessity demonstrated; consent may be considered for genuinely optional fields | Strong minimisation case; derive age band then delete DOB if possible |
+| Physical/sporting attributes (exact DOB removed, Gate 2 Stage A — see the dated note above) | Legitimate interests only if necessity demonstrated; consent may be considered for genuinely optional fields | Exact DOB collection/storage/derivation stopped; column removal (Stage B) still pending |
 | Public player profile and public moments | Consent is likely candidate because optional and withdrawable; alternatively specialist-approved legitimate interests is difficult | Verify parental responsibility and involve capable child; withdrawal must be as easy and effective as enablement |
 | AI processing/background removal | Consent for optional AI feature or narrowly assessed legitimate interests | Provide non-AI alternative; confirm Google terms, reuse/training, retention and transfers |
 | Safeguarding/moderation | Legitimate interests; legal obligation only where a specific law applies | Do not label safeguarding as “legal obligation” without identifying law |
@@ -325,7 +398,7 @@ ICO age bands (0–5, 6–9, 10–12, 13–15, 16–17) are useful design guides
 | R16 Deletion failure/orphaned media | Child; data persists after valid request | Manual DB/S3/Auth cross-system deletion and temporary backup | Detailed runbook, request state machine, Auth failure queue | H / High / **High** | Automated inventory/tombstone workflow, reconciliation, backup expiry, completion evidence, periodic deletion tests. Owner: Operations + Security | Low–Medium |
 | R17 Withdrawn consent not propagated | Child; continued public/AI processing | Copies, caches, supplier retention, printed card | Guardian disable/unpublish and delete tools | M / High / High | Map consent dependencies; supplier deletion; cache purge; explain irreversible physical copies/downloads; record withdrawal. Owner: DPO + Product | Medium |
 | R18 Club transfer | Child; old coach/team access and wrong public identity | `team_id`/coach relations persist; historic snapshots | Direct coach removal exists | H / High / **High** | Atomic transfer workflow: end old access, review content visibility, notify guardian, preserve only justified history. Owner: Club admin + Product | Low–Medium |
-| R19 Full DOB disclosure | Child; identity theft/safeguarding | Exact DOB stored and coach RPC exposes it | Absent from normal SELECT/public DTO; coach relationship rechecked | M / Critical / High | Store age band/season eligibility instead; exceptional break-glass DOB access; audit; necessity approval. Owner: DPO + Product | Low |
+| R19 Full DOB disclosure | Child; identity theft/safeguarding | (Gate 2 Stage A, 24 August 2026: exact DOB is no longer collected, stored, read or write-accessible by any application role — see the dated note above.) | Every value erased; both read RPCs dropped; write path no longer accepts a date of birth | Was M / Critical / High | Column drop (Stage B), production release + independent verification of Stage A, backup-retention exposure still open. Owner: DPO + Product | Lower, not yet closed |
 | R20 Excessive retention | All; increased breach and future-use risk | No comprehensive schedules/jobs | Cascades and some deletion tools; invite expiry | H / High / High | Approved schedule per inventory, automated expiry, backup/log coverage, annual review. Owner: DPO + Engineering | Low–Medium |
 | R21 Real child data in staging/dev | Child; weaker environment exposure | Copies, screenshots, local exports | Separate project references inferred | M / Critical / High | Written prohibition; synthetic data; masked refresh only; separate keys/access; scanning and deletion attestations. Owner: Security | Low |
 | R22 AI changes/misrepresents child photo | Child; dignity, bias, stereotyping | Generative model creates edited/stylised image | User chooses feature; fallback exists | M / High / High | Non-AI default; clear notice/preview/approval; prohibit sensitive inference; quality/bias tests; delete provider inputs/outputs. Owner: Product + DPO | Medium |
@@ -357,7 +430,7 @@ Consultation should test: comprehension of privacy notices and NFC behaviour; ex
 4. Implement parental-responsibility/authority verification and incorrect-claim dispute/freeze.
 5. Implement lost/stolen-card token revocation/replacement distinct from public-ID rotation.
 6. Add `noindex` and test cache/search behaviour for all public child profiles; reduce default public fields/photos.
-7. Approve field-by-field minimisation; remove or tightly justify exact DOB, height, ambitions and append-only evaluation data.
+7. Approve field-by-field minimisation; remove or tightly justify height, ambitions and append-only evaluation data. Exact DOB itself was actioned in Gate 2 Stage A (24 August 2026, see the dated note above) — collection, storage and read/write access are stopped; column removal (Stage B) and independent verification of Stage A in production remain outstanding.
 8. Establish upload moderation/safeguarding/reporting and staff escalation.
 9. Execute supplier due diligence, Article 28 terms, transfer assessments and AI input/output retention/training commitments.
 10. Approve retention schedule and automate high-risk expiry: claim logs, presence, invites, media/prints, public caches, logs and deletion backups.

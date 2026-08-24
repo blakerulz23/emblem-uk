@@ -54,7 +54,6 @@ const EMPTY_PLAYER_PROFILE: PlayerProfile = {
   name: '',
   position: '',
   club: '',
-  age: null,
   heightCm: null,
   preferredFoot: null,
   overallScore: null,
@@ -342,12 +341,14 @@ async function getParentOsData(
     };
   }
 
-  const [{ data: rawPlayer }, { data: calculatedAge }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }, { data: seasonRows }, { data: cardRow }, { data: seasonFocusRows }, { data: strengthRows }, { data: assessmentRows }] = await Promise.all([
+  const [{ data: rawPlayer }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }, { data: seasonRows }, { data: cardRow }, { data: seasonFocusRows }, { data: strengthRows }, { data: assessmentRows }] = await Promise.all([
     // Explicit column list, not select('*') — date_of_birth has SELECT
-    // revoked from `authenticated` (0036_player_coach_fields_secure_expand.sql),
+    // revoked from `authenticated` (0036_player_coach_fields_secure_expand.sql;
+    // fully disabled for every role by 0073_remove_exact_dob_stage_a.sql),
     // so `*` would error outright for referencing a column this role has
-    // no privilege on. age itself is fetched separately, below, via
-    // get_player_age — never a raw column on this row at all.
+    // no privilege on. Emblem does not collect exact date of birth or
+    // chronological age anywhere — football_age_group (selected below) is
+    // the only age-related field.
     supabase
       .from('players')
       // Single-line select string, matching this file's other queries —
@@ -362,12 +363,6 @@ async function getParentOsData(
       .select('id, name, "position", preferred_foot, height_cm, football_age_group, photo_key, squad_number, created_at, favourite_player, football_ambition, secondary_position, team_id, public_player_id, public_id_enabled, teams ( name, clubs ( name ), seasons ( label ) )')
       .eq('id', playerId)
       .maybeSingle(),
-    // The *only* way this function ever learns this player's age — see
-    // get_player_age's own comment (0036_player_coach_fields_secure_expand.sql)
-    // for why it's a SECURITY DEFINER function and not a column: age
-    // changes over calendar time, so it can never correctly be a stored or
-    // generated value, only computed at request time like this.
-    supabase.rpc('get_player_age', { p_player_id: playerId }),
     supabase
       .from('player_skill_snapshots')
       .select('*, seasons ( label, starts_on )')
@@ -729,11 +724,6 @@ async function getParentOsData(
       name: player.name,
       position: player.position ?? '',
       club: player.teams?.clubs?.name ?? '',
-      // Never 0, never a raw column — see get_player_age's own comment and
-      // the query above. A failed/errored RPC call degrades to "Not set"
-      // (null), the same as a genuinely unset date of birth, rather than a
-      // crash or a misleading 0.
-      age: calculatedAge ?? null,
       heightCm: player.height_cm ?? null,
       preferredFoot: (player.preferred_foot as 'Left' | 'Right' | 'Both' | null) ?? null,
       overallScore,

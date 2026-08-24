@@ -11,7 +11,7 @@ import { useLiveContent, useJustUpdatedFlag } from '../useLiveContent';
 import EmptyState from './EmptyState';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
-import { formatAge, formatFoot, formatHeightCm, positionLabel } from '../coachFields';
+import { formatFoot, formatFootballAgeGroup, formatHeightCm, positionLabel } from '../coachFields';
 import { useOsPhotoUpload } from '../useOsPhotoUpload';
 
 /**
@@ -186,7 +186,14 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <AboutStatTile label="Age" value={formatAge(PLAYER_PROFILE.age)} />
+          {/* Exact date of birth / chronological age are not collected or
+              displayed anywhere in Emblem (Gate 2 privacy decision,
+              migration 0073_remove_exact_dob_stage_a.sql) — this tile used
+              to show a calculated age here; it now shows the coach-assigned
+              football age group instead, e.g. U10. "Not set" is a normal,
+              safe state, not an error — a player is fully usable with no
+              football age group assigned yet. */}
+          <AboutStatTile label="Football age group" value={formatFootballAgeGroup(PLAYER_PROFILE.footballAgeGroup)} />
           <AboutStatTile label="Height" value={formatHeightCm(PLAYER_PROFILE.heightCm)} />
           <AboutStatTile label="Preferred foot" value={formatFoot(PLAYER_PROFILE.preferredFoot)} />
           <AboutStatTile label="Secondary position" value={positionLabel(PLAYER_PROFILE.secondaryPosition)} />

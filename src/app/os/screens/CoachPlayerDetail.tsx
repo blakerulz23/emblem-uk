@@ -11,7 +11,7 @@ import { GuardianStatusRow } from './CoachTeam';
 import GuardianInviteSheet from '../overlays/GuardianInviteSheet';
 import EmptyState from './EmptyState';
 import type { PreferredFoot } from '../coachFields';
-import { AGE_GROUP_OPTIONS, FOOT_OPTIONS, POSITION_OPTIONS, calculateAge, formatAge, positionLabel, validateDateOfBirth, validateHeightCm } from '../coachFields';
+import { AGE_GROUP_OPTIONS, FOOT_OPTIONS, POSITION_OPTIONS, positionLabel, validateHeightCm } from '../coachFields';
 
 /** "15 Aug 2026" — matches RealCollection/PlayerHome's date convention. */
 function formatDate(iso: string): string {
@@ -69,23 +69,18 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
 
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  // Player information — date of birth, football age group, height,
-  // preferred foot, secondary position, all coach-managed, one atomic
-  // Save. Matches the approved design prototype's CoachDetailView.tsx
-  // exactly (src/app/os/prototype-player-profile) — same fields, same
-  // controls, same interaction pattern, adapted from mock state to a real
-  // fetch/save round trip.
+  // Player information — football age group, height, preferred foot,
+  // secondary position, all coach-managed, one atomic Save. Exact date of
+  // birth is deliberately not collected anywhere in Emblem (Gate 2 privacy
+  // decision, migration 0073_remove_exact_dob_stage_a.sql) — this screen
+  // used to also show a coach-only date-of-birth field here; it was
+  // removed, not hidden, and update_player_coach_fields' signature no
+  // longer accepts a date of birth at all.
   //
-  // dateOfBirth/age are the only two of these five facts NOT already
-  // present on `player` (SquadPlayer never carries them — see
-  // get_player_date_of_birth's own comment for why) — fetched here,
-  // specifically because this screen is opening for this one player, via
-  // GET .../coach-fields. committedDob is what isDirty compares dobDraft
-  // against; it only ever changes when a fresh fetch resolves or a save
-  // succeeds, never on every render.
-  const [committedDob, setCommittedDob] = useState<string | null>(null);
-  const [coachAge, setCoachAge] = useState<number | null>(null);
-  const [dobDraft, setDobDraft] = useState('');
+  // All four fields below are already present on `player` (bulk-loaded
+  // with the rest of the squad) — the coach-fields GET route is still
+  // called here, but only for the signed photoUrl, fetched on demand for
+  // this one player.
   const [coachFieldsLoading, setCoachFieldsLoading] = useState(true);
   const [coachFieldsLoadError, setCoachFieldsLoadError] = useState(false);
   // Same coach-fields fetch also returns a signed photo URL — see the GET
@@ -99,34 +94,28 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
   const [secondaryPositionDraft, setSecondaryPositionDraft] = useState<string | null>(player?.secondaryPosition ?? null);
   const [coachFieldsSaveStatus, setCoachFieldsSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
 
-  // Re-fetch date of birth/age whenever this screen opens for a
+  // Re-fetch the signed photo URL whenever this screen opens for a
   // (potentially different) player — never bundled into the squad list
   // fetch. Reset to a neutral blank state at the start, not just on
   // success, so switching from one player's detail straight to another's
   // (this component re-renders with a new playerId prop rather than
-  // remounting) never briefly shows the previous player's date.
+  // remounting) never briefly shows the previous player's photo.
   useEffect(() => {
     if (!isReal) {
       setCoachFieldsLoading(false);
       return;
     }
     let cancelled = false;
-    setCommittedDob(null);
-    setCoachAge(null);
-    setDobDraft('');
     setCoachPhotoUrl(null);
     setCoachFieldsLoading(true);
     setCoachFieldsLoadError(false);
     fetch(`/api/os/players/${playerId}/coach-fields`)
       .then((res) => {
         if (!res.ok) throw new Error('failed to load');
-        return res.json() as Promise<{ age: number | null; dateOfBirth: string | null; photoUrl: string | null }>;
+        return res.json() as Promise<{ photoUrl: string | null }>;
       })
       .then((data) => {
         if (cancelled) return;
-        setCoachAge(data.age);
-        setCommittedDob(data.dateOfBirth);
-        setDobDraft(data.dateOfBirth ?? '');
         setCoachPhotoUrl(data.photoUrl);
       })
       .catch(() => {
@@ -153,20 +142,17 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerId]);
 
-  const dobValidationError = dobDraft ? validateDateOfBirth(dobDraft) : null;
   const heightValidationError = validateHeightCm(heightDraft);
-  const normalizedDobDraft = dobDraft.trim() === '' ? null : dobDraft;
   const heightDraftNum = heightDraft.trim() === '' ? null : Number(heightDraft);
 
   const coachFieldsDirty =
-    normalizedDobDraft !== committedDob ||
     ageGroupDraft !== (player?.footballAgeGroup ?? null) ||
     heightDraftNum !== (player?.heightCm ?? null) ||
     footDraft !== (player?.preferredFoot ?? null) ||
     secondaryPositionDraft !== (player?.secondaryPosition ?? null);
 
   const coachFieldsCanSave =
-    coachFieldsDirty && !dobValidationError && !heightValidationError && coachFieldsSaveStatus !== 'saving' && !coachFieldsLoading;
+    coachFieldsDirty && !heightValidationError && coachFieldsSaveStatus !== 'saving' && !coachFieldsLoading;
 
   const saveCoachFields = async () => {
     if (!coachFieldsCanSave) return;
@@ -176,7 +162,6 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          dateOfBirth: normalizedDobDraft,
           footballAgeGroup: ageGroupDraft,
           heightCm: heightDraftNum,
           preferredFoot: footDraft,
@@ -187,16 +172,10 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
         setCoachFieldsSaveStatus('error');
         return;
       }
-      setCommittedDob(normalizedDobDraft);
-      // Age isn't part of squad/router.refresh() data at all (it's fetched
-      // separately, on purpose — see the effect above) — computed directly
-      // here so it's correct immediately, not just after some other
-      // unrelated refresh happens to also re-trigger the GET.
-      setCoachAge(calculateAge(normalizedDobDraft));
       setCoachFieldsSaveStatus('success');
       // Squad (footballAgeGroup/heightCm/preferredFoot/secondaryPosition/
       // coachFieldsUpdatedAt) comes from the server component's own
-      // getOsData() call — router.refresh() is what makes those five
+      // getOsData() call — router.refresh() is what makes those four
       // reflect the save, same pattern this file's other write actions
       // already use (shareAssessment/addStrength/addFocus below).
       router.refresh();
@@ -207,7 +186,6 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
   };
 
   const cancelCoachFields = () => {
-    setDobDraft(committedDob ?? '');
     setAgeGroupDraft(player?.footballAgeGroup ?? null);
     setHeightDraft(player?.heightCm != null ? String(player.heightCm) : '');
     setFootDraft(player?.preferredFoot ?? null);
@@ -372,10 +350,11 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
         </div>
       </div>
 
-      {/* Player information — date of birth, football age group, height,
-          preferred foot, secondary position. Same fields, same controls,
-          same single-Save interaction as the approved design prototype's
-          Coach Player Details screen. */}
+      {/* Player information — football age group, height, preferred foot,
+          secondary position. Same controls, same single-Save interaction
+          as the approved design prototype's Coach Player Details screen;
+          the date-of-birth field this screen used to also show here was
+          removed as part of Gate 2's exact-DOB removal work. */}
       <div style={sectionCard}>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
           <span style={sectionTitle}>Player information</span>
@@ -385,12 +364,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
         </div>
 
         {!isReal ? (
-          // Demo mode previews the read layout only — demo SquadPlayer
-          // rows never carry a date of birth (there's no real session for
-          // get_player_date_of_birth to authenticate with anyway, same
-          // isReal-gating this file already applies to the presence
-          // heartbeat/live-content hooks above), so there is no age row
-          // to fake here.
+          // Demo mode previews the read layout only.
           <>
             <PlayerInfoRow label="Football age group" value={player.footballAgeGroup ?? 'Not set'} />
             <PlayerInfoRow label="Height" value={player.heightCm ? `${player.heightCm} cm` : 'Not set'} />
@@ -403,27 +377,12 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
           <p role="alert" style={{ fontSize: 13, color: '#C0392B' }}>Couldn&apos;t load this player&apos;s details — try again.</p>
         ) : (
           <>
-            {/* Date of birth */}
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={fieldLabel}>Date of birth</span>
-                {dobDraft && <button type="button" onClick={() => setDobDraft('')} style={clearLinkStyle}>Clear</button>}
-              </div>
-              <input
-                type="date"
-                value={dobDraft}
-                max={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => setDobDraft(e.target.value)}
-                style={inputStyle}
-                aria-invalid={!!dobValidationError}
-                aria-describedby="coach-dob-help"
-              />
-              <p id="coach-dob-help" style={{ fontSize: 12, color: dobValidationError ? '#C0392B' : 'var(--os-muted)', margin: '6px 0 0' }}>
-                {dobValidationError ?? `Age: ${formatAge(coachAge)}. Not shown to players or guardians — only the calculated age appears on Player OS.`}
-              </p>
-            </div>
-
-            {/* Football age group */}
+            {/* Football age group — Emblem does not collect exact date of
+                birth (Gate 2 privacy decision, migration
+                0073_remove_exact_dob_stage_a.sql). A player with no
+                football age group set still loads and works normally;
+                this field is never inferred from anything, only ever set
+                explicitly by an authorised coach below. */}
             <div style={{ marginBottom: 18 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <span style={fieldLabel}>Assigned football age group</span>
