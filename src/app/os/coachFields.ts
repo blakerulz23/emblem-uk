@@ -1,7 +1,7 @@
 /**
- * Shared, zero-import definitions for the five coach-managed player fields
- * (date of birth / football age group / height / preferred foot / secondary
- * position) — deliberately its own file with no imports so it (and its own
+ * Shared, zero-import definitions for the four coach-managed player fields
+ * (football age group / height / preferred foot / secondary position) —
+ * deliberately its own file with no imports so it (and its own
  * test file) can be imported by this project's JSX-free vitest config
  * without pulling in anything React/Supabase (see refreshGeometry.ts for
  * the established reason this pattern exists in this codebase).
@@ -49,35 +49,12 @@ export function positionLabel(code: string | null): string {
 
 export const MIN_HEIGHT_CM = 80;
 export const MAX_HEIGHT_CM = 220;
-const MIN_PLAUSIBLE_AGE = 3;
-const MAX_PLAUSIBLE_AGE = 19;
 
-/** Whole years as of `today` (defaults to the real current date — a
- * parameter only so this stays a pure, testable function). Mirrors
- * update_player_coach_fields' own age(current_date, dob) computation and
- * get_player_age's — kept in sync by hand, same reasoning as the option
- * lists above. */
-export function calculateAge(dobIso: string | null, today: Date = new Date()): number | null {
-  if (!dobIso) return null;
-  const dob = new Date(dobIso);
-  if (Number.isNaN(dob.getTime())) return null;
-  let age = today.getUTCFullYear() - dob.getUTCFullYear();
-  const hasHadBirthdayThisYear =
-    today.getUTCMonth() > dob.getUTCMonth() || (today.getUTCMonth() === dob.getUTCMonth() && today.getUTCDate() >= dob.getUTCDate());
-  if (!hasHadBirthdayThisYear) age -= 1;
-  return age;
-}
-
-/** Null (never a message) means valid. today defaults to the real current
- * date for the same reason as calculateAge — a parameter only for tests. */
-export function validateDateOfBirth(dobIso: string, today: Date = new Date()): string | null {
-  const d = new Date(dobIso);
-  if (Number.isNaN(d.getTime())) return "That date doesn't look right.";
-  if (d.getTime() > today.getTime()) return 'Date of birth can’t be in the future.';
-  const age = calculateAge(dobIso, today);
-  if (age === null || age < MIN_PLAUSIBLE_AGE || age > MAX_PLAUSIBLE_AGE) return `Check the year — that would make them ${age}.`;
-  return null;
-}
+// Exact date of birth is deliberately not collected or stored anywhere in
+// Emblem (Gate 2 privacy decision, migration 0073_remove_exact_dob_stage_a.sql)
+// — calculateAge/validateDateOfBirth were removed here, not left dead, so
+// no chronological-age computation exists in this codebase to accidentally
+// call again. Football age group (below) is the only age-related field.
 
 export function validateHeightCm(raw: string): string | null {
   if (raw.trim() === '') return null;
@@ -85,10 +62,6 @@ export function validateHeightCm(raw: string): string | null {
   if (Number.isNaN(n)) return 'Enter a number.';
   if (n < MIN_HEIGHT_CM || n > MAX_HEIGHT_CM) return `Enter a height between ${MIN_HEIGHT_CM}–${MAX_HEIGHT_CM}cm.`;
   return null;
-}
-
-export function formatAge(age: number | null): string {
-  return age === null ? 'Not set' : String(age);
 }
 
 export function formatHeightCm(cm: number | null): string {

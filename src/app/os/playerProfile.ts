@@ -14,17 +14,6 @@ export type PlayerProfile = {
   name: string;
   position: string;
   club: string;
-  /**
-   * Calculated from players.date_of_birth server-side (get_player_age RPC
-   * or getOsData's own service-role read — see os-data.ts), never a raw
-   * stored value and never defaulted to 0. Null means genuinely unset —
-   * render "Not set" (coachFields.ts's formatAge), not 0. The raw date of
-   * birth itself is never part of this type — Player OS only ever sees the
-   * calculated number (see 0036_player_coach_fields_secure_expand.sql's
-   * REVOKE SELECT (date_of_birth) and get_player_age's own comment for the
-   * authorization boundary this relies on).
-   */
-  age: number | null;
   /** Coach-managed. Null means unset — render "Not set", not 0 or "". */
   heightCm: number | null;
   /** Coach-managed. Null means unset — render "Not set". */
@@ -38,11 +27,12 @@ export type PlayerProfile = {
   /**
    * Coach-managed (players.football_age_group), not a family fact —
    * read-only everywhere on Player OS (Profile.tsx shows a "Set by coach"
-   * indicator alongside it, never an input). Not the same as `age`: a
-   * player playing up an age group has a football_age_group that
-   * legitimately differs from what their date of birth would imply — this
-   * type deliberately keeps them as two independent fields so neither can
-   * be derived from or overwrite the other.
+   * indicator alongside it, never an input). Never inferred from anything
+   * — Emblem does not collect exact date of birth at all (Gate 2 privacy
+   * decision, migration 0073_remove_exact_dob_stage_a.sql), so a player
+   * playing up an age group simply has whatever football_age_group a
+   * coach explicitly assigned; null is a normal, working state, not an
+   * error, and this is the only age-related field Player OS has.
    */
   footballAgeGroup: string | null;
   memberSinceYear: number | null;
@@ -406,7 +396,6 @@ export const PLAYER_PROFILE: PlayerProfile = {
   name: 'Ollie Harrison',
   position: 'Midfielder',
   club: 'Curzon Ashton Juniors U10',
-  age: 10,
   heightCm: 142,
   preferredFoot: 'Right',
   overallScore,

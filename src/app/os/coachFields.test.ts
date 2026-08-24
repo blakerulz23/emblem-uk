@@ -3,65 +3,19 @@ import {
   AGE_GROUP_OPTIONS,
   FOOT_OPTIONS,
   POSITION_OPTIONS,
-  calculateAge,
-  formatAge,
   formatFoot,
   formatFootballAgeGroup,
   formatHeightCm,
   positionLabel,
-  validateDateOfBirth,
   validateHeightCm,
 } from './coachFields';
 
-const REFERENCE_TODAY = new Date('2026-08-08T12:00:00Z');
-
-describe('calculateAge', () => {
-  it('returns null for no date of birth — never 0', () => {
-    expect(calculateAge(null, REFERENCE_TODAY)).toBeNull();
-  });
-
-  it('returns null for an unparsable date', () => {
-    expect(calculateAge('not-a-date', REFERENCE_TODAY)).toBeNull();
-  });
-
-  it('counts a full year once the birthday has passed this year', () => {
-    expect(calculateAge('2016-03-20', REFERENCE_TODAY)).toBe(10);
-  });
-
-  it('does not count this year until the birthday has actually happened', () => {
-    expect(calculateAge('2016-09-12', REFERENCE_TODAY)).toBe(9);
-  });
-
-  it('handles a birthday that is today exactly', () => {
-    expect(calculateAge('2018-08-08', REFERENCE_TODAY)).toBe(8);
-  });
-
-  it('demonstrates the "playing up" scenario: a young calculated age with an older assigned group is just two independent facts', () => {
-    // DOB implies 8, nothing here computes or infers the assigned group —
-    // that's a separate, coach-set value entirely (football_age_group).
-    expect(calculateAge('2018-01-15', REFERENCE_TODAY)).toBe(8);
-  });
-});
-
-describe('validateDateOfBirth', () => {
-  it('rejects an unparsable date', () => {
-    expect(validateDateOfBirth('not-a-date', REFERENCE_TODAY)).toMatch(/doesn.t look right/);
-  });
-
-  it('rejects a date in the future', () => {
-    expect(validateDateOfBirth('2027-01-01', REFERENCE_TODAY)).toMatch(/future/);
-  });
-
-  it('rejects an implausibly old date (outside 3–19)', () => {
-    expect(validateDateOfBirth('1990-01-01', REFERENCE_TODAY)).toMatch(/Check the year/);
-  });
-
-  it('rejects an implausibly young date (under 3)', () => {
-    expect(validateDateOfBirth('2025-01-01', REFERENCE_TODAY)).toMatch(/Check the year/);
-  });
-
-  it('accepts a plausible youth-football date of birth', () => {
-    expect(validateDateOfBirth('2016-03-20', REFERENCE_TODAY)).toBeNull();
+describe('exact date of birth is not part of this module', () => {
+  it('exposes no calculateAge/validateDateOfBirth/formatAge export', async () => {
+    const mod = (await import('./coachFields')) as Record<string, unknown>;
+    expect('calculateAge' in mod).toBe(false);
+    expect('validateDateOfBirth' in mod).toBe(false);
+    expect('formatAge' in mod).toBe(false);
   });
 });
 
@@ -93,12 +47,6 @@ describe('validateHeightCm', () => {
 });
 
 describe('format helpers — never 0, never a raw fallback, always "Not set"', () => {
-  it('formatAge', () => {
-    expect(formatAge(null)).toBe('Not set');
-    expect(formatAge(0)).toBe('0'); // a genuine age of 0 is a real value, distinct from "unset"
-    expect(formatAge(10)).toBe('10');
-  });
-
   it('formatHeightCm', () => {
     expect(formatHeightCm(null)).toBe('Not set');
     expect(formatHeightCm(138)).toBe('138 cm');

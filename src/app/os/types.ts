@@ -125,14 +125,15 @@ export type SquadPlayer = {
   hasManageableInvite: boolean;
   /** A coach's own football judgement, not a family fact — coach-only to set (see update_player_coach_fields), guardian can only view. Null until a coach sets one. */
   secondaryPosition: string | null;
-  /** Coach-managed, bulk-loaded with the rest of the squad list (unlike
-   * dateOfBirth, which is deliberately never part of this type — see
-   * CoachPlayerDetail.tsx, which fetches age/date of birth on demand only
-   * when it actually opens for one specific player). */
+  /** Coach-managed, bulk-loaded with the rest of the squad list. The only
+   * age-related field on a player — Emblem does not collect exact date of
+   * birth anywhere (Gate 2 privacy decision, migration
+   * 0073_remove_exact_dob_stage_a.sql). Null is a normal, working state,
+   * not an error. */
   footballAgeGroup: string | null;
   heightCm: number | null;
   preferredFoot: 'Left' | 'Right' | 'Both' | null;
-  /** When the coach-managed fields (dateOfBirth/footballAgeGroup/heightCm/
+  /** When the coach-managed fields (footballAgeGroup/heightCm/
    * preferredFoot/secondaryPosition) were last saved together — Coach
    * Player Details' own "Updated ..." indicator. Null until a coach saves
    * for the first time. */
