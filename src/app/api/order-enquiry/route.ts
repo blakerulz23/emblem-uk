@@ -141,11 +141,38 @@ export async function POST(request: NextRequest) {
   // 'finalising' state rather than reverting to 'active'.
   if (justStartedFinalising) await finishBuilderSubmissionFinalising(submissionKey, true);
 
+  // Links this order to the adult-permission declaration recorded earlier
+  // in the builder (Adult Permission step, migration 0071) and sets
+  // orders.authority_status — a separate axis from payment_status that the
+  // staff approval route now gates on. Only runs when a declaration was
+  // actually recorded for this submission_key: Squad Invite orders use a
+  // wholly separate route/RPC (commit_squad_invite_participation_order)
+  // and never reach this one, so this call is scoped to the ordinary-
+  // builder journey by construction, not by a source check here.
+  let authorityStatus: string | undefined;
+  if (submissionKey) {
+    const { data: authorityData, error: authorityError } = await serviceRole.rpc('link_builder_order_authority', {
+      p_order_id: result.orderId,
+      p_submission_key: submissionKey,
+    });
+    if (authorityError) {
+      // The order itself is already safely persisted (create_authoritative_order
+      // committed above) — never fail the customer's order here. Surfacing
+      // this as a 500 would leave a real, paid-for order the customer
+      // believes failed. Logged for staff follow-up; the approve route's
+      // own authority_status gate is what actually protects production.
+      console.error('link_builder_order_authority failed', authorityError.message);
+    } else {
+      authorityStatus = (authorityData as { authorityStatus?: string } | null)?.authorityStatus;
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     orderId: result.orderId,
     orderRef: result.orderRef,
     created: result.created,
     status: 'order_intent',
+    authorityStatus,
   });
 }

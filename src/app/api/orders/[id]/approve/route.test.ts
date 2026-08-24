@@ -27,6 +27,11 @@ vi.mock('@/lib/send-squad-invite-early-preview-email', () => ({
 
 type Fixture = {
   orderSource: string;
+  // migration 0071 — the ordinary-builder safeguarding gate. Defaulted to
+  // 'confirmed' in beforeEach below so every pre-existing test in this file
+  // (written before this gate existed) keeps exercising the behaviour it
+  // was actually written to test, rather than being blocked by it.
+  orderAuthorityStatus?: string | null;
   cards?: { player_id: string | null }[];
   orderRow?: { id: string; purchaser_email: string; intended_guardian_email: string | null; payment_status?: string; team_name?: string };
   participations?: Array<{ id: string; campaign_id: string; squad_invites: { campaign_status: string } }> | null;
@@ -43,6 +48,7 @@ type Fixture = {
 let fixture: Fixture;
 const mockRpc = vi.fn();
 const auditInserts: unknown[] = [];
+const builderAuthorityAuditInserts: unknown[] = [];
 const orderUpdates: Record<string, unknown>[] = [];
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -64,7 +70,11 @@ vi.mock('@/lib/supabase/server', () => ({
         return {
           select: (cols: string) => ({
             eq: () => ({
-              maybeSingle: async () => ({ data: cols === 'source' ? { source: fixture.orderSource } : fixture.orderRow }),
+              maybeSingle: async () => ({
+                data: cols.startsWith('source')
+                  ? { source: fixture.orderSource, authority_status: fixture.orderAuthorityStatus }
+                  : fixture.orderRow,
+              }),
             }),
           }),
           update: (patch: Record<string, unknown>) => {
@@ -89,6 +99,9 @@ vi.mock('@/lib/supabase/server', () => ({
       }
       if (table === 'squad_invite_audit_events') {
         return { insert: async (row: unknown) => { auditInserts.push(row); return { error: null }; } };
+      }
+      if (table === 'builder_authority_audit_events') {
+        return { insert: async (row: unknown) => { builderAuthorityAuditInserts.push(row); return { error: null }; } };
       }
       if (table === 'card_definitions') {
         return {
@@ -129,7 +142,8 @@ beforeEach(() => {
   mockRequireStaff.mockResolvedValue({ ok: true, userId: STAFF_ID });
   mockRpc.mockResolvedValue({ data: false, error: null });
   mockSendEarlyPreviewEmail.mockResolvedValue({ ok: true });
-  fixture = { orderSource: 'team_order' };
+  builderAuthorityAuditInserts.length = 0;
+  fixture = { orderSource: 'team_order', orderAuthorityStatus: 'confirmed' };
 });
 
 describe('POST /api/orders/[id]/approve — normal orders (unchanged)', () => {
@@ -143,6 +157,7 @@ describe('POST /api/orders/[id]/approve — normal orders (unchanged)', () => {
   it('a normal single-card order still sends its existing guardian invitation', async () => {
     fixture = {
       orderSource: 'team_order',
+      orderAuthorityStatus: 'confirmed',
       cards: [{ player_id: 'player-1' }],
       orderRow: { id: ORDER_ID, purchaser_email: 'parent@example.test', intended_guardian_email: null },
     };
@@ -162,12 +177,72 @@ describe('POST /api/orders/[id]/approve — normal orders (unchanged)', () => {
   it('a standalone-source order is treated identically to a team_order (normal path, not squad_invite)', async () => {
     fixture = {
       orderSource: 'standalone_order',
+      orderAuthorityStatus: 'confirmed',
       cards: [{ player_id: 'player-1' }],
       orderRow: { id: ORDER_ID, purchaser_email: 'parent@example.test', intended_guardian_email: null },
     };
     const res = await approve();
     expect(res.status).toBe(200);
     expect(mockCreateGuardianInvite).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('POST /api/orders/[id]/approve — ordinary-builder safeguarding gate (migration 0071)', () => {
+  const baseFixture = () => ({
+    orderSource: 'team_order',
+    cards: [{ player_id: 'player-1' }],
+    orderRow: { id: ORDER_ID, purchaser_email: 'parent@example.test', intended_guardian_email: null },
+  });
+
+  it('blocks approval when authority_status is null (no declaration on record)', async () => {
+    fixture = { ...baseFixture(), orderAuthorityStatus: null };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect(orderUpdates).toHaveLength(0);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+    expect(builderAuthorityAuditInserts).toHaveLength(1);
+    expect(builderAuthorityAuditInserts[0]).toMatchObject({ order_id: ORDER_ID, event_type: 'staff_approval_blocked' });
+  });
+
+  it('blocks approval while a guardian request is still pending', async () => {
+    fixture = { ...baseFixture(), orderAuthorityStatus: 'guardian_approval_pending' };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect(orderUpdates).toHaveLength(0);
+  });
+
+  it('permanently blocks approval once a guardian has declined — staff cannot override', async () => {
+    fixture = { ...baseFixture(), orderAuthorityStatus: 'guardian_declined' };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect(orderUpdates).toHaveLength(0);
+  });
+
+  it('allows approval once the adult declaration is confirmed directly', async () => {
+    fixture = { ...baseFixture(), orderAuthorityStatus: 'confirmed' };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect(orderUpdates).toHaveLength(1);
+  });
+
+  it('allows approval once a guardian has approved', async () => {
+    fixture = { ...baseFixture(), orderAuthorityStatus: 'guardian_approved' };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect(orderUpdates).toHaveLength(1);
+  });
+
+  it('never applies this gate to a squad_invite order', async () => {
+    fixture = {
+      orderSource: 'squad_invite',
+      orderAuthorityStatus: null,
+      orderRow: { id: ORDER_ID, purchaser_email: 'guardian@example.test', intended_guardian_email: null, payment_status: 'order_intent', team_name: 'Ashton Juniors U10' },
+      participations: [{ id: 'participation-1', campaign_id: 'campaign-1', squad_invites: { campaign_status: 'active' } }],
+      squadInviteCard: { claim_token: 'CLAIM123' },
+    };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect(builderAuthorityAuditInserts).toHaveLength(0);
   });
 });
 
