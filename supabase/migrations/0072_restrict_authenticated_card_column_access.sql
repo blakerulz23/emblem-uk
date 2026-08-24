@@ -1,0 +1,62 @@
+-- Security hotfix: `cards.claim_token` (and the reserved-but-unused
+-- `cards.nfc_uid`) is currently readable in plaintext by any authenticated
+-- session whose RLS row-visibility policy matches — including a coach of
+-- the player's team, or the linked guardian themselves — via a direct
+-- PostgREST call, entirely outside any app UI.
+--
+-- Root cause: `grant select on cards to authenticated;` (0003:69) is
+-- table-wide with no column restriction, and neither SELECT policy on
+-- `cards` (0003:74-93, "visible to guardians of the player" /
+-- "visible to coaches of the player's team") filters by column or status.
+-- RLS controls which ROWS are visible; it cannot hide individual COLUMNS
+-- of a visible row. Migration 0037 (the dedicated least-privilege
+-- hardening pass) tightened `players`' and `service_role`'s grants but
+-- never touched this `cards` grant — this has been a live gap since 0003.
+--
+-- A claim_token is a secret capability: presenting it is sufficient to
+-- become a permanent guardian of a child's profile (src/lib/claim-player.ts).
+-- It must never be returned to a session-authenticated client for any
+-- reason; every legitimate reader already goes through the service-role
+-- client instead (confirmed by an exhaustive repo-wide search of every
+-- `.from('cards')` call site — see the PR description for the full list).
+--
+-- Column classification (every column on `cards`, decided once here so
+-- future columns must be classified deliberately rather than inheriting
+-- a broad grant by accident):
+--   id                      — safe                 (row identifier)
+--   claim_token             — SECRET                (capability token — never authenticated-readable)
+--   nfc_uid                 — RESTRICTED             (reserved for a real hardware chip UID; same
+--                                                       capability-token risk class as claim_token even
+--                                                       though unused today — excluded pre-emptively)
+--   player_id               — safe, proven needed    (src/lib/os-data.ts's card_definitions embed filter)
+--   order_id                — staff/service-role only (no authenticated-session reader found)
+--   status                  — staff/service-role only (no authenticated-session reader found)
+--   card_definition_id      — safe, proven needed    (join key for the card_definitions embed)
+--   production_status       — staff/service-role only (internal production workflow)
+--   production_submitted_at — staff/service-role only
+--   production_dismissed_at — staff/service-role only
+--   claim_reminder_sent_at  — staff/service-role only
+--   created_at               — safe, proven needed    (sort key for the card_definitions embed)
+--
+-- Preferred approach chosen over an RPC/view rewrite: the ONE legitimate
+-- authenticated-session read of `cards` in the entire codebase
+-- (getParentOsData/getCoachOsData in src/lib/os-data.ts, selecting only
+-- `card_definitions ( * )` filtered by player_id, ordered by created_at)
+-- needs exactly three columns and no others. Every other current
+-- `.from('cards')` call site in `src/` already uses createServiceRoleClient()
+-- (order-enquiry/approve/claim/recover/staff-cards/staff-queue/finalise-
+-- pricing routes, claim-player.ts, card-lookup.ts) — none of them are
+-- affected by narrowing the `authenticated` grant, since service_role has
+-- its own separate, already-correct grant (0037:133). No RPC exists for
+-- the claim flow to fix — /api/os/claim already verifies the submitted
+-- code entirely server-side via the service-role client.
+--
+-- RLS policies are deliberately left untouched — row visibility for
+-- guardians/coaches is already correct; only the column grant was too
+-- broad. `anon` already has zero grant on `cards` (0003:69 never granted
+-- to anon) and stays that way; nothing here changes that.
+-- ---------------------------------------------------------------------------
+
+revoke select on public.cards from authenticated;
+
+grant select (player_id, card_definition_id, created_at) on public.cards to authenticated;
