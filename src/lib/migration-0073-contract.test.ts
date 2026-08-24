@@ -2,13 +2,13 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0072_restrict_authenticated_card_column_access.sql'), 'utf8');
+const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0073_restrict_authenticated_card_column_access.sql'), 'utf8');
 const executableSql = sql
   .split('\n')
   .map((line) => line.replace(/--.*$/, ''))
   .join('\n');
 
-describe('migration 0072 card claim-token access hotfix contract', () => {
+describe('migration 0073 card claim-token access hotfix contract', () => {
   it('revokes the broad table-level authenticated SELECT grant on cards', () => {
     expect(executableSql).toMatch(/revoke\s+select\s+on\s+public\.cards\s+from\s+authenticated\s*;/i);
   });

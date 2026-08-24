@@ -4,15 +4,16 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Security hotfix 0072 (restrict authenticated column access to
- * cards.claim_token) is explicitly required not to touch background
- * removal, Gemini, /api/ai-mockup, IMG.LY/cropping, card artwork, PDF
- * generation, print capture, pricing, Shopify, payments, fulfilment, or
- * Squad Invite. This is a standalone hash-pinned proof for this branch
- * (cut directly from origin/main, independent of PR #36's own protected-
- * areas test) — hashes were computed directly from these files before any
- * hotfix code was written, via `sha256sum <path>`, not guessed or derived
- * from git history.
+ * Security hotfix 0073 (restrict authenticated column access to
+ * cards.claim_token; renumbered from 0072 to 0073 after migrations 0071
+ * and 0072 were released separately through PR #36) is explicitly required
+ * not to touch background removal, Gemini, /api/ai-mockup, IMG.LY/cropping,
+ * card artwork, PDF generation, print capture, pricing, Shopify, payments,
+ * fulfilment, or Squad Invite. This is a standalone hash-pinned proof for
+ * this branch (cut directly from origin/main, independent of PR #36's own
+ * protected-areas test) — hashes were computed directly from these files
+ * before any hotfix code was written, via `sha256sum <path>`, not guessed
+ * or derived from git history.
  */
 const PROTECTED_FILES: Record<string, string> = {
   'src/components/builder/emblem/bgRemoval.ts': '185afdfc5bc678fa11f648108b1aed5448c9c5e91d69e90018098e2791f63e79',
@@ -27,7 +28,7 @@ const PROTECTED_FILES: Record<string, string> = {
   'src/app/api/webhooks/shopify/orders-paid/route.ts': 'f266d02676a9f4bff9fb8cfe8a51d1c76803fcf76b538a036cb383c6c9e36323',
 };
 
-describe('protected areas remain byte-identical after the card claim-token hotfix (migration 0072)', () => {
+describe('protected areas remain byte-identical after the card claim-token hotfix (migration 0073)', () => {
   for (const [relativePath, expectedHash] of Object.entries(PROTECTED_FILES)) {
     it(`${relativePath} is unchanged`, () => {
       const content = readFileSync(resolve(process.cwd(), relativePath), 'utf8');
