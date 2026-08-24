@@ -37,6 +37,15 @@ export async function GET(request: NextRequest) {
   if (result.status === 'not_found') {
     return NextResponse.json({ found: false });
   }
+  if (result.status === 'card_unavailable') {
+    // This anonymous, pre-session lookup never resolves guardian identity
+    // (unlike os/page.tsx's server-side tap handler) — a suspended/revoked
+    // card gets the exact same response as not_found here, for anyone.
+    // The guardian-specific reassurance screen is only ever reachable via
+    // an actual physical tap through os/page.tsx, never through this
+    // manual-code-entry endpoint.
+    return NextResponse.json({ found: false });
+  }
   if (result.status === 'claimed_unavailable') {
     return NextResponse.json({ found: true, alreadyClaimed: true, status: 'claimed_unavailable' });
   }
@@ -86,7 +95,7 @@ export async function POST(request: NextRequest) {
   const serviceRole = createServiceRoleClient();
   const { data: card } = await serviceRole
     .from('cards')
-    .select('id, status, player_id')
+    .select('id, status, player_id, access_status')
     .eq('claim_token', code)
     .maybeSingle();
 

@@ -8,6 +8,7 @@ export const runtime = 'nodejs';
 type RecoverCardRow = {
   id: string;
   status: 'unassigned' | 'assigned' | 'claimed';
+  access_status: 'suspended' | 'revoked' | null;
   player_id: string | null;
   order_id: string | null;
   players: { name: string } | null;
@@ -47,7 +48,7 @@ export async function GET() {
   const serviceRole = createServiceRoleClient();
   const { data: cards } = await serviceRole
     .from('cards')
-    .select('id, status, player_id, order_id, players ( name )')
+    .select('id, status, access_status, player_id, order_id, players ( name )')
     .in('order_id', orders.map((o) => o.id))
     .returns<RecoverCardRow[]>();
 
@@ -65,7 +66,7 @@ export async function GET() {
       const orderCards = cardsByOrder.get(order.id) ?? [];
       const openCards = await Promise.all(
         orderCards
-          .filter((c) => c.status !== 'claimed')
+          .filter((c) => c.status !== 'claimed' && !c.access_status)
           .map(async (c) => {
             const { count } = await serviceRole
               .from('player_invites')
@@ -122,11 +123,12 @@ export async function POST(request: NextRequest) {
   // done explicitly here since this write uses the service-role client.
   const { data: card } = await serviceRole
     .from('cards')
-    .select('id, status, player_id, order_id, orders ( purchaser_email, payment_status )')
+    .select('id, status, access_status, player_id, order_id, orders ( purchaser_email, payment_status )')
     .eq('id', cardId)
     .maybeSingle<{
       id: string;
       status: string;
+      access_status: string | null;
       player_id: string | null;
       order_id: string | null;
       orders: { purchaser_email: string; payment_status: string } | null;
@@ -136,6 +138,7 @@ export async function POST(request: NextRequest) {
     !card ||
     !card.player_id ||
     card.status === 'claimed' ||
+    card.access_status ||
     !card.orders ||
     card.orders.payment_status !== 'fulfilled' ||
     card.orders.purchaser_email !== user.email
