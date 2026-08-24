@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getSignedDownloadUrl } from '@/lib/s3-client';
+import { getSignedDownloadUrl, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC } from '@/lib/s3-client';
 
 export const runtime = 'nodejs';
 
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 
   const { data: photoRow } = await supabase.from('players').select('photo_key').eq('id', params.id).maybeSingle();
-  const photoUrl = photoRow?.photo_key ? await getSignedDownloadUrl(photoRow.photo_key) : null;
+  const photoUrl = photoRow?.photo_key ? await getSignedDownloadUrl(photoRow.photo_key, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC) : null;
 
   return NextResponse.json({ photoUrl });
 }

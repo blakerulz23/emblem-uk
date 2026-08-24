@@ -102,6 +102,24 @@ export async function headObject(key: string): Promise<ObjectMetadata> {
 const MAX_PRESIGN_EXPIRY_SEC = 60 * 60 * 24 * 7;
 
 /**
+ * Explicit, justified expiry for authenticated guardian/coach OS media
+ * (child photo, moment media, card photo/logo) — every call site in
+ * os-data.ts, coach-fields/route.ts, and moments/route.ts previously
+ * omitted `expiresInSec` entirely, which silently fell through to
+ * MAX_PRESIGN_EXPIRY_SEC (7 days): undocumented, and ~168x longer than
+ * the 1-hour window already used for staff (staff/queue/page.tsx) and
+ * far beyond the 15-minute window used for the fully public/anonymous
+ * profile and pre-order builder paths. One hour matches the existing
+ * staff precedent in this codebase, comfortably covers a normal single
+ * OS browsing session (the URL is re-fetched on the next page load, not
+ * held open across visits), and is the smallest period that doesn't
+ * require adding a client-side re-fetch-before-expiry mechanism that
+ * doesn't exist today — a shorter window would need that work done
+ * first, not just a smaller number here.
+ */
+export const AUTHENTICATED_OS_MEDIA_EXPIRY_SEC = 60 * 60;
+
+/**
  * Get a presigned download URL valid for `expiresInSec` seconds (default,
  * and maximum, 7 days). Values above the SigV4 ceiling are clamped rather
  * than passed through — AWS hard-rejects anything longer with

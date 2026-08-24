@@ -1,33 +1,31 @@
 import { NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
+import { deleteObject } from '@/lib/s3-client';
 
 export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 /**
- * Records that a player_deletion_requests row was completed — staff have
- * already carried out the actual deletion by hand via the existing
- * runbook (docs/pilot/child-data-deletion-runbook.md); this route only
- * records that fact, it never performs the deletion itself.
+ * Performs real, server-enforced child-data erasure (migration 0076) —
+ * this used to be a bare attestation that a human had already carried out
+ * the manual runbook (docs/pilot/child-data-deletion-runbook.md); it is
+ * now the actual authoritative execution step, staff-triggered with an
+ * explicit note, database-enforced (confirm/finalize are both staff-only
+ * SECURITY DEFINER RPCs), never a client-controlled storage-key delete —
+ * the RPC alone decides what gets inventoried, this route only reports the
+ * real outcome for exactly the keys the RPC named.
  *
- * Requires a non-empty completion note (attestation, not just a click) —
- * enforced twice: here, and by the table's own
- * player_deletion_requests_completion_requires_attestation CHECK
- * constraint (0041), so this can never be bypassed by calling the DB
- * directly with a different code path either.
- *
- * Only a currently-pending request can be completed — checked here for a
- * clear error message, and independently enforced by the table's
- * player_deletion_requests_enforce_transition trigger (0041) regardless of
- * this check, since this route runs on the service-role client which has
- * no RLS to fall back on. Re-completing an already-completed request is a
- * safe no-op (idempotent retry); completing a rejected or cancelled
- * request is a genuine error — those are a different outcome, not a
- * duplicate of this one.
- *
- * Guardian notification ("your request has been completed") is manual in
- * this pass, using the requester_email snapshotted on the row (0044) —
- * not automated here.
+ * Three systems, sequenced deliberately: (1) confirm_player_deletion_
+ * erasure does every DB-side step (delete the player row and its
+ * cascades, revoke every card, strip card_definitions.photo) and returns
+ * the exact storage inventory — the only point after which the keys still
+ * exist to collect at all; (2) this route attempts a real S3 delete for
+ * each one, recording success/failure per object; (3) finalize_player_
+ * deletion_erasure only ever marks the request `completed` once every
+ * object is genuinely gone — if any storage delete failed, it reports
+ * `failed` instead, safe to retry (calling this route again re-attempts
+ * only what didn't finish, via confirm's own `resumed` branch).
  */
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -42,38 +40,53 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ error: 'A completion note is required.' }, { status: 400 });
   }
 
+  const { data: confirmResult, error: confirmError } = await supabase.rpc('confirm_player_deletion_erasure', {
+    p_request_id: params.id,
+    p_completion_note: note,
+  });
+  if (confirmError) {
+    if (confirmError.message.includes('Staff access required') || confirmError.message.includes('Not authorized')) {
+      return NextResponse.json({ error: confirmError.message }, { status: 403 });
+    }
+    return NextResponse.json({ error: confirmError.message }, { status: 400 });
+  }
+
+  const result = confirmResult as { alreadyCompleted: boolean; resumed?: boolean; inventory: { id: string; s3Key: string; kind: string }[] };
+  if (result.alreadyCompleted) {
+    return NextResponse.json({ ok: true, state: 'completed' });
+  }
+
+  // player_deletion_storage_objects grants select/insert/update to
+  // service_role only (0076) — never to authenticated, even a staff
+  // session — so these status writes must go through the service-role
+  // client. requireStaff() above is what actually authorises this route;
+  // this client is not a new authorization boundary, the same pattern
+  // every other staff route in this codebase already uses.
   const serviceRole = createServiceRoleClient();
-  const { data: existing, error: fetchError } = await serviceRole
-    .from('player_deletion_requests')
-    .select('status')
-    .eq('id', params.id)
-    .maybeSingle();
-  if (fetchError) {
-    return NextResponse.json({ error: fetchError.message }, { status: 500 });
-  }
-  if (!existing) {
-    return NextResponse.json({ error: 'Request not found' }, { status: 404 });
-  }
-  if (existing.status === 'completed') {
-    return NextResponse.json({ ok: true });
-  }
-  if (existing.status !== 'pending') {
-    return NextResponse.json({ error: `This request is already ${existing.status} and can no longer be completed.` }, { status: 400 });
+
+  for (const object of result.inventory) {
+    try {
+      await deleteObject(object.s3Key);
+      await serviceRole
+        .from('player_deletion_storage_objects')
+        .update({ status: 'deleted', deleted_at: new Date().toISOString() })
+        .eq('id', object.id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown S3 error';
+      await serviceRole
+        .from('player_deletion_storage_objects')
+        .update({ status: 'failed', last_error: message, attempts: 1 })
+        .eq('id', object.id);
+    }
   }
 
-  const { error } = await serviceRole
-    .from('player_deletion_requests')
-    .update({
-      status: 'completed',
-      completed_by: staffCheck.userId,
-      completed_at: new Date().toISOString(),
-      completion_note: note,
-    })
-    .eq('id', params.id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  const { data: finalizeResult, error: finalizeError } = await supabase.rpc('finalize_player_deletion_erasure', {
+    p_request_id: params.id,
+  });
+  if (finalizeError) {
+    return NextResponse.json({ error: finalizeError.message }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true });
+  const outcome = finalizeResult as { completed: boolean; state?: string };
+  return NextResponse.json({ ok: true, ...outcome });
 }

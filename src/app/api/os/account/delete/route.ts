@@ -70,6 +70,28 @@ export async function POST() {
     return NextResponse.json({ error: rpcError.message }, { status: 400 });
   }
 
+  // canDeleteIdentity is false when a NOT-NULL profile-referencing row
+  // still exists (Squad Invite organiser/audit history, coach-authored
+  // player records) — profiles.id references auth.users.id ON DELETE
+  // CASCADE, so calling admin.deleteUser() while any such row remains
+  // would fail outright rather than deleting anything. Every other part
+  // of this guardian's own access has already been removed by the RPC
+  // above (their own guardians links, and every nullable reference); this
+  // is a deliberate stop, not a retry-later failure, and pending_profile_
+  // deletions (0076) durably records it for staff review rather than
+  // silently leaving the guardian's login live with no explanation.
+  if (rpcResult && typeof rpcResult === 'object' && (rpcResult as { canDeleteIdentity?: boolean }).canDeleteIdentity === false) {
+    await supabase.auth.signOut();
+    return NextResponse.json({
+      ok: true,
+      partial: true,
+      identityRetained: true,
+      message:
+        "Your access and personal data have been removed. Because your account is linked to campaign records we're required to keep, finishing the removal of your sign-in needs a quick staff review — we'll be in touch.",
+      ...rpcResult,
+    });
+  }
+
   // Case A (both succeed) vs Case C (DB succeeded, Auth delete fails).
   const serviceRole = createServiceRoleClient();
   const { error: authDeleteError } = await serviceRole.auth.admin.deleteUser(user.id);

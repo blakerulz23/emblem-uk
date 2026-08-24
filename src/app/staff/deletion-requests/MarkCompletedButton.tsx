@@ -4,17 +4,18 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 /**
- * "Mark completed" must never read as if pressing it performs the
- * deletion — the checkbox's own label is the literal attestation text
- * (staff are confirming a fact that's already true when they check it,
- * not triggering an action), and the note field is a separate, required
- * field, not folded into the checkbox. Both are required before
- * "Confirm completed" enables; the server independently re-enforces both
- * (a non-empty note, via the route; a non-null completed_by/at/note
- * together, via the table's own CHECK constraint) — this UI gate is
- * belt-and-braces, not the only thing stopping an empty completion.
+ * Migration 0076: pressing "Confirm erasure" now DOES perform the
+ * deletion — real, server-enforced, database and storage — not merely an
+ * attestation that a human carried it out elsewhere. The checkbox is the
+ * staff member's explicit go-ahead for that real action, and the note
+ * field is a separate, required field, not folded into the checkbox. Both
+ * are required before the button enables; the server independently
+ * re-enforces both (a non-empty note, via the route; a non-null
+ * completed_by/note together, via the table's own CHECK constraint) —
+ * this UI gate is belt-and-braces, not the only thing stopping an empty
+ * completion.
  */
-const ATTESTATION_TEXT = 'I have completed the child-data deletion runbook and verified the affected data is gone.';
+const ATTESTATION_TEXT = 'I have verified this request and I am authorising permanent erasure of this child’s data now.';
 
 export default function MarkCompletedButton({ requestId }: { requestId: string }) {
   const router = useRouter();
@@ -56,7 +57,7 @@ export default function MarkCompletedButton({ requestId }: { requestId: string }
           cursor: 'pointer', whiteSpace: 'nowrap',
         }}
       >
-        Mark completed
+        Confirm erasure
       </button>
     );
   }
@@ -64,7 +65,7 @@ export default function MarkCompletedButton({ requestId }: { requestId: string }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 14px', borderRadius: 10, background: '#ecfdf5', minWidth: 280, maxWidth: 340 }}>
       <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 13, color: 'var(--ink)' }}>
-        This records that the runbook was already carried out — it does not delete anything itself.
+        This permanently deletes the player, their photos and moments, revokes their cards, and removes stored card artwork. It cannot be undone.
       </div>
 
       <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontFamily: 'var(--font-manrope), system-ui', fontSize: 12.5, color: 'var(--ink)', cursor: 'pointer' }}>
@@ -105,7 +106,7 @@ export default function MarkCompletedButton({ requestId }: { requestId: string }
             cursor: busy || !attested || !note.trim() ? 'default' : 'pointer', whiteSpace: 'nowrap',
           }}
         >
-          {busy ? 'Saving…' : 'Confirm completed'}
+          {busy ? 'Erasing…' : 'Confirm erasure'}
         </button>
       </div>
     </div>

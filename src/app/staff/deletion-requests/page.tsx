@@ -13,10 +13,10 @@ export const dynamic = 'force-dynamic';
  * anywhere in this codebase's config; see the audit report). A pending
  * row here is the entire signal staff have that a deletion needs doing.
  *
- * A request never says the player was already deleted — it's a request
- * for staff to act on via the existing runbook (docs/pilot/
- * child-data-deletion-runbook.md); "Mark completed" only records that the
- * runbook was carried out, it performs no deletion itself.
+ * Migration 0076: "Confirm erasure" (MarkCompletedButton) now performs
+ * real, server-enforced erasure — database records, cards, and stored
+ * media — not merely an attestation that a human carried out the old
+ * manual runbook elsewhere.
  */
 // Explicit fixed timeZone — without it, toLocaleString()'s output depends
 // on the runtime's local timezone, which differs between this Server
@@ -35,7 +35,12 @@ function formatRequestedAt(iso: string, withTime: boolean) {
 
 type RequestRow = {
   id: string;
-  player_id: string;
+  // Nullable since migration 0076: player_id -> players.id is now SET NULL
+  // on delete, not CASCADE — a request whose erasure already ran (even
+  // before status flips to 'completed') has player_id null the moment the
+  // player row is gone, since the request row is deliberately kept as the
+  // erasure's own audit trail.
+  player_id: string | null;
   requester_email: string | null;
   requested_at: string;
   status: string;
@@ -123,9 +128,9 @@ export default async function StaffDeletionRequestsPage() {
         Player-data deletion requests
       </h1>
       <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 15, color: 'var(--ink-soft)', margin: '0 0 8px' }}>
-        A guardian has asked for a player&rsquo;s profile, moments and photos to be permanently removed. Carry this out by hand using
-        the existing runbook (docs/pilot/child-data-deletion-runbook.md), then mark it completed below — this page never performs the
-        deletion itself. After completing one, reply to the guardian&rsquo;s email confirming what was removed.
+        A guardian has asked for a player&rsquo;s profile, moments and photos to be permanently removed. Verify the request, then
+        confirm erasure below — this deletes the player&rsquo;s data, revokes their cards, and removes stored media for real. After
+        confirming, reply to the guardian&rsquo;s email confirming what was removed.
       </p>
 
       <h2 style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 18, color: 'var(--ink)', margin: '32px 0 12px' }}>
@@ -142,7 +147,7 @@ export default async function StaffDeletionRequestsPage() {
                   {r.players?.name ?? '(player not found)'}
                 </div>
                 <div style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 12.5, color: 'var(--ink-soft)', marginTop: 3 }}>
-                  Requested {formatRequestedAt(r.requested_at, true)} UTC · player {r.player_id.slice(0, 8)}…
+                  Requested {formatRequestedAt(r.requested_at, true)} UTC{r.player_id ? ` · player ${r.player_id.slice(0, 8)}…` : ' · erasure already ran — finishing storage cleanup'}
                 </div>
                 <div style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 12.5, color: 'var(--ink-soft)', marginTop: 3 }}>
                   Contact: {r.requester_email ?? '(no email on file)'}
