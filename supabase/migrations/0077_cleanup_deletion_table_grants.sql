@@ -1,0 +1,90 @@
+-- ============================================================================
+-- Corrective migration — closes a default-ACL gap on one table migration
+-- 0076 created, matching the corrective-migration discipline already
+-- established by 0072 (which did the same thing for three tables 0071
+-- created).
+--
+-- ROOT CAUSE: every other new table in 0076 opens with an explicit
+-- `revoke all on public.<table> from public, anon, authenticated,
+-- service_role` before granting only the intended minimum back — the
+-- pg_default_acl lesson 0076's own header comment cites from 0072.
+-- public.squad_invite_participation_deletion_requests is the one table in
+-- 0076 that never got that revoke line — it went straight to
+-- `grant select on ... to authenticated` and `grant select, update on ...
+-- to service_role` with no prior revoke. Confirmed directly against
+-- production (read-only) after release: authenticated and/or anon still
+-- carry this project's default TRIGGER/REFERENCES/TRUNCATE grants on this
+-- table, layered underneath the explicit SELECT — never revoked because
+-- there was never a revoke statement to do it. No other table in 0076 has
+-- this gap; all five siblings (player_deletion_request_suspended_cards,
+-- player_deletion_storage_objects, player_deletion_supplier_status,
+-- pending_profile_deletions, squad_invite_participation_deletion_storage_
+-- objects) already open with their own explicit revoke-all, confirmed by
+-- direct inspection of 0076's source before writing this fix.
+--
+-- EVIDENCE FOR THE TARGET PRIVILEGE MATRIX BELOW: every server-side call
+-- site referencing this table was searched, exhaustively, across the
+-- entire application source. Zero direct `.from('squad_invite_
+-- participation_deletion_requests')` call exists anywhere — every real
+-- read or write of this table happens exclusively inside five SECURITY
+-- DEFINER RPC bodies (request_squad_invite_participation_deletion,
+-- cancel_own_squad_invite_participation_deletion_request,
+-- staff_reject_squad_invite_participation_deletion_request,
+-- confirm_squad_invite_participation_erasure,
+-- finalize_squad_invite_participation_erasure), which execute as the
+-- function owner and are entirely unaffected by this table's own grants.
+-- There is also no staff or guardian UI anywhere in this codebase that
+-- reads this table directly — src/app/staff/deletion-requests/page.tsx
+-- (the one existing staff deletion-request dashboard) handles only
+-- player_deletion_requests and has no Squad Invite equivalent yet (a
+-- disclosed, deliberate scope-narrowing from the original PR #40 report).
+--
+-- This differs from 0072's own precedent on one point, disclosed here
+-- rather than silently applied: 0072 preserved a service_role grant on
+-- builder_guardian_approval_requests specifically because 0071's own
+-- comment documented a real, still-relevant staff capability the grant
+-- existed for ("a staff member may set status=revoked directly ... no
+-- dedicated RPC required"). 0076's own comment on this table documents no
+-- equivalent positive justification for either grant — only that
+-- insert/delete were deliberately withheld. Combined with the exhaustive
+-- code search above finding zero consumers for either grant, and matching
+-- the equivalent player_deletion_requests table (migration 0041), which
+-- itself grants nothing at all to service_role and only a plain `select`
+-- to authenticated for guardian visibility, this migration does not
+-- re-grant service_role anything on this table, and does not re-grant
+-- authenticated's previous SELECT either — both were provisioned ahead of
+-- a guardian-facing Squad Invite deletion-status UI that does not exist
+-- yet. A future migration can add the minimum grant back the moment that
+-- UI is actually built, the same way 0058/0064/0067 revisited the Squad
+-- Invite payment-mode flag as the surrounding feature matured.
+--
+-- TARGET MATRIX:
+--   public / anon / authenticated / service_role : no direct privilege of
+--   any kind (SELECT/INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER).
+--
+-- SCOPE: only this one table's own grants are touched. This migration does
+-- not alter this project's schema-wide default ACL, RLS, the guardian
+-- SELECT policy, constraints, indexes, functions, or any data — grants
+-- only, on this one table. The RLS policy this table already has
+-- ("squad_invite_participation_deletion_requests: guardian can view their
+-- own requests") is left in place, unreachable until a future migration
+-- re-grants SELECT to authenticated — exactly the state a table-level
+-- privilege check enforces ahead of RLS ever being evaluated. This
+-- migration does not touch migration 0076's own file, its recorded
+-- history entry, or any other table this release created.
+--
+-- ROLLBACK (manual, not automated — do not run this reflexively):
+--   grant select on public.squad_invite_participation_deletion_requests to authenticated;
+--   grant select, update on public.squad_invite_participation_deletion_requests to service_role;
+--   -- (this restores exactly 0076's own original state for this table,
+--   -- including the default-ACL gap this migration exists to close — if
+--   -- this migration is ever found to be wrong, the correct action is a
+--   -- new forward migration with the actually-correct grant, not a
+--   -- rollback to the accidental wider state.)
+-- ============================================================================
+
+begin;
+
+revoke all on public.squad_invite_participation_deletion_requests from public, anon, authenticated, service_role;
+
+commit;
