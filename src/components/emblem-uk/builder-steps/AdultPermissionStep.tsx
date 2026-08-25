@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
-import { BUILDER_CSRF_HEADER, readBuilderCsrfCookie } from '@/lib/print-capture';
+import { useRef, useState } from 'react';
 import {
   BUILDER_AUTHORITY_CONFIRMATIONS,
   type BuilderAuthorityRelationship,
 } from '@/lib/builder-authority-shared';
+import { GENERIC_FAILURE, confirmButtonLabel, isNonGuardianRelationship, postJson } from '@/lib/builder-authority-client';
 
 type Phase = 'email' | 'code' | 'details';
 
@@ -15,19 +15,6 @@ const RELATIONSHIP_OPTIONS: { value: BuilderAuthorityRelationship; label: string
   { value: 'club_organiser', label: 'Club organiser' },
   { value: 'other_adult', label: 'Another adult' },
 ];
-
-async function postJson(url: string, body: unknown): Promise<{ ok: boolean; error?: string; [key: string]: unknown }> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
-    body: JSON.stringify(body),
-  });
-  const result = await response.json().catch(() => null);
-  if (!response.ok || !result?.ok) {
-    return { ok: false, error: result?.error || 'Something went wrong — please try again.' };
-  }
-  return result;
-}
 
 /**
  * The short "Adult permission" step (migration 0071) shown once, right
@@ -59,15 +46,23 @@ export default function AdultPermissionStep({
   const [relationshipError, setRelationshipError] = useState('');
   const [confirmError, setConfirmError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Belt-and-braces against a second click landing in the same tick as the
+  // first, before React has re-rendered the disabled button — the same
+  // ref-guard shape ProductionBuilder.tsx's own submittingRef already uses
+  // for its one-shot submit path.
+  const busyRef = useRef(false);
 
-  const isNonGuardian = relationship === 'coach' || relationship === 'club_organiser' || relationship === 'other_adult';
+  const isNonGuardian = isNonGuardianRelationship(relationship);
 
-  const handleRequestCode = async () => {
+  const handleRequestCode = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (busyRef.current) return;
     setEmailError('');
     if (!email.trim() || !email.includes('@')) {
       setEmailError('Enter a valid email address.');
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     try {
       const result = await postJson('/api/builder-authority/request-code', { email: email.trim() });
@@ -76,17 +71,23 @@ export default function AdultPermissionStep({
         return;
       }
       setPhase('code');
+    } catch {
+      setEmailError(GENERIC_FAILURE);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
-  const handleVerifyCode = async () => {
+  const handleVerifyCode = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (busyRef.current) return;
     setCodeError('');
     if (!/^\d{6,8}$/.test(code.trim())) {
       setCodeError('Enter the code we emailed you.');
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     try {
       const result = await postJson('/api/builder-authority/verify-code', { email: email.trim(), code: code.trim() });
@@ -95,12 +96,17 @@ export default function AdultPermissionStep({
         return;
       }
       setPhase('details');
+    } catch {
+      setCodeError(GENERIC_FAILURE);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
-  const handleConfirm = async () => {
+  const handleConfirm = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (busyRef.current) return;
     setRelationshipError('');
     setConfirmError('');
     if (!relationship) {
@@ -111,6 +117,7 @@ export default function AdultPermissionStep({
       setConfirmError('All three confirmations are required to continue.');
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     try {
       const submissionKey = await getSubmissionKey();
@@ -125,8 +132,17 @@ export default function AdultPermissionStep({
         setConfirmError(result.error || 'Could not save your confirmation — please try again.');
         return;
       }
+      // Only reached once the server has genuinely recorded the
+      // declaration — entered relationship/confirmations are preserved on
+      // every failure path above, never cleared.
       onConfirmed();
+    } catch {
+      // getSubmissionKey() (or any other unexpected failure between here
+      // and the server response) previously propagated as an unhandled
+      // rejection with zero UI feedback — this is the fix.
+      setConfirmError(GENERIC_FAILURE);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
@@ -141,7 +157,7 @@ export default function AdultPermissionStep({
 
       <div className="uk-adult-permission-card">
         {phase === 'email' && (
-          <>
+          <form onSubmit={handleRequestCode}>
             <label>
               Your email
               <input
@@ -155,14 +171,14 @@ export default function AdultPermissionStep({
               />
             </label>
             {emailError && <p id="uk-adult-email-error" className="uk-enquiry-error" role="alert">{emailError}</p>}
-            <button type="button" className="uk-wizard-primary" onClick={handleRequestCode} disabled={busy}>
+            <button type="submit" className="uk-wizard-primary" disabled={busy}>
               {busy ? 'Sending…' : 'Send me a code'}
             </button>
-          </>
+          </form>
         )}
 
         {phase === 'code' && (
-          <>
+          <form onSubmit={handleVerifyCode}>
             <p className="uk-wizard-copy">We’ve sent a code to {email}.</p>
             <label>
               Verification code
@@ -177,14 +193,14 @@ export default function AdultPermissionStep({
               />
             </label>
             {codeError && <p id="uk-adult-code-error" className="uk-enquiry-error" role="alert">{codeError}</p>}
-            <button type="button" className="uk-wizard-primary" onClick={handleVerifyCode} disabled={busy}>
+            <button type="submit" className="uk-wizard-primary" disabled={busy}>
               {busy ? 'Checking…' : 'Verify code'}
             </button>
-          </>
+          </form>
         )}
 
         {phase === 'details' && (
-          <>
+          <form onSubmit={handleConfirm}>
             <label>
               Your relationship to the player
               <select
@@ -231,10 +247,10 @@ export default function AdultPermissionStep({
               </p>
             </details>
 
-            <button type="button" className="uk-wizard-primary" onClick={handleConfirm} disabled={busy}>
-              {busy ? 'Saving…' : 'Approve and continue'}
+            <button type="submit" className="uk-wizard-primary" disabled={busy}>
+              {confirmButtonLabel(relationship, busy)}
             </button>
-          </>
+          </form>
         )}
 
         <button type="button" className="uk-adult-permission-back" onClick={onBack} disabled={busy}>

@@ -3398,6 +3398,13 @@ a { text-decoration: none; color: inherit; }
   padding: 16px;
 }
 
+/* Each phase's fields are wrapped in a <form> (for native keyboard submit)
+   without becoming a new flex context — its children lay out exactly as
+   if they were still direct children of .uk-adult-permission-card. */
+.uk-adult-permission-card form {
+  display: contents;
+}
+
 .uk-adult-permission-card label {
   display: grid;
   gap: 7px;
