@@ -2053,6 +2053,20 @@ export default function ProductionBuilder({
               getSubmissionKey={ensureSubmissionKey}
               onBack={() => setActiveStepId('review')}
               onConfirmed={() => {
+                // record_builder_authority_declaration succeeding is not
+                // itself visible to the customer — the only screens that
+                // show the outcome (the ordinary "Order received" panel,
+                // or GuardianPendingScreen for a non-guardian relationship)
+                // are both gated on activeStepId === 'review'. Without
+                // this, submitEnquiry below still runs and genuinely
+                // completes the order server-side, but activeStepId stays
+                // 'adult-permission' forever, so AdultPermissionStep just
+                // resets to its idle state — busy releases, there's no
+                // error to show because nothing failed, and the screen
+                // never advances. That is the exact "nothing happening"
+                // outcome a live re-test surfaced: the order was really
+                // submitted, but the UI had nowhere to go and show it.
+                setActiveStepId('review');
                 setAdultPermissionConfirmed(true);
                 submitEnquiry({ preventDefault: () => {} } as FormEvent<HTMLFormElement>);
               }}
