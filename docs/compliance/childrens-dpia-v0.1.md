@@ -529,6 +529,51 @@ Risk acceptance must not be used to bypass mandatory legal obligations or ICO pr
 | Product owner |  |  |  |
 | Operations lead |  |  |  |
 
+## Addendum (added 2026-08-25): guardian-controlled card-front social sharing
+
+Migration 0078 introduces an optional, off-by-default feature letting a
+verified guardian share the exact front of a card they created — recorded
+here as a founder decision, **not** as evidence this addendum itself
+constitutes DPIA or safeguarding approval; the caveats in the independence
+note above apply equally to this addendum.
+
+- **What is disclosed:** the shared image is the exact, unaltered card
+  front — child photograph, printed name, club/team name, and any club
+  badge or artwork on the card — nothing is redacted or blurred.
+- **Guardian-initiated and optional:** the feature is off by default and
+  only ever offered to a server-verified guardian, immediately after their
+  own authenticated submission or Squad Invite commitment. It is never
+  shown to a coach, organiser, or any other non-guardian adult, and never
+  inferred from payment, order ownership, or campaign ownership.
+- **No permanent public Emblem URL:** the exported image is composed and
+  held only in the guardian's own browser memory (an in-memory canvas/Blob,
+  built from the same on-screen preview the guardian already approved) and
+  is never uploaded to any Emblem-controlled or third-party storage. There
+  is no public link, no permanent hosted copy, and no page anywhere in
+  Emblem that displays this image to anyone other than the guardian who
+  generated it.
+- **External retention is explicitly out of Emblem's control:** once a
+  guardian shares or downloads the image, social platforms and recipients
+  may retain, screenshot, or redistribute copies. Emblem cannot recall,
+  delete, or otherwise affect any copy once it has left the guardian's own
+  device.
+- **No Player OS or card-security token is exposed:** the share flow never
+  includes the card's claim token, NFC UID, approval token, Player OS URL,
+  public-profile URL, or any order/submission identifier — only the
+  card-front image itself, in a generically named file.
+- **Artwork rights are independent of guardian consent:** parental
+  authority is never treated as evidence of intellectual-property
+  permission over a club badge, sponsor mark, or licensed collection
+  asset. A separate, default-closed, server-controlled allowlist
+  (`card_social_share_asset_rights`) gates which designs' artwork may
+  appear in a shared image at all, and ships empty — no design is
+  shareable until a human explicitly documents a real rights basis for it.
+- **Independent DPIA and safeguarding review remains required** before any
+  production release of this feature, on the same basis as every other
+  Gate 2 item in this document — this addendum records what was built and
+  why, not that it has been reviewed or approved by anyone independent of
+  the person who built it.
+
 ## Primary regulatory sources consulted
 
 - [ICO: Children's Code introduction](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/childrens-information/childrens-code-guidance-and-resources/introduction-to-the-childrens-code)
