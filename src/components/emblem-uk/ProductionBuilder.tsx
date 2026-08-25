@@ -36,6 +36,7 @@ import {
 import BackgroundRemovalStep from './builder-steps/BackgroundRemovalStep';
 import AdultPermissionStep from './builder-steps/AdultPermissionStep';
 import GuardianPendingScreen from './builder-steps/GuardianPendingScreen';
+import ShareCardSheet from './ShareCardSheet';
 import CoachCardSection from './CoachCardSection';
 import PricingSummaryCard from './PricingSummaryCard';
 import { useOrderPricingQuote } from './useOrderPricingQuote';
@@ -413,6 +414,15 @@ export default function ProductionBuilder({
   // canvas untainted without needing S3 CORS configuration.
   const [captureMode, setCaptureMode] = useState(false);
   const captureRefs = useRef(new Map<string, HTMLDivElement>());
+  // Guardian-controlled card-front sharing (Work Package B, draft) — a
+  // second, deliberately separate off-screen rig from the print-capture one
+  // above, sharing no mutable state with it, so nothing about the share
+  // path can ever interfere with a print submission in flight. Captures at
+  // a lower pixelRatio than print (2 vs print's 3) and never calls
+  // renderPrintFile — the plain captureElementToPng output already has no
+  // bleed/crop marks, since those are added by renderPrintFile alone.
+  const [shareCaptureMode, setShareCaptureMode] = useState(false);
+  const shareCaptureRef = useRef<HTMLDivElement | null>(null);
   // Double-submit guard — a ref, not enquiryStatus state. Two clicks fired
   // on the same tick both run submitEnquiry before React has processed the
   // first setEnquiryStatus('sending') and re-rendered with a fresh
@@ -924,6 +934,31 @@ export default function ProductionBuilder({
     );
   };
 
+  /**
+   * Guardian-controlled card-front sharing (Work Package B, draft). Renders
+   * the SAME PlayerCard component the review screen and print pipeline
+   * already use — unmodified — off-screen, captures it with the same
+   * captureElementToPng print-capture.ts already exports (also unmodified),
+   * at a lower pixelRatio than print, and returns a data URL. Nothing here
+   * ever calls renderPrintFile, so no bleed/crop marks or print-only
+   * artwork are ever produced. The caller (ShareCardSheet, via card-share.ts)
+   * is responsible for having already recorded consent before calling this
+   * — this function only ever renders the front the player/guardian already
+   * approved, exactly as it appears on screen.
+   */
+  const captureShareImage = async (): Promise<string> => {
+    setShareCaptureMode(true);
+    try {
+      await nextPaint();
+      const el = shareCaptureRef.current;
+      if (!el) throw new Error('Could not prepare card image');
+      await waitForImages(el);
+      return await captureElementToPng(el, { pixelRatio: 2, backgroundColor: '#ffffff' });
+    } finally {
+      setShareCaptureMode(false);
+    }
+  };
+
   const submitEnquiry = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     // Explicit synchronous guard via a ref, not enquiryStatus state — two
@@ -1344,6 +1379,13 @@ export default function ProductionBuilder({
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {shareCaptureMode && summary.approvedPlayers[0] && (
+        <div aria-hidden style={{ position: 'fixed', left: -10000, top: 0, pointerEvents: 'none' }}>
+          <div ref={shareCaptureRef} style={{ width: 340 }}>
+            <PlayerCard order={order} player={summary.approvedPlayers[0]} side="front" />
+          </div>
         </div>
       )}
       <div className={`uk-wizard-phone${activeStepId === 'review' && squadInviteContext ? ' uk-wizard-phone--squad-review' : ''}`}>
@@ -2264,6 +2306,28 @@ export default function ProductionBuilder({
                   {summary.approvedPlayers.length} card{summary.approvedPlayers.length === 1 ? '' : 's'} &middot; {summary.approvedPrints} print{summary.approvedPrints === 1 ? '' : 's'} &middot; {quoteSubtotalLabel(quoteState)}
                 </p>
               </div>
+              {/* Guardian-controlled card-front sharing (Work Package B,
+                  draft) — outer gate here is a first-pass filter matching
+                  what the server-side eligibility check (migration 0078)
+                  independently re-verifies as the actual authority: a
+                  direct parent/legal guardian's own single-child order.
+                  order.type === 'single' mirrors the same "whole-team
+                  orders have only one authority declaration for many
+                  children" limitation the migration's own header comment
+                  documents — ShareCardSheet still fetches and trusts only
+                  the server's own answer, never this client gate alone. */}
+              {(() => {
+                const soleApprovedPlayer = summary.approvedPlayers[0];
+                if (enquiryStatus !== 'sent' || submittedAuthorityStatus !== 'confirmed' || order.type !== 'single' || !submittedOrderId || !soleApprovedPlayer) {
+                  return null;
+                }
+                return (
+                  <ShareCardSheet
+                    orderId={submittedOrderId}
+                    getShareImage={captureShareImage}
+                  />
+                );
+              })()}
             </section>
           )}
         </main>

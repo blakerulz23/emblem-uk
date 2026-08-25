@@ -72,6 +72,110 @@ attributes" row of the section 8 lawful-basis table) — it is not a new
 finding, and this note does not claim the DPIA recommended this specific
 implementation in advance, only that the direction is consistent with it.
 
+## Work Package B — guardian-controlled card-front sharing, draft — 25 August 2026
+
+**Status: implementation evidence only; unreleased. This feature is not
+enabled for customers, is stacked as a separate draft PR on top of the
+still-unmerged Adult Permission fix (PR #43), and requires this note's own
+review — plus a DPO/safeguarding sign-off separate from the approval
+recorded on 18 August 2026 above — before any release decision. Nothing
+below is a statement that sharing is safe to launch.**
+
+This is a genuinely new processing purpose distinct from every other
+purpose this DPIA already covers: **optional, guardian-initiated
+distribution of an image containing the child's photograph and card design
+outside Emblem's own systems, to recipients of the guardian's choosing.**
+None of Emblem's existing lawful bases for creating/printing/delivering a
+card were assessed against this purpose, because this purpose did not
+exist until now.
+
+- **VERIFIED IN LOCAL SOURCE:** sharing is gated behind a separate,
+  explicit confirmation ("I understand and choose to share this card image
+  outside Emblem outside Emblem.", unticked by default) shown alongside a
+  plain-language warning that the image contains the child's photograph
+  and club/team branding and that recipients may re-save or re-share it,
+  and a truthful statement that Emblem cannot recall copies already
+  downloaded, sent, saved or reposted elsewhere. Cancelling records no
+  image and no confirmed-consent event (migration 0078,
+  record_card_share_consent).
+- **VERIFIED IN LOCAL SOURCE:** the generated image is rendered client-side
+  only, in memory, from the same on-screen CardFace component already used
+  for review/print (unmodified — see the protected-areas byte-identity
+  test), captured via the same existing captureElementToPng (also
+  unmodified) at a lower resolution than print. No server copy, public
+  page, public storage object, or long-lived signed URL is ever created —
+  confirmed by direct code reading: neither new API route uploads or
+  persists image bytes anywhere.
+- **VERIFIED IN LOCAL SOURCE:** the consent-event table
+  (card_share_consent_events) never stores the generated image, a name, an
+  email, or a phone number — only profile/order/card ids, a reference to
+  the exact card_definitions row shown at consent time, a consent-wording
+  version, a result, and a timestamp. RLS enabled, no policies, explicit
+  revoke of the default grant set before granting only service-role
+  select/insert — the same discipline as every other audit table this
+  DPIA already covers (0071, 0075, 0076).
+- **VERIFIED IN LOCAL SOURCE, DELIBERATELY NARROW SCOPE:** eligibility
+  (get_card_share_eligibility, migration 0078) is enabled ONLY for a direct
+  parent/legal guardian's own single-child order (authority_status=
+  'confirmed', the current session's auth.uid() matching the verified
+  adult who completed Adult Permission, and a server-side row count
+  proving exactly one card exists on that order). It is explicitly NOT
+  enabled for:
+  - **The other-adult/coach/organiser journey** (authority_status=
+    'guardian_approved'): the approving guardian's own journey
+    (src/app/builder-approval/[token]/page.tsx) never establishes an
+    authenticated session at all — confirmed by direct reading: no
+    signInWithOtp, no auth.uid() anywhere on that page. There is currently
+    no browser session belonging to that guardian to safely grant sharing
+    control to. Enabling this would require a new, separate guardian-
+    authentication step on that page — a materially different piece of
+    work, not attempted here.
+  - **Whole-team / multi-player orders** under the ordinary builder: the
+    same authority declaration covers the entire order, not each child
+    individually, so the schema cannot prove which child a given adult is
+    actually the guardian of. Hidden entirely, proven by a server-side
+    count of cards per order, not trusted from any client-supplied order
+    "type".
+  - **Squad Invite:** squad_invite_participations.guardian_profile_id IS a
+    real, session-backed identity (confirmed by direct reading of
+    commit/route.ts — set from a server-verified auth.getUser() call), so
+    this table could support a parallel eligibility path in principle. Not
+    wired in this pass: Squad Invite has its own separate success screen
+    and its own active in-flight workstream this session (payment
+    activation); adding sharing there needs its own dedicated review of
+    its existing permissions/rights evidence, not a bolt-on here.
+- **UNRESOLVED RIGHTS QUESTION — REQUIRES SPECIALIST REVIEW:** sharing is
+  enabled only for the Custom Collection template ids (an explicit
+  allowlist: custom-solar, custom-galaxy, custom-comic), never for Official
+  Collection or any licensed/third-party design (EMJFL official badge,
+  Hollinwood partner variants) — no repository evidence was found (docs/
+  and the template-classification source were searched directly) that
+  Emblem holds social-distribution rights for those licensed assets. This
+  is the safe default the product spec itself requires when such evidence
+  is absent; it is not a finding that Emblem lacks those rights, only that
+  this task did not find them recorded anywhere, and no supplier or rights
+  holder was contacted (out of scope for this task). Separately: the
+  existing Adult Permission confirmation guardians already give
+  ("permission to upload and process this photograph") is being treated,
+  for this initial safe policy, as also covering any club/team crest the
+  same guardian separately chose to upload in the same builder session —
+  its exact wording does not name uploaded branding specifically. Both
+  points require specialist/founder review before this is relied on beyond
+  a draft implementation.
+- **UNRESOLVED RETENTION QUESTION — REQUIRES SPECIALIST REVIEW:** this
+  migration does not itself extend the existing child-data erasure runbook
+  (0076) to card_share_consent_events. On a player/guardian deletion, this
+  table should participate in the same erasure design as
+  builder_authority_audit_events/card_access_audit_events (retain the fact,
+  null or remove the guardian reference per the approved retention design)
+  — that extension has not been implemented or reviewed as part of this
+  work package and is recorded here as an open gap, not an oversight to be
+  silently assumed closed.
+- **VERIFIED OPERATIONAL LIMIT FOR THIS TASK:** migration 0078 has not been
+  applied to any database in this task beyond disposable verification with
+  fictional data, and no remote service was contacted for rights
+  information.
+
 Six decisions were treated as approved requirements for this work:
 
 1. The guardian-facing chronological "Age" tile on the Player OS card is

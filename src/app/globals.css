@@ -3760,6 +3760,75 @@ a { text-decoration: none; color: inherit; }
   font-weight: 900;
 }
 
+/* Guardian-controlled card-front sharing (Work Package B, draft) — a
+   visually secondary section: muted border/background versus the
+   .uk-handoff-box "Order summary" and .uk-next-steps panels above it, so
+   sharing never reads as a required step to complete the order. */
+.uk-card-share {
+  margin-top: 14px;
+  border: 1px solid #ece4d6;
+  border-radius: 16px;
+  background: #fdfcfa;
+  padding: 16px;
+}
+
+.uk-card-share h3 {
+  margin: 0 0 4px;
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 17px;
+}
+
+.uk-card-share > p.uk-wizard-copy {
+  margin: 0 0 12px;
+  color: var(--wizard-soft);
+  font-size: 13px;
+}
+
+.uk-card-share-blocked {
+  margin: 0;
+  color: var(--wizard-faint);
+  font-size: 13px;
+}
+
+.uk-card-share-sheet {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(190, 45, 45, 0.2);
+  border-radius: 13px;
+  background: #fff;
+  padding: 13px;
+}
+
+.uk-card-share-warning {
+  margin: 0;
+  color: #8f1f1f;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.uk-card-share-recall {
+  margin: 0;
+  color: var(--wizard-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.uk-card-share-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--wizard-ink);
+}
+
+.uk-card-share-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
 .uk-next-steps span {
   margin-top: 2px;
   color: var(--wizard-soft);
