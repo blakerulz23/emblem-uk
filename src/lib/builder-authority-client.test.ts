@@ -1,5 +1,14 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { GENERIC_FAILURE, TIMEOUT_FAILURE, confirmButtonLabel, isNonGuardianRelationship, postJson } from './builder-authority-client';
+import {
+  GENERIC_FAILURE,
+  INITIAL_CONFIRM_SUBMIT_STATE,
+  TIMEOUT_FAILURE,
+  confirmButtonLabel,
+  confirmSubmitReducer,
+  createAttemptTracker,
+  isNonGuardianRelationship,
+  postJson,
+} from './builder-authority-client';
 import { DEFAULT_FETCH_TIMEOUT_MS } from './fetch-with-timeout';
 
 /** Real fetch() rejects with an AbortError once its signal fires — see
@@ -148,5 +157,81 @@ describe('isNonGuardianRelationship / confirmButtonLabel', () => {
   it('button label shows the busy state regardless of relationship', () => {
     expect(confirmButtonLabel('parent_guardian', true)).toBe('Saving…');
     expect(confirmButtonLabel('coach', true)).toBe('Saving…');
+  });
+});
+
+/**
+ * Re-verification of the live preview found a distinct symptom from the
+ * first timeout fix: busy correctly released, but no inline error ever
+ * appeared — "Saving…" simply reverted to "Approve and continue" with no
+ * feedback. Direct code review of the previous handleConfirm found no
+ * batching gap (setConfirmError and setBusy(false) were always called
+ * together, synchronously, on every failure path) — but two independent
+ * useState slots are still two slots. confirmSubmitReducer makes busy/
+ * error one atomic value so this exact class of bug (one half of a pair
+ * updating without the other) is impossible by construction, regardless
+ * of what actually triggered the live symptom.
+ */
+describe('confirmSubmitReducer — busy and error are one atomic value', () => {
+  it('starting a submit always clears any previous error in the same update busy flips true', () => {
+    const state = confirmSubmitReducer({ busy: false, error: 'stale error from a previous attempt' }, { type: 'start' });
+    expect(state).toEqual({ busy: true, error: '' });
+  });
+
+  it('the exact reported sequence: Saving (busy) -> timeout/failure settles -> busy releases AND a persistent error appears together, never one without the other', () => {
+    const afterStart = confirmSubmitReducer(INITIAL_CONFIRM_SUBMIT_STATE, { type: 'start' });
+    expect(afterStart).toEqual({ busy: true, error: '' });
+
+    const afterTimeout = confirmSubmitReducer(afterStart, { type: 'settle', error: TIMEOUT_FAILURE });
+    // This is the single state transition the live preview's symptom says
+    // never happened correctly: busy:false is now structurally
+    // inseparable from error:TIMEOUT_FAILURE — there is no intermediate
+    // state where one applies without the other.
+    expect(afterTimeout).toEqual({ busy: false, error: TIMEOUT_FAILURE });
+    expect(afterTimeout.error.length).toBeGreaterThan(0);
+  });
+
+  it('a successful settle (empty error) releases busy with no lingering error — the successful transition\'s state shape', () => {
+    const afterStart = confirmSubmitReducer(INITIAL_CONFIRM_SUBMIT_STATE, { type: 'start' });
+    const afterSuccess = confirmSubmitReducer(afterStart, { type: 'settle', error: '' });
+    expect(afterSuccess).toEqual({ busy: false, error: '' });
+  });
+
+  it('clear-error is a true no-op (same reference) when there is no error — retrying or editing input never spuriously re-renders', () => {
+    const state: typeof INITIAL_CONFIRM_SUBMIT_STATE = { busy: false, error: '' };
+    expect(confirmSubmitReducer(state, { type: 'clear-error' })).toBe(state);
+  });
+
+  it('clear-error removes a persistent error without touching busy — a user changing relevant input clears the message', () => {
+    const withError = { busy: false, error: 'All three confirmations are required to continue.' };
+    expect(confirmSubmitReducer(withError, { type: 'clear-error' })).toEqual({ busy: false, error: '' });
+  });
+
+  it('the error persists across repeated no-op reducer calls that are not an explicit retry/clear — proving nothing clears it "by itself"', () => {
+    const settled = { busy: false, error: TIMEOUT_FAILURE };
+    // Simulates an unrelated parent re-render: since confirmState only
+    // ever changes via an explicit dispatch (useReducer semantics), a
+    // component re-render with no dispatch cannot alter it at all. The
+    // only actions that ever touch error are 'start', 'settle', and
+    // 'clear-error' (fired only from a retry submit or an input onChange)
+    // — there is no code path that clears it as a side effect of
+    // rendering, an effect, or a phase transition.
+    expect(confirmSubmitReducer(settled, { type: 'settle', error: settled.error })).toEqual(settled);
+  });
+});
+
+describe('createAttemptTracker — discards a stale attempt\'s result', () => {
+  it('the first attempt is current until a later attempt starts', () => {
+    const tracker = createAttemptTracker();
+    const first = tracker.start();
+    expect(tracker.isCurrent(first)).toBe(true);
+  });
+
+  it('a late-resolving earlier attempt is detected as stale once a newer attempt has started', () => {
+    const tracker = createAttemptTracker();
+    const first = tracker.start();
+    const second = tracker.start();
+    expect(tracker.isCurrent(first)).toBe(false);
+    expect(tracker.isCurrent(second)).toBe(true);
   });
 });

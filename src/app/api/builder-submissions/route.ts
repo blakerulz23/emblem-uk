@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { issueBuilderSubmissionCapability, BUILDER_SUBMISSION_COOKIE } from '@/lib/builder-submission-capability';
 import { consumeAnonymousRequestRateLimit } from '@/lib/anonymous-request-rate-limit';
 import { hasValidBuilderCsrf } from '@/lib/builder-request-security';
+import { logBuilderAuthorityStage } from '@/lib/builder-authority-diagnostics';
 
 export const runtime = 'nodejs';
 
@@ -13,13 +14,16 @@ export const runtime = 'nodejs';
  * the JSON response; only the public, non-secret submissionId does.
  */
 export async function POST(req: NextRequest) {
+  logBuilderAuthorityStage('builder-submissions:received');
   // CSRF fails before anything else — no rate-limit RPC, no DB insert, no
   // token generation for a request that can't prove same-origin + a
   // matching double-submit cookie/header pair.
   if (!hasValidBuilderCsrf(req)) {
+    logBuilderAuthorityStage('builder-submissions:csrf-rejected');
     return NextResponse.json({ error: 'Request unavailable' }, { status: 403 });
   }
   if (!(await consumeAnonymousRequestRateLimit(req.headers, 'builder-submission-issue'))) {
+    logBuilderAuthorityStage('builder-submissions:rate-limited');
     // Matches the tightest (burst) tier's own window — a caller genuinely
     // rate-limited by the longer rolling/daily tiers still gets a
     // reasonable, if optimistic, suggestion rather than a misleadingly
@@ -29,6 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    logBuilderAuthorityStage('builder-submissions:issuing');
     const { submissionId, token, expiresAt } = await issueBuilderSubmissionCapability();
     const response = NextResponse.json({ submissionId, expiresAt: expiresAt.toISOString() });
     response.cookies.set(BUILDER_SUBMISSION_COOKIE, token, {
@@ -38,8 +43,10 @@ export async function POST(req: NextRequest) {
       path: '/',
       maxAge: 60 * 60 * 24,
     });
+    logBuilderAuthorityStage('builder-submissions:success');
     return response;
   } catch (e: unknown) {
+    logBuilderAuthorityStage('builder-submissions:issue-failed');
     console.error('[builder-submissions] issue failed:', e instanceof Error ? e.message : 'unknown error');
     return NextResponse.json({ error: 'could not start a new submission' }, { status: 503 });
   }

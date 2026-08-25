@@ -58,3 +58,54 @@ export function confirmButtonLabel(relationship: BuilderAuthorityRelationship | 
   if (busy) return 'Saving…';
   return isNonGuardianRelationship(relationship) ? 'Continue to guardian approval' : 'Approve and continue';
 }
+
+/**
+ * Live-preview re-verification of the timeout fix found a distinct
+ * symptom: busy correctly released, but no inline error ever appeared.
+ * Direct code review of the previous handleConfirm found no batching gap
+ * — setConfirmError and setBusy(false) were always set together,
+ * synchronously, on every failure path — but two separate useState calls
+ * are still two separate state slots, and the diagnosis explicitly asked
+ * to rule out a stale attempt clobbering a fresher one. confirmReducer
+ * makes busy/error one atomic value (impossible for one to update
+ * without the other), and createAttemptTracker lets a caller discard the
+ * result of an attempt that is no longer the current one — belt-and-
+ * braces against exactly the "stale closure" failure mode named in the
+ * diagnosis checklist, on top of the pre-existing busyRef click guard.
+ */
+export type ConfirmSubmitState = { busy: boolean; error: string };
+
+export const INITIAL_CONFIRM_SUBMIT_STATE: ConfirmSubmitState = { busy: false, error: '' };
+
+export type ConfirmSubmitAction =
+  | { type: 'start' }
+  | { type: 'settle'; error: string }
+  | { type: 'clear-error' };
+
+export function confirmSubmitReducer(state: ConfirmSubmitState, action: ConfirmSubmitAction): ConfirmSubmitState {
+  switch (action.type) {
+    case 'start':
+      return { busy: true, error: '' };
+    case 'settle':
+      return { busy: false, error: action.error };
+    case 'clear-error':
+      return state.error ? { ...state, error: '' } : state;
+  }
+}
+
+/** A monotonically increasing id per attempt — start() returns the id for
+ *  the attempt that just began; isCurrent(id) is false once a later
+ *  attempt has started, so a late-resolving stale attempt can detect
+ *  it's stale and skip applying its result. */
+export function createAttemptTracker() {
+  let current = 0;
+  return {
+    start(): number {
+      current += 1;
+      return current;
+    },
+    isCurrent(id: number): boolean {
+      return id === current;
+    },
+  };
+}
