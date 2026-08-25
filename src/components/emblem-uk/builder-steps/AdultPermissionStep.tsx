@@ -5,7 +5,8 @@ import {
   BUILDER_AUTHORITY_CONFIRMATIONS,
   type BuilderAuthorityRelationship,
 } from '@/lib/builder-authority-shared';
-import { GENERIC_FAILURE, confirmButtonLabel, isNonGuardianRelationship, postJson } from '@/lib/builder-authority-client';
+import { GENERIC_FAILURE, TIMEOUT_FAILURE, confirmButtonLabel, isNonGuardianRelationship, postJson } from '@/lib/builder-authority-client';
+import { RequestTimeoutError } from '@/lib/fetch-with-timeout';
 
 type Phase = 'email' | 'code' | 'details';
 
@@ -71,8 +72,8 @@ export default function AdultPermissionStep({
         return;
       }
       setPhase('code');
-    } catch {
-      setEmailError(GENERIC_FAILURE);
+    } catch (err) {
+      setEmailError(err instanceof RequestTimeoutError ? TIMEOUT_FAILURE : GENERIC_FAILURE);
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -96,8 +97,8 @@ export default function AdultPermissionStep({
         return;
       }
       setPhase('details');
-    } catch {
-      setCodeError(GENERIC_FAILURE);
+    } catch (err) {
+      setCodeError(err instanceof RequestTimeoutError ? TIMEOUT_FAILURE : GENERIC_FAILURE);
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -136,11 +137,15 @@ export default function AdultPermissionStep({
       // declaration — entered relationship/confirmations are preserved on
       // every failure path above, never cleared.
       onConfirmed();
-    } catch {
+    } catch (err) {
       // getSubmissionKey() (or any other unexpected failure between here
-      // and the server response) previously propagated as an unhandled
-      // rejection with zero UI feedback — this is the fix.
-      setConfirmError(GENERIC_FAILURE);
+      // and the server response) previously either propagated as an
+      // unhandled rejection with zero UI feedback, or — if the underlying
+      // request simply never settled — never reached this catch at all,
+      // leaving "Saving…" stuck forever. fetchWithTimeout (used by both
+      // postJson and ensureSubmissionKey) guarantees this catch is always
+      // eventually reached.
+      setConfirmError(err instanceof RequestTimeoutError ? TIMEOUT_FAILURE : GENERIC_FAILURE);
     } finally {
       busyRef.current = false;
       setBusy(false);

@@ -1,4 +1,5 @@
 import { BUILDER_CSRF_HEADER, readBuilderCsrfCookie } from './print-capture';
+import { RequestTimeoutError, fetchWithTimeout } from './fetch-with-timeout';
 import type { BuilderAuthorityRelationship } from './builder-authority-shared';
 
 /**
@@ -11,28 +12,32 @@ import type { BuilderAuthorityRelationship } from './builder-authority-shared';
  */
 
 export const GENERIC_FAILURE = 'Something went wrong — please try again.';
+export const TIMEOUT_FAILURE = 'This is taking longer than expected. Please try again.';
 
 /**
- * Never throws — a genuine network-level failure (fetch() itself
- * rejecting: offline, DNS, CORS, a dropped connection) is caught here and
- * turned into the same shaped failure a server-returned error would be, so
- * every caller can handle both cases with one `if (!result.ok)` check.
- * Previously fetch() rejections propagated out of this function entirely;
- * since every call site only wrapped its own logic in try/finally (no
- * catch), that exception was swallowed with no UI feedback at all — the
- * proven root cause of "Approve and continue does nothing" for both the
- * parent/guardian and other-adult journeys.
+ * Never throws, and never hangs indefinitely — fetchWithTimeout bounds
+ * every call with an AbortController ceiling. A genuine network-level
+ * failure (fetch() rejecting: offline, DNS, CORS, a dropped connection) or
+ * a request that never got a response within the bound is caught here and
+ * turned into the same shaped, retryable failure a server-returned error
+ * would be, so every caller can handle every case with one
+ * `if (!result.ok)` check. A try/catch alone (the earlier fix) only
+ * catches a promise that actually settles — a genuinely hung request never
+ * settles at all, which is what the live preview exposed: "Saving…"
+ * persisting forever, with nothing to catch. This is the actual fix for
+ * that; the earlier exception handling remains correct but was never
+ * sufficient on its own.
  */
 export async function postJson(url: string, body: unknown): Promise<{ ok: boolean; error?: string; [key: string]: unknown }> {
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
       body: JSON.stringify(body),
     });
-  } catch {
-    return { ok: false, error: GENERIC_FAILURE };
+  } catch (err) {
+    return { ok: false, error: err instanceof RequestTimeoutError ? TIMEOUT_FAILURE : GENERIC_FAILURE };
   }
   const result = await response.json().catch(() => null);
   if (!response.ok || !result?.ok) {

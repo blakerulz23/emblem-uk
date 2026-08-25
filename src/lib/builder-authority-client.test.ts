@@ -1,5 +1,17 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { GENERIC_FAILURE, confirmButtonLabel, isNonGuardianRelationship, postJson } from './builder-authority-client';
+import { GENERIC_FAILURE, TIMEOUT_FAILURE, confirmButtonLabel, isNonGuardianRelationship, postJson } from './builder-authority-client';
+import { DEFAULT_FETCH_TIMEOUT_MS } from './fetch-with-timeout';
+
+/** Real fetch() rejects with an AbortError once its signal fires — see
+ *  fetch-with-timeout.test.ts for why a bare never-settling Promise mock
+ *  does not exercise the abort-on-timeout path at all. */
+function hangingFetchThatHonoursAbort(): typeof fetch {
+  return vi.fn((_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => {
+      reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' }));
+    });
+  })) as unknown as typeof fetch;
+}
 
 /**
  * This repo has no component-rendering test infrastructure (no jsdom, no
@@ -63,6 +75,54 @@ describe('postJson — the silent-failure fix', () => {
         body: JSON.stringify({ relationship: 'coach' }),
       })
     );
+  });
+});
+
+describe('postJson — the permanently-stuck-"Saving…" regression (live preview failure)', () => {
+  const originalFetch = global.fetch;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    global.fetch = vi.fn();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    global.fetch = originalFetch;
+  });
+
+  it('a request that never settles (the exact live-preview failure) resolves with a visible, distinct timeout message within the bound — never hangs forever', async () => {
+    // No resolve, no reject, ever — this is what a genuinely stuck
+    // server-side call (or a dropped connection) looks like from the
+    // caller's perspective. The pre-fix code had nothing that could ever
+    // make handleConfirm's await return in this scenario: "Saving…" would
+    // persist for the lifetime of the page.
+    global.fetch = hangingFetchThatHonoursAbort();
+
+    const promise = postJson('/api/builder-authority/declare', { relationship: 'parent_guardian' });
+    const assertion = expect(promise).resolves.toEqual({ ok: false, error: TIMEOUT_FAILURE });
+    await vi.advanceTimersByTimeAsync(DEFAULT_FETCH_TIMEOUT_MS + 1);
+    await assertion;
+  });
+
+  it('the timeout message is distinct from the generic network-failure message, so a retrying guardian sees an accurate reason', () => {
+    expect(TIMEOUT_FAILURE).not.toBe(GENERIC_FAILURE);
+    expect(TIMEOUT_FAILURE.length).toBeGreaterThan(0);
+  });
+
+  it('retrying after a timeout (a fresh call, simulating the guardian clicking the button again) succeeds normally once the request actually completes', async () => {
+    const fetchMock = hangingFetchThatHonoursAbort();
+    global.fetch = fetchMock;
+    const firstAttempt = postJson('/api/builder-authority/declare', {});
+    const firstAssertion = expect(firstAttempt).resolves.toEqual({ ok: false, error: TIMEOUT_FAILURE });
+    await vi.advanceTimersByTimeAsync(DEFAULT_FETCH_TIMEOUT_MS + 1);
+    await firstAssertion;
+
+    // The hanging base implementation was only ever exercised once (the
+    // first attempt above) — this queues a one-time override so the retry
+    // actually completes, proving a retry after a timeout is not itself
+    // stuck by anything left over from the first, abandoned attempt.
+    (fetchMock as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ ok: true, relationship: 'parent_guardian' }) });
+    const retryResult = await postJson('/api/builder-authority/declare', {});
+    expect(retryResult).toEqual({ ok: true, relationship: 'parent_guardian' });
   });
 });
 

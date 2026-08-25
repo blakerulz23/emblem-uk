@@ -11,6 +11,7 @@ import { DEFAULT_EMJFL_CLUB, EAST_MANCHESTER_LEAGUE, EMJFL_CLUBS, getEmjflClub, 
 import { DIRECT_BUILDER_MAX_PAID_PLAYERS } from '@/lib/order-enquiry-validation';
 import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
 import { captureElementToPng, renderPrintFile, BUILDER_CSRF_HEADER, readBuilderCsrfCookie } from '@/lib/print-capture';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { buildUkCardCartUrl } from '@/lib/shopify';
 import {
   createPlayer,
@@ -371,7 +372,12 @@ export default function ProductionBuilder({
   const ensureSubmissionKey = async (): Promise<string> => {
     if (submissionCapabilityRef.current) return submissionCapabilityRef.current;
     const promise = (async () => {
-      const response = await fetch('/api/builder-submissions', {
+      // fetchWithTimeout bounds this call — previously a hung request here
+      // (e.g. a slow/stuck rate-limit RPC server-side) never settled at
+      // all, leaving any caller awaiting this promise (handleConfirm in
+      // AdultPermissionStep.tsx included) permanently stuck with no error
+      // and no way to recover, exactly what the live preview exposed.
+      const response = await fetchWithTimeout('/api/builder-submissions', {
         method: 'POST',
         headers: { [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
       });
