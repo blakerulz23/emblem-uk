@@ -37,6 +37,8 @@ import AdultPermissionStep from './builder-steps/AdultPermissionStep';
 import GuardianPendingScreen from './builder-steps/GuardianPendingScreen';
 import CoachCardSection from './CoachCardSection';
 import PricingSummaryCard from './PricingSummaryCard';
+import ShareCardSheet from './ShareCardSheet';
+import { recordCardShareConsent } from '@/lib/card-share';
 import { useOrderPricingQuote } from './useOrderPricingQuote';
 import { isQuoteFreshForCounts, type OrderPricingQuoteState } from '@/lib/pricing-quote-controller';
 import { formatPence } from '@/lib/pricing-quote';
@@ -345,6 +347,10 @@ export default function ProductionBuilder({
   // ordinary "Order received" success content for a non-guardian submitter.
   const [submittedOrderId, setSubmittedOrderId] = useState<string | null>(null);
   const [submittedAuthorityStatus, setSubmittedAuthorityStatus] = useState<string | null>(null);
+  // Guardian-controlled card-front social sharing (migration 0078) — an
+  // optional entry point shown only after a real authority gate passes;
+  // see the two render sites below for the exact conditions.
+  const [shareSheetOpen, setShareSheetOpen] = useState(false);
   // Stage 6 — one cryptographically random idempotency key per builder
   // submission attempt, generated once and reused for every retry (never
   // regenerated just because a network response was lost, never the old
@@ -1249,6 +1255,10 @@ export default function ProductionBuilder({
         setSquadInviteOutcome(body?.reason === 'campaign_closed' ? 'campaign_closed' : 'unavailable');
         return;
       }
+      {
+        const successBody = await response.json().catch(() => null) as { orderId?: string } | null;
+        if (successBody?.orderId) setSubmittedOrderId(successBody.orderId);
+      }
       setSquadInvitePhase('success');
       succeeded = true;
       // submittingRef intentionally stays true on success — one-shot
@@ -1906,10 +1916,24 @@ export default function ProductionBuilder({
                       <li>Cards are delivered together to the approved organiser/coach.</li>
                       <li>Your organiser sees aggregate team progress only — never this card&apos;s details.</li>
                     </ul>
+                    {submittedOrderId && (
+                      <button type="button" className="uk-share-card-entry" onClick={() => setShareSheetOpen(true)}>
+                        Share your card design
+                      </button>
+                    )}
                     <div className="uk-squad-invite-success-actions">
                       <a className="uk-wizard-primary" href="/squad-invite/join">Return to Squad Invite</a>
                       <a className="uk-squad-invite-success-secondary" href="/">Return to Emblem homepage</a>
                     </div>
+                    {submittedOrderId && (
+                      <ShareCardSheet
+                        isOpen={shareSheetOpen}
+                        onClose={() => setShareSheetOpen(false)}
+                        orderId={submittedOrderId}
+                        cardFront={<PlayerCard order={order} player={squadInvitePlayer} side="front" />}
+                        recordConsent={recordCardShareConsent}
+                      />
+                    )}
                   </div>
                 ) : (
                   <>
@@ -2064,6 +2088,20 @@ export default function ProductionBuilder({
                     ? 'Your cards are ready. We will review your order, confirm print quantity, delivery cost and send you a secure payment link.'
                     : 'Approve at least one card to continue.'}
               </p>
+              {enquiryStatus === 'sent' && submittedOrderId && order.type === 'single' && submittedAuthorityStatus === 'confirmed' && summary.approvedPlayers[0] && (
+                <>
+                  <button type="button" className="uk-share-card-entry" onClick={() => setShareSheetOpen(true)}>
+                    Share your card design
+                  </button>
+                  <ShareCardSheet
+                    isOpen={shareSheetOpen}
+                    onClose={() => setShareSheetOpen(false)}
+                    orderId={submittedOrderId}
+                    cardFront={<PlayerCard order={order} player={summary.approvedPlayers[0]} side="front" />}
+                    recordConsent={recordCardShareConsent}
+                  />
+                </>
+              )}
               <div className="uk-production-snapshot">
                 <div>
                   <span>Clubs</span>

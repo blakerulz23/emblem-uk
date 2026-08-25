@@ -10047,3 +10047,167 @@ a { text-decoration: none; color: inherit; }
     flex-wrap: wrap;
   }
 }
+
+/* Guardian-controlled card-front social sharing (migration 0078) */
+.uk-share-card-entry {
+  width: 100%;
+  min-height: 52px;
+  margin: 12px 0 0;
+  border: 1.5px solid var(--wizard-accent);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--wizard-accent);
+  cursor: pointer;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.uk-share-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(6, 10, 14, 0.55);
+  padding: 0;
+}
+
+.uk-share-sheet {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  max-height: 92vh;
+  overflow-y: auto;
+  background: #10161d;
+  color: #f4f7f6;
+  border-radius: 24px 24px 0 0;
+  padding: 24px 20px calc(24px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .uk-share-sheet-overlay {
+    align-items: center;
+  }
+  .uk-share-sheet {
+    border-radius: 24px;
+    max-height: 88vh;
+  }
+}
+
+.uk-share-sheet-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.uk-share-sheet-eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--wizard-accent);
+}
+
+.uk-share-sheet h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.uk-share-sheet-preview {
+  align-self: center;
+  display: flex;
+  justify-content: center;
+}
+
+.uk-share-sheet-social-preview {
+  width: 100%;
+  max-width: 320px;
+  align-self: center;
+  border-radius: 12px;
+  aspect-ratio: 1080 / 1350;
+  object-fit: contain;
+  background: #0b0f14;
+}
+
+.uk-share-sheet-warning {
+  margin: 4px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(244, 247, 246, 0.78);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.uk-share-sheet-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.uk-share-sheet-checkbox input {
+  margin-top: 2px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.uk-share-sheet-error {
+  margin: 0;
+  font-size: 13px;
+  color: #ff9b9b;
+}
+
+.uk-share-sheet-status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--wizard-accent);
+}
+
+.uk-share-sheet-primary {
+  width: 100%;
+  min-height: 56px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--wizard-accent);
+  color: #06251f;
+  font-weight: 900;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.uk-share-sheet-primary:disabled,
+.uk-share-sheet-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.uk-share-sheet-secondary {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  background: transparent;
+  color: #f4f7f6;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
