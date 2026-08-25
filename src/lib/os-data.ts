@@ -5,7 +5,7 @@ import type { SkillCategory, CoachSummary, DevelopmentSeason, SeasonTarget, Play
 import { computeOverallScore, MIDFIELDER_WEIGHTS } from '@/app/os/scoring';
 import { cardDefinitionToFaceData } from '@/lib/card-definition';
 import type { CardDefinitionRow, CardFaceData } from '@/lib/card-definition';
-import { getSignedDownloadUrl } from '@/lib/s3-client';
+import { getSignedDownloadUrl, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC } from '@/lib/s3-client';
 import { resolveCardDefinitionLogo } from '@/lib/card-definition-logo';
 import type { SquadPlayer, VerifyItem, GuardianStatus, SeasonFocusEntry, StrengthEntry, AssessmentEntry } from '@/app/os/types';
 
@@ -451,8 +451,8 @@ async function getParentOsData(
   // reference, never a URL — resolveCardDefinitionLogo signs it fresh here,
   // exactly like the photo just below; a legacy/static-asset plain string
   // passes through unchanged. See card-definition-logo.ts.
-  if (cardDefinition) cardDefinition.logo = await resolveCardDefinitionLogo(cardDefinitionDbRow?.logo);
-  const cardPhotoUrl = cardDefinitionDbRow?.photo?.storageKey ? await getSignedDownloadUrl(cardDefinitionDbRow.photo.storageKey) : null;
+  if (cardDefinition) cardDefinition.logo = await resolveCardDefinitionLogo(cardDefinitionDbRow?.logo, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC);
+  const cardPhotoUrl = cardDefinitionDbRow?.photo?.storageKey ? await getSignedDownloadUrl(cardDefinitionDbRow.photo.storageKey, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC) : null;
 
   // Sorted client-side rather than via `.order(col, { foreignTable })` —
   // that PostgREST option orders rows *within* a one-to-many embed, not a
@@ -675,8 +675,8 @@ async function getParentOsData(
       // file — a moment references at most one card_definitions row.
       const linkedDefinitionDbRow = (m as unknown as { card_definitions: CardDefinitionDbRow | null }).card_definitions;
       const cardDefinition: CardFaceData | null = linkedDefinitionDbRow ? cardDefinitionToFaceData(toCardDefinitionRow(linkedDefinitionDbRow)) : null;
-      if (cardDefinition) cardDefinition.logo = await resolveCardDefinitionLogo(linkedDefinitionDbRow?.logo);
-      const cardPhotoUrl = linkedDefinitionDbRow?.photo?.storageKey ? await getSignedDownloadUrl(linkedDefinitionDbRow.photo.storageKey) : null;
+      if (cardDefinition) cardDefinition.logo = await resolveCardDefinitionLogo(linkedDefinitionDbRow?.logo, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC);
+      const cardPhotoUrl = linkedDefinitionDbRow?.photo?.storageKey ? await getSignedDownloadUrl(linkedDefinitionDbRow.photo.storageKey, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC) : null;
       return {
         id: m.id,
         title: m.title,
@@ -689,7 +689,7 @@ async function getParentOsData(
           (m.moment_media ?? []).map(async (mm: { id: string; kind: 'photo' | 'video'; s3_key: string }) => ({
             id: mm.id,
             kind: mm.kind,
-            url: await getSignedDownloadUrl(mm.s3_key),
+            url: await getSignedDownloadUrl(mm.s3_key, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC),
           }))
         ),
         seasonLabel,
@@ -728,7 +728,7 @@ async function getParentOsData(
       preferredFoot: (player.preferred_foot as 'Left' | 'Right' | 'Both' | null) ?? null,
       overallScore,
       seasonalChange: latestSnapshot?.seasonal_change ?? null,
-      photoUrl: player.photo_key ? await getSignedDownloadUrl(player.photo_key) : null,
+      photoUrl: player.photo_key ? await getSignedDownloadUrl(player.photo_key, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC) : null,
       squadNumber: player.squad_number ?? null,
       footballAgeGroup: player.football_age_group ?? null,
       memberSinceYear: player.created_at ? new Date(player.created_at).getFullYear() : null,
@@ -972,7 +972,7 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
         player: m.players?.name ?? '',
         playerId: m.player_id,
         moment: m.title,
-        thumb: firstMedia ? await getSignedDownloadUrl(firstMedia.s3_key) : '',
+        thumb: firstMedia ? await getSignedDownloadUrl(firstMedia.s3_key, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC) : '',
         by: 'Parent',
         date: m.occurred_on ?? new Date(m.created_at).toLocaleDateString('en-GB'),
         note: m.note ?? null,

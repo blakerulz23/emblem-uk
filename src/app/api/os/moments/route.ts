@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSignedDownloadUrl } from '@/lib/s3-client';
+import { getSignedDownloadUrl, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC } from '@/lib/s3-client';
 import { createClient } from '@/lib/supabase/server';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
       moment_media: await Promise.all(
         (moment.moment_media ?? []).map(async (m: { s3_key: string; kind: string }) => ({
           ...m,
-          url: await getSignedDownloadUrl(m.s3_key),
+          url: await getSignedDownloadUrl(m.s3_key, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC),
         }))
       ),
     }))

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 
 export const runtime = 'nodejs';
@@ -7,18 +7,18 @@ export const runtime = 'nodejs';
 /**
  * Records that staff reviewed a player_deletion_requests row and declined
  * to act on it — e.g. couldn't verify the requester's identity. Performs
- * no deletion, same as complete/route.ts; this is the other of the two
- * ways a pending request can be closed out.
+ * no deletion. Migration 0076: now routed entirely through
+ * staff_reject_player_deletion_request (SECURITY DEFINER), not a raw
+ * service-role UPDATE — a raw UPDATE would flip `status` correctly but
+ * silently skip restore_after_player_deletion_request, leaving the
+ * player's public profile disabled and their cards suspended forever even
+ * though the request that caused that was just declined. The RPC does
+ * both in one transaction.
  *
- * Requires a non-empty rejection reason — enforced here and by the table's
- * own player_deletion_requests_rejection_requires_reason CHECK constraint
- * (0041).
- *
- * Only a currently-pending request can be rejected — checked here for a
- * clear error message, and independently enforced by the table's
- * player_deletion_requests_enforce_transition trigger regardless of this
- * check. Re-rejecting an already-rejected request is a safe no-op;
- * rejecting a completed or cancelled request is a genuine error.
+ * Requires a non-empty rejection reason — enforced here, by the RPC
+ * itself, and by the table's own CHECK constraint (0041). Only a
+ * currently-pending request can be rejected; re-rejecting an already-
+ * rejected request is a safe no-op (the RPC's own idempotent branch).
  */
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -33,37 +33,19 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ error: 'A rejection reason is required.' }, { status: 400 });
   }
 
-  const serviceRole = createServiceRoleClient();
-  const { data: existing, error: fetchError } = await serviceRole
-    .from('player_deletion_requests')
-    .select('status')
-    .eq('id', params.id)
-    .maybeSingle();
-  if (fetchError) {
-    return NextResponse.json({ error: fetchError.message }, { status: 500 });
-  }
-  if (!existing) {
-    return NextResponse.json({ error: 'Request not found' }, { status: 404 });
-  }
-  if (existing.status === 'rejected') {
-    return NextResponse.json({ ok: true });
-  }
-  if (existing.status !== 'pending') {
-    return NextResponse.json({ error: `This request is already ${existing.status} and can no longer be rejected.` }, { status: 400 });
-  }
-
-  const { error } = await serviceRole
-    .from('player_deletion_requests')
-    .update({
-      status: 'rejected',
-      handled_by: staffCheck.userId,
-      handled_at: new Date().toISOString(),
-      rejection_reason: reason,
-    })
-    .eq('id', params.id);
+  const { error } = await supabase.rpc('staff_reject_player_deletion_request', {
+    p_request_id: params.id,
+    p_rejection_reason: reason,
+  });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error.message.includes('Staff access required')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    if (error.message === 'Request not found') {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+    return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
   return NextResponse.json({ ok: true });

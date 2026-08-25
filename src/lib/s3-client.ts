@@ -74,6 +74,21 @@ export interface ObjectMetadata {
 }
 
 /**
+ * True only for a provider response that conclusively means the object
+ * does not exist (a 404, or the SDK's own NotFound/NoSuchKey error name) —
+ * never for a permission, network, timeout, or other transient failure.
+ * Shared by headObject below and by the abandoned-upload sweep
+ * (sweep-abandoned-uploads/route.ts), which must not treat every S3 error
+ * as "already gone" — only this narrow, conclusive case is safe to treat
+ * the same as a successful delete.
+ */
+export function isS3NotFoundError(err: unknown): boolean {
+  const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+  const name = (err as { name?: string })?.name;
+  return status === 404 || name === 'NotFound' || name === 'NoSuchKey';
+}
+
+/**
  * Confirms a key genuinely exists in the bucket (and returns its stored
  * content type/size), rather than trusting that a well-formed-looking key
  * string was actually uploaded. A namespace-prefix check alone (see
@@ -89,9 +104,7 @@ export async function headObject(key: string): Promise<ObjectMetadata> {
     const result = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
     return { exists: true, contentType: result.ContentType, contentLength: result.ContentLength };
   } catch (err) {
-    const status = (err as { $metadata?: { httpStatusCode?: number }; name?: string })?.$metadata?.httpStatusCode;
-    const name = (err as { name?: string })?.name;
-    if (status === 404 || name === 'NotFound' || name === 'NoSuchKey') {
+    if (isS3NotFoundError(err)) {
       return { exists: false };
     }
     throw err;
@@ -100,6 +113,24 @@ export async function headObject(key: string): Promise<ObjectMetadata> {
 
 /** SigV4's AWS-enforced ceiling for presigned URL expiry: 7 days. */
 const MAX_PRESIGN_EXPIRY_SEC = 60 * 60 * 24 * 7;
+
+/**
+ * Explicit, justified expiry for authenticated guardian/coach OS media
+ * (child photo, moment media, card photo/logo) — every call site in
+ * os-data.ts, coach-fields/route.ts, and moments/route.ts previously
+ * omitted `expiresInSec` entirely, which silently fell through to
+ * MAX_PRESIGN_EXPIRY_SEC (7 days): undocumented, and ~168x longer than
+ * the 1-hour window already used for staff (staff/queue/page.tsx) and
+ * far beyond the 15-minute window used for the fully public/anonymous
+ * profile and pre-order builder paths. One hour matches the existing
+ * staff precedent in this codebase, comfortably covers a normal single
+ * OS browsing session (the URL is re-fetched on the next page load, not
+ * held open across visits), and is the smallest period that doesn't
+ * require adding a client-side re-fetch-before-expiry mechanism that
+ * doesn't exist today — a shorter window would need that work done
+ * first, not just a smaller number here.
+ */
+export const AUTHENTICATED_OS_MEDIA_EXPIRY_SEC = 60 * 60;
 
 /**
  * Get a presigned download URL valid for `expiresInSec` seconds (default,
