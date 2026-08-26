@@ -135,30 +135,35 @@ describe('ProductionBuilder — ShareCardSheet is only mounted for a single-chil
  * image reproduced the card design and badge but not the player's
  * photograph, because by "Order received" time the photo (and any
  * player-uploaded badge) had already been swapped from a local blob: URL
- * to a remote, signed URL by orderWithUploadedAssets — a cross-origin
- * image html2canvas cannot draw onto canvas without the host's CORS
+ * to a private, signed S3 URL by orderWithUploadedAssets — a cross-origin
+ * image html2canvas cannot draw onto canvas without the bucket's CORS
  * cooperation, even though the very same <img> displays fine anywhere
- * else on the page. captureShareImage cannot be unit-tested directly
- * (no jsdom — see this file's own top comment), so this proves the fix's
- * actual wiring by reading the source: every remote image is localised to
- * a blob: URL before the capture rig ever renders, and capture is gated
- * on every rendered <img> genuinely having pixel dimensions, not merely
- * on decode() resolving.
+ * else on the page. A first fix attempt (fetching that URL directly from
+ * the browser) hit exactly this: confirmed via a live browser console log
+ * as a genuine CORS block from the (correctly private) production bucket,
+ * not a bug in the fetch call. The actual fix is a same-origin server-side
+ * proxy (/api/card-share/photo, backed by migration 0079's
+ * get_card_share_asset_key) — captureShareImage cannot be unit-tested
+ * directly (no jsdom — see this file's own top comment), so this proves
+ * the fix's actual wiring by reading the source: every remote image is
+ * localised via the proxy to a blob: URL before the capture rig ever
+ * renders, and capture is gated on every rendered <img> genuinely having
+ * pixel dimensions, not merely on decode() resolving.
  */
 describe('ProductionBuilder — captureShareImage waits for and verifies the player photograph specifically', () => {
-  it('fetches and localises the photo URL before ever calling setShareCapturePlayer, when it is not already local', () => {
+  it('fetches and localises the photo via the same-origin proxy before ever calling setShareCapturePlayer, when it is not already local', () => {
     const idx = builder.indexOf('const captureShareImage');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
-    const photoFetchIdx = fnBody.indexOf('fetchAsLocalImageUrl(photoUrl)');
+    const photoFetchIdx = fnBody.indexOf("fetchProxiedShareAssetAsLocalUrl('photo')");
     const setCaptureIdx = fnBody.indexOf('setShareCapturePlayer(capturePlayer)');
     expect(photoFetchIdx).toBeGreaterThan(-1);
     expect(setCaptureIdx).toBeGreaterThan(photoFetchIdx);
   });
 
-  it('also localises a player-uploaded badge, not only the photograph — both are "visible club/team elements" subject to the same swap', () => {
+  it('also localises a player-uploaded badge via the same proxy, not only the photograph — both are "visible club/team elements" subject to the same swap', () => {
     const idx = builder.indexOf('const captureShareImage');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
-    expect(fnBody).toContain('fetchAsLocalImageUrl(badgeUrl)');
+    expect(fnBody).toContain("fetchProxiedShareAssetAsLocalUrl('badge')");
   });
 
   it('never re-fetches an already-local (blob:/data:) or same-origin bundled (root-relative) image URL', () => {
@@ -168,8 +173,21 @@ describe('ProductionBuilder — captureShareImage waits for and verifies the pla
     expect(fnBody).toContain("url!.startsWith('/')");
   });
 
+  it('requires a submitted order id before capturing anything — the proxy has nothing to key off of otherwise', () => {
+    const idx = builder.indexOf('const captureShareImage');
+    const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
+    expect(fnBody).toContain("if (!submittedOrderId) throw new Error('Could not prepare card image');");
+  });
+
+  it('the proxy call never sends a client-supplied key or S3 URL — only orderId and kind', () => {
+    const idx = builder.indexOf('const fetchProxiedShareAssetAsLocalUrl');
+    const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
+    expect(fnBody).toContain("body: JSON.stringify({ orderId: submittedOrderId, kind })");
+    expect(fnBody).not.toMatch(/photoUrl|badgeUrl|storageKey/);
+  });
+
   it('a failed fetch of a required image throws, rather than proceeding to render/capture an incomplete card', () => {
-    const idx = builder.indexOf('const fetchAsLocalImageUrl');
+    const idx = builder.indexOf('const fetchProxiedShareAssetAsLocalUrl');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
     expect(fnBody).toContain('if (!response.ok) throw new Error');
   });

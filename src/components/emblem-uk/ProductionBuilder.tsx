@@ -967,22 +967,37 @@ export default function ProductionBuilder({
    *
    * Fixes a live-preview-verified defect: the shared image reproduced the
    * card design and badge but not the player's photograph. Root cause,
-   * proven by reading the code rather than guessed at: by the time "Order
-   * received" (and therefore the share button) exists at all,
-   * orderWithUploadedAssets has already replaced this player's photo.
-   * srcUrl — and any player-uploaded badge — with a remote, signed URL.
-   * That URL displays perfectly well in an ordinary <img> (no CORS needed
-   * for that), but html2canvas cannot draw a cross-origin image onto
-   * canvas without the host's cooperation, so that layer alone silently
-   * disappeared from the captured output. Fetching each such URL here and
-   * substituting a fresh local blob: URL before ever rendering the capture
-   * rig removes the cross-origin request from the drawing step entirely —
-   * and if that fetch itself fails (e.g. genuinely no CORS grant to read
-   * the bytes), it throws here, which the caller already turns into a
-   * visible, retryable failure — never a silently incomplete image.
+   * proven by reading the code rather than guessed at, and then confirmed
+   * live via the browser's own console: by the time "Order received" (and
+   * therefore the share button) exists at all, orderWithUploadedAssets has
+   * already replaced this player's photo.srcUrl — and any player-uploaded
+   * badge — with a private, signed S3 URL. That URL displays perfectly
+   * well in an ordinary <img> (no CORS needed for that), but html2canvas
+   * cannot draw a cross-origin image onto canvas without the bucket's
+   * cooperation — and this app's production bucket correctly refuses that
+   * (these are private, non-public child photos; granting arbitrary
+   * browser origins permission to read them would be a real regression,
+   * not a fix). A first attempt at fetching the URL directly from the
+   * browser hit exactly this: a genuine CORS block, confirmed in a live
+   * console log, not a bug in that fetch call.
+   *
+   * The actual fix is /api/card-share/photo: a same-origin server-side
+   * proxy that fetches the object from S3 itself (server-to-server, where
+   * CORS never applies) and returns the bytes from this app's own origin.
+   * It never trusts a client-supplied key or URL — get_card_share_asset_key
+   * (migration 0079) re-derives the same eligibility check
+   * get_card_share_eligibility already performs and resolves the key
+   * itself, entirely server-side. If that fetch fails (including a
+   * genuine 404 — nothing to proxy for this kind), it throws here, which
+   * the caller already turns into a visible, retryable failure — never a
+   * silently incomplete image.
    */
-  const fetchAsLocalImageUrl = async (url: string): Promise<{ url: string; revoke: () => void }> => {
-    const response = await fetch(url);
+  const fetchProxiedShareAssetAsLocalUrl = async (kind: 'photo' | 'badge'): Promise<{ url: string; revoke: () => void }> => {
+    const response = await fetch('/api/card-share/photo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
+      body: JSON.stringify({ orderId: submittedOrderId, kind }),
+    });
     if (!response.ok) throw new Error('Could not load an image required for this card');
     const blob = await response.blob();
     const localUrl = URL.createObjectURL(blob);
@@ -998,6 +1013,7 @@ export default function ProductionBuilder({
   const captureShareImage = async (): Promise<string> => {
     const approvedPlayer = summary.approvedPlayers[0];
     if (!approvedPlayer) throw new Error('Could not prepare card image');
+    if (!submittedOrderId) throw new Error('Could not prepare card image');
 
     const revokers: Array<() => void> = [];
     try {
@@ -1005,14 +1021,14 @@ export default function ProductionBuilder({
 
       const photoUrl = capturePlayer.photo?.srcUrl;
       if (needsLocalizing(photoUrl)) {
-        const local = await fetchAsLocalImageUrl(photoUrl);
+        const local = await fetchProxiedShareAssetAsLocalUrl('photo');
         revokers.push(local.revoke);
         capturePlayer = { ...capturePlayer, photo: { ...capturePlayer.photo!, srcUrl: local.url } };
       }
 
       const badgeUrl = capturePlayer.badgeUrl;
       if (needsLocalizing(badgeUrl)) {
-        const local = await fetchAsLocalImageUrl(badgeUrl);
+        const local = await fetchProxiedShareAssetAsLocalUrl('badge');
         revokers.push(local.revoke);
         capturePlayer = { ...capturePlayer, badgeUrl: local.url };
       }

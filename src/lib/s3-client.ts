@@ -111,6 +111,27 @@ export async function headObject(key: string): Promise<ObjectMetadata> {
   }
 }
 
+export interface FetchedObject {
+  bytes: Buffer;
+  contentType?: string;
+}
+
+/**
+ * Reads an object's bytes directly, server-side — never a signed URL. This
+ * is what makes the card-share photo proxy route (/api/card-share/photo)
+ * work at all: a browser fetch() or html2canvas draw of a presigned S3 URL
+ * is CORS-gated (the bucket correctly does not grant it, since these are
+ * private, non-public photos), but a server-to-server S3 GetObject has no
+ * CORS restriction — only browsers enforce CORS. The route returns these
+ * bytes to the browser from the app's own origin instead.
+ */
+export async function getObjectBytes(key: string): Promise<FetchedObject> {
+  if (!bucket) throw new Error('AWS_S3_BUCKET is not set');
+  const result = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const bytes = Buffer.from(await result.Body!.transformToByteArray());
+  return { bytes, contentType: result.ContentType };
+}
+
 /** SigV4's AWS-enforced ceiling for presigned URL expiry: 7 days. */
 const MAX_PRESIGN_EXPIRY_SEC = 60 * 60 * 24 * 7;
 

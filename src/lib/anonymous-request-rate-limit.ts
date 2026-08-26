@@ -45,7 +45,11 @@ export type AnonymousRequestAction =
   // Supabase Auth session from Adult Permission), so this is IP+subject
   // keyed the same way builder-authority-declare already is, not IP-only.
   | 'card-share-eligibility'
-  | 'card-share-consent';
+  | 'card-share-consent'
+  // Same-origin asset proxy (/api/card-share/photo) — an authenticated
+  // action, same as the other two card-share entries above. Up to two
+  // calls (photo + badge) per genuine share attempt.
+  | 'card-share-photo';
 
 const LIMITS: Record<
   | 'render-print'
@@ -56,7 +60,8 @@ const LIMITS: Record<
   | 'builder-guardian-email-set'
   | 'builder-guardian-respond'
   | 'card-share-eligibility'
-  | 'card-share-consent',
+  | 'card-share-consent'
+  | 'card-share-photo',
   { ip: number; subject?: number }
 > = {
   'render-print': { ip: 30, subject: 20 },
@@ -87,6 +92,9 @@ const LIMITS: Record<
   // One real share per session in the ordinary case; generous enough for a
   // guardian retrying after a cancelled/failed attempt.
   'card-share-consent': { ip: 20, subject: 10 },
+  // Two calls (photo, badge) per genuine share attempt; generous enough
+  // for a guardian retrying after a failed capture, still bounded.
+  'card-share-photo': { ip: 60, subject: 30 },
 };
 
 /**
