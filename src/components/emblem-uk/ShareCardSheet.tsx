@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import {
   CARD_SHARE_CONFIRMATION_LABEL,
   CARD_SHARE_GENERIC_FAILURE,
@@ -27,14 +27,20 @@ import {
  * already use, off-screen, and returns a data URL via the same unmodified
  * captureElementToPng print-capture.ts already exports. This component
  * never touches print-capture.ts, card-definition.tsx, or any protected
- * rendering path directly.
+ * rendering path directly — `preview` is a ready-made element ProductionBuilder
+ * already owns (the same visible, on-screen PlayerCard the guardian's order
+ * summary shows), handed in as a plain ReactNode so this component can put
+ * the share affordance directly on top of the design without importing any
+ * card-rendering code itself.
  */
 export default function ShareCardSheet({
   orderId,
   getShareImage,
+  preview,
 }: {
   orderId: string;
   getShareImage: () => Promise<string>;
+  preview: ReactNode;
 }) {
   const [eligibility, setEligibility] = useState<CardShareEligibility | null>(null);
   const [stage, dispatch] = useReducer(cardShareStageReducer, { type: 'closed' });
@@ -133,30 +139,48 @@ export default function ShareCardSheet({
 
   return (
     <div className="uk-card-share">
-      <h3>Share your card design</h3>
-      <p className="uk-wizard-copy">Create a social-quality copy of the card front to share with family and friends.</p>
+      <div className="uk-card-share-preview">
+        {preview}
+        {eligibility.eligible && stage.type === 'closed' && (
+          <button
+            type="button"
+            className="uk-card-share-icon-btn"
+            aria-label="Share your card design"
+            onClick={() => dispatch({ type: 'open' })}
+          >
+            <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+              <path d="M12 3v12" />
+              <path d="M7.5 7.5L12 3l4.5 4.5" />
+              <path d="M5 12v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       {blockedMessage && stage.type === 'closed' && <p className="uk-card-share-blocked">{blockedMessage}</p>}
 
-      {eligibility.eligible && stage.type === 'closed' && (
-        <button type="button" className="uk-wizard-primary compact" onClick={() => dispatch({ type: 'open' })}>
-          Share card
-        </button>
-      )}
-
       {stage.type === 'confirming' && (
-        <div className="uk-card-share-sheet" role="dialog" aria-modal="true">
-          <p className="uk-card-share-warning" role="alert">{CARD_SHARE_WARNING}</p>
-          <p className="uk-card-share-recall">{CARD_SHARE_RECALL_NOTICE}</p>
-          <label className="uk-card-share-confirm">
-            <input type="checkbox" checked={stage.checked} onChange={() => dispatch({ type: 'toggle-checked' })} />
-            <span>{CARD_SHARE_CONFIRMATION_LABEL}</span>
-          </label>
-          <div className="uk-card-share-actions">
-            <button type="button" className="uk-wizard-primary compact" disabled={!stage.checked} onClick={handleContinue}>
-              Continue to share
-            </button>
-            <button type="button" onClick={handleCancel}>Cancel</button>
+        <div className="uk-card-share-modal-backdrop" role="presentation" onClick={handleCancel}>
+          <div
+            className="uk-card-share-modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <span className="uk-card-share-eyebrow">Share your card</span>
+            <h3>Ready to share?</h3>
+            <p className="uk-card-share-warning" role="alert">{CARD_SHARE_WARNING}</p>
+            <p className="uk-card-share-recall">{CARD_SHARE_RECALL_NOTICE}</p>
+            <label className="uk-card-share-confirm">
+              <input type="checkbox" checked={stage.checked} onChange={() => dispatch({ type: 'toggle-checked' })} />
+              <span>{CARD_SHARE_CONFIRMATION_LABEL}</span>
+            </label>
+            <div className="uk-card-share-actions">
+              <button type="button" className="uk-wizard-primary compact" disabled={!stage.checked} onClick={handleContinue}>
+                Continue to share
+              </button>
+              <button type="button" onClick={handleCancel}>Cancel</button>
+            </div>
           </div>
         </div>
       )}

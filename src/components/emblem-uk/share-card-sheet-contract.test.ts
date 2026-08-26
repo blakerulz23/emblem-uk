@@ -101,6 +101,52 @@ describe('ShareCardSheet — visibility gating', () => {
   });
 });
 
+/**
+ * Visual redesign: the design is shown on screen (the same PlayerCard
+ * ProductionBuilder already renders elsewhere, handed in as `preview` — see
+ * this component's own top comment on why it stays a plain ReactNode
+ * rather than an import of card-definition.tsx), with the share affordance
+ * placed directly on it, and the confirmation step is a focused overlay
+ * rather than an inline block. None of this changes the underlying
+ * eligibility/consent/capture logic already covered above and in
+ * card-share.ts — only where and how the same states are presented.
+ */
+describe('ShareCardSheet — the design preview and its share affordance', () => {
+  it('renders the caller-supplied preview inside the same box the share icon sits on', () => {
+    const previewIdx = sheet.indexOf('<div className="uk-card-share-preview">');
+    const braceIdx = sheet.indexOf('{preview}', previewIdx);
+    const iconBtnIdx = sheet.indexOf('uk-card-share-icon-btn', previewIdx);
+    expect(previewIdx).toBeGreaterThan(-1);
+    expect(braceIdx).toBeGreaterThan(previewIdx);
+    expect(iconBtnIdx).toBeGreaterThan(braceIdx);
+  });
+
+  it('the share icon button only appears once eligible and while nothing else is already in progress', () => {
+    const idx = sheet.indexOf('uk-card-share-icon-btn');
+    const guardSection = sheet.slice(Math.max(0, idx - 200), idx);
+    expect(guardSection).toContain("eligibility.eligible && stage.type === 'closed'");
+  });
+
+  it('the icon button has an accessible name (icon-only, no visible label text)', () => {
+    expect(sheet).toContain('aria-label="Share your card design"');
+  });
+
+  it('the confirmation step renders as a dismissible overlay, and the backdrop click cancels the same way the Cancel button does', () => {
+    const idx = sheet.indexOf('uk-card-share-modal-backdrop');
+    const section = sheet.slice(idx, idx + 400);
+    expect(section).toContain('onClick={handleCancel}');
+    expect(section).toContain('onClick={(event) => event.stopPropagation()}');
+  });
+
+  it('still records the same consent version/warning/recall copy inside the redesigned overlay — the redesign never touches what is disclosed or agreed to', () => {
+    const idx = sheet.indexOf('uk-card-share-modal"');
+    const fnBody = sheet.slice(idx, sheet.indexOf('</div>\n      )}', idx));
+    expect(fnBody).toContain('{CARD_SHARE_WARNING}');
+    expect(fnBody).toContain('{CARD_SHARE_RECALL_NOTICE}');
+    expect(fnBody).toContain('{CARD_SHARE_CONFIRMATION_LABEL}');
+  });
+});
+
 describe('ProductionBuilder — ShareCardSheet is only mounted for a single-child, directly-confirmed order', () => {
   it('gates ShareCardSheet on enquiryStatus sent, authority confirmed, and order.type single, independent of the server\'s own re-check', () => {
     const idx = builder.indexOf('<ShareCardSheet');
@@ -108,6 +154,12 @@ describe('ProductionBuilder — ShareCardSheet is only mounted for a single-chil
     expect(gateSection).toContain("enquiryStatus !== 'sent'");
     expect(gateSection).toContain("submittedAuthorityStatus !== 'confirmed'");
     expect(gateSection).toContain("order.type !== 'single'");
+  });
+
+  it('passes the real, visible, on-screen PlayerCard as the preview — never the off-screen capture rig\'s player', () => {
+    const idx = builder.indexOf('<ShareCardSheet');
+    const tagSection = builder.slice(idx, idx + 300);
+    expect(tagSection).toContain('preview={<PlayerCard order={order} player={soleApprovedPlayer} side="front" />}');
   });
 
   it('the share capture rig is a separate off-screen tree from the print capture rig, sharing no state with it', () => {

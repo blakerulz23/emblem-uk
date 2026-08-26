@@ -2428,6 +2428,7 @@ export default function ProductionBuilder({
                   <ShareCardSheet
                     orderId={submittedOrderId}
                     getShareImage={captureShareImage}
+                    preview={<PlayerCard order={order} player={soleApprovedPlayer} side="front" />}
                   />
                 );
               })()}
