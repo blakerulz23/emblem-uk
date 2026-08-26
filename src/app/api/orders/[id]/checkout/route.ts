@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { consumeAnonymousRequestRateLimit } from '@/lib/anonymous-request-rate-limit';
 import { hasValidBuilderCsrf } from '@/lib/builder-request-security';
-import { buildUkCardCartUrl, gate3CheckoutSupportsTier } from '@/lib/shopify';
+import { buildUkCardCartUrl, gate3CheckoutSupportsTier, isSafeShopifyCheckoutUrl } from '@/lib/shopify';
 
 export const runtime = 'nodejs';
 
@@ -75,6 +75,17 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const checkoutUrl = buildUkCardCartUrl(result.quantity, result.orderRef);
   if (!checkoutUrl) {
     return NextResponse.json({ error: 'Secure checkout is not configured yet — please contact us' }, { status: 503 });
+  }
+
+  // Defence in depth — never return a URL that isn't genuinely Shopify's
+  // own hosted cart on this app's configured shop. See
+  // isSafeShopifyCheckoutUrl's own comment: this can't actually fail
+  // today given how buildUkCardCartUrl is implemented, but it means this
+  // route can never regress into forwarding an arbitrary URL without a
+  // loud, immediate failure here.
+  if (!isSafeShopifyCheckoutUrl(checkoutUrl)) {
+    console.error('orders/checkout: refusing to return a URL that failed Shopify-host validation');
+    return NextResponse.json({ error: 'Could not prepare secure checkout — please try again' }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, checkoutUrl }, { headers: { 'Cache-Control': 'no-store' } });

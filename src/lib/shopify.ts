@@ -111,3 +111,23 @@ export function gate3PaymentGateEnabled(): boolean {
 export function gate3CheckoutSupportsTier(pricingTier: string | null | undefined): boolean {
   return pricingTier === 'single';
 }
+
+/**
+ * Defence in depth for the checkout route: proves the URL it is about to
+ * return to the browser genuinely is a Shopify-hosted cart/checkout link
+ * on this app's own configured shop, never anything else — even though
+ * buildUkCardCartUrl already only ever constructs a URL of this exact
+ * shape from a hardcoded shop domain (SHOPIFY_SHOP), so this can never
+ * actually fail in practice today. It exists so the route can never be
+ * changed, in future, to forward an arbitrary or client-influenced URL
+ * without this check catching it.
+ */
+export function isSafeShopifyCheckoutUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === 'https:' && parsed.hostname === SHOPIFY_SHOP && parsed.pathname.startsWith('/cart/');
+}

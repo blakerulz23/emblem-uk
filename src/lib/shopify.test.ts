@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildUkCardCartUrl, gate3CheckoutSupportsTier, gate3PaymentGateEnabled } from './shopify';
+import { buildUkCardCartUrl, gate3CheckoutSupportsTier, gate3PaymentGateEnabled, isSafeShopifyCheckoutUrl } from './shopify';
 
 const ORIGINAL_VARIANT = process.env.NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT;
 
@@ -51,5 +51,29 @@ describe('gate3CheckoutSupportsTier', () => {
     expect(gate3CheckoutSupportsTier(null)).toBe(false);
     expect(gate3CheckoutSupportsTier(undefined)).toBe(false);
     expect(gate3CheckoutSupportsTier('unknown-tier')).toBe(false);
+  });
+});
+
+describe('isSafeShopifyCheckoutUrl', () => {
+  it('accepts a genuine Shopify cart URL on the configured shop', () => {
+    expect(isSafeShopifyCheckoutUrl('https://officialgudzzz.myshopify.com/cart/123456:2')).toBe(true);
+    expect(isSafeShopifyCheckoutUrl('https://officialgudzzz.myshopify.com/cart/123456:2?attributes%5BOrder+Ref%5D=EMB-1')).toBe(true);
+  });
+
+  it('rejects a different host entirely', () => {
+    expect(isSafeShopifyCheckoutUrl('https://attacker.example/cart/123456:2')).toBe(false);
+  });
+
+  it('rejects a plain http URL even on the right host', () => {
+    expect(isSafeShopifyCheckoutUrl('http://officialgudzzz.myshopify.com/cart/123456:2')).toBe(false);
+  });
+
+  it('rejects a path outside /cart/ on the right host', () => {
+    expect(isSafeShopifyCheckoutUrl('https://officialgudzzz.myshopify.com/admin/orders/1')).toBe(false);
+  });
+
+  it('rejects a non-URL string without throwing', () => {
+    expect(() => isSafeShopifyCheckoutUrl('not a url')).not.toThrow();
+    expect(isSafeShopifyCheckoutUrl('not a url')).toBe(false);
   });
 });

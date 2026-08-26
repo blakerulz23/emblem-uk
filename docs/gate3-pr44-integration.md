@@ -1,94 +1,84 @@
 # Gate 3 → PR #44 integration note
 
 **Status:** documentation only. No code in PR #44 (guardian-controlled
-card-front sharing) is touched by Gate 3, and this note does not itself
-implement anything — it records the minimal, precise change PR #44 will
-need once both branches are ready to be sequenced together.
+card-front sharing) is touched by Gate 3.
 
-## Why this is needed
+**Correction (26 August 2026):** an earlier version of this note proposed
+adding a `payment_status = 'paid'` check to PR #44's
+`get_card_share_eligibility` (migration 0078). That was wrong and has
+been fully retracted — see "Founder's confirmed product decision" below.
+It was never implemented in any migration or code; only this document
+described it, and only this document needed correcting.
 
-The product decision for Gate 3 states: *"If the guardian is eligible
-under PR #44, show the separate card-sharing control on this paid
-confirmation page"* and *"Payment must never count as sharing consent."*
+## Founder's confirmed product decision
 
-Today, PR #44's `get_card_share_eligibility` (migration 0078) already
-requires `orders.authority_status = 'confirmed'` and a single, non-
-suspended/non-revoked card — but it does not check `orders.payment_status`
-at all, because payment didn't yet exist as a real, enforced state when
-that migration was written (the order flow it targets was the manual
-"we'll email a payment link" journey). Once Gate 3 lands, an order can
-legitimately sit at `authority_status = 'confirmed'` while
-`payment_status` is still `order_intent` or `pending_payment` — sharing
-should not be offered for a card that hasn't been paid for yet, even
-though the guardian is otherwise eligible.
+Payment does **not** enable or gate card sharing. After a successfully
+submitted and authority-approved request, the eligible parent/legal
+guardian may **share the card design** or **continue to Shopify
+checkout** — two fully independent actions, in either order. Payment
+gates only physical production and fulfilment, never sharing.
 
-## The minimal change
+The following are mandatory, and are all already true of PR #44's
+existing design with **zero code change required**:
 
-A single additional condition in `get_card_share_eligibility`
-(migration 0078, `src/lib/emblem-uk-builder.ts`'s eligibility path is
-unaffected — this is entirely a database-side change), immediately
-alongside the existing `authority_status` check:
+- Sharing does not require `payment_status = 'paid'`.
+- Sharing eligibility (`get_card_share_eligibility`, migration 0078)
+  does not read `payment_status` at all, and must not start doing so.
+- Payment creates no sharing-consent event — `apply_gate3_payment_event`
+  (migration 0080) never writes to `card_share_consent_events` and has
+  no knowledge that table exists.
+- Sharing creates no payment event — `record_card_share_consent`
+  (migration 0078) never writes to `orders.payment_status`,
+  `payment_state_events`, or anything Gate 3 owns.
+- Paying does not grant a coach, organiser, other adult, or unrelated
+  guardian sharing rights — eligibility is still gated entirely on
+  `authority_status` and `adult_user_id` matching the declaring adult,
+  which a payment event never touches.
+- Adult Permission being confirmed does not imply payment has occurred
+  — these are two separate columns (`authority_status`,
+  `payment_status`) with two separate, independent write paths.
+- Sharing does not move a request into production — only
+  `apply_gate3_payment_event` (via a verified Shopify webhook) and
+  staff approval do that.
 
-```sql
-if v_order.authority_status is distinct from 'confirmed' then
-  return jsonb_build_object('eligible', false, 'reason', 'not_authorized');
-end if;
+## What integration actually means here
 
--- Gate 3 addition — new, not yet present in migration 0078:
-if v_order.payment_status is distinct from 'paid' then
-  return jsonb_build_object('eligible', false, 'reason', 'not_authorized');
-end if;
-```
+Given the above, there is **no SQL or eligibility-logic integration
+required at all**. The only real integration point is presentational:
+both PR #44's share control and Gate 3's "Continue to secure checkout"
+button are meant to appear together on the same post-submission screen,
+as two independent actions the guardian can take in either order. That
+is a `ProductionBuilder.tsx` JSX concern for whichever branch merges
+second (both branches currently edit that file in different,
+non-overlapping regions), not a database or authorization concern.
 
-Using the existing `'not_authorized'` reason (not a new one) is
-deliberate: `shouldHideCardShareEntirely` (`src/lib/card-share.ts`)
-already treats `'not_authorized'` as a silent-hide reason, so an unpaid
-order's share control simply doesn't appear at all — no new UI branch,
-no new copy, no new reason vocabulary for the client to learn, and no
-disclosure of *why* it's hidden (consistent with this feature's existing
-"never reveal why an ineligible record failed" rule).
+## What PR #45 (Gate 3) proves about its own boundary, in the absence of PR #44 in this codebase
 
-Everything else about PR #44's design already satisfies Gate 3's
-contract without any change:
+Since PR #44 is not part of PR #45's branch, PR #45 cannot exercise
+PR #44's real eligibility RPC directly. Instead, PR #45's own test suite
+proves the *shape* of the boundary from its own side:
 
-- **Payment is never sharing consent.** PR #44's separate, unticked
-  confirmation checkbox and its own `record_card_share_consent` call are
-  entirely independent of `payment_status` already — this addition only
-  adds a further precondition to *eligibility*, it does not touch consent
-  recording at all.
-- **The guardian still passes PR #44's own eligibility RPC** — unchanged,
-  this note only tightens one branch of it.
-- **Coaches, organisers, and other adults do not gain sharing rights by
-  paying** — `get_card_share_eligibility`'s existing `adult_user_id`/
-  `relationship = 'parent_guardian'` checks are unaffected; a payment
-  event never touches `builder_order_authority_declarations`.
-- **Suspended/revoked/deletion-pending cards remain disabled** — the
-  existing `access_status` check runs independently of, and before,
-  this new payment check.
-- **No public share page, permanent URL, or server-stored share image**
-  — nothing here changes anything about how the share image itself is
-  generated or transmitted (PR #44's same-origin photo route and
-  in-browser capture are untouched).
+- No Gate 3 migration, RPC, or route references
+  `card_share_consent_events`, `get_card_share_eligibility`,
+  `record_card_share_consent`, or any other PR #44 sharing object, by
+  name, anywhere.
+- No Gate 3 route or RPC accepts or reads a "consent"/"sharing"-shaped
+  parameter.
+- `apply_gate3_payment_event` and `begin_gate3_checkout` touch only
+  `orders`, `payment_state_events`, and `shopify_webhook_events` —
+  confirmed by direct review of migration 0080, which is the complete
+  list of tables this work package writes to.
 
-## Where the UI hookup point already exists
-
-Gate 3's own review screen (`ProductionBuilder.tsx`) reaches
-`checkoutStage === 'confirmed'` only once `get_gate3_payment_status`
-(migration 0080) reports `paymentStatus: 'paid'` from a real,
-signature-verified Shopify webhook — never from the browser's own return
-navigation. That is the same moment PR #44's `<ShareCardSheet>` should be
-mounted, in place of Gate 3's own "Order confirmed" text-only state. The
-exact JSX wiring is left to whichever branch merges second, since it
-depends on which of PR #44's or Gate 3's `ProductionBuilder.tsx` edits
-lands first — this note exists so that whoever does that merge knows
-precisely what the one required SQL change is, and why it's safe.
+See `src/lib/gate3-sharing-independence-contract.test.ts` for the
+executable version of these assertions.
 
 ## What this note deliberately does not do
 
 - It does not merge, rebase, or edit PR #44.
-- It does not apply migration 0078 changes to any database — the SQL
-  above is illustrative, to be implemented as its own reviewed migration
-  once both branches are sequenced.
+- It does not propose any change to migration 0078 or
+  `get_card_share_eligibility` — the earlier version of this note did,
+  and that proposal has been withdrawn as incorrect.
 - It does not change Gate 3's own scope: Gate 3 ships with sharing
-  untouched, and PR #44 ships with payment untouched, until this
-  integration is done as its own small, separately-reviewed follow-up.
+  completely untouched, and PR #44 ships with payment completely
+  untouched. The only future work is a small, purely presentational
+  merge (both controls on one screen), not a new authorization rule.

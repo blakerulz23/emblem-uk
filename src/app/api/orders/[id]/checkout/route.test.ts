@@ -21,6 +21,18 @@ const mockBuildUkCardCartUrl = vi.fn();
 vi.mock('@/lib/shopify', () => ({
   buildUkCardCartUrl: (...args: unknown[]) => mockBuildUkCardCartUrl(...args),
   gate3CheckoutSupportsTier: (tier: string) => tier === 'single',
+  // Same real logic as src/lib/shopify.ts's own implementation — kept as
+  // a small inline reimplementation (not a mock stub returning a fixed
+  // value) so this test file still exercises the route's actual branch
+  // on a genuinely malformed URL, not just a value it was told to return.
+  isSafeShopifyCheckoutUrl: (url: string) => {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === 'https:' && parsed.hostname === 'officialgudzzz.myshopify.com' && parsed.pathname.startsWith('/cart/');
+    } catch {
+      return false;
+    }
+  },
 }));
 
 const ORDER_ID = '11111111-2222-3333-4444-555555555555';
@@ -141,5 +153,27 @@ describe('POST /api/orders/[id]/checkout — success', () => {
     mockBuildUkCardCartUrl.mockReturnValue(null);
     const res = await post();
     expect(res.status).toBe(503);
+  });
+});
+
+describe('POST /api/orders/[id]/checkout — never forwards a malformed or non-Shopify URL', () => {
+  it('refuses a URL on the wrong host, even if buildUkCardCartUrl were ever changed to produce one', async () => {
+    mockBuildUkCardCartUrl.mockReturnValue('https://attacker.example/cart/123:2');
+    const res = await post();
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.checkoutUrl).toBeUndefined();
+  });
+
+  it('refuses a non-URL string outright', async () => {
+    mockBuildUkCardCartUrl.mockReturnValue('not a url at all');
+    const res = await post();
+    expect(res.status).toBe(500);
+  });
+
+  it('refuses a URL on the right host but the wrong scheme', async () => {
+    mockBuildUkCardCartUrl.mockReturnValue('http://officialgudzzz.myshopify.com/cart/123:2');
+    const res = await post();
+    expect(res.status).toBe(500);
   });
 });
