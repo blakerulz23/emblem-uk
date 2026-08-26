@@ -376,6 +376,41 @@ above (**REQUIRES SPECIALIST REVIEW — paused pending completion of
 section 12 "Required before the pilot"**), and does not itself constitute
 safeguarding or legal approval for this feature.
 
+## Work Package B — founder decision on rights allowlist and scope — 26 August 2026
+
+**This is a founder business decision, not a specialist legal, safeguarding,
+or compliance sign-off.** It resolves the two open items this feature's own
+verification explicitly left to Blake ("Blake to assign" in the rights
+matrix, and confirmation that the 25–26 August notes above accurately
+describe the shipped scope). It does **not** discharge any
+`REQUIRES SPECIALIST REVIEW` marker in this document, and it does not
+change the DPIA's overall recommendation above or in section 12.
+
+- **Rights allowlist:** Blake has reviewed the rights matrix above and
+  confirms the Custom Collection–only allowlist (`custom-solar`,
+  `custom-galaxy`, `custom-comic`) as the current, intended sharing policy —
+  not merely a provisional placeholder. Official Collection and every
+  licensed/third-party-mark category remain excluded, unchanged. The two
+  rows still marked `UNRESOLVED — REQUIRES SPECIALIST REVIEW` in the matrix
+  (uploaded club/team badge wording; the Article 9/special-category and
+  children's-code questions elsewhere in this document) remain open exactly
+  as recorded — this decision accepts the matrix's existing fail-closed
+  provisional treatment of those rows as good enough to proceed with
+  engineering work, without asserting they are legally resolved.
+- **Sharing-specific DPIA scope (25–26 August 2026 notes):** Blake has read
+  both Work Package B notes above and confirms they accurately describe what
+  was built and its deliberately narrower-than-spec scope (single direct
+  guardian order only; Official Collection, whole-team, and Squad Invite
+  excluded).
+
+**What this does not do:** it does not clear this feature, or any other
+part of this product, for a real-child pilot. Section 12's "required before
+the pilot" controls, and every `REQUIRES SPECIALIST REVIEW` marker in this
+document — including delivery-address encryption, parental-responsibility
+verification, international transfers, special-category data, Children's
+Code classification, and the formal best-interests assessment — remain open
+and are unaffected by this note.
+
 ## Evidence labels and risk method
 
 - **VERIFIED** — directly supported by repository evidence cited in this document.
