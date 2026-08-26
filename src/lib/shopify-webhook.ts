@@ -61,3 +61,51 @@ export function extractOrderRef(payload: unknown): string | null {
   const value = found?.value?.trim();
   return value && value.length > 0 ? value : null;
 }
+
+type ShopifyLineItem = { variant_id?: number | string; quantity?: number; price?: string };
+type ShopifyOrderPayload = {
+  id?: number | string;
+  currency?: string;
+  line_items?: ShopifyLineItem[];
+};
+
+/**
+ * Gate 3 — verifies the webhook's own line items against what Emblem
+ * actually expects to have been charged, rather than trusting
+ * `total_price` wholesale (Shopify's own checkout adds shipping/tax on
+ * top of the card subtotal, which Emblem doesn't set and can't predict —
+ * see migration 0080's own header comment). Finds the line item matching
+ * `expectedVariantId`, and returns null (verification failure) unless its
+ * quantity and per-unit price match what this order's own authoritative
+ * snapshot already recorded. Currency is checked separately by the caller
+ * against the same snapshot.
+ */
+export function verifyPaidLineItem(
+  payload: unknown,
+  expectedVariantId: string,
+  expectedQuantity: number,
+  expectedUnitPricePence: number,
+): { ok: true; currency: string | null } | { ok: false; reason: string } {
+  const order = payload as ShopifyOrderPayload;
+  const lineItems = Array.isArray(order?.line_items) ? order.line_items : [];
+  const match = lineItems.find((item) => String(item?.variant_id ?? '') === expectedVariantId);
+  if (!match) {
+    return { ok: false, reason: 'no_matching_line_item' };
+  }
+  if (match.quantity !== expectedQuantity) {
+    return { ok: false, reason: 'quantity_mismatch' };
+  }
+  const unitPricePence = Math.round(parseFloat(match.price ?? '') * 100);
+  if (!Number.isFinite(unitPricePence) || unitPricePence !== expectedUnitPricePence) {
+    return { ok: false, reason: 'price_mismatch' };
+  }
+  return { ok: true, currency: typeof order?.currency === 'string' ? order.currency : null };
+}
+
+/** Shopify's own real order id, for reconciliation only — never trusted as
+ *  proof of anything by itself; it only gets written once the line-item
+ *  verification above has already passed. */
+export function extractShopifyOrderId(payload: unknown): string | null {
+  const id = (payload as ShopifyOrderPayload)?.id;
+  return id === undefined || id === null ? null : String(id);
+}

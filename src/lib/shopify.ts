@@ -84,3 +84,30 @@ export function buildUkCardCartUrl(quantity: number, orderRef: string): string |
   params.set('attributes[Order Ref]', orderRef);
   return 'https://' + SHOPIFY_SHOP + '/cart/' + variantId + ':' + Math.max(1, quantity) + '?' + params.toString();
 }
+
+/**
+ * Gate 3 — same launch switch buildUkCardCartUrl already uses
+ * (NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT), read server-side too so the staff
+ * approve route only starts requiring payment_status='paid' once real
+ * checkout is actually reachable. An environment that hasn't configured
+ * the variant yet (e.g. a disposable test project) keeps the pre-Gate-3
+ * behaviour unchanged — this is additive, never a hard requirement.
+ */
+export function gate3PaymentGateEnabled(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT);
+}
+
+/**
+ * Gate 3 currently only has a verified Shopify variant/price mapping for
+ * the single-child pricing tier — the same one NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT
+ * already serves. There is no repository evidence of a per-tier
+ * (multi/squad) variant the way Squad Invite has three distinct variants
+ * for its three tiers (src/lib/squad-invite-payment-link.ts) — using the
+ * single flat variant for a multi/squad order would silently charge the
+ * wrong (single-tier) unit price. Rather than guess, checkout creation for
+ * those tiers is refused with a clear, honest error until that mapping is
+ * confirmed and added here.
+ */
+export function gate3CheckoutSupportsTier(pricingTier: string | null | undefined): boolean {
+  return pricingTier === 'single';
+}

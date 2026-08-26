@@ -25,6 +25,11 @@ vi.mock('@/lib/send-squad-invite-early-preview-email', () => ({
   sendSquadInviteEarlyPreviewEmail: (...args: unknown[]) => mockSendEarlyPreviewEmail(...args),
 }));
 
+// Gate 3 — controlled independently of the real NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT
+// env var, which this test file must never depend on.
+const mockGate3PaymentGateEnabled = vi.fn();
+vi.mock('@/lib/shopify', () => ({ gate3PaymentGateEnabled: () => mockGate3PaymentGateEnabled() }));
+
 type Fixture = {
   orderSource: string;
   // migration 0071 — the ordinary-builder safeguarding gate. Defaulted to
@@ -32,6 +37,10 @@ type Fixture = {
   // (written before this gate existed) keeps exercising the behaviour it
   // was actually written to test, rather than being blocked by it.
   orderAuthorityStatus?: string | null;
+  // Gate 3 — defaulted in beforeEach so every pre-existing test (written
+  // before this gate existed) keeps exercising unaffected behaviour.
+  orderPricingTier?: string | null;
+  orderPaymentStatus?: string | null;
   cards?: { player_id: string | null }[];
   orderRow?: { id: string; purchaser_email: string; intended_guardian_email: string | null; payment_status?: string; team_name?: string };
   participations?: Array<{ id: string; campaign_id: string; squad_invites: { campaign_status: string } }> | null;
@@ -72,7 +81,12 @@ vi.mock('@/lib/supabase/server', () => ({
             eq: () => ({
               maybeSingle: async () => ({
                 data: cols.startsWith('source')
-                  ? { source: fixture.orderSource, authority_status: fixture.orderAuthorityStatus }
+                  ? {
+                      source: fixture.orderSource,
+                      authority_status: fixture.orderAuthorityStatus,
+                      pricing_tier: fixture.orderPricingTier ?? null,
+                      payment_status: fixture.orderPaymentStatus ?? null,
+                    }
                   : fixture.orderRow,
               }),
             }),
@@ -142,6 +156,11 @@ beforeEach(() => {
   mockRequireStaff.mockResolvedValue({ ok: true, userId: STAFF_ID });
   mockRpc.mockResolvedValue({ data: false, error: null });
   mockSendEarlyPreviewEmail.mockResolvedValue({ ok: true });
+  mockGate3PaymentGateEnabled.mockReset();
+  // Off by default — every pre-existing test in this file was written
+  // before Gate 3 existed and must keep exercising exactly the behaviour
+  // it always has, unaffected by a gate that hasn't been "turned on".
+  mockGate3PaymentGateEnabled.mockReturnValue(false);
   builderAuthorityAuditInserts.length = 0;
   fixture = { orderSource: 'team_order', orderAuthorityStatus: 'confirmed' };
 });
@@ -243,6 +262,91 @@ describe('POST /api/orders/[id]/approve — ordinary-builder safeguarding gate (
     const res = await approve();
     expect(res.status).toBe(200);
     expect(builderAuthorityAuditInserts).toHaveLength(0);
+  });
+});
+
+describe('POST /api/orders/[id]/approve — Gate 3 payment gate (single-child tier, ordinary builder)', () => {
+  const baseFixture = () => ({
+    orderSource: 'team_order',
+    orderAuthorityStatus: 'confirmed' as string | null,
+    orderPricingTier: 'single' as string | null,
+    cards: [{ player_id: 'player-1' }],
+    orderRow: { id: ORDER_ID, purchaser_email: 'parent@example.test', intended_guardian_email: null },
+  });
+
+  it('when Gate 3 is disabled (env var unset), approval works exactly as before — no payment required', async () => {
+    mockGate3PaymentGateEnabled.mockReturnValue(false);
+    fixture = { ...baseFixture(), orderPaymentStatus: 'order_intent' };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect(orderUpdates).toHaveLength(1);
+  });
+
+  it('when Gate 3 is enabled, blocks approval of an unpaid single-tier order', async () => {
+    mockGate3PaymentGateEnabled.mockReturnValue(true);
+    fixture = { ...baseFixture(), orderPaymentStatus: 'order_intent' };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect(orderUpdates).toHaveLength(0);
+    const body = await res.json();
+    expect(body.error).toMatch(/payment is required/i);
+  });
+
+  it('when Gate 3 is enabled, blocks approval of a single-tier order still only pending_payment (checkout started, not confirmed)', async () => {
+    mockGate3PaymentGateEnabled.mockReturnValue(true);
+    fixture = { ...baseFixture(), orderPaymentStatus: 'pending_payment' };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect(orderUpdates).toHaveLength(0);
+  });
+
+  it('when Gate 3 is enabled, allows approval of a paid single-tier order', async () => {
+    mockGate3PaymentGateEnabled.mockReturnValue(true);
+    fixture = { ...baseFixture(), orderPaymentStatus: 'paid' };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect(orderUpdates).toHaveLength(1);
+  });
+
+  it('when Gate 3 is enabled, an unpaid multi/squad-tier order is unaffected (no verified variant mapping yet — pre-Gate-3 behaviour preserved)', async () => {
+    mockGate3PaymentGateEnabled.mockReturnValue(true);
+    fixture = { ...baseFixture(), orderPricingTier: 'multi', orderPaymentStatus: 'order_intent' };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect(orderUpdates).toHaveLength(1);
+  });
+
+  it('the payment gate is checked before the multi-card club/team-choice requirement, so an unpaid squad order is rejected for payment, not a missing body', async () => {
+    mockGate3PaymentGateEnabled.mockReturnValue(true);
+    fixture = {
+      ...baseFixture(),
+      orderPricingTier: 'single',
+      orderPaymentStatus: 'order_intent',
+      cards: [{ player_id: 'player-1' }, { player_id: 'player-2' }],
+    };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/payment is required/i);
+  });
+
+  it('never applies to a squad_invite order — that source has its own separate payment gate', async () => {
+    mockGate3PaymentGateEnabled.mockReturnValue(true);
+    fixture = {
+      orderSource: 'squad_invite',
+      orderAuthorityStatus: null,
+      orderPricingTier: 'single',
+      orderPaymentStatus: 'order_intent',
+      orderRow: { id: ORDER_ID, purchaser_email: 'guardian@example.test', intended_guardian_email: null, payment_status: 'order_intent', team_name: 'Ashton Juniors U10' },
+      participations: [{ id: 'participation-1', campaign_id: 'campaign-1', squad_invites: { campaign_status: 'active' } }],
+      squadInviteCard: { claim_token: 'CLAIM123' },
+    };
+    // mockRpc controls squad_invite_payment_mode_enabled for the squad_invite
+    // branch specifically — left at its default (false) here, since this
+    // test is only proving Gate 3's OWN check never fires for this source.
+    mockRpc.mockResolvedValue({ data: false, error: null });
+    const res = await approve();
+    expect(res.status).toBe(200);
   });
 });
 

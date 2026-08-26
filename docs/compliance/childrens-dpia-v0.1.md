@@ -483,6 +483,96 @@ Consultation should test: comprehension of privacy notices and NFC behaviour; ex
 19. **UNKNOWN:** Is the passive NFC token writable/locked, cloneable, or replaceable in the physical production process?
 20. **UNKNOWN:** What is the pilot stop criterion and incident escalation chain?
 
+## Gate 3 addendum — direct Shopify checkout, server-verified payment — 26 August 2026
+
+**Status: implementation evidence only; unreleased. This work is a separate,
+narrowly-scoped draft PR, based on `main` plus the still-unmerged Adult
+Permission fix (PR #43) — deliberately not stacked on, and not merging,
+PR #44's guardian card-sharing work. Nothing below is a statement that
+payment is safe to launch, and this note does not change the DPIA's
+standing recommendation in section 14 below.**
+
+**VERIFIED IN LOCAL SOURCE.** This replaces the previous manual "we will
+email you a payment link" journey with a direct Shopify checkout for the
+single-child pricing tier, gated on server-verified payment before staff
+can move an order into production:
+
+- **No new third-party processor.** Shopify was already a disclosed
+  supplier in this DPIA's data inventory and controller/processor
+  analysis (§7) before this work — Gate 3 activates an existing,
+  already-partially-wired integration (a cart-permalink handoff,
+  `src/lib/shopify.ts`) for the ordinary builder order, the same
+  mechanism already live for Squad Invite orders. No Shopify Admin API
+  token exists anywhere in this repository's environment — confirmed by
+  direct search before any code was written — so this remains a
+  browser-redirect handoff to Shopify's own hosted checkout, never a
+  server-to-server Shopify API integration holding a broader credential.
+- **Emblem never receives card/payment details.** The customer enters
+  payment and delivery information entirely on Shopify's own hosted
+  checkout page; Emblem's server only ever receives Shopify's own
+  signature-verified webhook confirming the outcome (paid, cancelled,
+  refunded) — never card numbers, never a CVV, never a billing address
+  beyond what Shopify's webhook payload itself includes for
+  reconciliation.
+- **What Emblem stores** (migration 0080): `shopify_order_id` (Shopify's
+  own order id, for reconciliation), `paid_at`, `paid_amount_pence`,
+  `paid_currency` (the verified card subtotal only — never delivery/tax,
+  which Shopify computes and Emblem does not set or store), and an
+  append-only `payment_state_events` audit trail (status transitions and
+  a Shopify event id only — never payment-card data, never an amount
+  beyond what already exists on the order). A second table,
+  `shopify_webhook_events`, exists purely for exactly-once webhook
+  processing (one row per Shopify webhook delivery id) and holds no
+  personal data at all.
+- **No child data reaches Shopify.** The cart-permalink handoff carries
+  only a product variant, a print quantity, and Emblem's own internal
+  order reference — never the child's name, photograph, club/team
+  branding, NFC claim token, or any other player/guardian detail. This
+  was true of the pre-Gate-3 handoff already in place and is unchanged
+  by this work.
+- **Payment is never treated as consent for anything else.** In
+  particular, this work explicitly does not and cannot grant, infer, or
+  substitute for the separate guardian card-sharing consent PR #44
+  implements — see that PR's own eligibility RPC, which Gate 3 does not
+  modify, weaken, or bypass. A minimal, documented integration point for
+  PR #44 (requiring `payment_status = 'paid'` in addition to its own
+  existing eligibility check) is recorded in
+  `docs/gate3-pr44-integration.md`, added by this same commit, for
+  implementation once both branches are ready to be sequenced — no code
+  in PR #44 itself is touched by this work.
+- **Verified operational limit for this task:** no live Shopify
+  development/test store, Admin API credential, or test-mode/Bogus
+  Gateway configuration exists anywhere in this repository's accessible
+  environment (confirmed directly: only a production-scoped webhook
+  secret and Squad-Invite-specific product variant ids are configured at
+  all, and neither a store domain nor an Admin API token exists in any
+  environment). All verification in this work package is therefore unit
+  and role-impersonation-level (migration 0080's functions were verified
+  directly against the disposable Supabase project via real Postgres
+  role/RLS impersonation, and every new route is covered by mocked
+  contract tests) — a genuine end-to-end test payment against a live
+  Shopify test store has not been performed and could not be performed
+  in this environment. This is recorded here as an open verification gap
+  requiring a real Shopify development store before this work is relied
+  upon, not a claim that end-to-end payment has been proven safe.
+- **Multi-player/whole-team and Squad Invite orders are unaffected.**
+  Gate 3's checkout route and payment gate apply only to the single-child
+  pricing tier, which is the only tier with a verified Shopify product/
+  variant/price mapping — see `gate3CheckoutSupportsTier`'s own comment
+  in `src/lib/shopify.ts`. Multi/squad-tier orders keep their pre-Gate-3
+  behaviour (authority-only gate, no payment requirement) unchanged until
+  their own variant mapping is separately resolved and reviewed.
+
+**UNRESOLVED — REQUIRES SPECIALIST/FOUNDER REVIEW:** whether Shopify's
+own checkout, order, and refund records (which this integration reads
+from, via webhook, but does not control the retention of) are covered by
+an existing Shopify data-processing agreement/subprocessor review, and
+what Shopify's own retention period is for an order containing a child's
+name printed on record (the card design's team/kit text, which the
+webhook's own payload may include as line-item properties depending on
+what the customer entered at Shopify's checkout) — this was not
+independently reviewed as part of this task and remains open.
+
 ## 14. Sign-off
 
 ### Decision

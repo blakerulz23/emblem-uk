@@ -39,7 +39,12 @@ export type AnonymousRequestAction =
   | 'builder-authority-otp-verify'
   | 'builder-authority-declare'
   | 'builder-guardian-email-set'
-  | 'builder-guardian-respond';
+  | 'builder-guardian-respond'
+  // Gate 3 — direct Shopify checkout. Authenticated actions (the caller
+  // already holds the adult's session from Adult Permission), same
+  // IP+subject shape as builder-authority-declare above.
+  | 'gate3-checkout-create'
+  | 'gate3-payment-status';
 
 const LIMITS: Record<
   | 'render-print'
@@ -48,7 +53,9 @@ const LIMITS: Record<
   | 'builder-authority-otp-verify'
   | 'builder-authority-declare'
   | 'builder-guardian-email-set'
-  | 'builder-guardian-respond',
+  | 'builder-guardian-respond'
+  | 'gate3-checkout-create'
+  | 'gate3-payment-status',
   { ip: number; subject?: number }
 > = {
   'render-print': { ip: 30, subject: 20 },
@@ -72,6 +79,12 @@ const LIMITS: Record<
   // id, which is not a value worth bucketing on), generous enough that a
   // guardian mis-clicking or retrying isn't blocked.
   'builder-guardian-respond': { ip: 20 },
+  // One real checkout per order in the ordinary case; generous enough for
+  // a guardian retrying after a lost response or reopening the review page.
+  'gate3-checkout-create': { ip: 20, subject: 10 },
+  // Polled while waiting for webhook confirmation — generous enough for
+  // normal poll cadence, still bounded.
+  'gate3-payment-status': { ip: 60, subject: 40 },
 };
 
 /**

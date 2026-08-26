@@ -3136,6 +3136,16 @@ a { text-decoration: none; color: inherit; }
   gap: 5px;
 }
 
+/* Gate 3 — direct Shopify checkout control, shown on the same review
+   screen as the card preview/order summary, replacing the old manual
+   "we'll email a payment link" copy. */
+.uk-gate3-checkout {
+  margin-top: 14px;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
 .uk-production-snapshot span {
   color: var(--wizard-soft);
   font-family: var(--font-jbmono), ui-monospace, monospace;
