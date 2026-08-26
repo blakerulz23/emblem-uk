@@ -62,7 +62,12 @@ export function extractOrderRef(payload: unknown): string | null {
   return value && value.length > 0 ? value : null;
 }
 
-type ShopifyLineItem = { variant_id?: number | string; quantity?: number; price?: string };
+type ShopifyLineItem = {
+  variant_id?: number | string;
+  quantity?: number;
+  price?: string;
+  discount_allocations?: Array<{ amount?: string }>;
+};
 type ShopifyOrderPayload = {
   id?: number | string;
   currency?: string;
@@ -88,18 +93,46 @@ export function verifyPaidLineItem(
 ): { ok: true; currency: string | null } | { ok: false; reason: string } {
   const order = payload as ShopifyOrderPayload;
   const lineItems = Array.isArray(order?.line_items) ? order.line_items : [];
-  const match = lineItems.find((item) => String(item?.variant_id ?? '') === expectedVariantId);
-  if (!match) {
+  const matches = lineItems.filter((item) => String(item?.variant_id ?? '') === expectedVariantId);
+  if (matches.length === 0) {
     return { ok: false, reason: 'no_matching_line_item' };
   }
-  if (match.quantity !== expectedQuantity) {
+
+  let totalQuantity = 0;
+  for (const match of matches) {
+    if (!Number.isSafeInteger(match.quantity) || (match.quantity ?? 0) <= 0) {
+      return { ok: false, reason: 'quantity_mismatch' };
+    }
+    totalQuantity += match.quantity!;
+    if (!Number.isSafeInteger(totalQuantity)) {
+      return { ok: false, reason: 'quantity_mismatch' };
+    }
+
+    // Shopify's `price` is the undiscounted unit price. A matching list price
+    // alone therefore cannot prove that the authoritative amount was paid.
+    // Gate 3 does not support discounts: reject any non-zero (or malformed)
+    // allocation rather than marking a discounted order as fully paid.
+    const allocations = Array.isArray(match.discount_allocations) ? match.discount_allocations : [];
+    if (allocations.some((allocation) => moneyStringToPence(allocation?.amount) !== 0)) {
+      return { ok: false, reason: 'discount_mismatch' };
+    }
+
+    const unitPricePence = moneyStringToPence(match.price);
+    if (unitPricePence === null || unitPricePence !== expectedUnitPricePence) {
+      return { ok: false, reason: 'price_mismatch' };
+    }
+  }
+  if (totalQuantity !== expectedQuantity) {
     return { ok: false, reason: 'quantity_mismatch' };
   }
-  const unitPricePence = Math.round(parseFloat(match.price ?? '') * 100);
-  if (!Number.isFinite(unitPricePence) || unitPricePence !== expectedUnitPricePence) {
-    return { ok: false, reason: 'price_mismatch' };
-  }
   return { ok: true, currency: typeof order?.currency === 'string' ? order.currency : null };
+}
+
+function moneyStringToPence(value: unknown): number | null {
+  if (typeof value !== 'string' || !/^\d+(?:\.\d{1,2})?$/.test(value)) return null;
+  const [pounds, fraction = ''] = value.split('.');
+  const pence = Number(pounds) * 100 + Number(fraction.padEnd(2, '0'));
+  return Number.isSafeInteger(pence) ? pence : null;
 }
 
 /** Shopify's own real order id, for reconciliation only — never trusted as

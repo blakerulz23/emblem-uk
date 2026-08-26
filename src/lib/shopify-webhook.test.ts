@@ -95,6 +95,39 @@ describe('verifyPaidLineItem — Gate 3 amount/quantity verification', () => {
     expect(result).toEqual({ ok: false, reason: 'price_mismatch' });
   });
 
+  it('fails closed when Shopify reports a discount allocation against the matching item', () => {
+    const payload = {
+      line_items: [{
+        variant_id: 123456789,
+        quantity: 2,
+        price: '24.99',
+        discount_allocations: [{ amount: '5.00' }],
+      }],
+    };
+    expect(verifyPaidLineItem(payload, VARIANT_ID, 2, 2499)).toEqual({ ok: false, reason: 'discount_mismatch' });
+  });
+
+  it('fails closed on malformed discount or price strings', () => {
+    const malformedDiscount = {
+      line_items: [{ variant_id: 123456789, quantity: 2, price: '24.99', discount_allocations: [{ amount: 'free' }] }],
+    };
+    expect(verifyPaidLineItem(malformedDiscount, VARIANT_ID, 2, 2499)).toEqual({ ok: false, reason: 'discount_mismatch' });
+
+    const malformedPrice = { line_items: [{ variant_id: 123456789, quantity: 2, price: '24.99GBP' }] };
+    expect(verifyPaidLineItem(malformedPrice, VARIANT_ID, 2, 2499)).toEqual({ ok: false, reason: 'price_mismatch' });
+  });
+
+  it('sums duplicate matching variant lines and verifies every line', () => {
+    const payload = {
+      currency: 'GBP',
+      line_items: [
+        { variant_id: 123456789, quantity: 1, price: '24.99' },
+        { variant_id: '123456789', quantity: 1, price: '24.99', discount_allocations: [{ amount: '0.00' }] },
+      ],
+    };
+    expect(verifyPaidLineItem(payload, VARIANT_ID, 2, 2499)).toEqual({ ok: true, currency: 'GBP' });
+  });
+
   it('never blindly trusts total_price — verification is against the matching line item only, ignoring shipping/tax additions', () => {
     const payload = {
       currency: 'GBP',
