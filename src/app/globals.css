@@ -3797,10 +3797,10 @@ a { text-decoration: none; color: inherit; }
   display: grid;
   justify-items: center;
   margin-bottom: 8px;
-  border: 1px solid var(--wizard-line);
-  border-radius: 18px;
+  border-radius: 22px;
   background: #fff;
-  padding: 14px 14px 64px;
+  padding: 20px 20px 68px;
+  box-shadow: 0 20px 45px rgba(16, 16, 21, 0.12);
 }
 
 .uk-card-share-preview .uk-real-card {
@@ -3825,40 +3825,37 @@ a { text-decoration: none; color: inherit; }
   }
 }
 
+/* Both controls share one understated look — plain white circle, subtle
+   border and shadow, accent-coloured icon — matching weight for weight,
+   rather than one reading as "primary" (a solid fill) and the other as
+   secondary. Position is the only thing the .rotate/.share modifiers
+   change. */
 .uk-card-share-icon-btn {
   position: absolute;
-  bottom: 12px;
+  bottom: 14px;
   width: 48px;
   height: 48px;
-  border: 0;
+  border: 1px solid var(--wizard-line);
   border-radius: 999px;
+  background: #fff;
+  color: var(--wizard-accent);
   display: grid;
   place-items: center;
   cursor: pointer;
+  box-shadow: 0 8px 18px rgba(16, 16, 21, 0.12);
 }
 
 .uk-card-share-icon-btn.share {
-  right: 12px;
-  background: var(--wizard-accent);
-  color: #fff;
-  box-shadow: 0 10px 22px var(--wizard-glow);
-}
-
-.uk-card-share-icon-btn.share:hover {
-  filter: brightness(1.06);
+  right: 14px;
 }
 
 .uk-card-share-icon-btn.rotate {
-  left: 12px;
-  background: #fff;
-  color: var(--wizard-ink);
-  border: 1px solid var(--wizard-line);
-  box-shadow: 0 8px 18px rgba(16, 16, 21, 0.14);
+  left: 14px;
 }
 
-.uk-card-share-icon-btn.rotate:hover {
+.uk-card-share-icon-btn:hover {
   border-color: var(--wizard-accent);
-  color: var(--wizard-accent);
+  box-shadow: 0 10px 22px rgba(16, 16, 21, 0.16);
 }
 
 .uk-card-share-icon-btn:focus-visible {
