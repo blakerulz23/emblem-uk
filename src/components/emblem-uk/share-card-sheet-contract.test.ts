@@ -111,21 +111,101 @@ describe('ProductionBuilder — ShareCardSheet is only mounted for a single-chil
   });
 
   it('the share capture rig is a separate off-screen tree from the print capture rig, sharing no state with it', () => {
-    expect(builder).toContain('const [shareCaptureMode, setShareCaptureMode] = useState(false);');
+    expect(builder).toContain('const [shareCapturePlayer, setShareCapturePlayer] = useState<PlayerDraft | null>(null);');
     expect(builder).toContain('const shareCaptureRef = useRef<HTMLDivElement | null>(null);');
-    expect(builder).not.toMatch(/captureMode\s*&&\s*shareCaptureMode|shareCaptureMode\s*&&\s*captureMode/);
+    expect(builder).not.toMatch(/captureMode\s*&&\s*shareCapturePlayer|shareCapturePlayer\s*&&\s*captureMode/);
   });
 
   it('captureShareImage never calls renderPrintFile — only the plain (mark-free) captureElementToPng', () => {
     const idx = builder.indexOf('const captureShareImage');
-    const fnBody = builder.slice(idx, builder.indexOf('};', idx));
+    const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
     expect(fnBody).toContain('captureElementToPng(el');
     expect(fnBody).not.toContain('renderPrintFile');
   });
 
   it('captureShareImage uses a lower pixelRatio than the print pipeline\'s own pixelRatio: 3', () => {
     const idx = builder.indexOf('const captureShareImage');
-    const fnBody = builder.slice(idx, builder.indexOf('};', idx));
+    const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
     expect(fnBody).toContain('pixelRatio: 2');
+  });
+});
+
+/**
+ * Regression coverage for the live-preview-verified defect: the shared
+ * image reproduced the card design and badge but not the player's
+ * photograph, because by "Order received" time the photo (and any
+ * player-uploaded badge) had already been swapped from a local blob: URL
+ * to a remote, signed URL by orderWithUploadedAssets — a cross-origin
+ * image html2canvas cannot draw onto canvas without the host's CORS
+ * cooperation, even though the very same <img> displays fine anywhere
+ * else on the page. captureShareImage cannot be unit-tested directly
+ * (no jsdom — see this file's own top comment), so this proves the fix's
+ * actual wiring by reading the source: every remote image is localised to
+ * a blob: URL before the capture rig ever renders, and capture is gated
+ * on every rendered <img> genuinely having pixel dimensions, not merely
+ * on decode() resolving.
+ */
+describe('ProductionBuilder — captureShareImage waits for and verifies the player photograph specifically', () => {
+  it('fetches and localises the photo URL before ever calling setShareCapturePlayer, when it is not already local', () => {
+    const idx = builder.indexOf('const captureShareImage');
+    const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
+    const photoFetchIdx = fnBody.indexOf('fetchAsLocalImageUrl(photoUrl)');
+    const setCaptureIdx = fnBody.indexOf('setShareCapturePlayer(capturePlayer)');
+    expect(photoFetchIdx).toBeGreaterThan(-1);
+    expect(setCaptureIdx).toBeGreaterThan(photoFetchIdx);
+  });
+
+  it('also localises a player-uploaded badge, not only the photograph — both are "visible club/team elements" subject to the same swap', () => {
+    const idx = builder.indexOf('const captureShareImage');
+    const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
+    expect(fnBody).toContain('fetchAsLocalImageUrl(badgeUrl)');
+  });
+
+  it('never re-fetches an already-local (blob:/data:) or same-origin bundled (root-relative) image URL', () => {
+    const idx = builder.indexOf('const needsLocalizing');
+    const fnBody = builder.slice(idx, builder.indexOf('\n\n', idx));
+    expect(fnBody).toContain('isLocalAssetUrl(url!)');
+    expect(fnBody).toContain("url!.startsWith('/')");
+  });
+
+  it('a failed fetch of a required image throws, rather than proceeding to render/capture an incomplete card', () => {
+    const idx = builder.indexOf('const fetchAsLocalImageUrl');
+    const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
+    expect(fnBody).toContain('if (!response.ok) throw new Error');
+  });
+
+  it('rejects the capture (throws) if any rendered image has zero natural dimensions, even after waitForImages resolved — the real capture-ready gate, not just a hopeful wait', () => {
+    const idx = builder.indexOf('const captureShareImage');
+    const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
+    const waitIdx = fnBody.indexOf('await waitForImages(el)');
+    const gateIdx = fnBody.indexOf('naturalWidth === 0 || img.naturalHeight === 0');
+    const throwIdx = fnBody.indexOf("throw new Error('Could not prepare the card image for sharing')");
+    expect(waitIdx).toBeGreaterThan(-1);
+    expect(gateIdx).toBeGreaterThan(waitIdx);
+    expect(throwIdx).toBeGreaterThan(gateIdx);
+  });
+
+  it('the capture-ready gate runs before captureElementToPng, never after', () => {
+    const idx = builder.indexOf('const captureShareImage');
+    const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
+    const gateIdx = fnBody.indexOf('naturalWidth === 0');
+    const captureIdx = fnBody.indexOf('captureElementToPng(el');
+    expect(gateIdx).toBeGreaterThan(-1);
+    expect(captureIdx).toBeGreaterThan(gateIdx);
+  });
+
+  it('always releases every localised object URL, on both the success and failure paths, via an outer finally', () => {
+    const idx = builder.indexOf('const captureShareImage');
+    const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
+    const lastFinallyIdx = fnBody.lastIndexOf('finally {');
+    expect(lastFinallyIdx).toBeGreaterThan(-1);
+    expect(fnBody.slice(lastFinallyIdx)).toContain('for (const revoke of revokers) revoke();');
+  });
+
+  it('still never calls renderPrintFile or exposes print-production artwork while doing any of this', () => {
+    const idx = builder.indexOf('const captureShareImage');
+    const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
+    expect(fnBody).not.toContain('renderPrintFile');
+    expect(fnBody).not.toMatch(/pdf-generator|buildFullBleedRaster/);
   });
 });

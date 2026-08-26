@@ -421,7 +421,26 @@ export default function ProductionBuilder({
   // a lower pixelRatio than print (2 vs print's 3) and never calls
   // renderPrintFile — the plain captureElementToPng output already has no
   // bleed/crop marks, since those are added by renderPrintFile alone.
-  const [shareCaptureMode, setShareCaptureMode] = useState(false);
+  //
+  // Holds the exact player to render for capture, already patched (see
+  // captureShareImage) so every image URL it carries is guaranteed local —
+  // never the bare approved player straight from state. Sharing only ever
+  // becomes possible from the Order received screen, which is reachable
+  // only *after* orderWithUploadedAssets has already swapped this same
+  // player's photo (and any custom-uploaded badge) from a local blob: URL
+  // to a remote, signed URL — exactly the swap the print-capture rig above
+  // is deliberately run BEFORE, for the same reason stated in its own
+  // comment: a remote image needs the host's CORS policy to cooperate
+  // before html2canvas can draw it onto canvas at all, or that layer is
+  // silently dropped from the output while the very same <img> still
+  // displays fine anywhere else on the page (this is exactly the defect a
+  // live preview test found — the photo was missing from the shared image
+  // despite being visibly present on the card the guardian was looking
+  // at). Share capture cannot run before that swap the way print capture
+  // does, so instead it fetches each remote image itself and substitutes a
+  // fresh local blob: URL before ever rendering anything here — see
+  // captureShareImage.
+  const [shareCapturePlayer, setShareCapturePlayer] = useState<PlayerDraft | null>(null);
   const shareCaptureRef = useRef<HTMLDivElement | null>(null);
   // Double-submit guard — a ref, not enquiryStatus state. Two clicks fired
   // on the same tick both run submitEnquiry before React has processed the
@@ -945,17 +964,85 @@ export default function ProductionBuilder({
    * is responsible for having already recorded consent before calling this
    * — this function only ever renders the front the player/guardian already
    * approved, exactly as it appears on screen.
+   *
+   * Fixes a live-preview-verified defect: the shared image reproduced the
+   * card design and badge but not the player's photograph. Root cause,
+   * proven by reading the code rather than guessed at: by the time "Order
+   * received" (and therefore the share button) exists at all,
+   * orderWithUploadedAssets has already replaced this player's photo.
+   * srcUrl — and any player-uploaded badge — with a remote, signed URL.
+   * That URL displays perfectly well in an ordinary <img> (no CORS needed
+   * for that), but html2canvas cannot draw a cross-origin image onto
+   * canvas without the host's cooperation, so that layer alone silently
+   * disappeared from the captured output. Fetching each such URL here and
+   * substituting a fresh local blob: URL before ever rendering the capture
+   * rig removes the cross-origin request from the drawing step entirely —
+   * and if that fetch itself fails (e.g. genuinely no CORS grant to read
+   * the bytes), it throws here, which the caller already turns into a
+   * visible, retryable failure — never a silently incomplete image.
    */
+  const fetchAsLocalImageUrl = async (url: string): Promise<{ url: string; revoke: () => void }> => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Could not load an image required for this card');
+    const blob = await response.blob();
+    const localUrl = URL.createObjectURL(blob);
+    return { url: localUrl, revoke: () => URL.revokeObjectURL(localUrl) };
+  };
+
+  /** Same-origin, bundled template assets (e.g. the Custom Collection
+   *  placeholder badge) are referenced as root-relative paths — never
+   *  remote, never in need of localising. */
+  const needsLocalizing = (url?: string | null): url is string =>
+    Boolean(url) && !isLocalAssetUrl(url!) && !url!.startsWith('/');
+
   const captureShareImage = async (): Promise<string> => {
-    setShareCaptureMode(true);
+    const approvedPlayer = summary.approvedPlayers[0];
+    if (!approvedPlayer) throw new Error('Could not prepare card image');
+
+    const revokers: Array<() => void> = [];
     try {
-      await nextPaint();
-      const el = shareCaptureRef.current;
-      if (!el) throw new Error('Could not prepare card image');
-      await waitForImages(el);
-      return await captureElementToPng(el, { pixelRatio: 2, backgroundColor: '#ffffff' });
+      let capturePlayer = approvedPlayer;
+
+      const photoUrl = capturePlayer.photo?.srcUrl;
+      if (needsLocalizing(photoUrl)) {
+        const local = await fetchAsLocalImageUrl(photoUrl);
+        revokers.push(local.revoke);
+        capturePlayer = { ...capturePlayer, photo: { ...capturePlayer.photo!, srcUrl: local.url } };
+      }
+
+      const badgeUrl = capturePlayer.badgeUrl;
+      if (needsLocalizing(badgeUrl)) {
+        const local = await fetchAsLocalImageUrl(badgeUrl);
+        revokers.push(local.revoke);
+        capturePlayer = { ...capturePlayer, badgeUrl: local.url };
+      }
+
+      setShareCapturePlayer(capturePlayer);
+      try {
+        await nextPaint();
+        const el = shareCaptureRef.current;
+        if (!el) throw new Error('Could not prepare card image');
+        await waitForImages(el);
+
+        // Deterministic capture-ready gate: waitForImages resolving is not
+        // itself proof every image actually rendered — decode() can settle
+        // for a source that failed to resolve to real pixels. Every <img>
+        // this off-screen rig renders must have genuine dimensions before
+        // capture proceeds; this is what makes the gate real rather than a
+        // hopeful wait, and is exactly the check that would have caught
+        // the reported defect instead of silently producing an incomplete
+        // image.
+        const imgs = Array.from(el.querySelectorAll('img'));
+        if (imgs.some((img) => img.naturalWidth === 0 || img.naturalHeight === 0)) {
+          throw new Error('Could not prepare the card image for sharing');
+        }
+
+        return await captureElementToPng(el, { pixelRatio: 2, backgroundColor: '#ffffff' });
+      } finally {
+        setShareCapturePlayer(null);
+      }
     } finally {
-      setShareCaptureMode(false);
+      for (const revoke of revokers) revoke();
     }
   };
 
@@ -1381,10 +1468,10 @@ export default function ProductionBuilder({
           ))}
         </div>
       )}
-      {shareCaptureMode && summary.approvedPlayers[0] && (
+      {shareCapturePlayer && (
         <div aria-hidden style={{ position: 'fixed', left: -10000, top: 0, pointerEvents: 'none' }}>
           <div ref={shareCaptureRef} style={{ width: 340 }}>
-            <PlayerCard order={order} player={summary.approvedPlayers[0]} side="front" />
+            <PlayerCard order={order} player={shareCapturePlayer} side="front" />
           </div>
         </div>
       )}
