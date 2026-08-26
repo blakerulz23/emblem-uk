@@ -60,11 +60,15 @@ export default function ShareCardSheet({
   // the on-screen preview can never affect what captureShareImage renders
   // or returns.
   const [rotation, setRotation] = useState(0);
-  // A plain file download carries no caption of its own (unlike
-  // navigator.share, which attaches `text` alongside the file) — this
-  // gives the guardian an easy way to paste the exact same required
-  // wording themselves when they go on to attach the downloaded image
-  // somewhere by hand.
+  // The Web Share API gives calling code no feedback about what a target
+  // app actually did with `text` — only whether the share invocation
+  // itself succeeded or was cancelled. Manual testing confirmed WhatsApp
+  // Desktop specifically drops the caption entirely for a shared file, and
+  // there is no reliable way to detect that from here. Rather than
+  // confidently claim "your message was sent" when it may genuinely not
+  // have been, the same copy-to-clipboard safety net is offered after
+  // BOTH a successful native share and the plain download fallback (which
+  // has no caption field of its own at all) — see handleCopyMessage.
   const [messageCopied, setMessageCopied] = useState(false);
   // Guards against a slow eligibility response from an earlier order
   // landing after the component has already unmounted or moved to a
@@ -198,6 +202,16 @@ export default function ShareCardSheet({
             title: 'My Emblem card',
             text: CARD_SHARE_MESSAGE_TEXT,
           });
+          // Best-effort only: navigator.share() already resolved, so the
+          // share itself genuinely succeeded regardless of whether this
+          // also succeeds — a clipboard failure here must never be
+          // reported as a failed share.
+          try {
+            await navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT);
+          } catch {
+            // Clipboard unavailable/denied — the 'shared' status below
+            // still displays the same message text for manual copying.
+          }
           dispatch({ type: 'shared' });
           return;
         }
@@ -298,7 +312,17 @@ export default function ShareCardSheet({
       )}
 
       {stage.type === 'preparing' && <p aria-live="polite">Preparing your image…</p>}
-      {stage.type === 'shared' && <p role="status">Shared. {CARD_SHARE_RECALL_NOTICE}</p>}
+      {stage.type === 'shared' && (
+        <div role="status">
+          {/* Some apps (confirmed: WhatsApp Desktop) attach the image but
+              drop the accompanying message entirely, and the Web Share API
+              gives no way to detect that after the fact — so this never
+              claims the message was definitely included. */}
+          <p>Shared. If the message below didn&apos;t appear with it, we&apos;ve also copied it to your clipboard to paste in. {CARD_SHARE_RECALL_NOTICE}</p>
+          <p className="uk-card-share-download-message">{CARD_SHARE_MESSAGE_TEXT}</p>
+          <button type="button" onClick={handleCopyMessage}>{messageCopied ? 'Copied' : 'Copy message'}</button>
+        </div>
+      )}
       {stage.type === 'downloaded' && (
         <div role="status">
           <p>Downloaded. {CARD_SHARE_RECALL_NOTICE}</p>

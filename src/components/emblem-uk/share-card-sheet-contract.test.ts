@@ -145,6 +145,59 @@ describe('ShareCardSheet — the shared text is fixed, generic, appears exactly 
     const copyFnBody = sheet.slice(copyFnIdx, sheet.indexOf('\n  };', copyFnIdx));
     expect(copyFnBody).toContain('navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT)');
   });
+});
+
+/**
+ * The Web Share API gives calling code no way to learn whether the target
+ * app actually displayed `text` — only whether the whole call resolved or
+ * rejected. Manual testing found WhatsApp Desktop specifically drops the
+ * caption while still accepting the file. Since this can't be detected,
+ * the honest fix is to never confidently claim the message was included:
+ * a defensive clipboard copy happens after every successful native share
+ * too (not just the download fallback), and the visible copy afterwards
+ * is worded as a possibility, not a certainty.
+ */
+describe('ShareCardSheet — honest handling of a platform that may silently drop the caption', () => {
+  it('after a successful navigator.share, the message is also copied to the clipboard defensively, before reporting success', () => {
+    const shareIdx = sheet.indexOf('navigator.share({');
+    const shareCloseIdx = sheet.indexOf('});', shareIdx);
+    const sharedDispatchIdx = sheet.indexOf("dispatch({ type: 'shared' })", shareCloseIdx);
+    const clipboardIdx = sheet.indexOf('navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT)', shareCloseIdx);
+    expect(clipboardIdx).toBeGreaterThan(shareCloseIdx);
+    expect(sharedDispatchIdx).toBeGreaterThan(clipboardIdx);
+  });
+
+  it('a clipboard failure after a successful share is swallowed locally and never reported as a failed/cancelled share', () => {
+    const shareIdx = sheet.indexOf('navigator.share({');
+    const shareCloseIdx = sheet.indexOf('});', shareIdx);
+    const clipboardIdx = sheet.indexOf('navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT)', shareCloseIdx);
+    const localCatchIdx = sheet.indexOf('} catch {', clipboardIdx);
+    const sharedDispatchIdx = sheet.indexOf("dispatch({ type: 'shared' })", shareCloseIdx);
+    expect(localCatchIdx).toBeGreaterThan(clipboardIdx);
+    expect(localCatchIdx).toBeLessThan(sharedDispatchIdx);
+  });
+
+  it('the "shared" success state never asserts the message definitely arrived — it names the real possibility that it didn\'t', () => {
+    const idx = sheet.indexOf("stage.type === 'shared'");
+    const section = sheet.slice(idx, idx + 500);
+    expect(section).toMatch(/didn.t appear|may not have|if the message/i);
+    expect(section).not.toBe("<p role=\"status\">Shared. {CARD_SHARE_RECALL_NOTICE}</p>");
+  });
+
+  it('the "shared" state offers the identical copy-message affordance as the download fallback, for a consistent experience either way', () => {
+    const sharedIdx = sheet.indexOf("stage.type === 'shared'");
+    const sharedSection = sheet.slice(sharedIdx, sheet.indexOf("stage.type === 'downloaded'", sharedIdx));
+    expect(sharedSection).toContain('{CARD_SHARE_MESSAGE_TEXT}');
+    expect(sharedSection).toContain('onClick={handleCopyMessage}');
+    expect(sharedSection).toContain('uk-card-share-download-message');
+  });
+
+  it('cancelling the native share sheet is still never reported as shared, and no clipboard copy happens on that path', () => {
+    const idx = sheet.indexOf("err.name === 'AbortError'");
+    const section = sheet.slice(idx, idx + 100);
+    expect(section).toContain("dispatch({ type: 'reset' });");
+    expect(section).not.toContain('navigator.clipboard');
+  });
 
   it('cancelling the native share sheet is never reported as a successful share, and records no confirmed consent (only handleCancel/handleContinue can record "confirmed", and neither runs on cancel)', () => {
     const idx = sheet.indexOf("err.name === 'AbortError'");

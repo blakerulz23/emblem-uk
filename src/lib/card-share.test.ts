@@ -49,6 +49,11 @@ describe('the shared message text and link are fixed and generic — never deriv
     expect(CARD_SHARE_MESSAGE_TEXT).toContain(CARD_SHARE_LINK_URL);
   });
 
+  it('the link appears in the message exactly once — regression coverage for the duplicate-URL defect found in manual WhatsApp testing', () => {
+    const occurrences = CARD_SHARE_MESSAGE_TEXT.split(CARD_SHARE_LINK_URL).length - 1;
+    expect(occurrences).toBe(1);
+  });
+
   it('neither the link nor the text is a template literal capable of embedding an order id, submission key, token, or any other per-order value — both are plain constants', () => {
     expect(typeof CARD_SHARE_LINK_URL).toBe('string');
     expect(typeof CARD_SHARE_MESSAGE_TEXT).toBe('string');
