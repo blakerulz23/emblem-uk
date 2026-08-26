@@ -138,6 +138,21 @@ describe('ShareCardSheet — the design preview and its share affordance', () =>
     expect(section).toContain('onClick={(event) => event.stopPropagation()}');
   });
 
+  it('Escape closes the overlay the same safe way Cancel does (never a silent close that skips recording cancellation)', () => {
+    const idx = sheet.indexOf("if (event.key === 'Escape')");
+    expect(idx).toBeGreaterThan(-1);
+    const section = sheet.slice(idx, idx + 60);
+    expect(section).toContain('handleCancel();');
+  });
+
+  it('moves focus into the overlay when it opens, and keeps Tab cycling within its own three controls only', () => {
+    const idx = sheet.indexOf('if (stage.type !== \'confirming\') return;');
+    const fnBody = sheet.slice(idx, sheet.indexOf('}, [stage.type]);', idx));
+    expect(fnBody).toContain('.focus();');
+    expect(fnBody).toContain("event.key !== 'Tab'");
+    expect(fnBody).toContain('event.preventDefault();');
+  });
+
   it('still records the same consent version/warning/recall copy inside the redesigned overlay — the redesign never touches what is disclosed or agreed to', () => {
     const idx = sheet.indexOf('uk-card-share-modal"');
     const fnBody = sheet.slice(idx, sheet.indexOf('</div>\n      )}', idx));

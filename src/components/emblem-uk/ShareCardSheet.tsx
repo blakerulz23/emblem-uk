@@ -55,6 +55,44 @@ export default function ShareCardSheet({
   // mutates synchronously and is shared across both invocations, so the
   // second click always sees the first's write.
   const sharingRef = useRef(false);
+  // Focused-overlay keyboard support: Escape cancels the same safe way the
+  // Cancel button/backdrop click already do, and Tab is kept cycling
+  // between this dialog's own three interactive elements only, since
+  // nothing outside it (the preview, any page content behind the backdrop)
+  // should be reachable by keyboard while it's open.
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (stage.type !== 'confirming') return;
+    const dialogEl = dialogRef.current;
+    dialogEl?.querySelector<HTMLElement>('input, button:not(:disabled)')?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        handleCancel();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialogEl) return;
+      const focusable = Array.from(dialogEl.querySelectorAll<HTMLElement>('input, button:not(:disabled)'));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+    // handleCancel is redefined every render (it closes over orderId, which
+    // is stable for this component's lifetime) — depending on stage.type
+    // alone is intentional so this effect only re-runs on open/close, not
+    // on every unrelated re-render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage.type]);
 
   useEffect(() => {
     const requestId = ++requestIdRef.current;

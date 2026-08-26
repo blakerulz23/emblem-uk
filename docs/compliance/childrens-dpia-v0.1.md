@@ -228,6 +228,154 @@ before Stage A, not a fully closed one. Backup-retention exposure (above)
 is unresolved. All other section 12 "required before the pilot" items are
 unaffected by this work and remain open.
 
+## Work Package B addendum — same-origin photo route and rights matrix — 26 August 2026
+
+**Status: implementation evidence only; unreleased. Supplements, does not replace, the 25 August 2026 Work Package B note above — all of that note's unresolved rights/retention questions remain open exactly as recorded there.**
+
+**VERIFIED IN LOCAL SOURCE — same-origin photo retrieval (migration 0079,
+`/api/card-share/photo`).** A live manual preview test found that the
+shared image omitted the player's photograph. Root cause: by the time
+sharing is available, the photo (and any uploaded club crest) has already
+moved to a private, signed S3 URL — the correct behaviour of the existing,
+unmodified upload pipeline. That URL displays fine as an ordinary `<img>`
+(no cross-origin restriction applies to that), but the browser cannot draw
+a cross-origin image onto a `<canvas>` without the bucket's CORS
+cooperation, which this bucket correctly does not grant, since these are
+private, non-public child photographs — loosening that would have been a
+privacy regression, not a fix, and was explicitly rejected as an option.
+
+The corrected design adds one same-origin server route:
+`/api/card-share/photo` re-derives the exact same authorisation
+`get_card_share_eligibility` already performs (never trusts a client-
+supplied key, order id, or URL), resolves the private S3 key itself
+server-side via a new function (`get_card_share_asset_key`, migration
+0079), fetches the object bytes server-to-server (no CORS restriction
+applies between servers — only browsers enforce CORS), and returns them
+from the app's own origin. The browser never receives the raw S3 key or a
+fetchable S3 URL of any kind. No new public route, public object, or
+long-lived credential is created by this fix; the route is authenticated
+and rate-limited the same as the existing eligibility/consent routes.
+
+**VERIFIED OPERATIONAL LIMIT FOR THIS TASK:** during preview testing of
+the pre-fix build, the isolated preview deployment's AWS credentials
+silently fell through to the same S3 bucket and credentials Production
+uses, because this Vercel project scopes `AWS_S3_BUCKET`/
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` identically across Production
+and Preview — a pre-existing infrastructure gap, not something this task
+introduced, but one this task's own testing surfaced concretely. One
+fictional test image was, as a direct result, briefly written to the real
+production bucket during that test; no other production system was
+touched, and no real customer/child data was read, written, or exposed.
+This gap is recorded here as an open infrastructure item requiring a
+genuinely separate non-production S3 bucket/credential scope for Preview,
+not resolved by this DPIA note itself.
+
+### Rights matrix — visible design assets eligible for guardian-initiated social sharing
+
+Sharing recreates exactly the visible card front already approved for
+production — it does not introduce any new asset into the design. This
+matrix records, for each category of visible asset that can appear on a
+card front, whether the *additional* act of guardian-initiated social
+distribution (beyond Emblem's own printing/production use) is currently
+supported by recorded rights evidence. **Printing rights are not assumed
+to include social-sharing rights** — each row is assessed for sharing
+specifically, independent of whatever printing basis already exists.
+
+| Asset category | Emblem-owned? | Printing permission? | Social-sharing permission? | Evidence location | Reviewer/owner | Current sharing decision |
+|---|---|---|---|---|---|---|
+| Emblem-designed Custom Collection backgrounds/templates (`custom-solar`, `custom-galaxy`, `custom-comic`) | Yes — created for Emblem's own product | Yes (existing product use) | **Assumed yes** — Emblem's own original artwork, no third-party rights holder involved | Template source under `src/components/builder/emblem/` | UNKNOWN — Blake to assign | **Eligible** (subject to the guardian's own upload/branding permission below) |
+| User-uploaded club/team badge (Custom Collection only) | No — guardian/coach-supplied | Guardian/coach asserts permission at upload (existing Adult Permission "confirmed_photo_permission" declaration, not badge-specific wording) | **UNRESOLVED — REQUIRES SPECIALIST REVIEW.** The existing declaration's exact wording covers the uploaded *photograph*; it does not separately name uploaded club/team branding. Treated, as an initial safe policy, as covering both because the same authenticated adult chose every visible asset in one continuous session — not a settled legal position | `builder_order_authority_declarations.confirmed_photo_permission` (migration 0071); DPIA 25 August 2026 note above | UNKNOWN — Blake to assign | **Eligible, provisionally** — pending the specialist review already flagged on 25 August 2026 |
+| Player photograph | No — guardian-supplied, child's own image | Guardian permission via Adult Permission | Same Adult Permission declaration as above | Same as above | UNKNOWN — Blake to assign | **Eligible** — this is the asset the whole feature exists to let the guardian share |
+| Official Collection templates | Likely Emblem-owned design, but the collection references real club/league identity | Yes (existing product use) | **No evidence found** that Emblem holds social-distribution rights for the associated club/league identity | No repository evidence found — `docs/` and template-classification source searched directly, nothing located | UNKNOWN — Blake to assign | **Not eligible** — excluded by explicit template allowlist in `get_card_share_eligibility` (migration 0078) |
+| Licensed/partner badges (e.g. EMJFL official badge, Hollinwood partner variants) | No — third-party/licensed marks | Yes, under whatever licence permits printing | **No evidence found** of a separate social-distribution licence | No repository evidence found | UNKNOWN — Blake to assign | **Not eligible** — same allowlist exclusion as above |
+| League/competition artwork | No — third-party marks | Context-dependent, not fully documented | **No evidence found** | No repository evidence found | UNKNOWN — Blake to assign | **Not eligible** — excluded (not part of the Custom Collection allowlist) |
+| Third-party design templates outside Custom Collection/Official Collection | Not established | Not established | **No evidence found** | Not established | UNKNOWN — Blake to assign | **Not eligible** — excluded by the same allowlist |
+| Fonts and other embedded design assets (card chrome, layout, typography) | Yes — assumed licensed for Emblem's own product use, not independently re-verified for redistribution in a shared social image | Yes (existing product use) | **UNKNOWN — not independently reviewed for this task.** No evidence was found either way; assumed low risk as non-identifying design chrome, not asserted as cleared | Not established | UNKNOWN — Blake to assign | **Included by default** wherever a Custom Collection card is otherwise eligible — flagged here as an unreviewed assumption, not a confirmed clearance |
+
+**Fail-closed policy recorded here, matching the actual implementation:**
+Custom Collection sharing remains eligible only because (a) the guardian
+who uploaded any branding is the same authenticated adult who completed
+Adult Permission for that exact order, and (b) the remaining Emblem-owned
+template/background assets are treated as cleared for this internal
+product use. Official Collection and every licensed/rights-uncertain
+category are disabled at the database layer (the explicit
+`custom_template_ids` allowlist in `get_card_share_eligibility`), not by
+UI convention alone — confirmed by direct reading of migration 0078 and
+re-verified this task via role-impersonated RPC calls against the
+disposable database (see this task's own verification report on PR #44
+for the exact scenarios exercised).
+
+**This rights matrix does not itself grant, confirm, or imply that any
+"UNKNOWN"/"REQUIRES SPECIALIST REVIEW" row has been cleared.** It records
+the current, honest state of evidence so that a decision-maker can see
+precisely what remains open before treating this feature as launch-ready.
+
+### Data-flow, retention, and consent-record update
+
+**VERIFIED IN LOCAL SOURCE.** The complete share data flow is:
+
+```text
+Guardian (authenticated, Adult-Permission-confirmed, single-child order)
+  -> browser fetches eligibility (get_card_share_eligibility, read-only)
+  -> guardian opens the share overlay, actively ticks the separate consent
+  -> browser records consent (record_card_share_consent) BEFORE any image
+     is generated
+  -> browser renders the same on-screen CardFace component, off-screen,
+     fetching the private photo/badge via the same-origin
+     /api/card-share/photo route (never a direct cross-origin S3 fetch)
+  -> browser captures that render to an in-memory image (captureElementToPng)
+  -> Web Share API (with a File) if supported, otherwise a direct browser
+     download — both are the SAME generated bytes, never a second copy
+  -> nothing is uploaded, stored server-side, or given a public URL at any
+     point in this flow
+```
+
+- **No server-stored share image, ever.** Confirmed by direct reading:
+  neither `/api/card-share/eligibility`, `/api/card-share/consent`, nor
+  `/api/card-share/photo` writes image bytes anywhere — the two former
+  routes never handle image bytes at all, and the latter only ever reads
+  the pre-existing production asset to return it, once, to the requesting
+  browser.
+- **No public URL is ever created** for the shared image or for the
+  underlying private photo — `/api/card-share/photo` requires the same
+  authenticated, eligibility-checked session as the rest of this feature
+  on every single call; it is not a stable or guessable link, and it
+  never appears in the generated image or in the Web Share
+  title/text.
+- **Local downloads and Web-Share-delivered files cannot be recalled by
+  Emblem once they leave the browser** — the guardian-facing warning and
+  recall notice already say this in plain language, and this DPIA
+  reiterates it here for the record: a recipient, or any social platform
+  the guardian shares to, may retain, re-share, or re-post their own copy
+  indefinitely, entirely outside Emblem's systems and knowledge.
+- **Card suspension, revocation, and deletion requests stop future
+  sharing, not past copies.** `get_card_share_eligibility` re-checks
+  `access_status` on every call (a pending/active deletion request already
+  sets this via migration 0076), so a card that becomes suspended, revoked,
+  or subject to a deletion request immediately stops resolving eligible —
+  and therefore stops resolving a photo key via
+  `get_card_share_asset_key` too, since that function re-derives the same
+  eligibility check. This is a real, verified technical control; it is
+  not, and cannot be, a means of retracting a copy already shared before
+  that point.
+- **Consent audit records remain append-only and minimal**, unchanged
+  from the 25 August 2026 note: `card_share_consent_events` stores only
+  ids, a card-definition version reference, a consent-wording version, a
+  result, and a timestamp — never the image, a name, an email, or a phone
+  number.
+- **Rights-based eligibility restrictions** are the allowlist described in
+  the rights matrix above, enforced server-side, not merely hidden in the
+  UI.
+- **Deliberately unsupported order modes** (whole-team orders, the
+  other-adult/guardian-approved journey, Squad Invite) remain exactly as
+  recorded in the 25 August 2026 note — hidden entirely, not shown in a
+  blocked state, and not broadened by this addendum.
+
+This addendum does not change the DPIA's overall recommendation recorded
+above (**REQUIRES SPECIALIST REVIEW — paused pending completion of
+section 12 "Required before the pilot"**), and does not itself constitute
+safeguarding or legal approval for this feature.
+
 ## Evidence labels and risk method
 
 - **VERIFIED** — directly supported by repository evidence cited in this document.
