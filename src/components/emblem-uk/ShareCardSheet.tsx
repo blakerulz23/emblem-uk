@@ -32,18 +32,33 @@ import {
  * summary shows), handed in as a plain ReactNode so this component can put
  * the share affordance directly on top of the design without importing any
  * card-rendering code itself.
+ *
+ * The design preview is shown as soon as this component mounts (a
+ * successfully-submitted single-child order), independent of eligibility —
+ * only the share control itself is gated on the server-backed eligibility
+ * check resolving `eligible: true`. Rotation is a purely cosmetic, on-
+ * screen-only transform applied to this wrapper; it never touches
+ * `preview` itself, `getShareImage`, or anything the capture path reads,
+ * so the generated share image is always the upright front regardless of
+ * whatever rotation the guardian left the on-screen preview in.
  */
 export default function ShareCardSheet({
   orderId,
   getShareImage,
   preview,
+  summary,
 }: {
   orderId: string;
   getShareImage: () => Promise<string>;
   preview: ReactNode;
+  summary: { collectionName: string; playerCount: number; printCount: number };
 }) {
   const [eligibility, setEligibility] = useState<CardShareEligibility | null>(null);
   const [stage, dispatch] = useReducer(cardShareStageReducer, { type: 'closed' });
+  // Cosmetic only — see this component's own top comment on why rotating
+  // the on-screen preview can never affect what captureShareImage renders
+  // or returns.
+  const [rotation, setRotation] = useState(0);
   // Guards against a slow eligibility response from an earlier order
   // landing after the component has already unmounted or moved to a
   // different order — same stale-attempt discipline as AdultPermissionStep.
@@ -104,8 +119,15 @@ export default function ShareCardSheet({
     return () => { cancelled = true; };
   }, [orderId]);
 
-  if (!eligibility) return null;
-  if (!eligibility.eligible && shouldHideCardShareEntirely(eligibility.reason)) return null;
+  // Unlike the eligibility gate this replaced, the preview itself is never
+  // hidden — only the share control and any blocked-reason message are.
+  // "Hidden entirely" reasons (not_authenticated, not_authorized,
+  // multi_child_order) must never surface a message at all, matching the
+  // existing rule that ineligibility must never disclose why a record
+  // failed a check the caller has no business knowing the details of.
+  const showShareIcon = Boolean(eligibility?.eligible) && stage.type === 'closed';
+  const showBlockedMessage =
+    Boolean(eligibility) && !eligibility!.eligible && !shouldHideCardShareEntirely(eligibility!.reason) && stage.type === 'closed';
 
   const handleCancel = () => {
     dispatch({ type: 'cancel' });
@@ -173,16 +195,30 @@ export default function ShareCardSheet({
     }
   };
 
-  const blockedMessage = !eligibility.eligible ? cardShareBlockedMessage(eligibility.reason) : null;
+  const blockedMessage = eligibility && !eligibility.eligible ? cardShareBlockedMessage(eligibility.reason) : null;
+  const { collectionName, playerCount, printCount } = summary;
 
   return (
     <div className="uk-card-share">
       <div className="uk-card-share-preview">
-        {preview}
-        {eligibility.eligible && stage.type === 'closed' && (
+        <div className="uk-card-share-preview-card" style={{ transform: `rotate(${rotation}deg)` }}>
+          {preview}
+        </div>
+        <button
+          type="button"
+          className="uk-card-share-icon-btn rotate"
+          aria-label="Rotate card preview"
+          onClick={() => setRotation((current) => (current + 90) % 360)}
+        >
+          <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+            <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+            <path d="M20 4v5h-5" />
+          </svg>
+        </button>
+        {showShareIcon && (
           <button
             type="button"
-            className="uk-card-share-icon-btn"
+            className="uk-card-share-icon-btn share"
             aria-label="Share your card design"
             onClick={() => dispatch({ type: 'open' })}
           >
@@ -195,11 +231,16 @@ export default function ShareCardSheet({
         )}
       </div>
 
-      {blockedMessage && stage.type === 'closed' && <p className="uk-card-share-blocked">{blockedMessage}</p>}
+      <p className="uk-card-share-summary">
+        {collectionName} &middot; {playerCount} player{playerCount === 1 ? '' : 's'} &middot; {printCount} print{printCount === 1 ? '' : 's'}
+      </p>
+
+      {showBlockedMessage && <p className="uk-card-share-blocked">{blockedMessage}</p>}
 
       {stage.type === 'confirming' && (
         <div className="uk-card-share-modal-backdrop" role="presentation" onClick={handleCancel}>
           <div
+            ref={dialogRef}
             className="uk-card-share-modal"
             role="dialog"
             aria-modal="true"

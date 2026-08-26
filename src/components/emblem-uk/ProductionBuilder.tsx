@@ -530,6 +530,23 @@ export default function ProductionBuilder({
   const coachCardBlocksSubmission = coachCardEligibility.eligible && !coachCardComplete;
   const reviewGroups = useMemo(() => groupPlayersByClub(order, order.players), [order]);
   const approvedGroups = useMemo(() => groupPlayersByClub(order, summary.approvedPlayers), [order, summary.approvedPlayers]);
+  // Guardian-controlled card-front sharing (Work Package B) — this gate is
+  // a first-pass filter matching what the server-side eligibility check
+  // (migration 0078) independently re-verifies as the actual authority: a
+  // direct parent/legal guardian's own single-child, successfully
+  // submitted order. order.type === 'single' mirrors the same "whole-team
+  // orders have only one authority declaration for many children"
+  // limitation the migration's own header comment documents —
+  // ShareCardSheet still fetches and trusts only the server's own answer,
+  // never this client gate alone. When true, "Your order" shows the real
+  // card preview (with its own separately-gated share control) in place of
+  // the ordinary club/badge summary row, since a single-type order always
+  // has exactly one approved group/player anyway.
+  const soleApprovedPlayer = summary.approvedPlayers[0];
+  const shareableOrderContext =
+    enquiryStatus === 'sent' && submittedAuthorityStatus === 'confirmed' && order.type === 'single' && submittedOrderId && soleApprovedPlayer
+      ? { orderId: submittedOrderId, player: soleApprovedPlayer }
+      : null;
   const stats = sportConfig[order.sport].stats;
   const orderMode = orderModeLimits[order.type];
   const visibleOrderType = order.type === 'single' ? 'single' : 'squad';
@@ -2249,7 +2266,18 @@ export default function ProductionBuilder({
               </div>
               <div className="uk-order-club-list">
                 <h3>Your order</h3>
-                {approvedGroups.length > 0 ? (
+                {shareableOrderContext ? (
+                  <ShareCardSheet
+                    orderId={shareableOrderContext.orderId}
+                    getShareImage={captureShareImage}
+                    preview={<PlayerCard order={order} player={shareableOrderContext.player} side="front" />}
+                    summary={{
+                      collectionName: order.collectionName || 'Custom Collection',
+                      playerCount: summary.approvedPlayers.length,
+                      printCount: summary.approvedPrints,
+                    }}
+                  />
+                ) : approvedGroups.length > 0 ? (
                   approvedGroups.map((group) => {
                     const prints = group.players.reduce((total, player) => total + player.prints, 0);
                     return (
@@ -2409,29 +2437,6 @@ export default function ProductionBuilder({
                   {summary.approvedPlayers.length} card{summary.approvedPlayers.length === 1 ? '' : 's'} &middot; {summary.approvedPrints} print{summary.approvedPrints === 1 ? '' : 's'} &middot; {quoteSubtotalLabel(quoteState)}
                 </p>
               </div>
-              {/* Guardian-controlled card-front sharing (Work Package B,
-                  draft) — outer gate here is a first-pass filter matching
-                  what the server-side eligibility check (migration 0078)
-                  independently re-verifies as the actual authority: a
-                  direct parent/legal guardian's own single-child order.
-                  order.type === 'single' mirrors the same "whole-team
-                  orders have only one authority declaration for many
-                  children" limitation the migration's own header comment
-                  documents — ShareCardSheet still fetches and trusts only
-                  the server's own answer, never this client gate alone. */}
-              {(() => {
-                const soleApprovedPlayer = summary.approvedPlayers[0];
-                if (enquiryStatus !== 'sent' || submittedAuthorityStatus !== 'confirmed' || order.type !== 'single' || !submittedOrderId || !soleApprovedPlayer) {
-                  return null;
-                }
-                return (
-                  <ShareCardSheet
-                    orderId={submittedOrderId}
-                    getShareImage={captureShareImage}
-                    preview={<PlayerCard order={order} player={soleApprovedPlayer} side="front" />}
-                  />
-                );
-              })()}
             </section>
           )}
         </main>

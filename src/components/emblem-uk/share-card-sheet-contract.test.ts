@@ -87,17 +87,83 @@ describe('ShareCardSheet — sharing mechanism order and cleanup', () => {
 });
 
 describe('ShareCardSheet — visibility gating', () => {
-  it('renders nothing until eligibility has resolved (no flash of a blocked/unavailable state)', () => {
-    expect(sheet).toContain('if (!eligibility) return null;');
+  it('the design preview is never gated on eligibility — only the share control and any blocked message are', () => {
+    // No early `return null` exists anywhere before the component's own
+    // final JSX return — the preview (and rotate control) must render
+    // regardless of whether eligibility has resolved yet, or resolved to
+    // an ineligible/hidden reason. Only showShareIcon/showBlockedMessage
+    // gate what appears ON TOP of that preview.
+    const returnIdx = sheet.indexOf('return (');
+    const bodyBeforeReturn = sheet.slice(0, returnIdx);
+    expect(bodyBeforeReturn).not.toMatch(/return null;/);
   });
 
-  it('hides entirely (not a blocked message) for reasons shouldHideCardShareEntirely marks as such', () => {
-    expect(sheet).toContain('shouldHideCardShareEntirely(eligibility.reason)) return null;');
+  it('never shows the share icon before eligibility resolves', () => {
+    const idx = sheet.indexOf('const showShareIcon');
+    const line = sheet.slice(idx, sheet.indexOf(';', idx));
+    expect(line).toContain('eligibility?.eligible');
+  });
+
+  it('hides entirely (no message at all) for reasons shouldHideCardShareEntirely marks as such', () => {
+    const idx = sheet.indexOf('const showBlockedMessage');
+    const line = sheet.slice(idx, sheet.indexOf(';', idx));
+    expect(line).toContain('!shouldHideCardShareEntirely(eligibility!.reason)');
   });
 
   it('the confirmation sheet never pre-ticks the checkbox — opening always starts unticked (cardShareStageReducer\'s own "open" case)', () => {
     expect(sheet).toContain("checked={stage.checked}");
     expect(sheet).not.toContain('checked={true}');
+  });
+});
+
+/**
+ * Card-preview redesign (inspired by the supplied reference): the real
+ * on-screen card front, rotate and share controls, and a small textual
+ * order summary all live in one frame inside "Your order" now — there is
+ * exactly one sharing entry point on the page (see the ProductionBuilder
+ * describe block below for proof the old standalone panel is gone).
+ */
+describe('ShareCardSheet — rotate control and order summary', () => {
+  it('renders a rotate control, always (never gated on eligibility, unlike the share icon)', () => {
+    const idx = sheet.indexOf('uk-card-share-icon-btn rotate');
+    expect(idx).toBeGreaterThan(-1);
+    // Must not be inside a showShareIcon-guarded block.
+    const precedingShowShareIconIdx = sheet.lastIndexOf('{showShareIcon &&', idx);
+    expect(precedingShowShareIconIdx === -1 || precedingShowShareIconIdx > idx).toBe(true);
+  });
+
+  it('rotate has a descriptive aria-label distinct from the share control\'s', () => {
+    expect(sheet).toContain('aria-label="Rotate card preview"');
+    expect(sheet).toContain('aria-label="Share your card design"');
+  });
+
+  it('rotating only changes a local, cosmetic rotation value applied to the preview wrapper — never the underlying preview element, order, or capture inputs', () => {
+    const idx = sheet.indexOf('const [rotation, setRotation]');
+    expect(idx).toBeGreaterThan(-1);
+    const onClickIdx = sheet.indexOf('setRotation((current) => (current + 90) % 360)');
+    expect(onClickIdx).toBeGreaterThan(-1);
+    // The rotation transform is applied to a wrapper div, not to `preview`
+    // itself, and the wrapper never appears inside getShareImage/capture code.
+    expect(sheet).toContain('className="uk-card-share-preview-card" style={{ transform: `rotate(${rotation}deg)` }}');
+  });
+
+  it('the share icon button and the rotate button are positioned as siblings of the rotating wrapper, not inside it — so they never rotate with the card', () => {
+    const wrapperIdx = sheet.indexOf('uk-card-share-preview-card');
+    const wrapperCloseIdx = sheet.indexOf('</div>', wrapperIdx);
+    const rotateBtnIdx = sheet.indexOf('uk-card-share-icon-btn rotate');
+    expect(rotateBtnIdx).toBeGreaterThan(wrapperCloseIdx);
+  });
+
+  it('displays the collection name, player count and print count from the summary prop — never a hidden/private field', () => {
+    const idx = sheet.indexOf('uk-card-share-summary');
+    const section = sheet.slice(idx, idx + 300);
+    expect(section).toContain('{collectionName}');
+    expect(section).toContain('{playerCount}');
+    expect(section).toContain('{printCount}');
+  });
+
+  it('the summary prop type carries only collection name and two counts — nothing that could be a private field', () => {
+    expect(sheet).toContain('summary: { collectionName: string; playerCount: number; printCount: number };');
   });
 });
 
@@ -122,9 +188,12 @@ describe('ShareCardSheet — the design preview and its share affordance', () =>
   });
 
   it('the share icon button only appears once eligible and while nothing else is already in progress', () => {
-    const idx = sheet.indexOf('uk-card-share-icon-btn');
+    const idx = sheet.indexOf('uk-card-share-icon-btn share');
     const guardSection = sheet.slice(Math.max(0, idx - 200), idx);
-    expect(guardSection).toContain("eligibility.eligible && stage.type === 'closed'");
+    expect(guardSection).toContain('{showShareIcon && (');
+    const showShareIconIdx = sheet.indexOf('const showShareIcon');
+    const showShareIconLine = sheet.slice(showShareIconIdx, sheet.indexOf(';', showShareIconIdx));
+    expect(showShareIconLine).toContain("stage.type === 'closed'");
   });
 
   it('the icon button has an accessible name (icon-only, no visible label text)', () => {
@@ -153,6 +222,14 @@ describe('ShareCardSheet — the design preview and its share affordance', () =>
     expect(fnBody).toContain('event.preventDefault();');
   });
 
+  it('actually attaches dialogRef to the dialog element the focus/Tab logic reads from (a ref declared but never attached would silently no-op)', () => {
+    const refIdx = sheet.indexOf('ref={dialogRef}');
+    expect(refIdx).toBeGreaterThan(-1);
+    const classNameIdx = sheet.indexOf('className="uk-card-share-modal"', refIdx);
+    expect(classNameIdx).toBeGreaterThan(refIdx);
+    expect(classNameIdx - refIdx).toBeLessThan(60);
+  });
+
   it('still records the same consent version/warning/recall copy inside the redesigned overlay — the redesign never touches what is disclosed or agreed to', () => {
     const idx = sheet.indexOf('uk-card-share-modal"');
     const fnBody = sheet.slice(idx, sheet.indexOf('</div>\n      )}', idx));
@@ -162,19 +239,55 @@ describe('ShareCardSheet — the design preview and its share affordance', () =>
   });
 });
 
-describe('ProductionBuilder — ShareCardSheet is only mounted for a single-child, directly-confirmed order', () => {
-  it('gates ShareCardSheet on enquiryStatus sent, authority confirmed, and order.type single, independent of the server\'s own re-check', () => {
-    const idx = builder.indexOf('<ShareCardSheet');
-    const gateSection = builder.slice(Math.max(0, idx - 700), idx);
-    expect(gateSection).toContain("enquiryStatus !== 'sent'");
-    expect(gateSection).toContain("submittedAuthorityStatus !== 'confirmed'");
-    expect(gateSection).toContain("order.type !== 'single'");
+describe('ProductionBuilder — ShareCardSheet is only mounted for a single-child, directly-confirmed order, inside "Your order"', () => {
+  it('gates the whole card-preview experience on enquiryStatus sent, authority confirmed, and order.type single, independent of the server\'s own re-check', () => {
+    const idx = builder.indexOf('const shareableOrderContext =');
+    expect(idx).toBeGreaterThan(-1);
+    const gateBody = builder.slice(idx, builder.indexOf(';', builder.indexOf('null;', idx)));
+    expect(gateBody).toContain("enquiryStatus === 'sent'");
+    expect(gateBody).toContain("submittedAuthorityStatus === 'confirmed'");
+    expect(gateBody).toContain("order.type === 'single'");
+    expect(gateBody).toContain('submittedOrderId');
+    expect(gateBody).toContain('soleApprovedPlayer');
   });
 
-  it('passes the real, visible, on-screen PlayerCard as the preview — never the off-screen capture rig\'s player', () => {
+  it('renders ShareCardSheet inside "Your order" (uk-order-club-list) in place of the ordinary club/badge row when the gate is true', () => {
+    const orderListIdx = builder.indexOf('<div className="uk-order-club-list">');
+    const yourOrderHeadingIdx = builder.indexOf('<h3>Your order</h3>', orderListIdx);
+    const conditionalIdx = builder.indexOf('shareableOrderContext ?', yourOrderHeadingIdx);
+    const shareCardSheetIdx = builder.indexOf('<ShareCardSheet', yourOrderHeadingIdx);
+    expect(yourOrderHeadingIdx).toBeGreaterThan(orderListIdx);
+    expect(conditionalIdx).toBeGreaterThan(yourOrderHeadingIdx);
+    expect(shareCardSheetIdx).toBeGreaterThan(conditionalIdx);
+    // And it is the ONLY place ShareCardSheet is rendered anywhere in this file.
+    const secondOccurrence = builder.indexOf('<ShareCardSheet', shareCardSheetIdx + 1);
+    expect(secondOccurrence).toBe(-1);
+  });
+
+  it('there is no separate standalone sharing panel anywhere else on the page (the old "Order summary" handoff box has no sharing content after it)', () => {
+    const handoffIdx = builder.indexOf('<div className="uk-handoff-box">');
+    const afterHandoff = builder.slice(handoffIdx, handoffIdx + 600);
+    expect(afterHandoff).not.toContain('ShareCardSheet');
+    expect(afterHandoff).not.toContain('captureShareImage');
+  });
+
+  it('passes the real, visible, on-screen PlayerCard as the preview, the real order id, and the real collection/player/print summary — never the off-screen capture rig\'s player', () => {
     const idx = builder.indexOf('<ShareCardSheet');
-    const tagSection = builder.slice(idx, idx + 300);
-    expect(tagSection).toContain('preview={<PlayerCard order={order} player={soleApprovedPlayer} side="front" />}');
+    const tagSection = builder.slice(idx, idx + 500);
+    expect(tagSection).toContain('orderId={shareableOrderContext.orderId}');
+    expect(tagSection).toContain('preview={<PlayerCard order={order} player={shareableOrderContext.player} side="front" />}');
+    expect(tagSection).toContain("collectionName: order.collectionName || 'Custom Collection'");
+    expect(tagSection).toContain('playerCount: summary.approvedPlayers.length');
+    expect(tagSection).toContain('printCount: summary.approvedPrints');
+  });
+
+  it('the off-screen capture rig that actually produces the shared image contains only the PlayerCard — never the rotate/share buttons or any other on-screen control', () => {
+    const idx = builder.indexOf('{shareCapturePlayer && (');
+    const rigBody = builder.slice(idx, builder.indexOf('\n      )}', idx));
+    expect(rigBody).toContain('<PlayerCard order={order} player={shareCapturePlayer} side="front" />');
+    expect(rigBody).not.toContain('uk-card-share-icon-btn');
+    expect(rigBody).not.toContain('<button');
+    expect(rigBody).not.toContain('rotation');
   });
 
   it('the share capture rig is a separate off-screen tree from the print capture rig, sharing no state with it', () => {

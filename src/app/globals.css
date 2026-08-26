@@ -3765,7 +3765,6 @@ a { text-decoration: none; color: inherit; }
    .uk-handoff-box "Order summary" and .uk-next-steps panels above it, so
    sharing never reads as a required step to complete the order. */
 .uk-card-share {
-  margin-top: 14px;
   border: 1px solid #ece4d6;
   border-radius: 16px;
   background: #fdfcfa;
@@ -3787,18 +3786,21 @@ a { text-decoration: none; color: inherit; }
 
 /* The design itself, shown exactly as ordered — the same visible PlayerCard
    already used elsewhere in the builder (see .uk-edit-preview) — with the
-   share affordance placed directly on it, mirroring the "preview + share
-   icon on the object itself" pattern rather than a separate labelled
-   button below. */
+   rotate/share controls placed directly on the frame, mirroring the
+   reference "preview + circular controls on the object itself" pattern
+   rather than separate labelled buttons below. Extra bottom padding (vs.
+   the 14px on every other side) is deliberate: it reserves a clear gutter
+   below the card art itself for both controls, so neither one ever sits
+   on top of the design (the photo, name, number, badge). */
 .uk-card-share-preview {
   position: relative;
   display: grid;
   justify-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   border: 1px solid var(--wizard-line);
   border-radius: 18px;
   background: #fff;
-  padding: 14px;
+  padding: 14px 14px 64px;
 }
 
 .uk-card-share-preview .uk-real-card {
@@ -3806,24 +3808,62 @@ a { text-decoration: none; color: inherit; }
   max-width: 100%;
 }
 
+/* Rotation is applied only to this wrapper, around the card's own visual
+   centre — the icon buttons are siblings, not children, so they stay
+   upright at all times regardless of the card's current rotation. */
+.uk-card-share-preview-card {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  transform-origin: center;
+  transition: transform 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uk-card-share-preview-card {
+    transition: none;
+  }
+}
+
 .uk-card-share-icon-btn {
   position: absolute;
-  right: 12px;
   bottom: 12px;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border: 0;
   border-radius: 999px;
-  background: var(--wizard-accent);
-  color: #fff;
   display: grid;
   place-items: center;
   cursor: pointer;
+}
+
+.uk-card-share-icon-btn.share {
+  right: 12px;
+  background: var(--wizard-accent);
+  color: #fff;
   box-shadow: 0 10px 22px var(--wizard-glow);
 }
 
-.uk-card-share-icon-btn:hover {
+.uk-card-share-icon-btn.share:hover {
   filter: brightness(1.06);
+}
+
+.uk-card-share-icon-btn.rotate {
+  left: 12px;
+  background: #fff;
+  color: var(--wizard-ink);
+  border: 1px solid var(--wizard-line);
+  box-shadow: 0 8px 18px rgba(16, 16, 21, 0.14);
+}
+
+.uk-card-share-icon-btn.rotate:hover {
+  border-color: var(--wizard-accent);
+  color: var(--wizard-accent);
+}
+
+.uk-card-share-icon-btn:focus-visible {
+  outline: 3px solid var(--wizard-accent);
+  outline-offset: 2px;
 }
 
 .uk-card-share-icon-btn svg {
@@ -3834,6 +3874,13 @@ a { text-decoration: none; color: inherit; }
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.uk-card-share-summary {
+  margin: 0 0 10px;
+  text-align: center;
+  color: var(--wizard-soft);
+  font-size: 13px;
 }
 
 /* Confirmation is a focused overlay rather than an inline block — the
