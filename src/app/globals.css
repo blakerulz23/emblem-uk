@@ -3880,6 +3880,20 @@ a { text-decoration: none; color: inherit; }
   font-size: 13px;
 }
 
+/* The download fallback's caption-to-copy — shown as plain text (a plain
+   file download has no caption field of its own to carry it), preserving
+   the message's own line break. */
+.uk-card-share-download-message {
+  margin: 6px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--wizard-ink);
+  font-size: 13px;
+  white-space: pre-line;
+}
+
 /* Confirmation is a focused overlay rather than an inline block — the
    design and the decision to share it are the only two things on screen
    while it's open. */

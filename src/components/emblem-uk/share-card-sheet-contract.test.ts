@@ -91,33 +91,67 @@ describe('ShareCardSheet — sharing mechanism order and cleanup', () => {
 });
 
 /**
- * Web Share now also carries the fixed, generic message/link (never
- * anything derived from this order) alongside the file — and the download
- * fallback surfaces the same link visibly, since a plain file download has
- * no text/url fields of its own to carry it in.
+ * Web Share carries the fixed, generic message (never anything derived
+ * from this order) alongside the file, and the download fallback surfaces
+ * the identical wording so a guardian who falls back to a manual download
+ * can still paste the same caption by hand.
+ *
+ * Regression coverage: manual WhatsApp Desktop testing on the previous
+ * build (files + text + url all supplied together) showed the link twice
+ * and the "Look what I made…" line missing entirely — WhatsApp composed
+ * its own caption from `url` rather than reliably combining it with
+ * `text`. CARD_SHARE_MESSAGE_TEXT already contains the link as ordinary
+ * text, so the fix is to never also pass a separate `url` — one opaque
+ * text block is the only thing every share target is guaranteed to show
+ * verbatim.
  */
-describe('ShareCardSheet — the shared text/link is fixed, generic, and never derived from this order', () => {
-  it('navigator.share is called with the file, the fixed text, and the fixed generic url — never anything computed from orderId', () => {
+describe('ShareCardSheet — the shared text is fixed, generic, appears exactly once, and is never derived from this order', () => {
+  it('navigator.share is called with the file and the fixed text only — never also a separate url (which caused the reported duplication)', () => {
     const idx = sheet.indexOf('navigator.share({');
     const callBody = sheet.slice(idx, sheet.indexOf('});', idx));
     expect(callBody).toContain('files: [file]');
     expect(callBody).toContain('text: CARD_SHARE_MESSAGE_TEXT');
-    expect(callBody).toContain('url: CARD_SHARE_LINK_URL');
+    expect(callBody).not.toContain('url:');
     expect(callBody).not.toContain('orderId');
   });
 
-  it('the downloaded-status message shows a visible link to the same fixed generic builder URL', () => {
-    const idx = sheet.indexOf("stage.type === 'downloaded'");
-    const section = sheet.slice(idx, idx + 250);
-    expect(section).toContain('href={CARD_SHARE_LINK_URL}');
-    expect(section).toContain('Create your own card');
+  it('the complete required message (both lines) is what gets sent — not a partial or reconstructed string', () => {
+    const idx = sheet.indexOf('navigator.share({');
+    const callBody = sheet.slice(idx, sheet.indexOf('});', idx));
+    expect(callBody).toContain('text: CARD_SHARE_MESSAGE_TEXT');
+    // CARD_SHARE_MESSAGE_TEXT itself (card-share.test.ts) already proves
+    // its exact contents; this proves the component passes that whole
+    // constant through unmodified, never a substring or concatenation.
+    expect(callBody).not.toMatch(/text:\s*`|text:\s*"|text:\s*CARD_SHARE_MESSAGE_TEXT\s*\+/);
   });
 
-  it('cancelling the native share sheet is never reported as a successful share', () => {
+  it('the attached file is still the exact generated image — the message fix never touches what is attached', () => {
+    const idx = sheet.indexOf('navigator.share({');
+    const callBody = sheet.slice(idx, sheet.indexOf('});', idx));
+    expect(callBody).toMatch(/files:\s*\[file\]/);
+  });
+
+  it('the downloaded-status view displays the exact same message text (not a bare link), so a manual download can carry the same wording', () => {
+    const idx = sheet.indexOf("stage.type === 'downloaded'");
+    const section = sheet.slice(idx, idx + 350);
+    expect(section).toContain('{CARD_SHARE_MESSAGE_TEXT}');
+  });
+
+  it('the downloaded-status view also offers a copy control for that exact same wording', () => {
+    const idx = sheet.indexOf("stage.type === 'downloaded'");
+    const section = sheet.slice(idx, idx + 350);
+    expect(section).toContain('onClick={handleCopyMessage}');
+    const copyFnIdx = sheet.indexOf('const handleCopyMessage');
+    const copyFnBody = sheet.slice(copyFnIdx, sheet.indexOf('\n  };', copyFnIdx));
+    expect(copyFnBody).toContain('navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT)');
+  });
+
+  it('cancelling the native share sheet is never reported as a successful share, and records no confirmed consent (only handleCancel/handleContinue can record "confirmed", and neither runs on cancel)', () => {
     const idx = sheet.indexOf("err.name === 'AbortError'");
     const section = sheet.slice(idx, idx + 100);
     expect(section).toContain("dispatch({ type: 'reset' });");
     expect(section).not.toContain("dispatch({ type: 'shared' })");
+    expect(section).not.toContain("recordCardShareConsent(orderId, 'confirmed')");
   });
 });
 
