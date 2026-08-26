@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { consumeAnonymousRequestRateLimit } from '@/lib/anonymous-request-rate-limit';
 import { hasValidBuilderCsrf } from '@/lib/builder-request-security';
 import { BUILDER_AUTHORITY_DECLARATION_VERSION, type BuilderAuthorityRelationship } from '@/lib/builder-authority';
+import { logBuilderAuthorityStage } from '@/lib/builder-authority-diagnostics';
 
 const RELATIONSHIPS: BuilderAuthorityRelationship[] = ['parent_guardian', 'coach', 'club_organiser', 'other_adult'];
 
@@ -16,7 +17,11 @@ const RELATIONSHIPS: BuilderAuthorityRelationship[] = ['parent_guardian', 'coach
  * commit_squad_invite_participation_order already established.
  */
 export async function POST(request: NextRequest) {
-  if (!hasValidBuilderCsrf(request)) return NextResponse.json({ error: 'Request unavailable' }, { status: 403 });
+  logBuilderAuthorityStage('declare:received');
+  if (!hasValidBuilderCsrf(request)) {
+    logBuilderAuthorityStage('declare:csrf-rejected');
+    return NextResponse.json({ error: 'Request unavailable' }, { status: 403 });
+  }
 
   const body = await request.json().catch(() => null) as {
     submissionKey?: unknown;
@@ -38,13 +43,16 @@ export async function POST(request: NextRequest) {
   const supabase = createClient();
   const { data: userData } = await supabase.auth.getUser();
   if (!userData?.user) {
+    logBuilderAuthorityStage('declare:no-verified-session');
     return NextResponse.json({ error: 'Please verify your email first' }, { status: 401 });
   }
 
   if (!(await consumeAnonymousRequestRateLimit(request.headers, 'builder-authority-declare', userData.user.email ?? undefined))) {
+    logBuilderAuthorityStage('declare:rate-limited');
     return NextResponse.json({ error: 'Request unavailable' }, { status: 429 });
   }
 
+  logBuilderAuthorityStage('declare:calling-rpc');
   const { data, error } = await supabase.rpc('record_builder_authority_declaration', {
     p_submission_key: submissionKey,
     p_relationship: relationship,
@@ -55,9 +63,11 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
+    logBuilderAuthorityStage('declare:rpc-error');
     console.error('builder-authority/declare:rpc', error.message);
     return NextResponse.json({ error: 'Please confirm all three statements to continue' }, { status: 400 });
   }
 
+  logBuilderAuthorityStage('declare:success');
   return NextResponse.json({ ok: true, relationship: (data as { relationship?: string } | null)?.relationship }, { headers: { 'Cache-Control': 'no-store' } });
 }

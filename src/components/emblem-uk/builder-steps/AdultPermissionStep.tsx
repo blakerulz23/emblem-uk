@@ -1,11 +1,21 @@
 'use client';
 
-import { useState } from 'react';
-import { BUILDER_CSRF_HEADER, readBuilderCsrfCookie } from '@/lib/print-capture';
+import { useMemo, useReducer, useRef, useState } from 'react';
 import {
   BUILDER_AUTHORITY_CONFIRMATIONS,
   type BuilderAuthorityRelationship,
 } from '@/lib/builder-authority-shared';
+import {
+  GENERIC_FAILURE,
+  INITIAL_CONFIRM_SUBMIT_STATE,
+  TIMEOUT_FAILURE,
+  confirmButtonLabel,
+  confirmSubmitReducer,
+  createAttemptTracker,
+  isNonGuardianRelationship,
+  postJson,
+} from '@/lib/builder-authority-client';
+import { RequestTimeoutError } from '@/lib/fetch-with-timeout';
 
 type Phase = 'email' | 'code' | 'details';
 
@@ -15,19 +25,6 @@ const RELATIONSHIP_OPTIONS: { value: BuilderAuthorityRelationship; label: string
   { value: 'club_organiser', label: 'Club organiser' },
   { value: 'other_adult', label: 'Another adult' },
 ];
-
-async function postJson(url: string, body: unknown): Promise<{ ok: boolean; error?: string; [key: string]: unknown }> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
-    body: JSON.stringify(body),
-  });
-  const result = await response.json().catch(() => null);
-  if (!response.ok || !result?.ok) {
-    return { ok: false, error: result?.error || 'Something went wrong — please try again.' };
-  }
-  return result;
-}
 
 /**
  * The short "Adult permission" step (migration 0071) shown once, right
@@ -57,17 +54,37 @@ export default function AdultPermissionStep({
   const [emailError, setEmailError] = useState('');
   const [codeError, setCodeError] = useState('');
   const [relationshipError, setRelationshipError] = useState('');
-  const [confirmError, setConfirmError] = useState('');
   const [busy, setBusy] = useState(false);
+  // busy/error for the confirm (declare) submit specifically are one
+  // atomic value — see confirmSubmitReducer's own comment for why: two
+  // separate useState slots updated "together" are still two slots, and
+  // the live preview showed busy releasing with no error ever appearing.
+  // This removes that entire risk category by construction.
+  const [confirmState, dispatchConfirm] = useReducer(confirmSubmitReducer, INITIAL_CONFIRM_SUBMIT_STATE);
+  const confirmError = confirmState.error;
+  // Belt-and-braces against a second click landing in the same tick as the
+  // first, before React has re-rendered the disabled button — the same
+  // ref-guard shape ProductionBuilder.tsx's own submittingRef already uses
+  // for its one-shot submit path.
+  const busyRef = useRef(false);
+  // Discards a late-resolving confirm attempt's result if a newer attempt
+  // has since started — defence-in-depth alongside busyRef, directly
+  // targeting the "stale closure" failure mode named in the live-preview
+  // diagnosis, even though busyRef already prevents true overlap from a
+  // duplicate click.
+  const confirmAttempts = useMemo(() => createAttemptTracker(), []);
 
-  const isNonGuardian = relationship === 'coach' || relationship === 'club_organiser' || relationship === 'other_adult';
+  const isNonGuardian = isNonGuardianRelationship(relationship);
 
-  const handleRequestCode = async () => {
+  const handleRequestCode = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (busyRef.current) return;
     setEmailError('');
     if (!email.trim() || !email.includes('@')) {
       setEmailError('Enter a valid email address.');
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     try {
       const result = await postJson('/api/builder-authority/request-code', { email: email.trim() });
@@ -76,17 +93,23 @@ export default function AdultPermissionStep({
         return;
       }
       setPhase('code');
+    } catch (err) {
+      setEmailError(err instanceof RequestTimeoutError ? TIMEOUT_FAILURE : GENERIC_FAILURE);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
-  const handleVerifyCode = async () => {
+  const handleVerifyCode = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (busyRef.current) return;
     setCodeError('');
     if (!/^\d{6,8}$/.test(code.trim())) {
       setCodeError('Enter the code we emailed you.');
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     try {
       const result = await postJson('/api/builder-authority/verify-code', { email: email.trim(), code: code.trim() });
@@ -95,23 +118,30 @@ export default function AdultPermissionStep({
         return;
       }
       setPhase('details');
+    } catch (err) {
+      setCodeError(err instanceof RequestTimeoutError ? TIMEOUT_FAILURE : GENERIC_FAILURE);
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
-  const handleConfirm = async () => {
+  const handleConfirm = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (busyRef.current) return;
     setRelationshipError('');
-    setConfirmError('');
+    dispatchConfirm({ type: 'clear-error' });
     if (!relationship) {
       setRelationshipError('Select your relationship to the player.');
       return;
     }
     if (!confirmedAge || !confirmedPhoto || !confirmedCreation) {
-      setConfirmError('All three confirmations are required to continue.');
+      dispatchConfirm({ type: 'settle', error: 'All three confirmations are required to continue.' });
       return;
     }
-    setBusy(true);
+    busyRef.current = true;
+    const attemptId = confirmAttempts.start();
+    dispatchConfirm({ type: 'start' });
     try {
       const submissionKey = await getSubmissionKey();
       const result = await postJson('/api/builder-authority/declare', {
@@ -121,13 +151,28 @@ export default function AdultPermissionStep({
         confirmedPhotoPermission: confirmedPhoto,
         confirmedCardCreation: confirmedCreation,
       });
+      if (!confirmAttempts.isCurrent(attemptId)) return;
       if (!result.ok) {
-        setConfirmError(result.error || 'Could not save your confirmation — please try again.');
+        dispatchConfirm({ type: 'settle', error: result.error || 'Could not save your confirmation — please try again.' });
         return;
       }
+      // Only reached once the server has genuinely recorded the
+      // declaration — entered relationship/confirmations are preserved on
+      // every failure path above, never cleared.
+      dispatchConfirm({ type: 'settle', error: '' });
       onConfirmed();
+    } catch (err) {
+      // getSubmissionKey() (or any other unexpected failure between here
+      // and the server response) previously either propagated as an
+      // unhandled rejection with zero UI feedback, or — if the underlying
+      // request simply never settled — never reached this catch at all,
+      // leaving "Saving…" stuck forever. fetchWithTimeout (used by both
+      // postJson and ensureSubmissionKey) guarantees this catch is always
+      // eventually reached.
+      if (!confirmAttempts.isCurrent(attemptId)) return;
+      dispatchConfirm({ type: 'settle', error: err instanceof RequestTimeoutError ? TIMEOUT_FAILURE : GENERIC_FAILURE });
     } finally {
-      setBusy(false);
+      busyRef.current = false;
     }
   };
 
@@ -141,7 +186,7 @@ export default function AdultPermissionStep({
 
       <div className="uk-adult-permission-card">
         {phase === 'email' && (
-          <>
+          <form onSubmit={handleRequestCode}>
             <label>
               Your email
               <input
@@ -155,14 +200,14 @@ export default function AdultPermissionStep({
               />
             </label>
             {emailError && <p id="uk-adult-email-error" className="uk-enquiry-error" role="alert">{emailError}</p>}
-            <button type="button" className="uk-wizard-primary" onClick={handleRequestCode} disabled={busy}>
+            <button type="submit" className="uk-wizard-primary" disabled={busy}>
               {busy ? 'Sending…' : 'Send me a code'}
             </button>
-          </>
+          </form>
         )}
 
         {phase === 'code' && (
-          <>
+          <form onSubmit={handleVerifyCode}>
             <p className="uk-wizard-copy">We’ve sent a code to {email}.</p>
             <label>
               Verification code
@@ -177,19 +222,22 @@ export default function AdultPermissionStep({
               />
             </label>
             {codeError && <p id="uk-adult-code-error" className="uk-enquiry-error" role="alert">{codeError}</p>}
-            <button type="button" className="uk-wizard-primary" onClick={handleVerifyCode} disabled={busy}>
+            <button type="submit" className="uk-wizard-primary" disabled={busy}>
               {busy ? 'Checking…' : 'Verify code'}
             </button>
-          </>
+          </form>
         )}
 
         {phase === 'details' && (
-          <>
+          <form onSubmit={handleConfirm}>
             <label>
               Your relationship to the player
               <select
                 value={relationship}
-                onChange={(event) => setRelationship(event.target.value as BuilderAuthorityRelationship)}
+                onChange={(event) => {
+                  setRelationship(event.target.value as BuilderAuthorityRelationship);
+                  dispatchConfirm({ type: 'clear-error' });
+                }}
                 aria-invalid={Boolean(relationshipError)}
                 aria-describedby={relationshipError ? 'uk-adult-relationship-error' : undefined}
               >
@@ -209,15 +257,36 @@ export default function AdultPermissionStep({
 
             <div className="uk-adult-permission-confirmations">
               <label className="uk-adult-permission-checkbox">
-                <input type="checkbox" checked={confirmedAge} onChange={(event) => setConfirmedAge(event.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={confirmedAge}
+                  onChange={(event) => {
+                    setConfirmedAge(event.target.checked);
+                    dispatchConfirm({ type: 'clear-error' });
+                  }}
+                />
                 <span>{BUILDER_AUTHORITY_CONFIRMATIONS.ageAndAuthority}</span>
               </label>
               <label className="uk-adult-permission-checkbox">
-                <input type="checkbox" checked={confirmedPhoto} onChange={(event) => setConfirmedPhoto(event.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={confirmedPhoto}
+                  onChange={(event) => {
+                    setConfirmedPhoto(event.target.checked);
+                    dispatchConfirm({ type: 'clear-error' });
+                  }}
+                />
                 <span>{BUILDER_AUTHORITY_CONFIRMATIONS.photoPermission}</span>
               </label>
               <label className="uk-adult-permission-checkbox">
-                <input type="checkbox" checked={confirmedCreation} onChange={(event) => setConfirmedCreation(event.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={confirmedCreation}
+                  onChange={(event) => {
+                    setConfirmedCreation(event.target.checked);
+                    dispatchConfirm({ type: 'clear-error' });
+                  }}
+                />
                 <span>{BUILDER_AUTHORITY_CONFIRMATIONS.cardCreation}</span>
               </label>
             </div>
@@ -231,13 +300,13 @@ export default function AdultPermissionStep({
               </p>
             </details>
 
-            <button type="button" className="uk-wizard-primary" onClick={handleConfirm} disabled={busy}>
-              {busy ? 'Saving…' : 'Approve and continue'}
+            <button type="submit" className="uk-wizard-primary" disabled={confirmState.busy}>
+              {confirmButtonLabel(relationship, confirmState.busy)}
             </button>
-          </>
+          </form>
         )}
 
-        <button type="button" className="uk-adult-permission-back" onClick={onBack} disabled={busy}>
+        <button type="button" className="uk-adult-permission-back" onClick={onBack} disabled={busy || confirmState.busy}>
           Back to review
         </button>
       </div>
