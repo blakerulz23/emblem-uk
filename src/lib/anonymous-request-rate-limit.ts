@@ -39,7 +39,17 @@ export type AnonymousRequestAction =
   | 'builder-authority-otp-verify'
   | 'builder-authority-declare'
   | 'builder-guardian-email-set'
-  | 'builder-guardian-respond';
+  | 'builder-guardian-respond'
+  // Guardian-controlled card-front sharing (Work Package B, draft) — an
+  // authenticated action (the caller already has the verified adult's
+  // Supabase Auth session from Adult Permission), so this is IP+subject
+  // keyed the same way builder-authority-declare already is, not IP-only.
+  | 'card-share-eligibility'
+  | 'card-share-consent'
+  // Same-origin asset proxy (/api/card-share/photo) — an authenticated
+  // action, same as the other two card-share entries above. Up to two
+  // calls (photo + badge) per genuine share attempt.
+  | 'card-share-photo';
 
 const LIMITS: Record<
   | 'render-print'
@@ -48,7 +58,10 @@ const LIMITS: Record<
   | 'builder-authority-otp-verify'
   | 'builder-authority-declare'
   | 'builder-guardian-email-set'
-  | 'builder-guardian-respond',
+  | 'builder-guardian-respond'
+  | 'card-share-eligibility'
+  | 'card-share-consent'
+  | 'card-share-photo',
   { ip: number; subject?: number }
 > = {
   'render-print': { ip: 30, subject: 20 },
@@ -72,6 +85,16 @@ const LIMITS: Record<
   // id, which is not a value worth bucketing on), generous enough that a
   // guardian mis-clicking or retrying isn't blocked.
   'builder-guardian-respond': { ip: 20 },
+  // Eligibility is checked on every "Order received" render for an
+  // authenticated guardian — generous enough for normal page-load/refresh
+  // behaviour, still bounded.
+  'card-share-eligibility': { ip: 60, subject: 30 },
+  // One real share per session in the ordinary case; generous enough for a
+  // guardian retrying after a cancelled/failed attempt.
+  'card-share-consent': { ip: 20, subject: 10 },
+  // Two calls (photo, badge) per genuine share attempt; generous enough
+  // for a guardian retrying after a failed capture, still bounded.
+  'card-share-photo': { ip: 60, subject: 30 },
 };
 
 /**

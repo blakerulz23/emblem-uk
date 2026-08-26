@@ -3760,6 +3760,205 @@ a { text-decoration: none; color: inherit; }
   font-weight: 900;
 }
 
+/* Guardian-controlled card-front sharing (Work Package B, draft) — a
+   visually secondary section: muted border/background versus the
+   .uk-handoff-box "Order summary" and .uk-next-steps panels above it, so
+   sharing never reads as a required step to complete the order. */
+.uk-card-share {
+  border: 1px solid #ece4d6;
+  border-radius: 16px;
+  background: #fdfcfa;
+  padding: 16px;
+}
+
+.uk-card-share h3 {
+  margin: 0 0 4px;
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 17px;
+}
+
+.uk-card-share-blocked {
+  margin: 0;
+  color: var(--wizard-faint);
+  font-size: 13px;
+}
+
+/* The design itself, shown exactly as ordered — the same visible PlayerCard
+   already used elsewhere in the builder (see .uk-edit-preview) — with the
+   rotate/share controls placed directly on the frame, mirroring the
+   reference "preview + circular controls on the object itself" pattern
+   rather than separate labelled buttons below. Extra bottom padding (vs.
+   the 14px on every other side) is deliberate: it reserves a clear gutter
+   below the card art itself for both controls, so neither one ever sits
+   on top of the design (the photo, name, number, badge). */
+.uk-card-share-preview {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  margin-bottom: 8px;
+  border-radius: 22px;
+  background: #fff;
+  padding: 20px 20px 68px;
+  box-shadow: 0 20px 45px rgba(16, 16, 21, 0.12);
+}
+
+.uk-card-share-preview .uk-real-card {
+  width: min(280px, 100%);
+  max-width: 100%;
+}
+
+/* Rotation is applied only to this wrapper, around the card's own visual
+   centre — the icon buttons are siblings, not children, so they stay
+   upright at all times regardless of the card's current rotation. */
+.uk-card-share-preview-card {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  transform-origin: center;
+  transition: transform 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uk-card-share-preview-card {
+    transition: none;
+  }
+}
+
+/* Both controls share one understated look — plain white circle, subtle
+   border and shadow, accent-coloured icon — matching weight for weight,
+   rather than one reading as "primary" (a solid fill) and the other as
+   secondary. Position is the only thing the .rotate/.share modifiers
+   change. */
+.uk-card-share-icon-btn {
+  position: absolute;
+  bottom: 14px;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--wizard-accent);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(16, 16, 21, 0.12);
+}
+
+.uk-card-share-icon-btn.share {
+  right: 14px;
+}
+
+.uk-card-share-icon-btn.rotate {
+  left: 14px;
+}
+
+.uk-card-share-icon-btn:hover {
+  border-color: var(--wizard-accent);
+  box-shadow: 0 10px 22px rgba(16, 16, 21, 0.16);
+}
+
+.uk-card-share-icon-btn:focus-visible {
+  outline: 3px solid var(--wizard-accent);
+  outline-offset: 2px;
+}
+
+.uk-card-share-icon-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.uk-card-share-summary {
+  margin: 0 0 10px;
+  text-align: center;
+  color: var(--wizard-soft);
+  font-size: 13px;
+}
+
+/* The download fallback's caption-to-copy — shown as plain text (a plain
+   file download has no caption field of its own to carry it), preserving
+   the message's own line break. */
+.uk-card-share-download-message {
+  margin: 6px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--wizard-ink);
+  font-size: 13px;
+  white-space: pre-line;
+}
+
+/* Confirmation is a focused overlay rather than an inline block — the
+   design and the decision to share it are the only two things on screen
+   while it's open. */
+.uk-card-share-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(16, 16, 21, 0.5);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.uk-card-share-modal {
+  width: min(360px, 100%);
+  display: grid;
+  gap: 10px;
+  border-radius: 18px;
+  background: #fff;
+  padding: 20px;
+  box-shadow: 0 24px 60px rgba(16, 16, 21, 0.28);
+}
+
+.uk-card-share-modal h3 {
+  margin: 0;
+}
+
+.uk-card-share-eyebrow {
+  color: var(--wizard-accent);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.uk-card-share-warning {
+  margin: 0;
+  color: #8f1f1f;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.uk-card-share-recall {
+  margin: 0;
+  color: var(--wizard-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.uk-card-share-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--wizard-ink);
+}
+
+.uk-card-share-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
 .uk-next-steps span {
   margin-top: 2px;
   color: var(--wizard-soft);
