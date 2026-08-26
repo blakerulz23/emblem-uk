@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CARD_SHARE_CONFIRMATION_LABEL,
   CARD_SHARE_CONSENT_VERSION,
+  CARD_SHARE_LINK_URL,
+  CARD_SHARE_MESSAGE_TEXT,
   CARD_SHARE_RECALL_NOTICE,
   CARD_SHARE_WARNING,
   cardShareBlockedMessage,
@@ -34,6 +36,26 @@ describe('required copy is present and distinct', () => {
     expect(CARD_SHARE_RECALL_NOTICE).toMatch(/sent/i);
     expect(CARD_SHARE_RECALL_NOTICE).toMatch(/saved/i);
     expect(CARD_SHARE_RECALL_NOTICE).toMatch(/reposted/i);
+  });
+});
+
+describe('the shared message text and link are fixed and generic — never derived from this specific order', () => {
+  it('the link is the public builder marketing page, never a card-specific or recipient-specific page', () => {
+    expect(CARD_SHARE_LINK_URL).toBe('https://www.emblem.cards/builder');
+  });
+
+  it('the message text names Emblem, invites the recipient to make their own, and contains the exact link', () => {
+    expect(CARD_SHARE_MESSAGE_TEXT).toBe('Look what I made with Emblem.\nCreate your own card: https://www.emblem.cards/builder');
+    expect(CARD_SHARE_MESSAGE_TEXT).toContain(CARD_SHARE_LINK_URL);
+  });
+
+  it('neither the link nor the text is a template literal capable of embedding an order id, submission key, token, or any other per-order value — both are plain constants', () => {
+    expect(typeof CARD_SHARE_LINK_URL).toBe('string');
+    expect(typeof CARD_SHARE_MESSAGE_TEXT).toBe('string');
+    // A real UUID/token would contain a hyphen-separated hex run or be
+    // otherwise much longer than this fixed, human-authored copy.
+    expect(CARD_SHARE_LINK_URL).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i);
+    expect(CARD_SHARE_MESSAGE_TEXT).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i);
   });
 });
 

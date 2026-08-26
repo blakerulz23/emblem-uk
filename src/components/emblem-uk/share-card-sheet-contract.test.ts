@@ -84,6 +84,41 @@ describe('ShareCardSheet — sharing mechanism order and cleanup', () => {
   it('never persists the generated image anywhere beyond the in-flight fetch/blob conversion (no fetch to an upload endpoint, no new storage call)', () => {
     expect(sheet).not.toMatch(/\/api\/order-assets|createServiceRoleClient|storage\.from/);
   });
+
+  it('never creates a public /share/... page, a signed URL, or any recipient-specific link — the only URL ever shared is the fixed, generic builder link', () => {
+    expect(sheet).not.toMatch(/\/share\/|getSignedDownloadUrl|signedUrl/i);
+  });
+});
+
+/**
+ * Web Share now also carries the fixed, generic message/link (never
+ * anything derived from this order) alongside the file — and the download
+ * fallback surfaces the same link visibly, since a plain file download has
+ * no text/url fields of its own to carry it in.
+ */
+describe('ShareCardSheet — the shared text/link is fixed, generic, and never derived from this order', () => {
+  it('navigator.share is called with the file, the fixed text, and the fixed generic url — never anything computed from orderId', () => {
+    const idx = sheet.indexOf('navigator.share({');
+    const callBody = sheet.slice(idx, sheet.indexOf('});', idx));
+    expect(callBody).toContain('files: [file]');
+    expect(callBody).toContain('text: CARD_SHARE_MESSAGE_TEXT');
+    expect(callBody).toContain('url: CARD_SHARE_LINK_URL');
+    expect(callBody).not.toContain('orderId');
+  });
+
+  it('the downloaded-status message shows a visible link to the same fixed generic builder URL', () => {
+    const idx = sheet.indexOf("stage.type === 'downloaded'");
+    const section = sheet.slice(idx, idx + 250);
+    expect(section).toContain('href={CARD_SHARE_LINK_URL}');
+    expect(section).toContain('Create your own card');
+  });
+
+  it('cancelling the native share sheet is never reported as a successful share', () => {
+    const idx = sheet.indexOf("err.name === 'AbortError'");
+    const section = sheet.slice(idx, idx + 100);
+    expect(section).toContain("dispatch({ type: 'reset' });");
+    expect(section).not.toContain("dispatch({ type: 'shared' })");
+  });
 });
 
 describe('ShareCardSheet — visibility gating', () => {

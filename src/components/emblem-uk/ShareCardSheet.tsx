@@ -4,6 +4,8 @@ import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import {
   CARD_SHARE_CONFIRMATION_LABEL,
   CARD_SHARE_GENERIC_FAILURE,
+  CARD_SHARE_LINK_URL,
+  CARD_SHARE_MESSAGE_TEXT,
   CARD_SHARE_RECALL_NOTICE,
   CARD_SHARE_WARNING,
   cardShareBlockedMessage,
@@ -164,7 +166,12 @@ export default function ShareCardSheet({
         const file = new File([blob], `emblem-card-${orderId.slice(0, 8)}.jpg`, { type: blob.type || 'image/jpeg' });
 
         if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
-          await navigator.share({ files: [file], title: 'My Emblem card' });
+          await navigator.share({
+            files: [file],
+            title: 'My Emblem card',
+            text: CARD_SHARE_MESSAGE_TEXT,
+            url: CARD_SHARE_LINK_URL,
+          });
           dispatch({ type: 'shared' });
           return;
         }
@@ -266,7 +273,11 @@ export default function ShareCardSheet({
 
       {stage.type === 'preparing' && <p aria-live="polite">Preparing your image…</p>}
       {stage.type === 'shared' && <p role="status">Shared. {CARD_SHARE_RECALL_NOTICE}</p>}
-      {stage.type === 'downloaded' && <p role="status">Downloaded. {CARD_SHARE_RECALL_NOTICE}</p>}
+      {stage.type === 'downloaded' && (
+        <p role="status">
+          Downloaded. {CARD_SHARE_RECALL_NOTICE} <a href={CARD_SHARE_LINK_URL} target="_blank" rel="noreferrer">Create your own card</a>
+        </p>
+      )}
       {stage.type === 'cancelled' && <p role="status">Cancelled — no image was created.</p>}
       {stage.type === 'failed' && (
         <div>

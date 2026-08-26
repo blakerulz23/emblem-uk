@@ -27,6 +27,19 @@ export const CARD_SHARE_CONFIRMATION_LABEL =
 export const CARD_SHARE_RECALL_NOTICE =
   'Emblem cannot recall copies already downloaded, sent, saved or reposted by other people or social platforms.';
 
+/**
+ * Deliberately generic — the same fixed text/link for every guardian and
+ * every card, never anything derived from this specific order (no child
+ * name, club, order id, submission key, or token). This is the only URL
+ * this feature ever shares: a link to the public builder marketing page,
+ * not a card-specific or recipient-specific page — there is no such page,
+ * and this feature must never create one.
+ */
+export const CARD_SHARE_LINK_URL = 'https://www.emblem.cards/builder';
+
+export const CARD_SHARE_MESSAGE_TEXT =
+  `Look what I made with Emblem.\nCreate your own card: ${CARD_SHARE_LINK_URL}`;
+
 /** Fixed, internal reason vocabulary from get_card_share_eligibility — never
  *  shown to a user verbatim; cardShareBlockedMessage below maps each to
  *  plain, truthful copy. 'multi_child_order' is not mapped to a message at
