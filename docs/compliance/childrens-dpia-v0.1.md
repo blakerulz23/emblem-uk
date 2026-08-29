@@ -463,6 +463,66 @@ so, what additional authority check that would need), not a missing
 safety mechanism. This correction does not touch or resolve any other
 `REQUIRES SPECIALIST REVIEW` marker in this document.
 
+## Correction — deletion execution is now automated and reconciled, with one real gap found — 29 August 2026
+
+**Status: implementation evidence only; corrects a stale finding elsewhere
+in this document, and surfaces one genuine remaining gap the correction
+itself found. Does not change the overall recommendation below.**
+
+Section 6 describes "actual player deletion and S3 erasure" as "manual
+staff operations," and risk R16 / section 12 item 13 describe converting
+this into a verifiable, reconciled workflow as still required. That is now
+largely stale: migration `0076_child_data_erasure.sql` (already merged)
+replaced the manual runbook's execution step with real, staff-triggered,
+database-enforced RPCs. **VERIFIED IN LOCAL SOURCE, this task:**
+
+- Clicking "Mark completed" at `/staff/deletion-requests` is not an
+  attestation — it calls `confirm_player_deletion_erasure` (deletes the
+  player row and every cascade, revokes every card, inventories every S3
+  object that must go), the route then performs a real S3 delete per
+  object with the outcome recorded individually, and
+  `finalize_player_deletion_erasure` only marks the request `completed`
+  once every object is confirmed deleted and no supplier item is left
+  outstanding — otherwise it reports exactly what's still pending or
+  failed, safe to retry. The route's own header comment states this
+  directly: "this used to be a bare attestation... it is now the actual
+  authoritative execution step."
+- Guardian account deletion (`delete_own_guardian_account`) was similarly
+  extended to check every profile-referencing foreign key found in the
+  live catalog, not just the original six, deferring genuinely blocked
+  cases (Squad Invite organiser/audit history, coach-authored records) to
+  a staff review queue (`pending_profile_deletions`) instead of failing
+  outright or silently skipping them.
+- Squad Invite participations get a structurally separate, tested erasure
+  path (anonymise display fields, never delete the row, so campaign and
+  payment totals stay correct) — confirmed necessary because
+  `squad_invite_participations` has no `player_id` column at all.
+- 51 existing tests across four files pass unmodified, confirming this is
+  live, tested code.
+- `docs/pilot/child-data-deletion-runbook.md` itself is corrected in the
+  same commit as this note, for the same reason: staff reading it could
+  otherwise believe clicking "Mark completed" is a harmless attestation
+  when it now triggers real, irreversible deletion.
+
+**One genuine gap this correction found, not previously recorded
+anywhere:** the old manual runbook's step 3.1 required backing up a
+player's rows before deletion, kept briefly to handle an immediate
+dispute or mistaken request. **The automated path has no equivalent** —
+it deletes for real, with no short-term, application-level recovery net.
+Supabase's own infrastructure-level backups/point-in-time-recovery exist
+regardless (the same standing "backup/DR copies" unknown section 13 item
+18 already records), but restoring a single record from those is not a
+practical same-day "undo." Whether this tradeoff is acceptable given the
+verification/reconciliation gained, or whether a short-lived pre-delete
+snapshot should be reintroduced, is a genuine open product decision.
+
+**Also unaffected by this correction:** section 1's identity and
+parental-authority verification remains entirely manual, unresolved, and
+is the same gap already tracked elsewhere in this document (section 12
+item 4, risk R4) — the RPCs correctly check that the caller is a
+*recorded* guardian, not that the guardian relationship was ever properly
+established in the first place.
+
 ## Evidence labels and risk method
 
 - **VERIFIED** — directly supported by repository evidence cited in this document.
@@ -653,7 +713,7 @@ Player OS / Coach OS
 
 ### Consent withdrawal, correction and deletion
 
-**VERIFIED.** Guardians can disable sharing, change moment visibility, unpublish all moments, remove a player photo, delete their own moment, update some player fields, remove direct coaches, request/cancel player deletion and delete their own guardian account. Actual player deletion and S3 erasure are manual staff operations; account deletion spans DB and Supabase Auth with a pending-failure queue ([0039](../../supabase/migrations/0039_guardian_public_profile_control.sql)–[0044](../../supabase/migrations/0044_player_deletion_request_contact.sql); [deletion runbook](../pilot/child-data-deletion-runbook.md)).
+**VERIFIED.** Guardians can disable sharing, change moment visibility, unpublish all moments, remove a player photo, delete their own moment, update some player fields, remove direct coaches, request/cancel player deletion and delete their own guardian account. **Player deletion and S3 erasure are staff-triggered but database-enforced and reconciled, not manual staff operations** (migration 0076, see the 29 August 2026 correction note below — the runbook doc itself is corrected in the same commit); account deletion spans DB and Supabase Auth with a pending-failure queue ([0039](../../supabase/migrations/0039_guardian_public_profile_control.sql)–[0044](../../supabase/migrations/0044_player_deletion_request_contact.sql), [0076](../../supabase/migrations/0076_child_data_erasure.sql); [deletion runbook](../pilot/child-data-deletion-runbook.md)).
 
 ## 7. Controller and processor analysis — provisional
 
@@ -734,7 +794,7 @@ ICO age bands (0–5, 6–9, 10–12, 13–15, 16–17) are useful design guides
 | R13 Staff misuse | Children/families; broad unauthorised access | Service-role/staff production capability | `staff_accounts`, `requireStaff`, approval attribution, RLS/no client access | M / Critical / High | MFA, least privilege, joiner/mover/leaver, audit every sensitive view/action, periodic review, dual control for export/public override. Owner: Security | Low–Medium |
 | R14 Compromised guardian/coach account | Child; disclosure or harmful edits | Email OTP/session compromise | Server `getUser`; recent OTP reauth for account deletion; scoped RLS | M / Critical / High | MFA/passkeys for staff/coaches, session/device controls, security notifications, recovery/freeze, anomaly detection. Owner: Security | Medium |
 | R15 Insecure third party/transfer | Children/adults; breach, reuse, overseas access | Cloud/AI/email/commerce suppliers | Server-held keys; private S3; no secret values client-side identified | M / Critical / High | Article 28/transfer review, UK regions where suitable, AI no-training/retention confirmation, supplier register, incident terms. Owner: DPO + Procurement | Medium |
-| R16 Deletion failure/orphaned media | Child; data persists after valid request | Manual DB/S3/Auth cross-system deletion and temporary backup | Detailed runbook, request state machine, Auth failure queue | H / High / **High** | Automated inventory/tombstone workflow, reconciliation, backup expiry, completion evidence, periodic deletion tests. Owner: Operations + Security | Low–Medium |
+| R16 Deletion failure/orphaned media | Child; data persists after valid request | (Substantially resolved by migration 0076 — see the 29 August 2026 correction note above. One real residual: no pre-delete backup/dispute window in the automated path.) | `confirm_player_deletion_erasure`/S3 delete-per-object/`finalize_player_deletion_erasure`, per-object retry tracking, per-supplier status, 51 tests passing | Was H / High / High | Product decision: reintroduce a short-lived pre-delete snapshot, or accept none exists. Owner: Product + Operations | Low |
 | R17 Withdrawn consent not propagated | Child; continued public/AI processing | Copies, caches, supplier retention, printed card | Guardian disable/unpublish and delete tools | M / High / High | Map consent dependencies; supplier deletion; cache purge; explain irreversible physical copies/downloads; record withdrawal. Owner: DPO + Product | Medium |
 | R18 Club transfer | Child; old coach/team access and wrong public identity | `team_id`/coach relations persist; historic snapshots | Direct coach removal exists | H / High / **High** | Atomic transfer workflow: end old access, review content visibility, notify guardian, preserve only justified history. Owner: Club admin + Product | Low–Medium |
 | R19 Full DOB disclosure | Child; identity theft/safeguarding | (Gate 2 Stage A, 24 August 2026: exact DOB is no longer collected, stored, read or write-accessible by any application role — see the dated note above.) | Every value erased; both read RPCs dropped; write path no longer accepts a date of birth | Was M / Critical / High | Column drop (Stage B), production release + independent verification of Stage A, backup-retention exposure still open. Owner: DPO + Product | Lower, not yet closed |
@@ -775,7 +835,7 @@ Consultation should test: comprehension of privacy notices and NFC behaviour; ex
 10. Approve retention schedule and automate high-risk expiry: claim logs, presence, invites, media/prints, public caches, logs and deletion backups.
 11. Prohibit real child data in development/staging; implement synthetic/masked test data and access reviews.
 12. Test RLS/RPC/public DTO and staff permissions independently; enable MFA/strong staff access and sensitive-action audit.
-13. Convert manual player/S3 deletion into a verifiable workflow or demonstrate operational capacity, reconciliation and backup expiry.
+13. ~~Convert manual player/S3 deletion into a verifiable workflow or demonstrate operational capacity, reconciliation and backup expiry.~~ **Substantially resolved — migration 0076, see the 29 August 2026 correction note.** One residual product decision remains: no pre-delete backup/dispute window exists in the automated path.
 
 ### Required during a controlled pilot
 
