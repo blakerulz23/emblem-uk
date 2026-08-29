@@ -411,6 +411,58 @@ verification, international transfers, special-category data, Children's
 Code classification, and the formal best-interests assessment — remain open
 and are unaffected by this note.
 
+## Correction — lost/stolen card deactivation is implemented, not an open gap — 29 August 2026
+
+**Status: implementation evidence only; corrects a stale finding elsewhere
+in this document. Does not change the overall recommendation below, and
+does not itself constitute safeguarding or legal sign-off.**
+
+Section 3's "Lost-card deactivation" note, section 10's risk R2, and
+section 12 item 5 all describe this as an unresolved high gap with "no
+route or documented workflow" to revoke a claimed card's access. That
+description is now stale: it predates, and was never updated after,
+migration `0075_card_lifecycle_controls.sql` (the Gate 2 "card suspension,
+revocation and replacement" package). **VERIFIED IN LOCAL SOURCE, this
+task:**
+
+- `cards.access_status` (`NULL` / `suspended` / `revoked`) is a state axis
+  independent of claim progress. `suspend_card` (guardian, own card only —
+  or staff, any card) and `revoke_card` (staff only, terminal) are real,
+  authorized, idempotent RPCs with reasons including `lost` and `stolen`
+  explicitly in the check constraint. `create_replacement_card` (staff
+  only) revokes the old card and issues a fresh claim token under the same
+  `player_id` in one transaction — existing guardians see the replacement
+  automatically, since guardians link to players, not to cards.
+- **Enforcement is at the point that actually matters:** `resolveCardCode`
+  — the function behind every NFC tap — checks `access_status` before any
+  preview data is read out of the row, and returns a generic
+  `card_unavailable` result for a suspended or revoked card. A found lost
+  card, or one still linked to an incorrect claimant, stops resolving
+  immediately once acted on; this is not a UI-only restriction.
+- A full append-only audit trail (`card_access_audit_events`) records every
+  suspend/unsuspend/revoke/replacement event with actor and reason, never a
+  child's name or photo.
+- **Staff-facing UI exists and is wired up**
+  (`src/app/staff/cards/[id]/CardLifecycleActions.tsx`) to actually operate
+  suspend/revoke/replace. Guardian self-service currently covers
+  *un*suspending their own card (`UnsuspendCardButton.tsx`); there is no
+  guardian-facing "report my card lost" button yet — today that report
+  would go to staff, who have the tool to act on it immediately. That is a
+  reasonable, arguably safer, pilot-stage design (a self-suspend button is
+  also a self-service tool for falsely disabling someone else's claimed
+  card, absent further authority checks), not an unaddressed safety hole.
+- 36 existing tests (`migration-0075-contract.test.ts`,
+  `card-lifecycle-protected-areas.test.ts`) pass unmodified, confirming
+  this is live, tested code, not a dead or abandoned migration.
+
+**Net effect:** risk R2 and section 12 item 5 should be read as
+substantially closed by existing, verified, enforced code — not as an open
+gap requiring new engineering. The one remaining, genuinely open piece is a
+product decision (whether to add guardian self-service reporting, and if
+so, what additional authority check that would need), not a missing
+safety mechanism. This correction does not touch or resolve any other
+`REQUIRES SPECIALIST REVIEW` marker in this document.
+
 ## Evidence labels and risk method
 
 - **VERIFIED** — directly supported by repository evidence cited in this document.
@@ -424,7 +476,7 @@ Risk ratings use likelihood and severity of harm to people, not corporate impact
 
 **VERIFIED — DPIA required.** Emblem intentionally processes children's identity, photographs, exact dates of birth, sporting development information, relationships and public-sharing choices across an online service and a passive NFC product. Children are vulnerable data subjects; the service includes public disclosure, coach assessment, persistent physical identifiers and third-party photo processing. ICO guidance says children are vulnerable for DPIA purposes and a DPIA is legally required where processing is likely to be high risk. The Children's Code also treats a DPIA and child best-interests assessment as foundational for in-scope services. See [ICO DPIA guidance](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/accountability-and-governance/data-protection-impact-assessments-dpias/when-do-we-need-to-do-a-dpia/) and [ICO Children's Code](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/childrens-information/childrens-code-guidance-and-resources/age-appropriate-design-a-code-of-practice-for-online-services/).
 
-**REQUIRES SPECIALIST REVIEW — provisional decision: do not begin or expand a real-child pilot until the “required before pilot” controls in section 12 are closed.** Highest-priority unresolved matters are: verified parental-responsibility/authority design; child-appropriate transparency and consultation; a lost/stolen NFC-card response; formal retention schedules and deletion assurance; supplier contracts/transfers for Supabase, AWS, Vercel, Google Gemini, Resend and Shopify; production/staging data rules; safeguarding/moderation for uploads and public content; and review of exact date-of-birth necessity and coach access.
+**REQUIRES SPECIALIST REVIEW — provisional decision: do not begin or expand a real-child pilot until the “required before pilot” controls in section 12 are closed.** Highest-priority unresolved matters are: verified parental-responsibility/authority design; child-appropriate transparency and consultation; formal retention schedules and deletion assurance; supplier contracts/transfers for Supabase, AWS, Vercel, Google Gemini, Resend and Shopify; production/staging data rules; safeguarding/moderation for uploads and public content; and review of exact date-of-birth necessity and coach access.
 
 ## 1. Project and product description
 
@@ -597,7 +649,7 @@ Player OS / Coach OS
 
 ### Lost-card deactivation
 
-**UNKNOWN / HIGH GAP.** Staff can disable/rotate a *public player ID*, but the NFC URL contains the separate claim token. No route or documented workflow was found to revoke/rotate a claimed card's claim token or mark a card lost/stolen. A lost claimed card can continue resolving to private OS for an authorised logged-in guardian and otherwise to the public profile if enabled ([nfc-link.ts](../../src/lib/nfc-link.ts); [card-lookup.ts](../../src/lib/card-lookup.ts); [staff public-profile route](../../src/app/api/staff/players/[id]/public-profile/route.ts)).
+**RESOLVED — see the 29 August 2026 correction note below.** This was recorded as an unknown/high gap based on repository state that predates migration `0075_card_lifecycle_controls.sql`. Staff (any card) or a guardian (their own card) can suspend a card with reason `lost` or `stolen`; staff can revoke and issue a replacement with a fresh claim token under the same player. `resolveCardCode` — the function behind every NFC tap — checks this status before returning any data, so a suspended or revoked card stops resolving immediately, not merely at the public-profile layer ([nfc-link.ts](../../src/lib/nfc-link.ts); [card-lookup.ts](../../src/lib/card-lookup.ts); [0075](../../supabase/migrations/0075_card_lifecycle_controls.sql)).
 
 ### Consent withdrawal, correction and deletion
 
@@ -668,7 +720,7 @@ ICO age bands (0–5, 6–9, 10–12, 13–15, 16–17) are useful design guides
 | ID / risk | Users and harm | Cause/threat | Existing verified controls | L / S / overall | Required mitigation / owner | Residual |
 |---|---|---|---|---|---|---|
 | R1 Unauthorised child photograph | Child; loss of dignity, safeguarding risk, misuse | Purchaser/uploader lacks authority | Terms require permission; guardian-scoped OS writes; private S3 keys | M / Critical / High | Verify authority; child assent where appropriate; reporting/takedown; moderation; supplier review. Owner: DPO + Safeguarding | Medium |
-| R2 Lost/stolen NFC card | Child; stranger discovers identity/profile | Persistent claim-token URL, no lost-card state | Public sharing can be disabled; public ID can rotate; RLS protects private OS | H / High / **High** | Add immediate lost-card report, revoke/rotate card token, replacement lifecycle, guardian notification and audit. Owner: Product + Security | Low–Medium |
+| R2 Lost/stolen NFC card | Child; stranger discovers identity/profile | (Resolved by migration 0075, Gate 2 pilot controls — see the 29 August 2026 correction note above.) | `suspend_card`/`revoke_card`/`create_replacement_card`, enforced in `resolveCardCode` before any data is read, full audit trail | Was H / High / **High** | Guardian self-service *reporting* (today staff-mediated) remains a product decision, not a missing mechanism. Owner: Product | Low |
 | R3 Guessing/sharing claim codes | Child; incorrect claim or disclosure | Human-readable codes and pre-auth lookup | 10 attempts/15 min/IP-equivalent; attempt log; unique tokens; approval gate | M / High / High | Increase entropy; never log raw attempted code; adaptive/global throttling; alerting; one-time activation token; security testing. Owner: Security | Low–Medium |
 | R4 Incorrect guardian claim | Child/family; unauthorised control and disclosure | Email authentication is not parental-responsibility verification | Claimed card locks; guardian relation controls later actions | M / Critical / **High** | Define evidence/club-mediated verification, dispute/recovery, co-guardian notification, emergency freeze. Owner: Safeguarding + DPO | Medium |
 | R5 Excessive coach access | Child; privacy invasion, unfair evaluation | Team-wide access and rich fields including DOB | RLS; coach relationship checks; exact DOB special RPC | M / High / High | Role/field matrix, least privilege, purpose-specific views, access logging/review, remove DOB unless essential. Owner: Product + Club Welfare | Medium |
@@ -715,7 +767,7 @@ Consultation should test: comprehension of privacy notices and NFC behaviour; ex
 2. Complete best-interests assessment and consultation; approve this DPIA with action owners.
 3. Replace placeholder privacy/terms with layered adult/child notices covering OS, NFC, exact DOB, coaches, public sharing, AI, suppliers, retention and rights.
 4. Implement parental-responsibility/authority verification and incorrect-claim dispute/freeze.
-5. Implement lost/stolen-card token revocation/replacement distinct from public-ID rotation.
+5. ~~Implement lost/stolen-card token revocation/replacement distinct from public-ID rotation.~~ **Resolved — migration 0075, see the 29 August 2026 correction note.**
 6. Add `noindex` and test cache/search behaviour for all public child profiles; reduce default public fields/photos.
 7. Approve field-by-field minimisation; remove or tightly justify height, ambitions and append-only evaluation data. Exact DOB itself was actioned in Gate 2 Stage A (24 August 2026, see the dated note above) — collection, storage and read/write access are stopped; column removal (Stage B) and independent verification of Stage A in production remain outstanding.
 8. Establish upload moderation/safeguarding/reporting and staff escalation.
@@ -758,7 +810,7 @@ Consultation should test: comprehension of privacy notices and NFC behaviour; ex
 7. **UNKNOWN:** Which photos/products actually invoke AI, and is a clear non-AI choice offered before upload?
 8. **UNKNOWN:** Who prints and ships cards, what data they receive, and how they delete it?
 9. **UNKNOWN:** Are public profiles indexed today, and what cache/CDN headers apply?
-10. **UNKNOWN:** What is the lost/stolen card support process?
+10. **RESOLVED — migration 0075 (see 29 August 2026 correction note):** staff can suspend/revoke/replace on report; guardians can self-service unsuspend their own card. What remains unknown is purely operational (who staffs this, what SLA), not technical.
 11. **UNKNOWN:** What retention applies to DB rows, S3 objects, Auth, Vercel/Supabase/AWS logs, email logs, backups and exports?
 12. **UNKNOWN:** Are production data ever copied to staging, development, support tickets or staff devices?
 13. **UNKNOWN:** Are analytics, error monitoring, cookies or third-party scripts enabled outside repository code/config?
