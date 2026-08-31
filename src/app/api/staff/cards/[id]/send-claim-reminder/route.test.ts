@@ -9,8 +9,9 @@ describe('POST /api/staff/cards/[id]/send-claim-reminder', () => {
     expect(source).not.toContain('requireSquadInvitePermission');
   });
 
-  it('refuses an already-claimed card — nothing to remind', () => {
-    expect(source).toContain("if (card.status === 'claimed') return NextResponse.json({ error: 'This card has already been claimed' }, { status: 400 });");
+  it('quietly skips an already-claimed card rather than erroring — nothing is actually wrong, just nothing left to send', () => {
+    expect(source).toContain("if (card.status === 'claimed') return NextResponse.json({ ok: true, skipped: 'already_claimed' });");
+    expect(source).not.toMatch(/status:\s*400[^;]*already been claimed/i);
   });
 
   it('is scoped to Squad Invite orders only, never touching the normal-order invite flow', () => {
