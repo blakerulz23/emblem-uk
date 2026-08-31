@@ -1,18 +1,47 @@
-# Manual child-data deletion runbook
+# Child-data deletion runbook
 
-**Update (Account Settings MVP):** a guardian can now file a
-self-serve **request** for this from Player OS → Account Settings →
-"Request player-data deletion" — this does *not* perform the deletion
-itself, only files a `player_deletion_requests` row and shows the
-guardian a reference number. Staff still carry out every actual deletion
-by hand, following this runbook exactly, then record completion at
-`/staff/deletion-requests` (requires a short attestation note — see
-"Operational queues" below). A parent can also still reach staff directly
-(support email/phone) without having used the in-app request form at
-all — both paths land on the same manual runbook.
+**Update (29 August 2026 — corrects a stale claim below):** since migration
+`0076_child_data_erasure.sql`, clicking **"Mark completed"** at
+`/staff/deletion-requests` is **not** an attestation that a human already
+performed the deletion by hand — it is the real, authoritative execution
+step. It calls `confirm_player_deletion_erasure` (deletes the player row
+and every cascade, revokes every card, strips card artwork, and inventories
+every S3 object that must go), then the route deletes each inventoried S3
+object for real, then `finalize_player_deletion_erasure` only marks the
+request `completed` once every object is confirmed deleted and no supplier
+item is left outstanding — otherwise it reports exactly what's still
+pending or failed, safe to retry. Everything below describing a staff
+member manually running SQL and manually deleting S3 objects (§2–3) is
+**superseded**: the RPCs now do that work themselves, verified per-object,
+not on trust. Treat §2–3 as an explanation of *what* happens automatically,
+not instructions to carry out by hand.
 
-Do not improvise the order of operations — see "Safe deletion order"
-below for why it matters.
+**One real, still-open gap this correction surfaced:** the old manual
+process's step 3.1 ("back up the row(s) before deleting, keep briefly for
+an immediate dispute") has **no equivalent in the automated path** — it
+deletes for real, with no short-term application-level recovery net.
+Supabase's own infrastructure-level backups/PITR exist regardless, but
+restoring a single record from those isn't a quick "undo a same-day
+mistake" operation. Whether that's an acceptable tradeoff for the
+verification/reconciliation this automation gains, or whether a short-
+lived pre-delete snapshot should be added back, is a genuine open product
+decision — not resolved by this correction.
+
+**What's still genuinely manual, unaffected by any of this:** §1's identity
+and parental-authority verification. The RPCs correctly check that the
+*caller* is a recorded guardian of the named player, but nothing here
+verifies that the recorded guardian relationship itself was ever properly
+established in the first place — the same parental-responsibility gap
+flagged elsewhere in the DPIA. Staff must still do this step by judgment,
+every time, before ever clicking "Mark completed."
+
+A guardian can file a self-serve **request** from Player OS → Account
+Settings → "Request player-data deletion" — this only files a
+`player_deletion_requests` row and shows a reference number; it does not
+itself trigger execution. A parent can also reach staff directly
+(support email/phone) without using the in-app form — both paths land on
+the same queue at `/staff/deletion-requests`, and staff must still verify
+identity/authority (§1) before acting on either.
 
 ## Operational queues (pilot)
 
@@ -22,10 +51,10 @@ below for why it matters.
   shows the player, when it was requested, and the guardian's contact
   email at the time of the request (captured at request time — it may no
   longer match the guardian's account if they've since changed it or
-  deleted their own account entirely). "Mark completed" requires an
-  explicit attestation checkbox plus a short note/reference — it records
-  that the runbook below was carried out, it does not perform any
-  deletion itself.
+  deleted their own account entirely). **"Mark completed" now performs the
+  real deletion** (see the 29 August 2026 correction above) — the required
+  note is a completion record, not an attestation that the work already
+  happened elsewhere.
 - **`/staff/pending-auth-deletions`** — a separate, smaller queue for the
   one hard edge case in guardian *account* deletion: the guardian's own
   profile/guardian-link data was already removed automatically, but
@@ -43,9 +72,9 @@ if identity verification (§1) is still in progress. Revisit this target
 once real request volume during the pilot gives a better sense of what's
 sustainable.
 
-## Original manual process
+## Reference: what the automated steps below actually do
 
-## 1. Identity and authority verification
+## 1. Identity and authority verification — still manual, do this first, every time
 
 Before touching any data:
 
@@ -96,34 +125,31 @@ a separate decision — only delete these if the guardian is closing their
 whole account, not merely removing one child (a guardian with multiple
 claimed children who asks to remove one child keeps their account).
 
-## 3. Safe deletion order
+## 3. Deletion order (now performed automatically by "Mark completed")
 
-Run as a single transaction where the database steps allow it (the player
-delete's cascades are already atomic); S3 deletion cannot be part of that
-transaction, so do it in this order specifically — deleting S3 objects
-*before* confirming the database transaction committed risks losing the
-only record of what needed deleting if the transaction later fails:
+This is what `confirm_player_deletion_erasure` → S3 delete-per-object →
+`finalize_player_deletion_erasure` actually does, in this order, when
+staff clicks "Mark completed" — nothing here needs to be run by hand:
 
-1. **Backup first.** Export the player's row and every cascading table's
-   rows (a plain `select * from <table> where player_id = ...` for each,
-   saved outside the production database) before deleting anything — kept
-   only long enough to handle an immediate dispute or mistaken request,
-   then itself deleted per your organisation's retention policy. This is
-   the one intentional, time-boxed exception to "don't retain deleted
-   child data" (§5) — a safety net for the deletion process itself, not
-   a substitute for actually deleting the live data.
-2. **Collect S3 keys** (`photo_key`, every `moment_media.s3_key` for this
-   player) from the backup taken in step 1, before deleting the rows that
-   reference them.
-3. **Delete the `players` row** (`delete from players where id = ...`) —
-   this single statement cascades through every table listed in §2's
-   cascade column automatically; `cards`/`card_definitions` rows survive
-   with `player_id` set to null.
-4. **Delete the collected S3 objects** using the keys from step 2, only
-   after step 3's transaction is confirmed committed.
-5. **If this was the guardian's only child and they're closing their
-   account**, delete their `profiles` row and (via the Supabase Auth
-   admin API, not a raw table delete) their `auth.users` row.
+1. ~~Backup first.~~ **Not performed by the automated path — see the 29
+   August 2026 correction above.** No time-boxed application-level export
+   happens before deletion; Supabase's own infrastructure backups/PITR are
+   the only recovery net, and they are not a same-day "undo" tool.
+2. **S3 keys are collected automatically** (`photo_key`,
+   `moment_media.s3_key`, card-definition photo keys) and recorded in
+   `player_deletion_storage_objects` before the rows referencing them are
+   touched.
+3. **The `players` row is deleted** as part of the same RPC, cascading
+   through every table in §2's cascade column; `cards`/`card_definitions`
+   rows survive with `player_id` set to null, and every card is revoked.
+4. **Each collected S3 object is actually deleted**, individually, with
+   the outcome (success/failure, retry count) recorded per object — a
+   partial failure blocks completion and is safe to retry, it does not
+   silently report success.
+5. **Closing a guardian's whole account** is a separate action
+   (`delete_own_guardian_account`, guardian-initiated) — it is not part of
+   a single player's deletion completion and is not affected by this
+   correction.
 
 **Partial case** — a guardian wants their *own* access removed but the
 child continues on the team (e.g. custody change, a second guardian
@@ -141,10 +167,13 @@ step 1, after which it too is gone.
 
 ## 5. Audit record without retaining deleted child data
 
-Keep a record that a deletion *happened* — who requested it, when, which
-player ID, which staff member carried it out, confirmed via which
-verification method (§1) — but this audit entry must never contain the
-child's name, photos, moment content, or any other deleted personal data
-itself, only the fact and metadata of the deletion event. This is the
-same distinction §1's request log already draws: record that the event
-occurred, not the content that was removed.
+**Now automatic.** `player_deletion_requests` (who, when, which player,
+which staff member, completion note), `card_access_audit_events` (every
+card revoked as part of this), and `player_deletion_storage_objects` /
+`player_deletion_supplier_status` (exactly which storage keys and
+suppliers were involved, and their outcome) together are this audit
+trail — none of them store the child's name, photos, or moment content,
+only the fact and shape of the deletion. Staff do not need to keep a
+separate manual log for this; §1's identity-verification note is still
+worth recording wherever your organisation logs support contact, since
+that step itself remains manual.
