@@ -61,3 +61,84 @@ export function extractOrderRef(payload: unknown): string | null {
   const value = found?.value?.trim();
   return value && value.length > 0 ? value : null;
 }
+
+type ShopifyLineItem = {
+  variant_id?: number | string;
+  quantity?: number;
+  price?: string;
+  discount_allocations?: Array<{ amount?: string }>;
+};
+type ShopifyOrderPayload = {
+  id?: number | string;
+  currency?: string;
+  line_items?: ShopifyLineItem[];
+};
+
+/**
+ * Gate 3 — verifies the webhook's own line items against what Emblem
+ * actually expects to have been charged, rather than trusting
+ * `total_price` wholesale (Shopify's own checkout adds shipping/tax on
+ * top of the card subtotal, which Emblem doesn't set and can't predict —
+ * see migration 0080's own header comment). Finds the line item matching
+ * `expectedVariantId`, and returns null (verification failure) unless its
+ * quantity and per-unit price match what this order's own authoritative
+ * snapshot already recorded. Currency is checked separately by the caller
+ * against the same snapshot.
+ */
+export function verifyPaidLineItem(
+  payload: unknown,
+  expectedVariantId: string,
+  expectedQuantity: number,
+  expectedUnitPricePence: number,
+): { ok: true; currency: string | null } | { ok: false; reason: string } {
+  const order = payload as ShopifyOrderPayload;
+  const lineItems = Array.isArray(order?.line_items) ? order.line_items : [];
+  const matches = lineItems.filter((item) => String(item?.variant_id ?? '') === expectedVariantId);
+  if (matches.length === 0) {
+    return { ok: false, reason: 'no_matching_line_item' };
+  }
+
+  let totalQuantity = 0;
+  for (const match of matches) {
+    if (!Number.isSafeInteger(match.quantity) || (match.quantity ?? 0) <= 0) {
+      return { ok: false, reason: 'quantity_mismatch' };
+    }
+    totalQuantity += match.quantity!;
+    if (!Number.isSafeInteger(totalQuantity)) {
+      return { ok: false, reason: 'quantity_mismatch' };
+    }
+
+    // Shopify's `price` is the undiscounted unit price. A matching list price
+    // alone therefore cannot prove that the authoritative amount was paid.
+    // Gate 3 does not support discounts: reject any non-zero (or malformed)
+    // allocation rather than marking a discounted order as fully paid.
+    const allocations = Array.isArray(match.discount_allocations) ? match.discount_allocations : [];
+    if (allocations.some((allocation) => moneyStringToPence(allocation?.amount) !== 0)) {
+      return { ok: false, reason: 'discount_mismatch' };
+    }
+
+    const unitPricePence = moneyStringToPence(match.price);
+    if (unitPricePence === null || unitPricePence !== expectedUnitPricePence) {
+      return { ok: false, reason: 'price_mismatch' };
+    }
+  }
+  if (totalQuantity !== expectedQuantity) {
+    return { ok: false, reason: 'quantity_mismatch' };
+  }
+  return { ok: true, currency: typeof order?.currency === 'string' ? order.currency : null };
+}
+
+function moneyStringToPence(value: unknown): number | null {
+  if (typeof value !== 'string' || !/^\d+(?:\.\d{1,2})?$/.test(value)) return null;
+  const [pounds, fraction = ''] = value.split('.');
+  const pence = Number(pounds) * 100 + Number(fraction.padEnd(2, '0'));
+  return Number.isSafeInteger(pence) ? pence : null;
+}
+
+/** Shopify's own real order id, for reconciliation only — never trusted as
+ *  proof of anything by itself; it only gets written once the line-item
+ *  verification above has already passed. */
+export function extractShopifyOrderId(payload: unknown): string | null {
+  const id = (payload as ShopifyOrderPayload)?.id;
+  return id === undefined || id === null ? null : String(id);
+}

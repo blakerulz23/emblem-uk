@@ -12,7 +12,6 @@ import { DIRECT_BUILDER_MAX_PAID_PLAYERS } from '@/lib/order-enquiry-validation'
 import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
 import { captureElementToPng, renderPrintFile, BUILDER_CSRF_HEADER, readBuilderCsrfCookie } from '@/lib/print-capture';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
-import { buildUkCardCartUrl } from '@/lib/shopify';
 import {
   createPlayer,
   DEFAULT_CUSTOM_TEMPLATE_ID,
@@ -347,6 +346,15 @@ export default function ProductionBuilder({
   // ordinary "Order received" success content for a non-guardian submitter.
   const [submittedOrderId, setSubmittedOrderId] = useState<string | null>(null);
   const [submittedAuthorityStatus, setSubmittedAuthorityStatus] = useState<string | null>(null);
+  // Gate 3 — direct Shopify checkout + server-verified payment. A browser
+  // return from Shopify (or the mere fact a new tab was opened) is never
+  // treated as proof of payment anywhere in this state machine —
+  // 'confirmed' is reachable only by paymentStatus polling back 'paid'
+  // from get_gate3_payment_status, which itself only ever reflects what a
+  // signature-verified Shopify webhook already recorded server-side.
+  const [checkoutStage, setCheckoutStage] = useState<'idle' | 'creating' | 'awaiting-payment' | 'confirmed' | 'error'>('idle');
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const checkoutRequestRef = useRef(0);
   // Stage 6 — one cryptographically random idempotency key per builder
   // submission attempt, generated once and reused for every retry (never
   // regenerated just because a network response was lost, never the old
@@ -550,6 +558,16 @@ export default function ProductionBuilder({
   const stats = sportConfig[order.sport].stats;
   const orderMode = orderModeLimits[order.type];
   const visibleOrderType = order.type === 'single' ? 'single' : 'squad';
+  // Gate 3 — read-only, copy-only signal (NEXT_PUBLIC_ vars are already
+  // inlined client-side by Next.js regardless). The actual authorization —
+  // whether checkout is really allowed for this order — is decided
+  // server-side by begin_gate3_checkout on every real attempt; this only
+  // decides which review-screen copy/button to show. Only the single-child
+  // tier has a verified Shopify variant/price mapping today (see
+  // gate3CheckoutSupportsTier's own comment in src/lib/shopify.ts) — a
+  // multi/squad order keeps the pre-Gate-3 manual "we'll email a payment
+  // link" copy unchanged until that mapping is resolved.
+  const gate3Enabled = Boolean(process.env.NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT) && order.type === 'single';
   const addDisabled = !canAddPlayer(order);
   const hasAnyPhoto = order.players.some((player) => Boolean(player.photo?.srcUrl));
   const selectedHasPhoto = Boolean(selectedPlayer?.photo?.srcUrl);
@@ -1261,14 +1279,12 @@ export default function ProductionBuilder({
       setSubmittedOrderId(result.orderId);
       setSubmittedAuthorityStatus(typeof result.authorityStatus === 'string' ? result.authorityStatus : null);
 
-      // 4) Hand off to Shopify checkout when the UK card variant is
-      //    configured. The paid-webhook flips this order to 'paid' when
-      //    payment completes. Without the env var we stay on the manual
-      //    "we'll email a payment link" flow — same behaviour as before.
-      const cartUrl = buildUkCardCartUrl(summary.approvedPrints, orderRef);
-      if (cartUrl) {
-        window.location.href = cartUrl;
-      }
+      // Gate 3 — no automatic redirect here. The customer reviews the
+      // final summary and actively clicks "Continue to secure checkout"
+      // (see startGate3Checkout) rather than being sent to Shopify the
+      // instant the order is created — matching the product decision that
+      // checkout is a deliberate next step, not a side effect of
+      // submitting the form.
     } catch (error) {
       setCaptureMode(false);
       setEnquiryStatus('error');
@@ -1278,6 +1294,75 @@ export default function ProductionBuilder({
       submittingRef.current = false;
     }
   };
+
+  /**
+   * Gate 3 — starts a server-authoritative Shopify checkout for the
+   * just-submitted order. Sends no price, quantity, variant, or order
+   * owner of its own — the order id in the URL path is the only input;
+   * everything else comes back from begin_gate3_checkout (migration 0080),
+   * which re-verifies identity, authority, and payment state server-side.
+   *
+   * Opens the returned checkout URL in a NEW tab rather than navigating
+   * this one away. A cart-permalink checkout is a plain redirect with no
+   * guaranteed return-to-Emblem configured on the Shopify side (unlike a
+   * full Checkout API session, there is no way to inspect or set that from
+   * here) — keeping this tab alive and polling its own payment-status
+   * endpoint means "Order confirmed" is reachable purely from a
+   * server-verified webhook, regardless of whether Shopify ever redirects
+   * the customer anywhere at all.
+   */
+  const startGate3Checkout = async () => {
+    if (!submittedOrderId || checkoutStage === 'creating') return;
+    setCheckoutStage('creating');
+    setCheckoutError(null);
+    try {
+      const response = await fetch(`/api/orders/${submittedOrderId}/checkout`, {
+        method: 'POST',
+        headers: { [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.ok || typeof result.checkoutUrl !== 'string') {
+        setCheckoutStage('error');
+        setCheckoutError(result?.error || 'Could not start secure checkout — please try again');
+        return;
+      }
+      window.open(result.checkoutUrl, '_blank', 'noopener');
+      setCheckoutStage('awaiting-payment');
+    } catch {
+      setCheckoutStage('error');
+      setCheckoutError('Could not start secure checkout — please try again');
+    }
+  };
+
+  // Polls the server-verified payment status while "awaiting-payment" —
+  // never trusts a browser return/focus event as proof by itself, only
+  // ever advances to 'confirmed' when the server itself reports 'paid'.
+  useEffect(() => {
+    if (checkoutStage !== 'awaiting-payment' || !submittedOrderId) return;
+    const requestId = ++checkoutRequestRef.current;
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/orders/${submittedOrderId}/payment-status`);
+        const result = await response.json().catch(() => null);
+        if (cancelled || checkoutRequestRef.current !== requestId) return;
+        if (response.ok && result?.ok && result.paymentStatus === 'paid') {
+          setCheckoutStage('confirmed');
+        }
+      } catch {
+        // Transient network error — the next poll tick simply tries again;
+        // nothing here ever marks the order confirmed on a failure.
+      }
+    };
+
+    void poll();
+    const interval = setInterval(poll, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [checkoutStage, submittedOrderId]);
 
   // The only place submissionKey is ever regenerated — an explicit,
   // visible customer action (never automatic) for recovering from a
@@ -2238,14 +2323,56 @@ export default function ProductionBuilder({
           {activeStepId === 'review' && !squadInviteContext && !(enquiryStatus === 'sent' && submittedAuthorityStatus === 'guardian_approval_pending') && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Review order</p>
-              <h1>{enquiryStatus === 'sent' ? 'Order received.' : 'Review your order.'}</h1>
+              <h1>
+                {enquiryStatus !== 'sent'
+                  ? 'Review your order.'
+                  : !gate3Enabled
+                    ? 'Order received.'
+                    : checkoutStage === 'confirmed'
+                      ? 'Order confirmed.'
+                      : checkoutStage === 'awaiting-payment'
+                        ? 'Confirming your payment…'
+                        : 'Order received.'}
+              </h1>
               <p className="uk-wizard-copy">
-                {enquiryStatus === 'sent'
-                  ? 'We have your production request and will email you within one business day.'
-                  : summary.checkoutEligible
-                    ? 'Your cards are ready. We will review your order, confirm print quantity, delivery cost and send you a secure payment link.'
-                    : 'Approve at least one card to continue.'}
+                {enquiryStatus !== 'sent'
+                  ? (summary.checkoutEligible
+                      ? (gate3Enabled
+                          ? 'Your cards are ready. Continue to secure checkout to confirm delivery and payment.'
+                          : 'Your cards are ready. We will review your order, confirm print quantity, delivery cost and send you a secure payment link.')
+                      : 'Approve at least one card to continue.')
+                  : !gate3Enabled
+                    ? 'We have your production request and will email you within one business day.'
+                    : checkoutStage === 'confirmed'
+                      ? 'Payment received — your cards are on their way into production.'
+                      : checkoutStage === 'awaiting-payment'
+                        ? "We're waiting for Shopify to confirm your payment — this can take a few moments. Complete checkout in the tab that just opened, then come back here."
+                        : 'Continue to secure checkout to confirm delivery and complete payment.'}
               </p>
+              {enquiryStatus === 'sent' && gate3Enabled && checkoutStage !== 'confirmed' && (
+                <div className="uk-gate3-checkout">
+                  {checkoutStage === 'awaiting-payment' ? (
+                    <>
+                      <p aria-live="polite">Waiting for payment confirmation…</p>
+                      <button type="button" className="uk-wizard-primary compact" onClick={startGate3Checkout}>
+                        I&apos;ve completed payment — check again
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="uk-wizard-primary compact"
+                      disabled={checkoutStage === 'creating'}
+                      onClick={startGate3Checkout}
+                    >
+                      {checkoutStage === 'creating' ? 'Preparing secure checkout…' : 'Continue to secure checkout'}
+                    </button>
+                  )}
+                  {checkoutStage === 'error' && checkoutError && (
+                    <p className="uk-enquiry-error" role="alert">{checkoutError}</p>
+                  )}
+                </div>
+              )}
               <div className="uk-production-snapshot">
                 <div>
                   <span>Clubs</span>
@@ -2381,7 +2508,11 @@ export default function ProductionBuilder({
                 {enquiryStatus === 'sent' && (
                   <div className="uk-enquiry-success">
                     <strong>Order received.</strong>
-                    <span>We will email you within one business day with the final print total, delivery options and secure payment link.</span>
+                    <span>
+                      {gate3Enabled
+                        ? 'Continue to secure checkout above to confirm delivery and complete payment.'
+                        : 'We will email you within one business day with the final print total, delivery options and secure payment link.'}
+                    </span>
                   </div>
                 )}
                 {enquiryStatus === 'error' && enquiryConflict && (
@@ -2426,7 +2557,10 @@ export default function ProductionBuilder({
                 <h3>What happens next?</h3>
                 <ol>
                   <li><strong>We review your cards</strong><span>Artwork, badges and print quantities are checked.</span></li>
-                  <li><strong>We email a payment link</strong><span>You confirm delivery and pay securely.</span></li>
+                  <li>
+                    <strong>{gate3Enabled ? 'You checkout securely' : 'We email a payment link'}</strong>
+                    <span>You confirm delivery and pay securely{gate3Enabled ? ' through Shopify' : ''}.</span>
+                  </li>
                   <li><strong>Production begins</strong><span>Your approved cards move into print.</span></li>
                   <li><strong>Cards delivered</strong><span>Your keepsakes arrive ready to share.</span></li>
                 </ol>

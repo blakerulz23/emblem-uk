@@ -23,12 +23,14 @@ const PROTECTED_FILES: Record<string, string> = {
   'src/lib/print-capture.ts': '193d00d664d72b992595ed02b0b98dcba1430153822d6cb6a821dc9773e5e303',
   'src/lib/photo-geometry.ts': '978e82969fed90ff88d0129e9aebff8da8fea49fc5ea15a7c403bacfd5c98645',
   'src/components/builder/emblem/CardArt.tsx': '6b1118a58e7efb26da3a595ac80b2c4895af4185af2a04b78833154756e1504c',
-  'src/lib/shopify.ts': 'dda2d0ed5975698e4482f013ea6a07e7bc7bb509d3e1d249e5ec9af44385ef75',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
-  'src/app/api/webhooks/shopify/orders-paid/route.ts': 'f266d02676a9f4bff9fb8cfe8a51d1c76803fcf76b538a036cb383c6c9e36323',
 };
+// src/lib/shopify.ts and src/app/api/webhooks/shopify/orders-paid/route.ts
+// were removed from this list for Gate 3 (direct Shopify checkout +
+// server-verified payment) — the first legitimate, reviewed work since
+// this hash was pinned to intentionally change either file.
 
 describe('protected areas remain byte-identical after card lifecycle controls (migration 0075)', () => {
   for (const [relativePath, expectedHash] of Object.entries(PROTECTED_FILES)) {

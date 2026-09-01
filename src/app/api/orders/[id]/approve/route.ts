@@ -7,6 +7,7 @@ import { currentUkFootballSeason } from '@/lib/season';
 import { resolveOrCreateSeason } from '@/lib/resolve-season';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
 import { sendSquadInviteEarlyPreviewEmail } from '@/lib/send-squad-invite-early-preview-email';
+import { gate3PaymentGateEnabled } from '@/lib/shopify';
 
 export const runtime = 'nodejs';
 
@@ -168,7 +169,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   const serviceRole = createServiceRoleClient();
 
-  const { data: sourceRow } = await serviceRole.from('orders').select('source, authority_status').eq('id', params.id).maybeSingle();
+  const { data: sourceRow } = await serviceRole.from('orders').select('source, authority_status, pricing_tier, payment_status').eq('id', params.id).maybeSingle();
   if (!sourceRow) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   }
@@ -191,6 +192,29 @@ export async function POST(request: Request, { params }: { params: { id: string 
     });
     return NextResponse.json(
       { error: 'This order cannot be approved until adult permission is confirmed' },
+      { status: 409 }
+    );
+  }
+
+  // Gate 3 — payment wall. Scoped to the single-child pricing tier only:
+  // that's the only tier with a verified Shopify variant/price mapping
+  // today (see gate3CheckoutSupportsTier's own comment) — multi/squad
+  // orders keep their pre-Gate-3 behaviour (authority-only) unchanged
+  // until their own mapping is resolved in a later work package, rather
+  // than being permanently blockable with no way to ever pay through this
+  // system. gate3PaymentGateEnabled() mirrors the exact same launch switch
+  // (NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT) the checkout redirect itself
+  // already uses, so an environment that hasn't turned Gate 3 on yet
+  // (e.g. a disposable test project with the variant unset) never starts
+  // requiring a payment status it has no way to produce.
+  if (
+    sourceRow.source !== 'squad_invite' &&
+    sourceRow.pricing_tier === 'single' &&
+    gate3PaymentGateEnabled() &&
+    sourceRow.payment_status !== 'paid'
+  ) {
+    return NextResponse.json(
+      { error: 'Payment is required before this can be approved for production' },
       { status: 409 }
     );
   }

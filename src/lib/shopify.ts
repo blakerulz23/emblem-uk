@@ -2,6 +2,24 @@ import { PrintProduct } from './print-capture';
 
 export const SHOPIFY_SHOP = 'officialgudzzz.myshopify.com';
 
+const MYSHOPIFY_HOST_PATTERN = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
+
+/**
+ * Gate 3 previews must never send a tester into the production Shopify shop.
+ * Production remains pinned to SHOPIFY_SHOP; only a Vercel Preview may use an
+ * explicitly configured development-store hostname, and it fails closed when
+ * that hostname is missing, malformed, or points back at production.
+ */
+export function gate3ShopifyShop(): string | null {
+  if (process.env.VERCEL_ENV !== 'preview') return SHOPIFY_SHOP;
+
+  const previewShop = process.env.SHOPIFY_STORE_DOMAIN?.trim().toLowerCase();
+  if (!previewShop || previewShop === SHOPIFY_SHOP || !MYSHOPIFY_HOST_PATTERN.test(previewShop)) {
+    return null;
+  }
+  return previewShop;
+}
+
 /** Map our internal product kinds to Shopify variant IDs. */
 export const VARIANT_BY_PRODUCT: Record<PrintProduct, string> = {
   card:        '46363034714284',  // Custom Trading Card
@@ -79,8 +97,58 @@ export const AI_VARIANT_BY_PRODUCT: Record<'armymen' | 'pendants' | 'rushmore', 
  */
 export function buildUkCardCartUrl(quantity: number, orderRef: string): string | null {
   const variantId = process.env.NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT;
-  if (!variantId) return null;
+  const shop = gate3ShopifyShop();
+  if (!variantId || !shop) return null;
   const params = new URLSearchParams();
   params.set('attributes[Order Ref]', orderRef);
-  return 'https://' + SHOPIFY_SHOP + '/cart/' + variantId + ':' + Math.max(1, quantity) + '?' + params.toString();
+  return 'https://' + shop + '/cart/' + variantId + ':' + Math.max(1, quantity) + '?' + params.toString();
+}
+
+/**
+ * Gate 3 — same launch switch buildUkCardCartUrl already uses
+ * (NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT), read server-side too so the staff
+ * approve route only starts requiring payment_status='paid' once real
+ * checkout is actually reachable. An environment that hasn't configured
+ * the variant yet (e.g. a disposable test project) keeps the pre-Gate-3
+ * behaviour unchanged — this is additive, never a hard requirement.
+ */
+export function gate3PaymentGateEnabled(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT && gate3ShopifyShop());
+}
+
+/**
+ * Gate 3 currently only has a verified Shopify variant/price mapping for
+ * the single-child pricing tier — the same one NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT
+ * already serves. There is no repository evidence of a per-tier
+ * (multi/squad) variant the way Squad Invite has three distinct variants
+ * for its three tiers (src/lib/squad-invite-payment-link.ts) — using the
+ * single flat variant for a multi/squad order would silently charge the
+ * wrong (single-tier) unit price. Rather than guess, checkout creation for
+ * those tiers is refused with a clear, honest error until that mapping is
+ * confirmed and added here.
+ */
+export function gate3CheckoutSupportsTier(pricingTier: string | null | undefined): boolean {
+  return pricingTier === 'single';
+}
+
+/**
+ * Defence in depth for the checkout route: proves the URL it is about to
+ * return to the browser genuinely is a Shopify-hosted cart/checkout link
+ * on this app's own configured shop, never anything else — even though
+ * buildUkCardCartUrl already only ever constructs a URL of this exact
+ * shape from a hardcoded shop domain (SHOPIFY_SHOP), so this can never
+ * actually fail in practice today. It exists so the route can never be
+ * changed, in future, to forward an arbitrary or client-influenced URL
+ * without this check catching it.
+ */
+export function isSafeShopifyCheckoutUrl(url: string): boolean {
+  const shop = gate3ShopifyShop();
+  if (!shop) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === 'https:' && parsed.hostname === shop && parsed.pathname.startsWith('/cart/');
 }

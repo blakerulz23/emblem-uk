@@ -22,11 +22,15 @@ const PROTECTED_FILES: Record<string, string> = {
   'src/lib/pdf-generator.ts': '94e796512bd29560755659bc25513820cc142fc8a755f353705539f750f49c26',
   'src/lib/card-definition.tsx': '3dbbe7061c2af0492b02443fc0a89a887312e2f16bcb2d05c41da1343c0fd2a0',
   'src/lib/print-capture.ts': '193d00d664d72b992595ed02b0b98dcba1430153822d6cb6a821dc9773e5e303',
-  'src/lib/shopify.ts': 'dda2d0ed5975698e4482f013ea6a07e7bc7bb509d3e1d249e5ec9af44385ef75',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
-  'src/app/api/webhooks/shopify/orders-paid/route.ts': 'f266d02676a9f4bff9fb8cfe8a51d1c76803fcf76b538a036cb383c6c9e36323',
 };
+// src/lib/shopify.ts and src/app/api/webhooks/shopify/orders-paid/route.ts
+// were removed from this list for Gate 3 (direct Shopify checkout +
+// server-verified payment) — the first legitimate, reviewed work since
+// this hash was pinned to intentionally change either file. Every other
+// entry above still proves Gate 3 itself never touches background
+// removal, Gemini, print/PDF generation, pricing, or Squad Invite.
 
 describe('protected areas remain byte-identical after the card claim-token hotfix (migration 0073)', () => {
   for (const [relativePath, expectedHash] of Object.entries(PROTECTED_FILES)) {
