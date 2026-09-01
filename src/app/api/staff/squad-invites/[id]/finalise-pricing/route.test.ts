@@ -40,9 +40,7 @@ type Fixture = {
   paymentModeEnabled: boolean;
   campaign: { club_team_name: string } | null;
   participations: Participation[];
-  cardsByOrderId: Record<string, { claim_token: string } | null>;
   issuePaymentRequestResult?: { data: unknown; error: { message: string } | null };
-  cardLookupThrowsFor?: string;
 };
 
 let fixture: Fixture;
@@ -58,18 +56,6 @@ vi.mock('@/lib/supabase/server', () => ({
       }
       if (table === 'squad_invite_participations') {
         return { select: () => ({ eq: () => ({ eq: async () => ({ data: fixture.participations }) }) }) };
-      }
-      if (table === 'cards') {
-        return {
-          select: () => ({
-            eq: (_col: string, orderId: string) => ({
-              maybeSingle: async () => {
-                if (fixture.cardLookupThrowsFor === orderId) throw new Error('db unavailable');
-                return { data: fixture.cardsByOrderId[orderId] ?? null };
-              },
-            }),
-          }),
-        };
       }
       throw new Error(`unexpected table ${table}`);
     },
@@ -108,11 +94,6 @@ beforeEach(() => {
       { id: 'p-2', order_id: 'order-2', orders: { order_ref: 'ref-2', purchaser_email: 'guardian2@example.test' } },
       { id: 'p-3', order_id: 'order-3', orders: { order_ref: 'ref-3', purchaser_email: 'guardian3@example.test' } },
     ],
-    cardsByOrderId: {
-      'order-1': { claim_token: 'TOKEN1' },
-      'order-2': { claim_token: 'TOKEN2' },
-      'order-3': { claim_token: 'TOKEN3' },
-    },
   };
 
   mockRpc.mockImplementation(async (name: string) => {
@@ -180,11 +161,9 @@ describe('POST /api/staff/squad-invites/[id]/finalise-pricing — pricing-confir
       committedCount: 3,
       unitPricePence: 2199,
       tier: 'multi',
-      claimUrl: expect.stringContaining('TOKEN1'),
     });
     expect(mockSendPricingConfirmedEmail).toHaveBeenNthCalledWith(3, expect.objectContaining({
       toEmail: 'guardian3@example.test',
-      claimUrl: expect.stringContaining('TOKEN3'),
     }));
   });
 
@@ -210,14 +189,6 @@ describe('POST /api/staff/squad-invites/[id]/finalise-pricing — pricing-confir
     expect(mockSendPricingConfirmedEmail).toHaveBeenCalledTimes(2);
   });
 
-  it('a participation with no card on file is skipped and counted, without stopping the rest', async () => {
-    fixture.cardsByOrderId['order-2'] = null;
-    const res = await finalisePricing();
-    const body = await res.json();
-    expect(body.pricingNotified).toBe(2);
-    expect(body.pricingNotifyFailed).toBe(1);
-  });
-
   it('a failed send (ok:false) is counted, without stopping the rest', async () => {
     mockSendPricingConfirmedEmail
       .mockResolvedValueOnce({ ok: true })
@@ -229,14 +200,17 @@ describe('POST /api/staff/squad-invites/[id]/finalise-pricing — pricing-confir
     expect(body.pricingNotifyFailed).toBe(1);
   });
 
-  it('a thrown error mid-loop (e.g. the card lookup itself failing) is caught, counted, and does not stop the rest', async () => {
-    fixture.cardLookupThrowsFor = 'order-2';
+  it('a thrown error mid-loop (e.g. the email send itself throwing) is caught, counted, and does not stop the rest', async () => {
+    mockSendPricingConfirmedEmail
+      .mockResolvedValueOnce({ ok: true })
+      .mockImplementationOnce(() => { throw new Error('resend unavailable'); })
+      .mockResolvedValueOnce({ ok: true });
     const res = await finalisePricing();
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.pricingNotified).toBe(2);
     expect(body.pricingNotifyFailed).toBe(1);
-    expect(mockSendPricingConfirmedEmail).toHaveBeenCalledTimes(2);
+    expect(mockSendPricingConfirmedEmail).toHaveBeenCalledTimes(3);
   });
 
   it('never calls the payment-request machinery while the wall is off', async () => {

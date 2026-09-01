@@ -4,7 +4,6 @@ import { requireSquadInvitePermission } from '@/lib/require-squad-invite-permiss
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { buildSquadInvitePaymentUrl } from '@/lib/squad-invite-payment-link';
 import { sendSquadInvitePaymentRequestEmail } from '@/lib/send-squad-invite-payment-request-email';
-import { buildNfcCardUrl } from '@/lib/nfc-link';
 import { sendSquadInvitePricingConfirmedEmail } from '@/lib/send-squad-invite-pricing-confirmed-email';
 
 /**
@@ -70,19 +69,12 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
           console.warn('pricing confirmed email skipped — no purchaser email on file', { participationId: participation.id });
           continue;
         }
-        const { data: card } = await service.from('cards').select('claim_token').eq('order_id', participation.order_id).maybeSingle();
-        if (!card?.claim_token) {
-          pricingNotifyFailed++;
-          console.warn('pricing confirmed email skipped — no card found for this participation', { participationId: participation.id });
-          continue;
-        }
         const sent = await sendSquadInvitePricingConfirmedEmail({
           toEmail: orderRow.purchaser_email,
           teamName: campaign?.club_team_name ?? 'your team',
           committedCount: pricing.commitmentCount,
           unitPricePence: pricing.unitPricePence,
           tier: pricing.tier,
-          claimUrl: buildNfcCardUrl(card.claim_token),
         });
         if (sent.ok) {
           pricingNotified++;
