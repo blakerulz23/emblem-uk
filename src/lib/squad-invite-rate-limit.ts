@@ -3,7 +3,7 @@ import { createServiceRoleClient } from './supabase/server';
 
 export async function consumeSquadInviteRateLimit(
   headersLike: { get(name: string): string | null },
-  action: 'resolve' | 'participate' | 'otp-request' | 'otp-verify' | 'link-replace' | 'concern-flag' | 'coach-card-submit' | 'campaign-close' | 'campaign-reopen',
+  action: 'resolve' | 'participate' | 'otp-request' | 'otp-verify' | 'link-replace' | 'concern-flag' | 'coach-card-submit' | 'campaign-close' | 'campaign-reopen' | 'payment-preview-resolve',
   subject?: string,
 ): Promise<boolean> {
   const secret = process.env.SQUAD_INVITE_RATE_LIMIT_SECRET;
@@ -33,6 +33,10 @@ export async function consumeSquadInviteRateLimit(
     // used to spam the audit trail.
     'campaign-close': { ip: 10, subject: 6 },
     'campaign-reopen': { ip: 10, subject: 6 },
+    // A parent may legitimately reload the payment preview page a few
+    // times within its 72-hour window — generous like 'resolve', still
+    // bounded against token-guessing.
+    'payment-preview-resolve': { ip: 30, subject: 30 },
   }[action];
   const opaqueBucket = (scope: 'ip' | 'subject', value: string) =>
     createHmac('sha256', secret).update(`${action}:${scope}:${value}`).digest('hex');

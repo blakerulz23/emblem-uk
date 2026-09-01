@@ -5,6 +5,19 @@ import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { buildSquadInvitePaymentUrl } from '@/lib/squad-invite-payment-link';
 import { sendSquadInvitePaymentRequestEmail } from '@/lib/send-squad-invite-payment-request-email';
 import { sendSquadInvitePricingConfirmedEmail } from '@/lib/send-squad-invite-pricing-confirmed-email';
+import { createSquadInvitePaymentPreviewToken } from '@/lib/squad-invite-payment-preview-token';
+
+/**
+ * Same site-URL fallback nfc-link.ts's buildNfcCardUrl already uses — kept
+ * as a literal duplicate rather than a shared import, since the two
+ * callers are otherwise unrelated (one builds a physical-card claim URL,
+ * this builds a payment-preview URL) and this codebase's own convention
+ * elsewhere (send-squad-invite-early-preview-email.ts vs. its siblings) is
+ * to accept a little duplication over coupling two independent concerns.
+ */
+function siteUrl(): string {
+  return process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk-lauda-collectives-projects.vercel.app';
+}
 
 /**
  * Finalises a campaign's pricing (locks in the real tier/unit price from
@@ -102,19 +115,33 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
       failed++;
       continue;
     }
+    // Pre-flight only — confirms this tier's Shopify variant is actually
+    // configured before minting a token/opening the 72-hour window at all.
+    // The real checkout URL is rebuilt later, server-side, when the
+    // preview page's own resolve step runs (same function, same inputs) —
+    // never reused directly here, since print_quantity is only known
+    // AFTER issue_squad_invite_payment_request returns below.
+    if (!buildSquadInvitePaymentUrl(pricing.tier, 1, orderRow.order_ref)) {
+      failed++;
+      continue;
+    }
+    const previewCredential = createSquadInvitePaymentPreviewToken();
     const { data: issueResult, error: issueError } = await service.rpc('issue_squad_invite_payment_request', {
       p_participation_id: participation.id,
+      p_preview_token_hash: previewCredential.hash,
     });
     if (issueError || !issueResult) {
       failed++;
       continue;
     }
     const result = issueResult as { printQuantity: number };
-    const paymentUrl = buildSquadInvitePaymentUrl(pricing.tier, result.printQuantity, orderRow.order_ref);
-    if (!paymentUrl) {
-      failed++;
-      continue;
-    }
+    // Points at the new preview page (shows the actual card + a price
+    // summary before handing off to Shopify), not directly at Shopify —
+    // see migration 0081 and squad-invite-payment-preview-token.ts. The
+    // preview page's own resolve step is what rebuilds the real Shopify
+    // checkout URL server-side via buildSquadInvitePaymentUrl, so this
+    // route no longer calls that function itself.
+    const paymentUrl = `${siteUrl()}/squad-invite/pay#token=${previewCredential.token}`;
     const sent = await sendSquadInvitePaymentRequestEmail({
       toEmail: orderRow.purchaser_email,
       teamName: campaign?.club_team_name ?? '',
