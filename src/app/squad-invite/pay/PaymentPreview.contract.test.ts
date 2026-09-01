@@ -26,8 +26,14 @@ describe('PaymentPreview — Squad Invite pre-checkout card preview', () => {
   });
 
   it('the checkout control is a plain anchor to the server-computed checkoutUrl — no client-side URL construction', () => {
-    expect(source).toMatch(/<a className="uk-wizard-primary compact" href=\{preview\.checkoutUrl\}/);
+    expect(source).toMatch(/href=\{preview\.checkoutUrl\}/);
     expect(source).not.toMatch(/buildSquadInvitePaymentUrl|shopify\.com\/cart/);
+  });
+
+  it('styled to match this page\'s Squad Invite siblings (manage/DeliverySetup/access) — plain Tailwind with the brand orange, not the builder wizard\'s own uk-wizard-* classes, which only render correctly inside the builder\'s phone-frame shell', () => {
+    expect(source).not.toMatch(/uk-wizard-panel|uk-wizard-primary|uk-wizard-copy|uk-wizard-kicker|uk-production-snapshot|uk-gate3-checkout|uk-order-club-list|uk-real-card/);
+    expect(source).toMatch(/bg-orange-600/);
+    expect(source).toMatch(/text-orange-600/);
   });
 
   it('handles all three non-happy-path states: loading, unavailable, and already-paid', () => {
