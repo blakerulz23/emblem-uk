@@ -12,10 +12,17 @@ import { SINGLE_UNIT_PRICE_PENCE } from './pricing-engine';
  * via the RPC response) — never hardcoded here, same discipline
  * migration-0050-contract.test.ts now enforces against pricing-engine.ts.
  *
- * The /os?card=... link is a plain "see your child's card" pointer, not a
- * call to action — deliberately not styled as a button the way the
- * claim-reminder/early-preview emails' links are, so a price confirmation
- * doesn't read like the next step in a checkout.
+ * Deliberately carries no /os?card=... link. That link only ever resolves
+ * once the order reaches payment_status = 'fulfilled' (card-lookup.ts's
+ * orderApproved check) — genuinely unreachable at this point in the
+ * lifecycle, since this email fires before anyone has even paid. Every
+ * real recipient who clicked it hit "That code isn't recognised", found
+ * live during a real walkthrough. The correctly-timed equivalent —
+ * sendSquadInviteEarlyPreviewEmail's "Preview your card", which *does*
+ * link to the full OS — only fires later, once staff approve the card
+ * into production (payment done, order genuinely fulfilled). This email
+ * stays a pure price notification; it never promises a preview it can't
+ * deliver.
  */
 export async function sendSquadInvitePricingConfirmedEmail(params: {
   toEmail: string;
@@ -23,7 +30,6 @@ export async function sendSquadInvitePricingConfirmedEmail(params: {
   committedCount: number;
   unitPricePence: number;
   tier: 'single' | 'multi' | 'squad';
-  claimUrl: string;
 }): Promise<{ ok: boolean }> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
@@ -55,8 +61,8 @@ export async function sendSquadInvitePricingConfirmedEmail(params: {
     ? `Orders for ${params.teamName} are now closed. Your price is ${price} per card.`
     : `Orders for ${params.teamName} are now closed. Because ${params.committedCount} of you ordered together, everyone's price is ${price} per card — ${savings} less than ordering alone.`;
 
-  const html = `<h2>Your price is confirmed</h2><p>${bodyHtml}</p><p><a href="${params.claimUrl}" style="color:#E97435;font-weight:700">See your child's card</a></p><p style="color:#6b7280;font-size:13px">No payment has been taken. If you weren't expecting this email, you can ignore it.</p>`;
-  const text = `Your price is confirmed\n\n${bodyText}\n\nSee your child's card: ${params.claimUrl}\n\nNo payment has been taken. If you weren't expecting this email, you can ignore it.`;
+  const html = `<h2>Your price is confirmed</h2><p>${bodyHtml}</p><p style="color:#6b7280;font-size:13px">No payment has been taken. If you weren't expecting this email, you can ignore it.</p>`;
+  const text = `Your price is confirmed\n\n${bodyText}\n\nNo payment has been taken. If you weren't expecting this email, you can ignore it.`;
 
   try {
     const res = await fetch('https://api.resend.com/emails', {
