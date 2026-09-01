@@ -33,6 +33,11 @@ vi.mock('@/lib/send-squad-invite-pricing-confirmed-email', () => ({
   sendSquadInvitePricingConfirmedEmail: (...args: unknown[]) => mockSendPricingConfirmedEmail(...args),
 }));
 
+const mockCreatePreviewToken = vi.fn();
+vi.mock('@/lib/squad-invite-payment-preview-token', () => ({
+  createSquadInvitePaymentPreviewToken: () => mockCreatePreviewToken(),
+}));
+
 type Participation = { id: string; order_id: string; orders: { order_ref: string; purchaser_email: string } | null };
 
 type Fixture = {
@@ -74,6 +79,7 @@ beforeEach(() => {
   mockBuildPaymentUrl.mockReset();
   mockSendPaymentRequestEmail.mockReset();
   mockSendPricingConfirmedEmail.mockReset();
+  mockCreatePreviewToken.mockReset();
   mockRpc.mockReset();
 
   mockIsMvpEnabled.mockReturnValue(true);
@@ -81,6 +87,7 @@ beforeEach(() => {
   mockSendPaymentRequestEmail.mockResolvedValue({ ok: true });
   mockSendPricingConfirmedEmail.mockResolvedValue({ ok: true });
   mockBuildPaymentUrl.mockReturnValue('https://emblem-uk.example/pay/abc');
+  mockCreatePreviewToken.mockReturnValue({ token: 'preview-token-abc', hash: 'a'.repeat(64) });
 
   fixture = {
     finalisePricingResult: {
@@ -223,9 +230,10 @@ describe('POST /api/staff/squad-invites/[id]/finalise-pricing — pricing-confir
 describe('POST /api/staff/squad-invites/[id]/finalise-pricing — payment mode ON (existing behaviour must be unchanged)', () => {
   beforeEach(() => {
     fixture.paymentModeEnabled = true;
+    delete process.env.NEXT_PUBLIC_SITE_URL;
   });
 
-  it('still issues a payment request and sends the payment-request email to every eligible participation, identically to before the hoist', async () => {
+  it('still issues a payment request and sends the payment-request email to every eligible participation, now pointing at the payment-preview page instead of directly at Shopify', async () => {
     const res = await finalisePricing();
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -234,11 +242,33 @@ describe('POST /api/staff/squad-invites/[id]/finalise-pricing — payment mode O
     expect(mockSendPaymentRequestEmail).toHaveBeenNthCalledWith(1, {
       toEmail: 'guardian1@example.test',
       teamName: 'Ashton Juniors U10',
-      paymentUrl: 'https://emblem-uk.example/pay/abc',
+      paymentUrl: 'https://emblem-uk-lauda-collectives-projects.vercel.app/squad-invite/pay#token=preview-token-abc',
       unitPricePence: 2199,
       printQuantity: 1,
     });
+  });
+
+  it('rebuilds the checkout URL only as a pre-flight tier/variant check (printQuantity=1, discarded) — the payment-request email never carries the raw Shopify URL, only the preview-page link', async () => {
+    await finalisePricing();
     expect(mockBuildPaymentUrl).toHaveBeenCalledWith('multi', 1, 'ref-1');
+    const anyEmailedPaymentUrl = mockSendPaymentRequestEmail.mock.calls.map((c) => (c[0] as { paymentUrl: string }).paymentUrl);
+    expect(anyEmailedPaymentUrl.every((url) => url.includes('/squad-invite/pay#token='))).toBe(true);
+    expect(anyEmailedPaymentUrl.every((url) => !url.includes('shopify.com'))).toBe(true);
+  });
+
+  it('threads the preview token hash into issue_squad_invite_payment_request in the same atomic call, not a second RPC', async () => {
+    await finalisePricing();
+    expect(mockRpc).toHaveBeenCalledWith('issue_squad_invite_payment_request', {
+      p_participation_id: 'p-1',
+      p_preview_token_hash: 'a'.repeat(64),
+    });
+  });
+
+  it('honours NEXT_PUBLIC_SITE_URL when set, instead of the hardcoded fallback', async () => {
+    process.env.NEXT_PUBLIC_SITE_URL = 'https://emblem-uk.example';
+    await finalisePricing();
+    const url = (mockSendPaymentRequestEmail.mock.calls[0][0] as { paymentUrl: string }).paymentUrl;
+    expect(url).toBe('https://emblem-uk.example/squad-invite/pay#token=preview-token-abc');
   });
 
   it('also still sends the pricing-confirmed email to everyone, in addition to the payment request', async () => {
@@ -267,12 +297,14 @@ describe('POST /api/staff/squad-invites/[id]/finalise-pricing — payment mode O
     expect(body.failed).toBe(3);
   });
 
-  it('a missing payment URL (buildSquadInvitePaymentUrl returns null) is counted as failed, unchanged', async () => {
+  it('a missing tier/variant config (buildSquadInvitePaymentUrl returns null) fails at the pre-flight check, before ever minting a token or opening the 72-hour window', async () => {
     mockBuildPaymentUrl.mockReturnValue(null);
     const res = await finalisePricing();
     const body = await res.json();
     expect(body.issued).toBe(0);
     expect(body.failed).toBe(3);
+    expect(mockCreatePreviewToken).not.toHaveBeenCalled();
+    expect(mockRpc).not.toHaveBeenCalledWith('issue_squad_invite_payment_request', expect.anything());
   });
 
   it('skips the payment-request loop entirely when pricing has no tier/unitPricePence (idempotent repeat with missing data)', async () => {
