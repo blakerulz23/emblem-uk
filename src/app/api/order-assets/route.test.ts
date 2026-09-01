@@ -303,6 +303,27 @@ describe('POST /api/order-assets — Squad Invite isolation', () => {
     expect(key).not.toContain('..');
     expect(key.startsWith(`order-assets/${FAKE_PARTICIPATION_ID}/`)).toBe(true);
   });
+
+  it('a stale/mismatched builder-submission cookie left over from an earlier, unrelated ordinary-builder visit does not block a concurrent, genuinely valid Squad Invite upload in the same browser', async () => {
+    // The real bug this reproduces: both cookies present, the builder one
+    // invalid (expired/revoked) — the request must still succeed via the
+    // squad-invite path rather than failing closed on the unrelated cookie.
+    cookieStore['emblem_builder_submission'] = 'stale-token';
+    mockVerifyBuilderSubmissionCapability.mockResolvedValue(null);
+    asSquadInvite();
+    const res = await postForm({ file: makeFile(JPEG_BYTES), orderId: FAKE_PARTICIPATION_ID, playerId: 'child', kind: 'photo' });
+    expect(res.status).toBe(200);
+    expect(mockReserveSquad).toHaveBeenCalledWith(FAKE_PARTICIPATION_ID, expect.any(String), 'child:photo', JPEG_BYTES.length);
+  });
+
+  it('a builder-submission cookie bound to a DIFFERENT order than the one claimed here does not block a concurrent, genuinely valid Squad Invite upload in the same browser', async () => {
+    asBuilder(); // verified, but bound to FAKE_SUBMISSION_ID, not this participation
+    asSquadInvite();
+    const res = await postForm({ file: makeFile(JPEG_BYTES), orderId: FAKE_PARTICIPATION_ID, playerId: 'child', kind: 'photo' });
+    expect(res.status).toBe(200);
+    expect(mockReserveSquad).toHaveBeenCalledWith(FAKE_PARTICIPATION_ID, expect.any(String), 'child:photo', JPEG_BYTES.length);
+    expect(mockReserveBuilder).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST /api/order-assets — per-file size and request-body limits', () => {

@@ -68,16 +68,28 @@ type VerifiedContext =
  * everything except which reserve/release functions it calls.
  */
 async function resolveVerifiedContext(claimedOrderId: string): Promise<VerifiedContext | null> {
+  // Both capability cookies can legitimately be live in the SAME browser at
+  // once — e.g. someone who tried the ordinary builder earlier and is now,
+  // separately, completing a Squad Invite participation. The presence of
+  // one system's cookie must never by itself preempt trying the other:
+  // each is checked against its own matching criteria for THIS specific
+  // claimedOrderId, and the request only fails once neither matches. (A
+  // stale/expired/mismatched builder cookie used to short-circuit here and
+  // return null immediately, silently blocking a perfectly valid,
+  // concurrent Squad Invite upload — that was the actual cause of the
+  // "photo couldn't be saved" report this comment accompanies the fix for.)
   const builderToken = cookies().get(BUILDER_SUBMISSION_COOKIE)?.value;
   if (builderToken) {
     const submissionId = await verifyBuilderSubmissionCapability(builderToken);
-    if (!submissionId) return null;
     // The client-claimed id must match the verified one — a mismatch means
     // either a confused caller or an attempt to write into a namespace it
-    // holds no capability for; either way the safe response is to fail
-    // rather than silently prefer one value over the other.
-    if (claimedOrderId !== submissionId) return null;
-    return { kind: 'builder', namespace: submissionId };
+    // holds no capability for. Falls through to the squad-invite check
+    // below rather than failing outright, since a mismatch here says
+    // nothing about whether a separate, valid squad-invite capability
+    // also exists for this same request.
+    if (submissionId && claimedOrderId === submissionId) {
+      return { kind: 'builder', namespace: submissionId };
+    }
   }
 
   const squadToken = cookies().get(SQUAD_INVITE_BUILDER_COOKIE)?.value;
