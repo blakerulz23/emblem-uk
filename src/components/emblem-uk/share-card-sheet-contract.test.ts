@@ -105,24 +105,31 @@ describe('ShareCardSheet — sharing mechanism order and cleanup', () => {
  * text block is the only thing every share target is guaranteed to show
  * verbatim.
  */
-describe('ShareCardSheet — the shared text is fixed, generic, appears exactly once, and is never derived from this order', () => {
-  it('navigator.share is called with the file and the fixed text only — never also a separate url (which caused the reported duplication)', () => {
+describe('ShareCardSheet — the shared text carries the real per-share link (migration 0085), appears exactly once, and is never derived from a client-supplied value', () => {
+  it('navigator.share is called with the file and messageText only — never also a separate url (which caused the reported duplication)', () => {
     const idx = sheet.indexOf('navigator.share({');
     const callBody = sheet.slice(idx, sheet.indexOf('});', idx));
     expect(callBody).toContain('files: [file]');
-    expect(callBody).toContain('text: CARD_SHARE_MESSAGE_TEXT');
+    expect(callBody).toContain('text: messageText');
     expect(callBody).not.toContain('url:');
     expect(callBody).not.toContain('orderId');
   });
 
-  it('the complete required message (both lines) is what gets sent — not a partial or reconstructed string', () => {
+  it('messageText is built server-side from a genuine public-page token (createCardSharePublicPage), never a template literal or concatenation the client controls', () => {
+    expect(sheet).toContain('const publicPage = await createCardSharePublicPage(orderId, dataUrl);');
+    expect(sheet).toContain('const messageText = buildCardShareMessageText(cardSharePublicPageUrl(publicPage.token));');
     const idx = sheet.indexOf('navigator.share({');
     const callBody = sheet.slice(idx, sheet.indexOf('});', idx));
-    expect(callBody).toContain('text: CARD_SHARE_MESSAGE_TEXT');
-    // CARD_SHARE_MESSAGE_TEXT itself (card-share.test.ts) already proves
-    // its exact contents; this proves the component passes that whole
-    // constant through unmodified, never a substring or concatenation.
-    expect(callBody).not.toMatch(/text:\s*`|text:\s*"|text:\s*CARD_SHARE_MESSAGE_TEXT\s*\+/);
+    expect(callBody).not.toMatch(/text:\s*`|text:\s*"/);
+  });
+
+  it('an ineligible/failed public-page creation fails the whole share attempt before ever calling navigator.share or getShareImage a second time', () => {
+    const createIdx = sheet.indexOf('createCardSharePublicPage(orderId, dataUrl)');
+    const failIdx = sheet.indexOf("if (!publicPage.ok || !publicPage.token)");
+    const shareIdx = sheet.indexOf('navigator.share({');
+    expect(createIdx).toBeGreaterThan(-1);
+    expect(failIdx).toBeGreaterThan(createIdx);
+    expect(failIdx).toBeLessThan(shareIdx);
   });
 
   it('the attached file is still the exact generated image — the message fix never touches what is attached', () => {
@@ -131,19 +138,19 @@ describe('ShareCardSheet — the shared text is fixed, generic, appears exactly 
     expect(callBody).toMatch(/files:\s*\[file\]/);
   });
 
-  it('the downloaded-status view displays the exact same message text (not a bare link), so a manual download can carry the same wording', () => {
+  it('the downloaded-status view displays the real per-share message (shareMessageText), not the generic preview constant', () => {
     const idx = sheet.indexOf("stage.type === 'downloaded'");
     const section = sheet.slice(idx, idx + 350);
-    expect(section).toContain('{CARD_SHARE_MESSAGE_TEXT}');
+    expect(section).toContain('{shareMessageText}');
   });
 
-  it('the downloaded-status view also offers a copy control for that exact same wording', () => {
+  it('the downloaded-status view also offers a copy control for that same wording', () => {
     const idx = sheet.indexOf("stage.type === 'downloaded'");
     const section = sheet.slice(idx, idx + 350);
     expect(section).toContain('onClick={handleCopyMessage}');
     const copyFnIdx = sheet.indexOf('const handleCopyMessage');
     const copyFnBody = sheet.slice(copyFnIdx, sheet.indexOf('\n  };', copyFnIdx));
-    expect(copyFnBody).toContain('navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT)');
+    expect(copyFnBody).toContain('navigator.clipboard.writeText(shareMessageText || CARD_SHARE_MESSAGE_TEXT)');
   });
 });
 
@@ -162,7 +169,7 @@ describe('ShareCardSheet — honest handling of a platform that may silently dro
     const shareIdx = sheet.indexOf('navigator.share({');
     const shareCloseIdx = sheet.indexOf('});', shareIdx);
     const sharedDispatchIdx = sheet.indexOf("dispatch({ type: 'shared' })", shareCloseIdx);
-    const clipboardIdx = sheet.indexOf('navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT)', shareCloseIdx);
+    const clipboardIdx = sheet.indexOf('navigator.clipboard.writeText(messageText)', shareCloseIdx);
     expect(clipboardIdx).toBeGreaterThan(shareCloseIdx);
     expect(sharedDispatchIdx).toBeGreaterThan(clipboardIdx);
   });
@@ -170,7 +177,7 @@ describe('ShareCardSheet — honest handling of a platform that may silently dro
   it('a clipboard failure after a successful share is swallowed locally and never reported as a failed/cancelled share', () => {
     const shareIdx = sheet.indexOf('navigator.share({');
     const shareCloseIdx = sheet.indexOf('});', shareIdx);
-    const clipboardIdx = sheet.indexOf('navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT)', shareCloseIdx);
+    const clipboardIdx = sheet.indexOf('navigator.clipboard.writeText(messageText)', shareCloseIdx);
     const localCatchIdx = sheet.indexOf('} catch {', clipboardIdx);
     const sharedDispatchIdx = sheet.indexOf("dispatch({ type: 'shared' })", shareCloseIdx);
     expect(localCatchIdx).toBeGreaterThan(clipboardIdx);
@@ -187,7 +194,7 @@ describe('ShareCardSheet — honest handling of a platform that may silently dro
   it('the "shared" state offers the identical copy-message affordance as the download fallback, for a consistent experience either way', () => {
     const sharedIdx = sheet.indexOf("stage.type === 'shared'");
     const sharedSection = sheet.slice(sharedIdx, sheet.indexOf("stage.type === 'downloaded'", sharedIdx));
-    expect(sharedSection).toContain('{CARD_SHARE_MESSAGE_TEXT}');
+    expect(sharedSection).toContain('{shareMessageText}');
     expect(sharedSection).toContain('onClick={handleCopyMessage}');
     expect(sharedSection).toContain('uk-card-share-download-message');
   });

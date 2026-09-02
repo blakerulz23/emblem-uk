@@ -54,7 +54,16 @@ export type AnonymousRequestAction =
   // Same-origin asset proxy (/api/card-share/photo) — an authenticated
   // action, same as the other two card-share entries above. Up to two
   // calls (photo + badge) per genuine share attempt.
-  | 'card-share-photo';
+  | 'card-share-photo'
+  // Creating the public share page (migration 0085) — an authenticated
+  // action, same IP+subject shape as card-share-consent, since it happens
+  // at the same point in the same flow (one real creation per share).
+  | 'card-share-public-page-create'
+  // Viewing a public share page — genuinely anonymous (no Supabase
+  // session at all), so IP-only. Generous enough for real family/friends
+  // opening a forwarded link and refreshing, tight enough to slow down
+  // token-guessing/scraping against the 64-hex-char token space.
+  | 'card-share-public-page-view';
 
 const LIMITS: Record<
   | 'render-print'
@@ -68,7 +77,9 @@ const LIMITS: Record<
   | 'gate3-payment-status'
   | 'card-share-eligibility'
   | 'card-share-consent'
-  | 'card-share-photo',
+  | 'card-share-photo'
+  | 'card-share-public-page-create'
+  | 'card-share-public-page-view',
   { ip: number; subject?: number }
 > = {
   'render-print': { ip: 30, subject: 20 },
@@ -108,6 +119,11 @@ const LIMITS: Record<
   // Two calls (photo, badge) per genuine share attempt; generous enough
   // for a guardian retrying after a failed capture, still bounded.
   'card-share-photo': { ip: 60, subject: 30 },
+  // One real public-page creation per share attempt; generous enough for
+  // a guardian retrying after a failed/cancelled attempt.
+  'card-share-public-page-create': { ip: 20, subject: 10 },
+  // IP-only — no authenticated subject exists for an anonymous visitor.
+  'card-share-public-page-view': { ip: 120 },
 };
 
 /**

@@ -7,8 +7,11 @@ import {
   CARD_SHARE_MESSAGE_TEXT,
   CARD_SHARE_RECALL_NOTICE,
   CARD_SHARE_WARNING,
+  buildCardShareMessageText,
   cardShareBlockedMessage,
+  cardSharePublicPageUrl,
   cardShareStageReducer,
+  createCardSharePublicPage,
   fetchCardShareEligibility,
   recordCardShareConsent,
   shouldHideCardShareEntirely,
@@ -53,6 +56,10 @@ export default function SquadInviteShareSheet({
   const [eligibility, setEligibility] = useState<CardShareEligibility | null>(null);
   const [stage, dispatch] = useReducer(cardShareStageReducer, { type: 'closed' });
   const [messageCopied, setMessageCopied] = useState(false);
+  // The actual per-share caption once a real public page exists (migration
+  // 0085) — distinct from CARD_SHARE_MESSAGE_TEXT, which is only ever the
+  // generic preview shown before the guardian has committed to sharing.
+  const [shareMessageText, setShareMessageText] = useState('');
   const requestIdRef = useRef(0);
   const sharingRef = useRef(false);
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -107,7 +114,7 @@ export default function SquadInviteShareSheet({
 
   const handleCopyMessage = async () => {
     try {
-      await navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT);
+      await navigator.clipboard.writeText(shareMessageText || CARD_SHARE_MESSAGE_TEXT);
       setMessageCopied(true);
       setTimeout(() => setMessageCopied(false), 2000);
     } catch {
@@ -142,6 +149,18 @@ export default function SquadInviteShareSheet({
         return;
       }
 
+      // Founder-approved public share page (migration 0085) — creates the
+      // real per-share link BEFORE the message is composed. Re-verifies
+      // eligibility itself server-side; a card that became ineligible
+      // between the consent step above and this call is rejected here.
+      const publicPage = await createCardSharePublicPage(orderId, dataUrl);
+      if (!publicPage.ok || !publicPage.token) {
+        dispatch({ type: 'fail', message: publicPage.error || CARD_SHARE_GENERIC_FAILURE });
+        return;
+      }
+      const messageText = buildCardShareMessageText(cardSharePublicPageUrl(publicPage.token));
+      setShareMessageText(messageText);
+
       try {
         const blob = await (await fetch(dataUrl)).blob();
         const file = new File([blob], `emblem-card-${orderId.slice(0, 8)}.jpg`, { type: blob.type || 'image/jpeg' });
@@ -153,10 +172,10 @@ export default function SquadInviteShareSheet({
           await navigator.share({
             files: [file],
             title: 'My Emblem card',
-            text: CARD_SHARE_MESSAGE_TEXT,
+            text: messageText,
           });
           try {
-            await navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT);
+            await navigator.clipboard.writeText(messageText);
           } catch {
             // Best-effort only — the share itself already succeeded.
           }
@@ -221,6 +240,7 @@ export default function SquadInviteShareSheet({
             <div className="uk-squad-share-caption-preview">
               <span className="uk-squad-share-caption-label">Caption preview</span>
               <p>{CARD_SHARE_MESSAGE_TEXT}</p>
+              <span className="uk-squad-share-caption-note">The real link is created when you share — it shows this card for 7 days, then stops working.</span>
             </div>
             <label className="uk-card-share-confirm">
               <input type="checkbox" checked={stage.checked} onChange={() => dispatch({ type: 'toggle-checked' })} />
@@ -243,14 +263,14 @@ export default function SquadInviteShareSheet({
               the Web Share API gives no way to detect that after the fact,
               so this never claims the caption definitely appeared with it. */}
           <p>Shared. If the message below didn&apos;t appear with it, we&apos;ve also copied it to your clipboard to paste in. {CARD_SHARE_RECALL_NOTICE}</p>
-          <p className="uk-card-share-download-message">{CARD_SHARE_MESSAGE_TEXT}</p>
+          <p className="uk-card-share-download-message">{shareMessageText}</p>
           <button type="button" onClick={handleCopyMessage}>{messageCopied ? 'Copied' : 'Copy message'}</button>
         </div>
       )}
       {stage.type === 'downloaded' && (
         <div role="status">
           <p>Downloaded. {CARD_SHARE_RECALL_NOTICE}</p>
-          <p className="uk-card-share-download-message">{CARD_SHARE_MESSAGE_TEXT}</p>
+          <p className="uk-card-share-download-message">{shareMessageText}</p>
           <button type="button" onClick={handleCopyMessage}>{messageCopied ? 'Copied' : 'Copy message'}</button>
         </div>
       )}

@@ -96,26 +96,27 @@ describe('SquadInviteShareSheet — consent before image, and every mandatory ca
     expect(failReturnIdx).toBeLessThan(getImageIdx);
   });
 
-  it('the imported CARD_SHARE_MESSAGE_TEXT contains exactly one generic Emblem builder URL and no child name, team name, or Squad Invite identifier — this is the only caption this component can ever send, since it never constructs its own', () => {
+  it('the generic preview constant (CARD_SHARE_MESSAGE_TEXT, shown only before the guardian has committed to sharing) points at this app\'s own domain — not emblem.cards, a different, unrelated product — and contains exactly one URL', () => {
     const urlMatches = CARD_SHARE_MESSAGE_TEXT.match(/https?:\/\//g) ?? [];
     expect(urlMatches).toHaveLength(1);
     expect(CARD_SHARE_MESSAGE_TEXT).toContain(CARD_SHARE_LINK_URL);
-    expect(CARD_SHARE_LINK_URL).toBe('https://www.emblem.cards/builder');
+    expect(CARD_SHARE_LINK_URL).toBe('https://emblem-uk.vercel.app/builder');
     expect(CARD_SHARE_MESSAGE_TEXT).not.toMatch(/squadParticipation|participationId|orderId|submissionKey|cardId|SI-[A-Z0-9]/i);
   });
 
-  it('this component never constructs a caption of its own — the shared message constant is never concatenated or reassembled', () => {
-    expect(sheet).not.toMatch(/CARD_SHARE_MESSAGE_TEXT\s*\+/);
-    expect(sheet).not.toMatch(/\+\s*CARD_SHARE_MESSAGE_TEXT/);
+  it('the ACTUAL sent message is built server-side via createCardSharePublicPage + cardSharePublicPageUrl (migration 0085) — a genuine per-share token the client never invents, still never containing a participation id, order id, or child/team name', () => {
+    expect(sheet).toContain('const publicPage = await createCardSharePublicPage(orderId, dataUrl);');
+    expect(sheet).toContain('const messageText = buildCardShareMessageText(cardSharePublicPageUrl(publicPage.token));');
+    expect(sheet).not.toMatch(/buildCardShareMessageText\([^)]*participationId/);
   });
 
-  it('attempts navigator.share before the download fallback, passing text only (never also url) — same anti-duplication fix ShareCardSheet.tsx already proves is required', () => {
+  it('attempts navigator.share before the download fallback, passing the real per-share messageText only (never also url) — same anti-duplication fix ShareCardSheet.tsx already proves is required', () => {
     const shareIdx = sheet.indexOf('navigator.share(');
     const downloadIdx = sheet.indexOf('createObjectURL');
     expect(shareIdx).toBeGreaterThan(-1);
     expect(downloadIdx).toBeGreaterThan(shareIdx);
     const callBody = sheet.slice(shareIdx, sheet.indexOf('});', shareIdx));
-    expect(callBody).toContain('text: CARD_SHARE_MESSAGE_TEXT');
+    expect(callBody).toContain('text: messageText');
     expect(callBody).not.toContain('url:');
   });
 
@@ -136,7 +137,7 @@ describe('SquadInviteShareSheet — consent before image, and every mandatory ca
 
   it('a clipboard failure after a successful share is swallowed and never reported as a failed or cancelled share', () => {
     const shareCloseIdx = sheet.indexOf('});', sheet.indexOf('navigator.share('));
-    const clipboardIdx = sheet.indexOf('navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT)', shareCloseIdx);
+    const clipboardIdx = sheet.indexOf('navigator.clipboard.writeText(messageText)', shareCloseIdx);
     const localCatchIdx = sheet.indexOf('} catch {', clipboardIdx);
     const sharedDispatchIdx = sheet.indexOf("dispatch({ type: 'shared' })", shareCloseIdx);
     expect(localCatchIdx).toBeGreaterThan(clipboardIdx);
