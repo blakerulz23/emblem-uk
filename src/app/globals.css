@@ -3920,6 +3920,21 @@ a { text-decoration: none; color: inherit; }
   background: #fff;
   padding: 20px 20px 68px;
   box-shadow: 0 20px 45px rgba(16, 16, 21, 0.12);
+  /* The Custom Collection card templates (CardArt.tsx's
+     CustomCollectionCardArt et al.) render at a fixed pixel width by
+     design (size={340} for a non-compact PlayerCard, used for crisp,
+     hand-tuned overlay positioning) — never fluid/percentage-based. The
+     `.uk-real-card` rule below only constrains ITS OWN wrapper box, not
+     the fixed-width card inside it, so on a narrow phone the card
+     genuinely overflows this container. .uk-edit-preview (the pre-
+     success review step's own card preview) already carries this same
+     protection — this rule was simply missing it, letting the overflow
+     bleed out to the page level (a lopsided, seemingly "uncentred" card
+     bleeding past the right edge, confirmed live) instead of staying
+     contained within this rounded box the way the review step's
+     identical card already does.
+  */
+  overflow: hidden;
 }
 
 .uk-card-share-preview .uk-real-card {

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const sheet = readFileSync('src/components/emblem-uk/ShareCardSheet.tsx', 'utf8');
 const builder = readFileSync('src/components/emblem-uk/ProductionBuilder.tsx', 'utf8');
+const css = readFileSync('src/app/globals.css', 'utf8');
 
 /**
  * ShareCardSheet.tsx cannot be rendered in this repo's test environment (no
@@ -230,6 +231,25 @@ describe('ShareCardSheet — honest handling of a platform that may silently dro
  * through to the same download fallback already used when Web Share
  * isn't supported at all, rather than failing the whole attempt.
  */
+/**
+ * Regression coverage for a live-confirmed layout defect: the "Custom
+ * Collection" card templates (CardArt.tsx's CustomCollectionCardArt et
+ * al.) render at a fixed pixel width by design (340px for a non-compact
+ * PlayerCard) — never fluid. .uk-edit-preview (the pre-success review
+ * step's own identical card preview) already contains that overflow with
+ * `overflow: hidden`; .uk-card-share-preview was missing the same
+ * protection, so on a narrow phone the card bled past its rounded
+ * container and pushed the whole page into horizontal scroll instead of
+ * staying contained the way the review step's card already does.
+ */
+describe('ShareCardSheet — the card preview stays contained on narrow viewports, matching .uk-edit-preview\'s own established protection', () => {
+  it('.uk-card-share-preview clips overflow — the fixed-width Custom Collection card can no longer bleed past this rounded container', () => {
+    const idx = css.indexOf('.uk-card-share-preview {');
+    const rule = css.slice(idx, css.indexOf('\n}', idx));
+    expect(rule).toContain('overflow: hidden');
+  });
+});
+
 describe('ShareCardSheet — a non-cancel navigator.share() failure falls back to download, never a hard failure', () => {
   it('navigator.share is wrapped in its own try/catch, nested inside the outer blob/download try — not sharing the outer catch directly', () => {
     const shareIdx = sheet.indexOf('navigator.share({');
