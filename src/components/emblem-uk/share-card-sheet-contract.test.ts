@@ -263,21 +263,50 @@ describe('ShareCardSheet — honest handling of a platform that may silently dro
  * isn't supported at all, rather than failing the whole attempt.
  */
 /**
- * Regression coverage for a live-confirmed layout defect: the "Custom
- * Collection" card templates (CardArt.tsx's CustomCollectionCardArt et
- * al.) render at a fixed pixel width by design (340px for a non-compact
- * PlayerCard) — never fluid. .uk-edit-preview (the pre-success review
- * step's own identical card preview) already contains that overflow with
- * `overflow: hidden`; .uk-card-share-preview was missing the same
- * protection, so on a narrow phone the card bled past its rounded
- * container and pushed the whole page into horizontal scroll instead of
- * staying contained the way the review step's card already does.
+ * Regression coverage for a live-confirmed layout defect, in two stages.
+ * Every CardArt sub-renderer (CustomCollectionCardArt, EmjflCardArt, etc.)
+ * sets its own root div's width/height/border-radius/font-size/padding as
+ * fixed INLINE PIXEL values computed in JS from the `size` prop (340 for
+ * a non-compact PlayerCard) — never percentages, never fluid. An initial
+ * fix added `overflow: hidden` to contain the bleed, which stopped the
+ * whole page from scrolling horizontally but only CLIPPED the oversized
+ * card rather than making it fit — reported live as still overflowing.
+ * The actual fix scales the fixed-pixel subtree down with CSS
+ * `transform: scale()`, driven by a CSS container query (100cqw) so the
+ * ratio recomputes continuously at any viewport width, not just a fixed
+ * breakpoint — the standard technique for shrinking an element whose
+ * internal layout can't be safely made fluid via width overrides alone
+ * (font-size/border-radius/padding here are independent fixed pixel
+ * values, not percentages, so they would NOT rescale from a plain
+ * width/height CSS override).
  */
-describe('ShareCardSheet — the card preview stays contained on narrow viewports, matching .uk-edit-preview\'s own established protection', () => {
-  it('.uk-card-share-preview clips overflow — the fixed-width Custom Collection card can no longer bleed past this rounded container', () => {
+describe('ShareCardSheet — the card preview genuinely scales to fit on narrow viewports, not merely clipped', () => {
+  it('.uk-card-share-preview keeps overflow: hidden as a safety net only, not the fix itself', () => {
     const idx = css.indexOf('.uk-card-share-preview {');
     const rule = css.slice(idx, css.indexOf('\n}', idx));
     expect(rule).toContain('overflow: hidden');
+  });
+
+  it('.uk-real-card establishes a container query context and reserves a correctly-proportioned box, independent of its transformed child\'s own layout size', () => {
+    const idx = css.indexOf('.uk-card-share-preview .uk-real-card {');
+    const rule = css.slice(idx, css.indexOf('\n}', idx));
+    expect(rule).toContain('container-type: inline-size');
+    expect(rule).toContain('aspect-ratio: 340 / 476');
+    expect(rule).toContain('width: min(280px, 100%)');
+  });
+
+  it('constrains the implicit grid column so the generic .uk-real-card{display:grid} rule can\'t size the track to the child\'s un-transformed 340px width — confirmed live via a real browser measurement that omitting this shifts the (still correctly-scaled) card 32px off-centre, not merely un-centred by a few pixels', () => {
+    const idx = css.indexOf('.uk-card-share-preview .uk-real-card {');
+    const rule = css.slice(idx, css.indexOf('\n}', idx));
+    expect(rule).toContain('grid-template-columns: minmax(0, 1fr)');
+  });
+
+  it('CardArt\'s own fixed-340px root (.uk-real-card\'s direct child) is visually scaled via a container-query-driven transform, not a width override', () => {
+    const idx = css.indexOf('.uk-card-share-preview .uk-real-card > div {');
+    expect(idx).toBeGreaterThan(-1);
+    const rule = css.slice(idx, css.indexOf('\n}', idx));
+    expect(rule).toContain('transform: scale(calc(100cqw / 340px))');
+    expect(rule).toContain('transform-origin: top left');
   });
 });
 
