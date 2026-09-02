@@ -124,6 +124,16 @@ describe('POST /api/card-share/public-page — eligibility is re-verified server
     expect(body).toEqual({ error: 'Sharing is not available for this card' });
   });
 
+  it('if the RPC call itself throws (rather than returning {data, error}) — a network blip talking to Postgres — still cleans up the upload and returns a real JSON error, never an unhandled-exception page', async () => {
+    mockRpc.mockRejectedValue(new Error('fetch failed: ECONNRESET'));
+    const res = await post({ orderId: VALID_ORDER_ID, imageDataUrl: VALID_IMAGE });
+    expect(res.status).toBe(502);
+    expect(mockDeleteObject).toHaveBeenCalledTimes(1);
+    const body = await res.json();
+    expect(body).toEqual({ error: 'Sharing is not available for this card' });
+    expect(JSON.stringify(body)).not.toContain('ECONNRESET');
+  });
+
   it('a genuine upload failure never calls the RPC at all', async () => {
     mockUploadObject.mockRejectedValue(new Error('S3 unavailable'));
     const res = await post({ orderId: VALID_ORDER_ID, imageDataUrl: VALID_IMAGE });

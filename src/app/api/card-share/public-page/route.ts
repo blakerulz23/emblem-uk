@@ -60,10 +60,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Could not prepare the shared page right now' }, { status: 502 });
   }
 
-  const { data, error } = await supabase.rpc('create_card_share_public_page', {
-    p_order_id: orderId,
-    p_front_image_key: key,
-  });
+  let data: unknown;
+  let error: { message: string } | null;
+  try {
+    ({ data, error } = await supabase.rpc('create_card_share_public_page', {
+      p_order_id: orderId,
+      p_front_image_key: key,
+    }));
+  } catch (err) {
+    // A thrown (not returned) error from the RPC call itself — network
+    // blip talking to Postgres, a client-library bug — must still clean
+    // up the upload and return a real JSON error, never let Next.js's own
+    // unhandled-exception page reach the client as an unparseable
+    // response.
+    void deleteObject(key).catch(() => {});
+    console.error('create_card_share_public_page threw', err);
+    return NextResponse.json({ error: 'Sharing is not available for this card' }, { status: 502 });
+  }
 
   if (error || !data) {
     // Never leave an orphaned public-facing object behind an ineligible

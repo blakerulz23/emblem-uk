@@ -80,6 +80,27 @@ describe('SquadInviteShareSheet — the confirm dialog matches the founder-speci
   });
 });
 
+/**
+ * Same live-reported diagnosability gap and fix as ShareCardSheet.tsx's
+ * own regression coverage — see that file's own comment.
+ */
+describe('SquadInviteShareSheet — each failure stage has its own distinct message', () => {
+  it('getShareImage() failing dispatches CARD_SHARE_CAPTURE_FAILURE, not the generic message', () => {
+    const idx = sheet.indexOf('dataUrl = await getShareImage();');
+    const catchIdx = sheet.indexOf('catch {', idx);
+    const section = sheet.slice(catchIdx, sheet.indexOf('return;', catchIdx));
+    expect(section).toContain('message: CARD_SHARE_CAPTURE_FAILURE');
+    expect(section).not.toContain('CARD_SHARE_GENERIC_FAILURE');
+  });
+
+  it('createCardSharePublicPage failing without its own server-provided error dispatches CARD_SHARE_LINK_FAILURE, not the generic message', () => {
+    const idx = sheet.indexOf('const publicPage = await createCardSharePublicPage');
+    const section = sheet.slice(idx, sheet.indexOf('return;', idx));
+    expect(section).toContain('publicPage.error || CARD_SHARE_LINK_FAILURE');
+    expect(section).not.toContain('CARD_SHARE_GENERIC_FAILURE');
+  });
+});
+
 describe('SquadInviteShareSheet — consent before image, and every mandatory caption rule', () => {
   it('records consent before ever calling getShareImage — the same ordering ShareCardSheet.tsx already proves is required', () => {
     const consentIdx = sheet.indexOf('recordCardShareConsent(orderId');

@@ -2,8 +2,10 @@
 
 import { useEffect, useReducer, useRef, useState } from 'react';
 import {
+  CARD_SHARE_CAPTURE_FAILURE,
   CARD_SHARE_CONFIRMATION_LABEL,
   CARD_SHARE_GENERIC_FAILURE,
+  CARD_SHARE_LINK_FAILURE,
   CARD_SHARE_MESSAGE_TEXT,
   CARD_SHARE_RECALL_NOTICE,
   CARD_SHARE_WARNING,
@@ -145,7 +147,10 @@ export default function SquadInviteShareSheet({
       try {
         dataUrl = await getShareImage();
       } catch {
-        dispatch({ type: 'fail', message: CARD_SHARE_GENERIC_FAILURE });
+        // Distinct wording from the branch below — see card-share.ts's
+        // own comment on why these three failure stages must not share
+        // one message.
+        dispatch({ type: 'fail', message: CARD_SHARE_CAPTURE_FAILURE });
         return;
       }
 
@@ -155,7 +160,7 @@ export default function SquadInviteShareSheet({
       // between the consent step above and this call is rejected here.
       const publicPage = await createCardSharePublicPage(orderId, dataUrl);
       if (!publicPage.ok || !publicPage.token) {
-        dispatch({ type: 'fail', message: publicPage.error || CARD_SHARE_GENERIC_FAILURE });
+        dispatch({ type: 'fail', message: publicPage.error || CARD_SHARE_LINK_FAILURE });
         return;
       }
       const messageText = buildCardShareMessageText(cardSharePublicPageUrl(publicPage.token));
