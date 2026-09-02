@@ -4,6 +4,7 @@
   "crons": [
     { "path": "/api/internal/cron/sweep-abandoned-uploads", "schedule": "0 3 * * *" },
     { "path": "/api/internal/cron/sweep-expired-artwork", "schedule": "0 3 * * *" },
-    { "path": "/api/internal/cron/sweep-squad-invite-overdue-payments", "schedule": "0 3 * * *" }
+    { "path": "/api/internal/cron/sweep-squad-invite-overdue-payments", "schedule": "0 3 * * *" },
+    { "path": "/api/internal/cron/sweep-squad-invite-ready-to-finalise", "schedule": "0 3 * * *" }
   ]
 }

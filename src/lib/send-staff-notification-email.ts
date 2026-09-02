@@ -23,6 +23,7 @@ const EVENT_LABELS: Record<string, string> = {
   squad_invite_payments_overdue: 'Squad Invite payments overdue',
   organiser_notification_failed: 'An organiser-facing email failed to send',
   upload_sweep_errors: 'Upload cleanup sweep had errors',
+  squad_invite_ready_to_finalise: 'Squad Invite ready to finalise pricing',
 };
 
 export async function sendStaffNotificationEmail(params: {
