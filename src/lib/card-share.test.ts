@@ -6,8 +6,11 @@ import {
   CARD_SHARE_MESSAGE_TEXT,
   CARD_SHARE_RECALL_NOTICE,
   CARD_SHARE_WARNING,
+  buildCardShareMessageText,
   cardShareBlockedMessage,
+  cardSharePublicPageUrl,
   cardShareStageReducer,
+  createCardSharePublicPage,
   fetchCardShareEligibility,
   recordCardShareConsent,
   shouldHideCardShareEntirely,
@@ -41,11 +44,11 @@ describe('required copy is present and distinct', () => {
 
 describe('the shared message text and link are fixed and generic — never derived from this specific order', () => {
   it('the link is the public builder marketing page, never a card-specific or recipient-specific page', () => {
-    expect(CARD_SHARE_LINK_URL).toBe('https://www.emblem.cards/builder');
+    expect(CARD_SHARE_LINK_URL).toBe('https://emblem-uk.vercel.app/builder');
   });
 
   it('the message text names Emblem, invites the recipient to make their own, and contains the exact link', () => {
-    expect(CARD_SHARE_MESSAGE_TEXT).toBe('Look what I made with Emblem.\nCreate your own card: https://www.emblem.cards/builder');
+    expect(CARD_SHARE_MESSAGE_TEXT).toBe('Look what I made with Emblem.\nCreate your own card: https://emblem-uk.vercel.app/builder');
     expect(CARD_SHARE_MESSAGE_TEXT).toContain(CARD_SHARE_LINK_URL);
   });
 
@@ -172,6 +175,59 @@ describe('fetchCardShareEligibility', () => {
     });
     const result = await fetchCardShareEligibility('order-1');
     expect(result).toEqual({ eligible: false, reason: 'not_authorized' });
+  });
+});
+
+describe('cardSharePublicPageUrl / buildCardShareMessageText — the real per-share link (migration 0085)', () => {
+  const originalEnv = process.env.NEXT_PUBLIC_SITE_URL;
+  afterEach(() => { process.env.NEXT_PUBLIC_SITE_URL = originalEnv; });
+
+  it('builds a URL under this app\'s own domain from a token, defaulting to the emblem-uk.vercel.app fallback', () => {
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    expect(cardSharePublicPageUrl('a'.repeat(64))).toBe(`https://emblem-uk.vercel.app/card-share/${'a'.repeat(64)}`);
+  });
+
+  it('respects NEXT_PUBLIC_SITE_URL when set, same fallback convention as every other site-URL usage in this codebase', () => {
+    process.env.NEXT_PUBLIC_SITE_URL = 'https://example-preview.vercel.app';
+    expect(cardSharePublicPageUrl('b'.repeat(64))).toBe(`https://example-preview.vercel.app/card-share/${'b'.repeat(64)}`);
+  });
+
+  it('buildCardShareMessageText carries exactly the given URL through, with the same fixed wording and exactly one URL', () => {
+    const url = 'https://emblem-uk.vercel.app/card-share/' + 'c'.repeat(64);
+    const text = buildCardShareMessageText(url);
+    expect(text).toBe(`Look what I made with Emblem.\nCreate your own card: ${url}`);
+    expect(text.split(url).length - 1).toBe(1);
+  });
+});
+
+describe('createCardSharePublicPage', () => {
+  const originalFetch = global.fetch;
+  beforeEach(() => { global.fetch = vi.fn(); });
+  afterEach(() => { global.fetch = originalFetch; });
+
+  it('sends orderId and imageDataUrl to /api/card-share/public-page and returns the token on success', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true, token: 'x'.repeat(64) }) });
+    global.fetch = fetchMock;
+    const result = await createCardSharePublicPage('order-1', 'data:image/jpeg;base64,AAA');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/card-share/public-page',
+      expect.objectContaining({ body: JSON.stringify({ orderId: 'order-1', imageDataUrl: 'data:image/jpeg;base64,AAA' }) })
+    );
+    expect(result).toEqual({ ok: true, token: 'x'.repeat(64) });
+  });
+
+  it('fails closed with ok:false when the server rejects (e.g. ineligible), never fabricating a token', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, json: () => Promise.resolve({ error: 'Sharing is not available for this card' }) });
+    global.fetch = fetchMock;
+    const result = await createCardSharePublicPage('order-1', 'data:image/jpeg;base64,AAA');
+    expect(result.ok).toBe(false);
+    expect(result.token).toBeUndefined();
+  });
+
+  it('fails closed on a network error, never throws', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const result = await createCardSharePublicPage('order-1', 'data:image/jpeg;base64,AAA');
+    expect(result.ok).toBe(false);
   });
 });
 

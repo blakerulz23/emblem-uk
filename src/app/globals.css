@@ -2048,6 +2048,14 @@ a { text-decoration: none; color: inherit; }
   white-space: pre-line;
 }
 
+.uk-squad-share-caption-note {
+  display: block;
+  margin-top: 6px;
+  color: var(--wizard-faint);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
 @media (min-width: 900px) {
   .uk-wizard-phone--squad-review {
     max-width: 960px;

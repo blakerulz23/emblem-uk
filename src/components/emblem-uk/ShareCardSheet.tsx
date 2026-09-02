@@ -7,8 +7,11 @@ import {
   CARD_SHARE_MESSAGE_TEXT,
   CARD_SHARE_RECALL_NOTICE,
   CARD_SHARE_WARNING,
+  buildCardShareMessageText,
   cardShareBlockedMessage,
+  cardSharePublicPageUrl,
   cardShareStageReducer,
+  createCardSharePublicPage,
   fetchCardShareEligibility,
   recordCardShareConsent,
   shouldHideCardShareEntirely,
@@ -70,6 +73,10 @@ export default function ShareCardSheet({
   // BOTH a successful native share and the plain download fallback (which
   // has no caption field of its own at all) — see handleCopyMessage.
   const [messageCopied, setMessageCopied] = useState(false);
+  // The actual per-share caption once a real public page exists (migration
+  // 0085) — distinct from CARD_SHARE_MESSAGE_TEXT, which is the generic
+  // preview only.
+  const [shareMessageText, setShareMessageText] = useState('');
   // Guards against a slow eligibility response from an earlier order
   // landing after the component has already unmounted or moved to a
   // different order — same stale-attempt discipline as AdultPermissionStep.
@@ -147,7 +154,7 @@ export default function ShareCardSheet({
 
   const handleCopyMessage = async () => {
     try {
-      await navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT);
+      await navigator.clipboard.writeText(shareMessageText || CARD_SHARE_MESSAGE_TEXT);
       setMessageCopied(true);
       setTimeout(() => setMessageCopied(false), 2000);
     } catch {
@@ -182,32 +189,44 @@ export default function ShareCardSheet({
         return;
       }
 
+      // Founder-approved public share page (migration 0085) — creates the
+      // real per-share link BEFORE the message is composed. Re-verifies
+      // eligibility itself server-side; a card that became ineligible
+      // between the consent step above and this call is rejected here.
+      const publicPage = await createCardSharePublicPage(orderId, dataUrl);
+      if (!publicPage.ok || !publicPage.token) {
+        dispatch({ type: 'fail', message: publicPage.error || CARD_SHARE_GENERIC_FAILURE });
+        return;
+      }
+      const messageText = buildCardShareMessageText(cardSharePublicPageUrl(publicPage.token));
+      setShareMessageText(messageText);
+
       try {
         const blob = await (await fetch(dataUrl)).blob();
         const file = new File([blob], `emblem-card-${orderId.slice(0, 8)}.jpg`, { type: blob.type || 'image/jpeg' });
 
         if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
-          // `text` alone, never also `url`: CARD_SHARE_MESSAGE_TEXT already
-          // contains the exact, single link as ordinary readable text.
-          // Passing `url` as well caused real recipients (confirmed via
-          // manual WhatsApp Desktop testing) to see the link twice and the
-          // "Look what I made..." line dropped entirely — several share
-          // targets compose their own caption from `url` when both fields
-          // are present, ignoring or duplicating `text` rather than
-          // appending them predictably. Sending one opaque text block is
-          // the only way to guarantee exactly the required message reaches
-          // the recipient, on every platform, every time.
+          // `text` alone, never also `url`: messageText already contains
+          // the exact, single link as ordinary readable text. Passing
+          // `url` as well caused real recipients (confirmed via manual
+          // WhatsApp Desktop testing) to see the link twice and the "Look
+          // what I made..." line dropped entirely — several share targets
+          // compose their own caption from `url` when both fields are
+          // present, ignoring or duplicating `text` rather than appending
+          // them predictably. Sending one opaque text block is the only
+          // way to guarantee exactly the required message reaches the
+          // recipient, on every platform, every time.
           await navigator.share({
             files: [file],
             title: 'My Emblem card',
-            text: CARD_SHARE_MESSAGE_TEXT,
+            text: messageText,
           });
           // Best-effort only: navigator.share() already resolved, so the
           // share itself genuinely succeeded regardless of whether this
           // also succeeds — a clipboard failure here must never be
           // reported as a failed share.
           try {
-            await navigator.clipboard.writeText(CARD_SHARE_MESSAGE_TEXT);
+            await navigator.clipboard.writeText(messageText);
           } catch {
             // Clipboard unavailable/denied — the 'shared' status below
             // still displays the same message text for manual copying.
@@ -319,14 +338,14 @@ export default function ShareCardSheet({
               gives no way to detect that after the fact — so this never
               claims the message was definitely included. */}
           <p>Shared. If the message below didn&apos;t appear with it, we&apos;ve also copied it to your clipboard to paste in. {CARD_SHARE_RECALL_NOTICE}</p>
-          <p className="uk-card-share-download-message">{CARD_SHARE_MESSAGE_TEXT}</p>
+          <p className="uk-card-share-download-message">{shareMessageText}</p>
           <button type="button" onClick={handleCopyMessage}>{messageCopied ? 'Copied' : 'Copy message'}</button>
         </div>
       )}
       {stage.type === 'downloaded' && (
         <div role="status">
           <p>Downloaded. {CARD_SHARE_RECALL_NOTICE}</p>
-          <p className="uk-card-share-download-message">{CARD_SHARE_MESSAGE_TEXT}</p>
+          <p className="uk-card-share-download-message">{shareMessageText}</p>
           <button type="button" onClick={handleCopyMessage}>{messageCopied ? 'Copied' : 'Copy message'}</button>
         </div>
       )}

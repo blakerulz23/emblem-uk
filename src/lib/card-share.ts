@@ -28,17 +28,51 @@ export const CARD_SHARE_RECALL_NOTICE =
   'Emblem cannot recall copies already downloaded, sent, saved or reposted by other people or social platforms.';
 
 /**
- * Deliberately generic — the same fixed text/link for every guardian and
- * every card, never anything derived from this specific order (no child
- * name, club, order id, submission key, or token). This is the only URL
- * this feature ever shares: a link to the public builder marketing page,
- * not a card-specific or recipient-specific page — there is no such page,
- * and this feature must never create one.
+ * emblem.cards is a DIFFERENT, unrelated product (a separate live site
+ * with its own real customers) — this constant previously pointed there
+ * by mistake. Fixed to this app's own domain. This is the generic/preview
+ * link only, shown in the confirm dialog before a real per-share link
+ * exists (see cardSharePublicPageUrl/buildCardShareMessageText below for
+ * what's actually sent once the guardian clicks Share now).
  */
-export const CARD_SHARE_LINK_URL = 'https://www.emblem.cards/builder';
+export const CARD_SHARE_LINK_URL = 'https://emblem-uk.vercel.app/builder';
 
 export const CARD_SHARE_MESSAGE_TEXT =
   `Look what I made with Emblem.\nCreate your own card: ${CARD_SHARE_LINK_URL}`;
+
+/**
+ * Founder-approved public share page (migration 0085) — see that
+ * migration's own header comment for the explicit, informed decision this
+ * represents. Every real share now links to a per-share page showing the
+ * actual card (viewable by anyone with the link, for 7 days), not the
+ * bare generic builder URL above — that URL is now only ever shown as an
+ * approximate preview before the guardian has actually committed to
+ * sharing (creating the public page requires a confirmed consent event,
+ * so it can't exist yet at preview time).
+ */
+export function cardSharePublicPageUrl(token: string): string {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk.vercel.app';
+  return `${siteUrl}/card-share/${token}`;
+}
+
+export function buildCardShareMessageText(shareUrl: string): string {
+  return `Look what I made with Emblem.\nCreate your own card: ${shareUrl}`;
+}
+
+/**
+ * Uploads the already-generated share image and creates the public page
+ * (migration 0085) — re-verifies eligibility itself server-side, never
+ * trusting this call's own prior eligibility check. Must be called AFTER
+ * recordCardShareConsent('confirmed') has already succeeded for this
+ * attempt, same ordering discipline as image generation itself.
+ */
+export async function createCardSharePublicPage(orderId: string, imageDataUrl: string): Promise<{ ok: boolean; token?: string; error?: string }> {
+  const result = await postJson('/api/card-share/public-page', { orderId, imageDataUrl });
+  if (result.ok && typeof result.token === 'string') {
+    return { ok: true, token: result.token };
+  }
+  return { ok: false, error: typeof result.error === 'string' ? result.error : undefined };
+}
 
 /** Fixed, internal reason vocabulary from get_card_share_eligibility — never
  *  shown to a user verbatim; cardShareBlockedMessage below maps each to
