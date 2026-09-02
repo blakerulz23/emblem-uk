@@ -418,17 +418,29 @@ describe('ProductionBuilder — ShareCardSheet is only mounted for a single-chil
     expect(builder).not.toMatch(/captureMode\s*&&\s*shareCapturePlayer|shareCapturePlayer\s*&&\s*captureMode/);
   });
 
-  it('captureShareImage never calls renderPrintFile — only the plain (mark-free) captureElementToPng', () => {
-    const idx = builder.indexOf('const captureShareImage');
+  it('captureShareImageFor never calls renderPrintFile — only the plain (mark-free) captureElementToPng', () => {
+    const idx = builder.indexOf('const captureShareImageFor');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
     expect(fnBody).toContain('captureElementToPng(el');
     expect(fnBody).not.toContain('renderPrintFile');
   });
 
-  it('captureShareImage uses a lower pixelRatio than the print pipeline\'s own pixelRatio: 3', () => {
-    const idx = builder.indexOf('const captureShareImage');
+  it('captureShareImageFor uses a lower pixelRatio than the print pipeline\'s own pixelRatio: 3', () => {
+    const idx = builder.indexOf('const captureShareImageFor');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
     expect(fnBody).toContain('pixelRatio: 2');
+  });
+
+  it('captureShareImage (the ordinary builder\'s own call site) is an unchanged-behaviour wrapper: same order id, same sole approved player', () => {
+    expect(builder).toContain('const captureShareImage = (): Promise<string> => captureShareImageFor(submittedOrderId, summary.approvedPlayers[0]);');
+  });
+
+  it('captureSquadInviteShareImage passes the Squad Invite order id and player — never the ordinary builder\'s submittedOrderId/approvedPlayers, which are unrelated to a Squad Invite commitment', () => {
+    const idx = builder.indexOf('const captureSquadInviteShareImage');
+    const line = builder.slice(idx, builder.indexOf(';', idx));
+    expect(line).toContain('captureShareImageFor(squadInviteOrderId, order.players[0])');
+    expect(line).not.toContain('submittedOrderId');
+    expect(line).not.toContain('approvedPlayers');
   });
 });
 
@@ -454,18 +466,18 @@ describe('ProductionBuilder — ShareCardSheet is only mounted for a single-chil
  */
 describe('ProductionBuilder — captureShareImage waits for and verifies the player photograph specifically', () => {
   it('fetches and localises the photo via the same-origin proxy before ever calling setShareCapturePlayer, when it is not already local', () => {
-    const idx = builder.indexOf('const captureShareImage');
+    const idx = builder.indexOf('const captureShareImageFor');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
-    const photoFetchIdx = fnBody.indexOf("fetchProxiedShareAssetAsLocalUrl('photo')");
+    const photoFetchIdx = fnBody.indexOf("fetchProxiedShareAssetAsLocalUrl('photo', orderIdForCapture)");
     const setCaptureIdx = fnBody.indexOf('setShareCapturePlayer(capturePlayer)');
     expect(photoFetchIdx).toBeGreaterThan(-1);
     expect(setCaptureIdx).toBeGreaterThan(photoFetchIdx);
   });
 
   it('also localises a player-uploaded badge via the same proxy, not only the photograph — both are "visible club/team elements" subject to the same swap', () => {
-    const idx = builder.indexOf('const captureShareImage');
+    const idx = builder.indexOf('const captureShareImageFor');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
-    expect(fnBody).toContain("fetchProxiedShareAssetAsLocalUrl('badge')");
+    expect(fnBody).toContain("fetchProxiedShareAssetAsLocalUrl('badge', orderIdForCapture)");
   });
 
   it('never re-fetches an already-local (blob:/data:) or same-origin bundled (root-relative) image URL', () => {
@@ -475,16 +487,16 @@ describe('ProductionBuilder — captureShareImage waits for and verifies the pla
     expect(fnBody).toContain("url!.startsWith('/')");
   });
 
-  it('requires a submitted order id before capturing anything — the proxy has nothing to key off of otherwise', () => {
-    const idx = builder.indexOf('const captureShareImage');
+  it('requires an order id before capturing anything — the proxy has nothing to key off of otherwise (checked generically, so both the ordinary builder and Squad Invite callers are covered by the one guard)', () => {
+    const idx = builder.indexOf('const captureShareImageFor');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
-    expect(fnBody).toContain("if (!submittedOrderId) throw new Error('Could not prepare card image');");
+    expect(fnBody).toContain("if (!orderIdForCapture) throw new Error('Could not prepare card image');");
   });
 
-  it('the proxy call never sends a client-supplied key or S3 URL — only orderId and kind', () => {
+  it('the proxy call never sends a client-supplied key or S3 URL — only the caller-supplied orderId and kind', () => {
     const idx = builder.indexOf('const fetchProxiedShareAssetAsLocalUrl');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
-    expect(fnBody).toContain("body: JSON.stringify({ orderId: submittedOrderId, kind })");
+    expect(fnBody).toContain("body: JSON.stringify({ orderId: orderIdForProxy, kind })");
     expect(fnBody).not.toMatch(/photoUrl|badgeUrl|storageKey/);
   });
 
@@ -495,7 +507,7 @@ describe('ProductionBuilder — captureShareImage waits for and verifies the pla
   });
 
   it('rejects the capture (throws) if any rendered image has zero natural dimensions, even after waitForImages resolved — the real capture-ready gate, not just a hopeful wait', () => {
-    const idx = builder.indexOf('const captureShareImage');
+    const idx = builder.indexOf('const captureShareImageFor');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
     const waitIdx = fnBody.indexOf('await waitForImages(el)');
     const gateIdx = fnBody.indexOf('naturalWidth === 0 || img.naturalHeight === 0');
@@ -506,7 +518,7 @@ describe('ProductionBuilder — captureShareImage waits for and verifies the pla
   });
 
   it('the capture-ready gate runs before captureElementToPng, never after', () => {
-    const idx = builder.indexOf('const captureShareImage');
+    const idx = builder.indexOf('const captureShareImageFor');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
     const gateIdx = fnBody.indexOf('naturalWidth === 0');
     const captureIdx = fnBody.indexOf('captureElementToPng(el');
@@ -515,7 +527,7 @@ describe('ProductionBuilder — captureShareImage waits for and verifies the pla
   });
 
   it('always releases every localised object URL, on both the success and failure paths, via an outer finally', () => {
-    const idx = builder.indexOf('const captureShareImage');
+    const idx = builder.indexOf('const captureShareImageFor');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
     const lastFinallyIdx = fnBody.lastIndexOf('finally {');
     expect(lastFinallyIdx).toBeGreaterThan(-1);
@@ -523,7 +535,7 @@ describe('ProductionBuilder — captureShareImage waits for and verifies the pla
   });
 
   it('still never calls renderPrintFile or exposes print-production artwork while doing any of this', () => {
-    const idx = builder.indexOf('const captureShareImage');
+    const idx = builder.indexOf('const captureShareImageFor');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
     expect(fnBody).not.toContain('renderPrintFile');
     expect(fnBody).not.toMatch(/pdf-generator|buildFullBleedRaster/);
