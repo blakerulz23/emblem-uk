@@ -5,6 +5,7 @@ import { headObject } from '@/lib/s3-client';
 import { validateOrderEnquiry, verifySubmittedAssetKeys, type EnquiryBody } from '@/lib/order-enquiry-validation';
 import { beginBuilderSubmissionFinalising, finishBuilderSubmissionFinalising } from '@/lib/builder-submission-capability';
 import { hasValidBuilderCsrf } from '@/lib/builder-request-security';
+import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 
 export const runtime = 'nodejs';
 
@@ -140,6 +141,22 @@ export async function POST(request: NextRequest) {
   // since the capability simply stays in the already-blocking
   // 'finalising' state rather than reverting to 'active'.
   if (justStartedFinalising) await finishBuilderSubmissionFinalising(submissionKey, true);
+
+  // Squad Invite orders never reach this route (they use commit_squad_
+  // invite_participation_order via a separate route) — every order here
+  // is genuinely the ordinary-builder "new order awaiting production
+  // approval" queue item. Only on a genuine first creation, not an
+  // idempotent repeat of the same content-fingerprinted submission.
+  if (result.created) {
+    await enqueueAndDispatchStaffNotification(serviceRole, {
+      eventType: 'new_order_pending_approval',
+      eventKey: `new_order_pending_approval:${result.orderId}`,
+      subjectId: result.orderId,
+      recipientScope: 'all_staff',
+      summary: { orderRef: result.orderRef, team: body.contact?.team ?? '' },
+      linkPath: '/staff/queue',
+    });
+  }
 
   // Links this order to the adult-permission declaration recorded earlier
   // in the builder (Adult Permission step, migration 0071) and sets

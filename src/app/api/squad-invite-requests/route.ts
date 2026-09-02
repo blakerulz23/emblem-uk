@@ -4,6 +4,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { hasValidSquadInviteCsrf } from '@/lib/squad-invite-request-security';
 import { dispatchSquadInviteNotification } from '@/lib/dispatch-squad-invite-notification';
+import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 
 const ALLOWED=new Set(['submissionKey','organiserName','organiserRole','teamName','ageGroup','expectedSquadSize','deadlineAt','deliveryRecipientName','deliveryRecipientRole','ukDeliveryConfirmed','authorityAccepted','deliveryRecipientAccepted','independentParticipationAccepted','staffReviewAccepted','badgeReference','badgeAuthorityAccepted']);
 
@@ -25,6 +26,12 @@ export async function POST(request:NextRequest){
   const result=data as {created?:boolean;requestId?:string;publicReference?:string};
   if(result.created&&result.requestId&&result.publicReference){
     await dispatchSquadInviteNotification(service,{requestId:result.requestId,eventKey:'request_received:v1',template:'request_received',teamName:String(body.teamName??''),publicReference:result.publicReference,toEmail:user.email});
+    await enqueueAndDispatchStaffNotification(service,{
+      eventType:'new_squad_invite_request',eventKey:`new_squad_invite_request:${result.requestId}`,subjectId:result.requestId,
+      recipientScope:'squad_invite_reviewer',
+      summary:{teamName:String(body.teamName??''),reference:result.publicReference},
+      linkPath:`/staff/squad-invites/${encodeURIComponent(result.publicReference)}`,
+    });
   }
   return NextResponse.json(data,{status:result.created?201:200,headers:{'Cache-Control':'no-store'}});
 }

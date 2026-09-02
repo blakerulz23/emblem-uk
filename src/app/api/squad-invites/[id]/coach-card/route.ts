@@ -3,6 +3,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { consumeSquadInviteRateLimit } from '@/lib/squad-invite-rate-limit';
 import { hasValidSquadInviteCsrf } from '@/lib/squad-invite-request-security';
 import { uploadObject } from '@/lib/s3-client';
+import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
   const service = createServiceRoleClient();
   const { data: campaign } = await service.from('squad_invites')
-    .select('id').eq('id', params.id).eq('organiser_profile_id', user.id).maybeSingle();
+    .select('id,club_team_name').eq('id', params.id).eq('organiser_profile_id', user.id).maybeSingle();
   if (!campaign) return NextResponse.json({ error: 'Unavailable' }, { status: 404 });
 
   const form = await request.formData().catch(() => null);
@@ -70,5 +71,23 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     p_campaign_id: campaign.id, p_full_name: fullName, p_role_title: roleTitle, p_photo_key: photoKey,
   });
   if (error) return NextResponse.json({ error: error.message || 'The coach card could not be submitted' }, { status: 409 });
+
+  const { data: matchedRequest } = await service.from('squad_invite_requests')
+    .select('public_reference').eq('campaign_id', campaign.id).maybeSingle();
+  if (matchedRequest?.public_reference) {
+    await enqueueAndDispatchStaffNotification(service, {
+      eventType: 'coach_card_submitted',
+      // Date-scoped: a coach can resubmit after "changes requested" — each
+      // calendar day's submission is its own notification, matching how
+      // review_squad_invite_coach_card can send it back to 'draft' and a
+      // later resubmission is a genuinely new thing for staff to review.
+      eventKey: `coach_card_submitted:${campaign.id}:${new Date().toISOString().slice(0, 10)}`,
+      subjectId: campaign.id,
+      recipientScope: 'squad_invite_approver',
+      summary: { teamName: campaign.club_team_name, reference: matchedRequest.public_reference },
+      linkPath: `/staff/squad-invites/${encodeURIComponent(matchedRequest.public_reference)}`,
+    });
+  }
+
   return NextResponse.json({ ok: true, result: data }, { headers: { 'Cache-Control': 'no-store' } });
 }

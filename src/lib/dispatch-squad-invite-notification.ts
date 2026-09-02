@@ -1,5 +1,6 @@
 import type { createServiceRoleClient } from '@/lib/supabase/server';
 import { sendSquadInviteNotificationEmail, type SquadInviteEmailTemplate } from '@/lib/send-squad-invite-notification-email';
+import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 
 /**
  * Sends the real email for a Squad Invite lifecycle event and records the
@@ -53,4 +54,21 @@ export async function dispatchSquadInviteNotification(
         : { status: 'failed', failed_at: new Date().toISOString(), attempt_count: outbox.attempt_count + 1, last_error_code: 'send_failed' },
     )
     .eq('id', outbox.id);
+
+  if (!ok) {
+    // An organiser-facing lifecycle email (request received/changes
+    // requested/approved/rejected) silently failing was previously only
+    // visible inside a collapsed "Technical details" accordion on that
+    // one request's own staff page. The resend control already exists
+    // (src/app/api/staff/squad-invites/[id]/notifications/[outboxId]/resend/route.ts)
+    // — staff just never knew to look for it.
+    await enqueueAndDispatchStaffNotification(service, {
+      eventType: 'organiser_notification_failed',
+      eventKey: `organiser_notification_failed:${outbox.id}`,
+      subjectId: params.requestId,
+      recipientScope: 'squad_invite_approver',
+      summary: { template: params.template, teamName: params.teamName, reference: params.publicReference },
+      linkPath: `/staff/squad-invites/${encodeURIComponent(params.publicReference)}`,
+    });
+  }
 }

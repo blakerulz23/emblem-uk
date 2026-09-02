@@ -6,6 +6,7 @@ import { buildSquadInvitePaymentUrl } from '@/lib/squad-invite-payment-link';
 import { sendSquadInvitePaymentRequestEmail } from '@/lib/send-squad-invite-payment-request-email';
 import { sendSquadInvitePricingConfirmedEmail } from '@/lib/send-squad-invite-pricing-confirmed-email';
 import { createSquadInvitePaymentPreviewToken } from '@/lib/squad-invite-payment-preview-token';
+import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 
 /**
  * Same site-URL fallback nfc-link.ts's buildNfcCardUrl already uses — kept
@@ -17,6 +18,35 @@ import { createSquadInvitePaymentPreviewToken } from '@/lib/squad-invite-payment
  */
 function siteUrl(): string {
   return process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk-lauda-collectives-projects.vercel.app';
+}
+
+/**
+ * One aggregate notification per call, not one per failed participant —
+ * a campaign with 15 failures would otherwise spam staff with 15 emails.
+ * Date-scoped idempotency key: a second finalise-pricing call for the same
+ * campaign later the same day (e.g. a retry after fixing a missing Shopify
+ * variant) reuses the same notification slot rather than piling up.
+ */
+async function notifyStaffOfFinaliseIssues(
+  service: ReturnType<typeof createServiceRoleClient>,
+  campaignId: string,
+  teamName: string,
+  publicReference: string | undefined,
+  counts: { pricingNotifyFailed: number; paymentRequestFailed: number },
+): Promise<void> {
+  if (!publicReference || (counts.pricingNotifyFailed === 0 && counts.paymentRequestFailed === 0)) return;
+  await enqueueAndDispatchStaffNotification(service, {
+    eventType: 'finalise_pricing_issues',
+    eventKey: `finalise_pricing_issues:${campaignId}:${new Date().toISOString().slice(0, 10)}`,
+    subjectId: campaignId,
+    recipientScope: 'squad_invite_approver',
+    summary: {
+      teamName,
+      pricingConfirmationFailures: counts.pricingNotifyFailed,
+      paymentRequestFailures: counts.paymentRequestFailed,
+    },
+    linkPath: `/staff/squad-invites/${encodeURIComponent(publicReference)}`,
+  });
 }
 
 /**
@@ -65,6 +95,7 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
   };
 
   const { data: campaign } = await service.from('squad_invites').select('club_team_name').eq('id', params.id).maybeSingle();
+  const { data: matchedRequest } = await service.from('squad_invite_requests').select('public_reference').eq('campaign_id', params.id).maybeSingle();
   const { data: eligible } = await service
     .from('squad_invite_participations')
     .select('id, order_id, orders(order_ref, purchaser_email)')
@@ -104,6 +135,7 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
 
   const { data: paymentModeEnabled } = await service.rpc('squad_invite_payment_mode_enabled');
   if (paymentModeEnabled !== true || !pricing.tier || !pricing.unitPricePence) {
+    await notifyStaffOfFinaliseIssues(service, params.id, campaign?.club_team_name ?? '', matchedRequest?.public_reference, { pricingNotifyFailed, paymentRequestFailed: 0 });
     return NextResponse.json({ ok: true, pricing: data, paymentRequestsEnabled: false, pricingNotified, pricingNotifyFailed });
   }
 
@@ -151,6 +183,8 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
     });
     if (sent.ok) issued++; else failed++;
   }
+
+  await notifyStaffOfFinaliseIssues(service, params.id, campaign?.club_team_name ?? '', matchedRequest?.public_reference, { pricingNotifyFailed, paymentRequestFailed: failed });
 
   return NextResponse.json({ ok: true, pricing: data, paymentRequestsEnabled: true, issued, failed, pricingNotified, pricingNotifyFailed });
 }

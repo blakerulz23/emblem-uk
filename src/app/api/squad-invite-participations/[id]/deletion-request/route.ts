@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 
 export const runtime = 'nodejs';
 
@@ -31,6 +32,17 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
       return NextResponse.json({ error: 'Only the guardian who committed this participation can request deletion' }, { status: 403 });
     }
     return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  if (requestId) {
+    await enqueueAndDispatchStaffNotification(createServiceRoleClient(), {
+      eventType: 'deletion_request_filed',
+      eventKey: `deletion_request_filed:${requestId}`,
+      subjectId: requestId as string,
+      recipientScope: 'all_staff',
+      summary: { source: 'squad_invite_participation' },
+      linkPath: '/staff/deletion-requests',
+    });
   }
 
   return NextResponse.json({ ok: true, requestId });

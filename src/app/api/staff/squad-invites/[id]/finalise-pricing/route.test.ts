@@ -38,12 +38,18 @@ vi.mock('@/lib/squad-invite-payment-preview-token', () => ({
   createSquadInvitePaymentPreviewToken: () => mockCreatePreviewToken(),
 }));
 
+const mockEnqueueStaffNotification = vi.fn();
+vi.mock('@/lib/dispatch-staff-notification', () => ({
+  enqueueAndDispatchStaffNotification: (...args: unknown[]) => mockEnqueueStaffNotification(...args),
+}));
+
 type Participation = { id: string; order_id: string; orders: { order_ref: string; purchaser_email: string } | null };
 
 type Fixture = {
   finalisePricingResult: { data: unknown; error: { message: string } | null };
   paymentModeEnabled: boolean;
   campaign: { club_team_name: string } | null;
+  matchedRequest: { public_reference: string } | null;
   participations: Participation[];
   issuePaymentRequestResult?: { data: unknown; error: { message: string } | null };
 };
@@ -58,6 +64,9 @@ vi.mock('@/lib/supabase/server', () => ({
     from: (table: string) => {
       if (table === 'squad_invites') {
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: fixture.campaign }) }) }) };
+      }
+      if (table === 'squad_invite_requests') {
+        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: fixture.matchedRequest }) }) }) };
       }
       if (table === 'squad_invite_participations') {
         return { select: () => ({ eq: () => ({ eq: async () => ({ data: fixture.participations }) }) }) };
@@ -80,6 +89,7 @@ beforeEach(() => {
   mockSendPaymentRequestEmail.mockReset();
   mockSendPricingConfirmedEmail.mockReset();
   mockCreatePreviewToken.mockReset();
+  mockEnqueueStaffNotification.mockReset();
   mockRpc.mockReset();
 
   mockIsMvpEnabled.mockReturnValue(true);
@@ -96,6 +106,7 @@ beforeEach(() => {
     },
     paymentModeEnabled: false,
     campaign: { club_team_name: 'Ashton Juniors U10' },
+    matchedRequest: { public_reference: 'SI-ABCD1234EF' },
     participations: [
       { id: 'p-1', order_id: 'order-1', orders: { order_ref: 'ref-1', purchaser_email: 'guardian1@example.test' } },
       { id: 'p-2', order_id: 'order-2', orders: { order_ref: 'ref-2', purchaser_email: 'guardian2@example.test' } },
@@ -225,6 +236,21 @@ describe('POST /api/staff/squad-invites/[id]/finalise-pricing — pricing-confir
     expect(mockBuildPaymentUrl).not.toHaveBeenCalled();
     expect(mockSendPaymentRequestEmail).not.toHaveBeenCalled();
   });
+
+  it('never notifies staff when every pricing-confirmed email succeeds', async () => {
+    await finalisePricing();
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
+  });
+
+  it('notifies staff once, with the failure count, when a pricing-confirmed email fails — even though the wall is off and no payment-request loop runs', async () => {
+    fixture.participations[1] = { ...fixture.participations[1], orders: { order_ref: 'ref-2', purchaser_email: '' } };
+    await finalisePricing();
+    expect(mockEnqueueStaffNotification).toHaveBeenCalledTimes(1);
+    const call = mockEnqueueStaffNotification.mock.calls[0][1] as { eventType: string; summary: Record<string, unknown>; linkPath: string };
+    expect(call.eventType).toBe('finalise_pricing_issues');
+    expect(call.summary).toEqual({ teamName: 'Ashton Juniors U10', pricingConfirmationFailures: 1, paymentRequestFailures: 0 });
+    expect(call.linkPath).toBe('/staff/squad-invites/SI-ABCD1234EF');
+  });
 });
 
 describe('POST /api/staff/squad-invites/[id]/finalise-pricing — payment mode ON (existing behaviour must be unchanged)', () => {
@@ -287,6 +313,21 @@ describe('POST /api/staff/squad-invites/[id]/finalise-pricing — payment mode O
     // The pricing-confirmed loop only needs an email, not an order_ref —
     // this same participation still gets its price confirmed.
     expect(body.pricingNotified).toBe(3);
+  });
+
+  it('notifies staff once, with the payment-request failure count, when the wall is on and a payment request fails to issue', async () => {
+    fixture.participations[0] = { ...fixture.participations[0], orders: { order_ref: '', purchaser_email: 'guardian1@example.test' } };
+    await finalisePricing();
+    expect(mockEnqueueStaffNotification).toHaveBeenCalledTimes(1);
+    const call = mockEnqueueStaffNotification.mock.calls[0][1] as { eventType: string; summary: Record<string, unknown>; recipientScope: string };
+    expect(call.eventType).toBe('finalise_pricing_issues');
+    expect(call.recipientScope).toBe('squad_invite_approver');
+    expect(call.summary).toEqual({ teamName: 'Ashton Juniors U10', pricingConfirmationFailures: 0, paymentRequestFailures: 1 });
+  });
+
+  it('never notifies staff when everything succeeds, wall on', async () => {
+    await finalisePricing();
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
   });
 
   it('a failed issue_squad_invite_payment_request RPC call is counted as failed, unchanged', async () => {

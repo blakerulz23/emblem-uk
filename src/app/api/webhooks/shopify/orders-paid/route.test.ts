@@ -17,6 +17,11 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
+const mockEnqueueStaffNotification = vi.fn();
+vi.mock('@/lib/dispatch-staff-notification', () => ({
+  enqueueAndDispatchStaffNotification: (...args: unknown[]) => mockEnqueueStaffNotification(...args),
+}));
+
 const SECRET = 'test-webhook-secret';
 const VARIANT_ID = '123456789';
 const WEBHOOK_ID = 'whid_abc123';
@@ -54,6 +59,7 @@ beforeEach(() => {
   process.env.SHOPIFY_WEBHOOK_SECRET = SECRET;
   mockRpc.mockReset();
   mockOrdersSelect.mockReset();
+  mockEnqueueStaffNotification.mockReset();
   mockOrdersSelect.mockResolvedValue({ data: ORDER_ROW, error: null });
   mockRpc.mockResolvedValue({ data: { applied: true, orderId: ORDER_ROW.id }, error: null });
 });
@@ -123,6 +129,34 @@ describe('POST /api/webhooks/shopify/orders-paid — amount/quantity/currency ve
     const res = await post(VALID_PAYLOAD);
     expect(res.status).toBe(200);
     expect(mockRpc).toHaveBeenCalledWith('apply_gate3_payment_event', expect.objectContaining({ p_order_id: ORDER_ROW.id, p_to_status: 'paid' }));
+  });
+
+  it('notifies staff — real money, previously console.error-only — on a verification failure (quantity mismatch)', async () => {
+    await post({ ...VALID_PAYLOAD, line_items: [{ variant_id: 123456789, quantity: 99, price: '24.99' }] });
+    expect(mockEnqueueStaffNotification).toHaveBeenCalledTimes(1);
+    const call = mockEnqueueStaffNotification.mock.calls[0][1] as { eventType: string; recipientScope: string; summary: Record<string, unknown> };
+    expect(call.eventType).toBe('payment_verification_failed');
+    expect(call.recipientScope).toBe('all_staff');
+    expect(call.summary.orderRef).toBe('EMB-ABC123');
+  });
+
+  it('notifies staff on a currency mismatch, with the mismatch reason in the summary', async () => {
+    await post({ ...VALID_PAYLOAD, currency: 'USD' });
+    const call = mockEnqueueStaffNotification.mock.calls[0][1] as { summary: { reason: string } };
+    expect(call.summary.reason).toMatch(/currency mismatch/i);
+  });
+
+  it('notifies staff when the pricing snapshot or Shopify variant configuration is missing', async () => {
+    delete process.env.NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT;
+    await post(VALID_PAYLOAD);
+    expect(mockEnqueueStaffNotification).toHaveBeenCalledTimes(1);
+    const call = mockEnqueueStaffNotification.mock.calls[0][1] as { eventType: string };
+    expect(call.eventType).toBe('payment_verification_failed');
+  });
+
+  it('never notifies staff on a genuinely successful, verified payment', async () => {
+    await post(VALID_PAYLOAD);
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
   });
 });
 
