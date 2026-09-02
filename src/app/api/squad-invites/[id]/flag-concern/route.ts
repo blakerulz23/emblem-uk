@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { consumeSquadInviteRateLimit } from '@/lib/squad-invite-rate-limit';
 import { hasValidSquadInviteCsrf } from '@/lib/squad-invite-request-security';
+import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 
 // Lets the organiser flag a name shown on their own Squad progress
 // dashboard as one they don't recognise — the club-mediated check behind
@@ -23,20 +24,32 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   if (note.length < 3) return NextResponse.json({ error: 'A short description is required' }, { status: 400 });
   const service = createServiceRoleClient();
   const { data: campaign } = await service.from('squad_invites')
-    .select('id').eq('id', params.id).eq('organiser_profile_id', user.id).maybeSingle();
+    .select('id,club_team_name').eq('id', params.id).eq('organiser_profile_id', user.id).maybeSingle();
   if (!campaign) return NextResponse.json({ error: 'Unavailable' }, { status: 404 });
   const { data: matchedRequest } = await service.from('squad_invite_requests')
-    .select('id').eq('campaign_id', campaign.id).maybeSingle();
+    .select('id,public_reference').eq('campaign_id', campaign.id).maybeSingle();
   if (!matchedRequest) return NextResponse.json({ error: 'Unavailable' }, { status: 404 });
-  const { error } = await service.from('squad_invite_request_audit_events').insert({
+  const { data: inserted, error } = await service.from('squad_invite_request_audit_events').insert({
     request_id: matchedRequest.id, actor_profile_id: user.id, actor_role: 'organiser',
     event_type: 'organiser_flagged_concern', metadata: { note },
-  });
+  }).select('id').single();
   if (error) {
     // Fixed route label + a safe category only — never the note text
     // itself, never the raw Postgres error message.
     console.error('squad-invites/flag-concern:insert', error.code ?? 'unknown');
     return NextResponse.json({ error: 'Unavailable' }, { status: 500 });
   }
+  // Safeguarding-adjacent — a parent flagging a name on their team's list
+  // they don't recognise. Never includes the note text itself in the
+  // email (matches every other summary in this system staying non-PII);
+  // staff open the link to read the real note.
+  await enqueueAndDispatchStaffNotification(service, {
+    eventType: 'organiser_concern_flagged',
+    eventKey: `organiser_concern_flagged:${inserted.id}`,
+    subjectId: matchedRequest.id,
+    recipientScope: 'squad_invite_approver',
+    summary: { teamName: campaign.club_team_name, reference: matchedRequest.public_reference },
+    linkPath: `/staff/squad-invites/${encodeURIComponent(matchedRequest.public_reference)}`,
+  });
   return NextResponse.json({ ok: true }, { headers: { 'Cache-Control': 'no-store' } });
 }

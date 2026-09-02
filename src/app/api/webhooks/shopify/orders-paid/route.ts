@@ -1,6 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { extractOrderRef, extractShopifyOrderId, verifyShopifyHmac, verifyPaidLineItem } from '@/lib/shopify-webhook';
+import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
+
+/**
+ * Real money, currently invisible outside raw server logs — every failure
+ * branch below used to be console.error-only, explicitly flagged in the
+ * code as "for reconciliation" with no reconciliation view anywhere in the
+ * app. Date-scoped per order_ref: a genuinely new failure for the SAME
+ * order_ref later the same day (e.g. a duplicate delivery hitting a
+ * different failure branch) still only notifies once — Shopify's own
+ * retry behaviour on a webhook it saw return non-2xx could otherwise spam
+ * this multiple times in quick succession.
+ */
+async function notifyStaffOfPaymentVerificationFailure(
+  service: ReturnType<typeof createServiceRoleClient>,
+  orderRef: string,
+  reason: string,
+): Promise<void> {
+  await enqueueAndDispatchStaffNotification(service, {
+    eventType: 'payment_verification_failed',
+    eventKey: `payment_verification_failed:${orderRef}:${new Date().toISOString().slice(0, 10)}`,
+    subjectId: null,
+    recipientScope: 'all_staff',
+    summary: { orderRef, reason },
+    linkPath: '/staff/queue',
+  });
+}
 
 export const runtime = 'nodejs';
 
@@ -100,6 +126,7 @@ export async function POST(req: NextRequest) {
     const variantId = process.env.NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT;
     if (!variantId || existing.unit_price_pence == null || existing.total_print_quantity == null) {
       console.error('shopify webhook: cannot verify paid line item — pricing snapshot or variant missing', { orderRef });
+      await notifyStaffOfPaymentVerificationFailure(supabase, orderRef, 'Pricing snapshot or variant configuration missing');
       return NextResponse.json({ ok: true, note: 'pricing snapshot unavailable, not applying' });
     }
     const verification = verifyPaidLineItem(payload, variantId, existing.total_print_quantity, existing.unit_price_pence);
@@ -107,12 +134,14 @@ export async function POST(req: NextRequest) {
       // Never applied — flagged loudly for reconciliation. 200 because
       // retrying won't change what Shopify actually charged.
       console.error('shopify webhook: paid line item verification failed', { orderRef, reason: verification.reason });
+      await notifyStaffOfPaymentVerificationFailure(supabase, orderRef, `Paid line item verification failed: ${verification.reason}`);
       return NextResponse.json({ ok: true, note: 'verification failed, not applying' });
     }
     verifiedAmountPence = existing.unit_price_pence * existing.total_print_quantity;
     verifiedCurrency = verification.currency ?? existing.currency ?? null;
     if (existing.currency && verifiedCurrency && existing.currency !== verifiedCurrency) {
       console.error('shopify webhook: currency mismatch', { orderRef, expected: existing.currency, got: verifiedCurrency });
+      await notifyStaffOfPaymentVerificationFailure(supabase, orderRef, `Currency mismatch — expected ${existing.currency}, got ${verifiedCurrency}`);
       return NextResponse.json({ ok: true, note: 'currency mismatch, not applying' });
     }
   }

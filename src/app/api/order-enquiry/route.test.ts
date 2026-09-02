@@ -46,6 +46,11 @@ vi.mock('@/lib/supabase/server', () => ({
   createServiceRoleClient: () => ({ rpc: mockRpc }),
 }));
 
+const mockEnqueueStaffNotification = vi.fn();
+vi.mock('@/lib/dispatch-staff-notification', () => ({
+  enqueueAndDispatchStaffNotification: (...args: unknown[]) => mockEnqueueStaffNotification(...args),
+}));
+
 const mockHeadObject = vi.fn();
 vi.mock('@/lib/s3-client', () => ({
   headObject: (key: string) => mockHeadObject(key),
@@ -112,6 +117,7 @@ beforeEach(() => {
   mockFinishFinalising.mockReset().mockResolvedValue({ data: null, error: null });
   mockLinkBuilderOrderAuthority.mockReset().mockResolvedValue({ data: { authorityStatus: 'confirmed' }, error: null });
   mockHeadObject.mockReset();
+  mockEnqueueStaffNotification.mockReset();
   mockValidAssets();
 });
 
@@ -368,5 +374,33 @@ describe('POST /api/order-enquiry — retry stability end to end', () => {
       Object.fromEntries(Object.entries(params).filter(([key]) => key !== 'p_order_ref'));
     expect(omitOrderRef(secondParams)).toEqual(omitOrderRef(firstParams));
     expect(secondParams.p_request_fingerprint).toBe(firstParams.p_request_fingerprint);
+  });
+});
+
+describe('POST /api/order-enquiry — staff notification', () => {
+  it('notifies staff of a genuinely new order awaiting production approval', async () => {
+    mockValidAssets();
+    mockCreateAuthoritativeOrder.mockResolvedValue({ data: { orderId: 'order-1', orderRef: 'emblem-abc', created: true }, error: null });
+    await post(validBody());
+    expect(mockEnqueueStaffNotification).toHaveBeenCalledTimes(1);
+    const call = mockEnqueueStaffNotification.mock.calls[0][1] as { eventType: string; eventKey: string; recipientScope: string; summary: Record<string, unknown> };
+    expect(call.eventType).toBe('new_order_pending_approval');
+    expect(call.eventKey).toBe('new_order_pending_approval:order-1');
+    expect(call.recipientScope).toBe('all_staff');
+    expect(call.summary.orderRef).toBe('emblem-abc');
+  });
+
+  it('never notifies staff on an idempotent retry (created:false) — not a genuinely new order', async () => {
+    mockValidAssets();
+    mockCreateAuthoritativeOrder.mockResolvedValue({ data: { orderId: 'order-1', orderRef: 'emblem-abc', created: false }, error: null });
+    await post(validBody());
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
+  });
+
+  it('never notifies staff when order creation itself fails', async () => {
+    mockValidAssets();
+    mockCreateAuthoritativeOrder.mockResolvedValue({ data: null, error: { message: 'db unavailable' } });
+    await post(validBody());
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
   });
 });

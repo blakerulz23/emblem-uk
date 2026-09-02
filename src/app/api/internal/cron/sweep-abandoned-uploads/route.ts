@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { deleteObject, isS3NotFoundError } from '@/lib/s3-client';
+import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -151,6 +152,17 @@ export async function POST(request: NextRequest) {
       recordOutcome(outcome, 'squad-invite');
     }
     results.squadInviteParticipations += 1;
+  }
+
+  if (results.retryable > 0) {
+    await enqueueAndDispatchStaffNotification(serviceRole, {
+      eventType: 'upload_sweep_errors',
+      eventKey: `upload_sweep_errors:${new Date().toISOString().slice(0, 10)}`,
+      subjectId: null,
+      recipientScope: 'all_staff',
+      summary: { retryable: results.retryable, deleted: results.deleted, alreadyAbsent: results.alreadyAbsent },
+      linkPath: '/staff/queue',
+    });
   }
 
   return NextResponse.json({ ok: results.retryable === 0, ...results });

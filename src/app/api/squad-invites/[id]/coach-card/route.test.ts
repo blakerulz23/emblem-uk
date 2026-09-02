@@ -34,4 +34,12 @@ describe('POST /api/squad-invites/[id]/coach-card — organiser coach-card submi
     expect(source).toContain("rpc('submit_squad_invite_coach_card'");
     expect(source).not.toMatch(/squad_invite_coach_cards['"]\)\.(insert|update)\(/);
   });
+
+  it('notifies squad_invite_approver staff only after the RPC succeeds, never before, with a date-scoped idempotency key so a resubmission on a later day is a genuinely new notification', () => {
+    const rpcIndex = source.indexOf("rpc('submit_squad_invite_coach_card'");
+    const notifyIndex = source.indexOf("eventType: 'coach_card_submitted'");
+    expect(notifyIndex).toBeGreaterThan(rpcIndex);
+    expect(source).toContain("recipientScope: 'squad_invite_approver'");
+    expect(source).toMatch(/eventKey: `coach_card_submitted:\$\{campaign\.id\}:\$\{new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\}`/);
+  });
 });

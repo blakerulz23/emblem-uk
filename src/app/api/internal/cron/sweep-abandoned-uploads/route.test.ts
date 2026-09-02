@@ -16,6 +16,11 @@ vi.mock('@/lib/s3-client', () => ({
   },
 }));
 
+const mockEnqueueStaffNotification = vi.fn();
+vi.mock('@/lib/dispatch-staff-notification', () => ({
+  enqueueAndDispatchStaffNotification: (...args: unknown[]) => mockEnqueueStaffNotification(...args),
+}));
+
 type Asset = { slot_key: string; reservation_id: string | null };
 
 type Fixture = {
@@ -76,6 +81,7 @@ function sweep() {
 beforeEach(() => {
   process.env = { ...ORIGINAL_ENV, CRON_SECRET: 'test-cron-secret' };
   mockDeleteObject.mockReset();
+  mockEnqueueStaffNotification.mockReset();
   deleteCalls = [];
   fixture = { capabilities: [], builderAssets: {}, participations: [], squadAssets: {}, deleteRowError: {} };
 });
@@ -234,5 +240,30 @@ describe('POST /api/internal/cron/sweep-abandoned-uploads', () => {
   it('rejects a request without the correct CRON_SECRET', async () => {
     const res = await POST(new NextRequest('http://localhost/api/internal/cron/sweep-abandoned-uploads', { method: 'POST' }));
     expect(res.status).toBe(401);
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
+  });
+
+  it('notifies staff when the sweep leaves retryable errors behind', async () => {
+    fixture.capabilities = [{ id: 'cap-1', state: 'started' }];
+    fixture.builderAssets['cap-1'] = [{ slot_key: 'front', reservation_id: null }];
+    mockDeleteObject.mockRejectedValue(new Error('ETIMEDOUT'));
+
+    await sweep();
+
+    expect(mockEnqueueStaffNotification).toHaveBeenCalledTimes(1);
+    const call = mockEnqueueStaffNotification.mock.calls[0][1] as { eventType: string; recipientScope: string; summary: Record<string, unknown> };
+    expect(call.eventType).toBe('upload_sweep_errors');
+    expect(call.recipientScope).toBe('all_staff');
+    expect(call.summary.retryable).toBe(1);
+  });
+
+  it('never notifies staff when the whole sweep succeeds cleanly', async () => {
+    fixture.capabilities = [{ id: 'cap-1', state: 'started' }];
+    fixture.builderAssets['cap-1'] = [{ slot_key: 'front', reservation_id: null }];
+    mockDeleteObject.mockResolvedValue(undefined);
+
+    await sweep();
+
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
   });
 });

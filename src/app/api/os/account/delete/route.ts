@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 
 export const runtime = 'nodejs';
 
@@ -81,6 +82,19 @@ export async function POST() {
   // deletions (0076) durably records it for staff review rather than
   // silently leaving the guardian's login live with no explanation.
   if (rpcResult && typeof rpcResult === 'object' && (rpcResult as { canDeleteIdentity?: boolean }).canDeleteIdentity === false) {
+    // pending_profile_deletions (0076) has no staff-facing page anywhere in
+    // the app today (confirmed: no route/page queries that table) — this
+    // notification is currently the ONLY signal staff get for this case at
+    // all, so the link points at the closest relevant staff area rather
+    // than a page that would show nothing.
+    await enqueueAndDispatchStaffNotification(createServiceRoleClient(), {
+      eventType: 'auth_deletion_stuck',
+      eventKey: `auth_deletion_stuck:profile:${user.id}`,
+      subjectId: user.id,
+      recipientScope: 'all_staff',
+      summary: { reason: 'Profile deletion blocked by a referencing record (campaign/audit history) — needs direct review, no staff page surfaces this yet' },
+      linkPath: '/staff/deletion-requests',
+    });
     await supabase.auth.signOut();
     return NextResponse.json({
       ok: true,
@@ -111,6 +125,16 @@ export async function POST() {
       await serviceRole
         .from('pending_auth_deletions')
         .insert({ auth_user_id: user.id, email: user.email ?? null, first_attempted_at: nowIso, last_attempted_at: nowIso, last_error: authDeleteError.message });
+      // Only on the first occurrence — a retry (the `existing` branch
+      // above) reuses the same row and must not re-notify every attempt.
+      await enqueueAndDispatchStaffNotification(serviceRole, {
+        eventType: 'auth_deletion_stuck',
+        eventKey: `auth_deletion_stuck:${user.id}`,
+        subjectId: user.id,
+        recipientScope: 'all_staff',
+        summary: { reason: 'Sign-in identity could not be deleted after data cleanup succeeded' },
+        linkPath: '/staff/pending-auth-deletions',
+      });
     }
 
     // Revoke this session regardless of the Auth identity row's fate —

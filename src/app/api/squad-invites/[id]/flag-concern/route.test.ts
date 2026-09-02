@@ -7,7 +7,11 @@ const mockGetUser = vi.fn();
 const mockRateLimit = vi.fn();
 const mockCampaignMaybeSingle = vi.fn();
 const mockRequestMaybeSingle = vi.fn();
-const mockInsert = vi.fn();
+const mockInsertSingle = vi.fn();
+const mockInsert = vi.fn<(row: Record<string, unknown>) => { select: () => { single: typeof mockInsertSingle } }>(
+  () => ({ select: () => ({ single: mockInsertSingle }) }),
+);
+const mockEnqueueStaffNotification = vi.fn();
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: () => ({ auth: { getUser: mockGetUser } }),
@@ -22,11 +26,16 @@ vi.mock('@/lib/supabase/server', () => ({
 vi.mock('@/lib/squad-invite-rate-limit', () => ({
   consumeSquadInviteRateLimit: (...args: unknown[]) => mockRateLimit(...args),
 }));
+vi.mock('@/lib/dispatch-staff-notification', () => ({
+  enqueueAndDispatchStaffNotification: (...args: unknown[]) => mockEnqueueStaffNotification(...args),
+}));
 
 const CSRF_TOKEN = randomBytes(32).toString('base64url');
 const USER_ID = '11111111-2222-4333-8444-555555555555';
 const CAMPAIGN_ID = '66095c4d-f177-442a-bf35-cc4f76245841';
 const REQUEST_ID = 'b8566c7d-8c60-4614-ba4f-f06e8640f61a';
+const EVENT_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+const PUBLIC_REFERENCE = 'SI-ABCD1234EF';
 
 function post(body: unknown) {
   return POST(
@@ -49,12 +58,14 @@ beforeEach(() => {
   mockRateLimit.mockReset();
   mockCampaignMaybeSingle.mockReset();
   mockRequestMaybeSingle.mockReset();
-  mockInsert.mockReset();
+  mockInsert.mockClear();
+  mockInsertSingle.mockReset();
+  mockEnqueueStaffNotification.mockReset();
   mockGetUser.mockResolvedValue({ data: { user: { id: USER_ID } } });
   mockRateLimit.mockResolvedValue(true);
-  mockCampaignMaybeSingle.mockResolvedValue({ data: { id: CAMPAIGN_ID } });
-  mockRequestMaybeSingle.mockResolvedValue({ data: { id: REQUEST_ID } });
-  mockInsert.mockResolvedValue({ error: null });
+  mockCampaignMaybeSingle.mockResolvedValue({ data: { id: CAMPAIGN_ID, club_team_name: 'Ashton Juniors U10' } });
+  mockRequestMaybeSingle.mockResolvedValue({ data: { id: REQUEST_ID, public_reference: PUBLIC_REFERENCE } });
+  mockInsertSingle.mockResolvedValue({ data: { id: EVENT_ID }, error: null });
 });
 
 describe('POST /api/squad-invites/[id]/flag-concern', () => {
@@ -118,7 +129,7 @@ describe('POST /api/squad-invites/[id]/flag-concern', () => {
 
   it('logs only a fixed route label and a safe error code on insert failure — never the note text', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockInsert.mockResolvedValue({ error: { code: '23505', message: 'duplicate key value violates unique constraint' } });
+    mockInsertSingle.mockResolvedValue({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } });
     const res = await post({ note: 'a very specific private concern about a family' });
     expect(res.status).toBe(500);
     expect(errorSpy).toHaveBeenCalledTimes(1);
@@ -126,11 +137,30 @@ describe('POST /api/squad-invites/[id]/flag-concern', () => {
     expect(logged).toBe('squad-invites/flag-concern:insert 23505');
     expect(logged).not.toContain('private concern');
     expect(logged).not.toContain('duplicate key');
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
     errorSpy.mockRestore();
   });
 
   it('sets no-store cache headers on success', async () => {
     const res = await post({ note: 'this name is not on our team' });
     expect(res.headers.get('Cache-Control')).toBe('no-store');
+  });
+
+  it('notifies staff approvers with the team/reference summary, never the note text, on a successful flag', async () => {
+    await post({ note: 'a very specific private concern about a family' });
+    expect(mockEnqueueStaffNotification).toHaveBeenCalledTimes(1);
+    const call = mockEnqueueStaffNotification.mock.calls[0][1] as { eventType: string; eventKey: string; recipientScope: string; summary: Record<string, unknown>; linkPath: string };
+    expect(call.eventType).toBe('organiser_concern_flagged');
+    expect(call.eventKey).toBe(`organiser_concern_flagged:${EVENT_ID}`);
+    expect(call.recipientScope).toBe('squad_invite_approver');
+    expect(call.summary).toEqual({ teamName: 'Ashton Juniors U10', reference: PUBLIC_REFERENCE });
+    expect(JSON.stringify(call.summary)).not.toContain('private concern');
+    expect(call.linkPath).toBe(`/staff/squad-invites/${PUBLIC_REFERENCE}`);
+  });
+
+  it('never notifies staff when the request fails earlier (bad CSRF, no session, rate limited, short note, unowned campaign, or no matching request)', async () => {
+    mockCampaignMaybeSingle.mockResolvedValue({ data: null });
+    await post({ note: 'this name is not on our team' });
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
   });
 });
