@@ -206,33 +206,53 @@ export default function ShareCardSheet({
         const file = new File([blob], `emblem-card-${orderId.slice(0, 8)}.jpg`, { type: blob.type || 'image/jpeg' });
 
         if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
-          // `text` alone, never also `url`: messageText already contains
-          // the exact, single link as ordinary readable text. Passing
-          // `url` as well caused real recipients (confirmed via manual
-          // WhatsApp Desktop testing) to see the link twice and the "Look
-          // what I made..." line dropped entirely — several share targets
-          // compose their own caption from `url` when both fields are
-          // present, ignoring or duplicating `text` rather than appending
-          // them predictably. Sending one opaque text block is the only
-          // way to guarantee exactly the required message reaches the
-          // recipient, on every platform, every time.
-          await navigator.share({
-            files: [file],
-            title: 'My Emblem card',
-            text: messageText,
-          });
-          // Best-effort only: navigator.share() already resolved, so the
-          // share itself genuinely succeeded regardless of whether this
-          // also succeeds — a clipboard failure here must never be
-          // reported as a failed share.
           try {
-            await navigator.clipboard.writeText(messageText);
-          } catch {
-            // Clipboard unavailable/denied — the 'shared' status below
-            // still displays the same message text for manual copying.
+            // `text` alone, never also `url`: messageText already contains
+            // the exact, single link as ordinary readable text. Passing
+            // `url` as well caused real recipients (confirmed via manual
+            // WhatsApp Desktop testing) to see the link twice and the "Look
+            // what I made..." line dropped entirely — several share targets
+            // compose their own caption from `url` when both fields are
+            // present, ignoring or duplicating `text` rather than appending
+            // them predictably. Sending one opaque text block is the only
+            // way to guarantee exactly the required message reaches the
+            // recipient, on every platform, every time.
+            await navigator.share({
+              files: [file],
+              title: 'My Emblem card',
+              text: messageText,
+            });
+            // Best-effort only: navigator.share() already resolved, so the
+            // share itself genuinely succeeded regardless of whether this
+            // also succeeds — a clipboard failure here must never be
+            // reported as a failed share.
+            try {
+              await navigator.clipboard.writeText(messageText);
+            } catch {
+              // Clipboard unavailable/denied — the 'shared' status below
+              // still displays the same message text for manual copying.
+            }
+            dispatch({ type: 'shared' });
+            return;
+          } catch (shareErr) {
+            // A user cancelling the native share sheet lands here (most
+            // browsers reject navigator.share's promise with an
+            // AbortError) — treated as a quiet cancellation, not a
+            // failure, since nothing went wrong and the guardian's own
+            // consent event already stands.
+            if (shareErr instanceof Error && shareErr.name === 'AbortError') {
+              dispatch({ type: 'reset' });
+              return;
+            }
+            // Any other rejection (most notably iOS Safari's Web Share
+            // "user activation" expiring — this feature's own network
+            // round-trip, uploading the image and creating the public
+            // share page, can easily take longer than that window allows
+            // — confirmed live: a real share attempt failed exactly this
+            // way) falls through to the download fallback below rather
+            // than hard-failing. A guardian who hits this still gets a
+            // working result; only a genuine AbortError is ever silent.
           }
-          dispatch({ type: 'shared' });
-          return;
         }
 
         const objectUrl = URL.createObjectURL(blob);
@@ -245,15 +265,10 @@ export default function ShareCardSheet({
           URL.revokeObjectURL(objectUrl);
         }
         dispatch({ type: 'downloaded' });
-      } catch (err) {
-        // A user cancelling the native share sheet also lands here (most
-        // browsers reject navigator.share's promise with an AbortError) —
-        // treated as a quiet cancellation, not a failure, since nothing
-        // went wrong and the guardian's own consent event already stands.
-        if (err instanceof Error && err.name === 'AbortError') {
-          dispatch({ type: 'reset' });
-          return;
-        }
+      } catch {
+        // Only genuine failures preparing the blob/file or triggering the
+        // download itself land here now — every navigator.share() outcome
+        // (cancel, success, or a fallback-worthy error) is handled above.
         dispatch({ type: 'fail', message: CARD_SHARE_GENERIC_FAILURE });
       }
     } finally {

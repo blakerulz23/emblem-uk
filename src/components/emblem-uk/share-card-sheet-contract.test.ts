@@ -200,18 +200,67 @@ describe('ShareCardSheet — honest handling of a platform that may silently dro
   });
 
   it('cancelling the native share sheet is still never reported as shared, and no clipboard copy happens on that path', () => {
-    const idx = sheet.indexOf("err.name === 'AbortError'");
+    const idx = sheet.indexOf("shareErr.name === 'AbortError'");
     const section = sheet.slice(idx, idx + 100);
     expect(section).toContain("dispatch({ type: 'reset' });");
     expect(section).not.toContain('navigator.clipboard');
   });
 
   it('cancelling the native share sheet is never reported as a successful share, and records no confirmed consent (only handleCancel/handleContinue can record "confirmed", and neither runs on cancel)', () => {
-    const idx = sheet.indexOf("err.name === 'AbortError'");
+    const idx = sheet.indexOf("shareErr.name === 'AbortError'");
     const section = sheet.slice(idx, idx + 100);
     expect(section).toContain("dispatch({ type: 'reset' });");
     expect(section).not.toContain("dispatch({ type: 'shared' })");
     expect(section).not.toContain("recordCardShareConsent(orderId, 'confirmed')");
+  });
+});
+
+/**
+ * Regression coverage for a live-preview-confirmed defect: adding the
+ * public-page upload step (migration 0085) before navigator.share()
+ * inserts a real network round-trip between the guardian's tap and the
+ * share call — long enough, on iOS Safari specifically, that the
+ * browser's Web Share "user activation" window can expire before
+ * share() is even invoked. That produces a rejection that is NOT an
+ * AbortError, and the previous code treated every non-abort rejection as
+ * a hard failure — so a guardian who hit this got "We could not prepare
+ * this image right now" with a perfectly good image already sitting in
+ * memory. The fix: navigator.share() gets its own try/catch: an
+ * AbortError still resets silently, but any OTHER rejection falls
+ * through to the same download fallback already used when Web Share
+ * isn't supported at all, rather than failing the whole attempt.
+ */
+describe('ShareCardSheet — a non-cancel navigator.share() failure falls back to download, never a hard failure', () => {
+  it('navigator.share is wrapped in its own try/catch, nested inside the outer blob/download try — not sharing the outer catch directly', () => {
+    const shareIdx = sheet.indexOf('navigator.share({');
+    const innerTryIdx = sheet.lastIndexOf('try {', shareIdx);
+    const outerTryIdx = sheet.lastIndexOf('try {', innerTryIdx - 1);
+    expect(innerTryIdx).toBeGreaterThan(-1);
+    expect(outerTryIdx).toBeGreaterThan(-1);
+    expect(outerTryIdx).toBeLessThan(innerTryIdx);
+  });
+
+  it('a non-AbortError rejection from navigator.share has no early return, and no fail dispatch of its own — it falls through to the code below', () => {
+    const idx = sheet.indexOf("shareErr.name === 'AbortError'");
+    const abortBlockEnd = sheet.indexOf('}', sheet.indexOf('return;', idx));
+    const catchBlockEnd = sheet.indexOf('}\n        }', abortBlockEnd);
+    const fallthroughSection = sheet.slice(abortBlockEnd, catchBlockEnd + 20);
+    expect(fallthroughSection).not.toContain("dispatch({ type: 'fail'");
+    expect(fallthroughSection).not.toContain('return;');
+  });
+
+  it('the code that actually performs the download (createObjectURL) sits after the navigator.share try/catch closes, still reachable on a share failure', () => {
+    const shareTryCatchIdx = sheet.indexOf("shareErr.name === 'AbortError'");
+    const downloadIdx = sheet.indexOf('URL.createObjectURL(blob)', shareTryCatchIdx);
+    expect(downloadIdx).toBeGreaterThan(shareTryCatchIdx);
+  });
+
+  it('the outer catch (blob/download failures only, now that share failures are handled separately) no longer inspects err.name at all', () => {
+    const outerCatchIdx = sheet.lastIndexOf('} catch {');
+    expect(outerCatchIdx).toBeGreaterThan(-1);
+    const section = sheet.slice(outerCatchIdx, outerCatchIdx + 400);
+    expect(section).not.toContain('AbortError');
+    expect(section).toContain("dispatch({ type: 'fail', message: CARD_SHARE_GENERIC_FAILURE });");
   });
 });
 
