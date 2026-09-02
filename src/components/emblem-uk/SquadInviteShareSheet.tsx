@@ -166,21 +166,33 @@ export default function SquadInviteShareSheet({
         const file = new File([blob], `emblem-card-${orderId.slice(0, 8)}.jpg`, { type: blob.type || 'image/jpeg' });
 
         if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
-          // `text` alone, never also `url` — see ShareCardSheet.tsx's own
-          // comment on why passing both causes real share targets to
-          // duplicate or drop the caption.
-          await navigator.share({
-            files: [file],
-            title: 'My Emblem card',
-            text: messageText,
-          });
           try {
-            await navigator.clipboard.writeText(messageText);
-          } catch {
-            // Best-effort only — the share itself already succeeded.
+            // `text` alone, never also `url` — see ShareCardSheet.tsx's own
+            // comment on why passing both causes real share targets to
+            // duplicate or drop the caption.
+            await navigator.share({
+              files: [file],
+              title: 'My Emblem card',
+              text: messageText,
+            });
+            try {
+              await navigator.clipboard.writeText(messageText);
+            } catch {
+              // Best-effort only — the share itself already succeeded.
+            }
+            dispatch({ type: 'shared' });
+            return;
+          } catch (shareErr) {
+            if (shareErr instanceof Error && shareErr.name === 'AbortError') {
+              dispatch({ type: 'reset' });
+              return;
+            }
+            // Any other rejection (most notably iOS Safari's Web Share
+            // "user activation" expiring during this feature's own
+            // network round-trip — see ShareCardSheet.tsx's own comment)
+            // falls through to the download fallback below rather than
+            // hard-failing.
           }
-          dispatch({ type: 'shared' });
-          return;
         }
 
         const objectUrl = URL.createObjectURL(blob);
@@ -193,11 +205,7 @@ export default function SquadInviteShareSheet({
           URL.revokeObjectURL(objectUrl);
         }
         dispatch({ type: 'downloaded' });
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          dispatch({ type: 'reset' });
-          return;
-        }
+      } catch {
         dispatch({ type: 'fail', message: CARD_SHARE_GENERIC_FAILURE });
       }
     } finally {

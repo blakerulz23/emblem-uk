@@ -129,7 +129,7 @@ describe('SquadInviteShareSheet — consent before image, and every mandatory ca
   });
 
   it('cancelling the native share sheet (AbortError) resets rather than reporting success, and never copies to clipboard on that path', () => {
-    const idx = sheet.indexOf("err.name === 'AbortError'");
+    const idx = sheet.indexOf("shareErr.name === 'AbortError'");
     const section = sheet.slice(idx, idx + 100);
     expect(section).toContain("dispatch({ type: 'reset' });");
     expect(section).not.toContain('navigator.clipboard');
@@ -142,5 +142,40 @@ describe('SquadInviteShareSheet — consent before image, and every mandatory ca
     const sharedDispatchIdx = sheet.indexOf("dispatch({ type: 'shared' })", shareCloseIdx);
     expect(localCatchIdx).toBeGreaterThan(clipboardIdx);
     expect(localCatchIdx).toBeLessThan(sharedDispatchIdx);
+  });
+});
+
+/**
+ * Same live-preview-confirmed defect and fix as ShareCardSheet.tsx's own
+ * regression coverage — see that file's own comment for the full
+ * reasoning (iOS Safari's Web Share "user activation" window expiring
+ * during the public-page upload's network round-trip).
+ */
+describe('SquadInviteShareSheet — a non-cancel navigator.share() failure falls back to download, never a hard failure', () => {
+  it('navigator.share is wrapped in its own try/catch, nested inside the outer blob/download try', () => {
+    const shareIdx = sheet.indexOf('navigator.share({');
+    const innerTryIdx = sheet.lastIndexOf('try {', shareIdx);
+    const outerTryIdx = sheet.lastIndexOf('try {', innerTryIdx - 1);
+    expect(innerTryIdx).toBeGreaterThan(-1);
+    expect(outerTryIdx).toBeGreaterThan(-1);
+    expect(outerTryIdx).toBeLessThan(innerTryIdx);
+  });
+
+  it('a non-AbortError rejection from navigator.share has no early return or fail dispatch of its own — it falls through to the download code below', () => {
+    const idx = sheet.indexOf("shareErr.name === 'AbortError'");
+    const abortBlockEnd = sheet.indexOf('}', sheet.indexOf('return;', idx));
+    const downloadIdx = sheet.indexOf('URL.createObjectURL(blob)', idx);
+    const fallthroughSection = sheet.slice(abortBlockEnd, downloadIdx);
+    expect(fallthroughSection).not.toContain("dispatch({ type: 'fail'");
+    expect(fallthroughSection).not.toContain('return;');
+    expect(downloadIdx).toBeGreaterThan(abortBlockEnd);
+  });
+
+  it('the outer catch (blob/download failures only) no longer inspects err.name at all', () => {
+    const outerCatchIdx = sheet.lastIndexOf('} catch {');
+    expect(outerCatchIdx).toBeGreaterThan(-1);
+    const section = sheet.slice(outerCatchIdx, outerCatchIdx + 200);
+    expect(section).not.toContain('AbortError');
+    expect(section).toContain("dispatch({ type: 'fail', message: CARD_SHARE_GENERIC_FAILURE });");
   });
 });
