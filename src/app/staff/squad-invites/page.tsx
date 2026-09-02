@@ -76,7 +76,13 @@ export default async function SquadInviteQueue({searchParams}:{searchParams:Reco
 
   return <div className="mx-auto max-w-5xl px-5 py-12 pb-28">
     <p className="text-sm font-bold uppercase tracking-widest text-orange-600">Internal · Staff only</p>
-    <h1 className="mt-3 text-3xl font-bold">Player Queue → Squad Invites</h1>
+    <h1 className="mt-3 text-3xl font-bold">Squad Invites</h1>
+    <Link
+      href="/staff/queue"
+      className="mt-4 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border-2 border-orange-600 px-5 font-bold text-orange-600 transition hover:bg-orange-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 active:bg-orange-100 sm:w-auto"
+    >
+      ← Back to Player Orders
+    </Link>
     <nav className="mt-6 flex flex-wrap gap-2 text-sm"><Link href="/staff/queue" className="hover:underline">Player Orders</Link><strong>Squad Invites</strong><Link href="/staff/queue#profile-setup" className="hover:underline">Profile Setup</Link><Link href="/staff/deletion-requests" className="hover:underline">Data Requests</Link></nav>
     <StaffIdentityPanel email={staffEmail} permissions={staffPermissions} />
 
