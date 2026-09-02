@@ -360,6 +360,11 @@ export default function ProductionBuilder({
   // signature-verified Shopify webhook already recorded server-side.
   const [checkoutStage, setCheckoutStage] = useState<'idle' | 'creating' | 'awaiting-payment' | 'confirmed' | 'error'>('idle');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  // Kept even once the tab is (attempted to be) opened, so the UI can
+  // always offer a manual "Open secure checkout" link — the one thing
+  // that's immune to any popup-blocker timing issue, since it's a real
+  // user click on a real link, not a scripted window.open() call.
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const checkoutRequestRef = useRef(0);
   // Stage 6 — one cryptographically random idempotency key per builder
   // submission attempt, generated once and reused for every retry (never
@@ -1328,11 +1333,35 @@ export default function ProductionBuilder({
    * endpoint means "Order confirmed" is reachable purely from a
    * server-verified webhook, regardless of whether Shopify ever redirects
    * the customer anywhere at all.
+   *
+   * The tab is opened BLANK, synchronously, before the fetch — live-
+   * confirmed defect: opening it only after `await fetch(...)` resolved
+   * (the original code) meant Safari no longer considered the call to be
+   * inside the click's own user-activation window, so it silently blocked
+   * the popup — window.open()'s return value was never checked, so the UI
+   * still confidently showed "waiting for payment" with no tab ever
+   * having opened, and no way back to one. Opening blank now reserves a
+   * legitimate popup slot inside the click itself; navigating it once the
+   * real URL is known (`.location.href =`) is not subject to the same
+   * blocking. `.opener = null` on the still-same-origin blank tab gives
+   * the same anti-tabnabbing protection `noopener` would, without losing
+   * this window's own reference to navigate it. checkoutUrl is stored
+   * regardless of whether the tab opened, so the UI can always offer a
+   * manual link too — the one thing immune to any popup-blocker timing
+   * edge case, since it's a real click on a real link.
    */
   const startGate3Checkout = async () => {
     if (!submittedOrderId || checkoutStage === 'creating') return;
+    let checkoutTab: Window | null = null;
+    try {
+      checkoutTab = window.open('', '_blank');
+      if (checkoutTab) checkoutTab.opener = null;
+    } catch {
+      checkoutTab = null;
+    }
     setCheckoutStage('creating');
     setCheckoutError(null);
+    setCheckoutUrl(null);
     try {
       const response = await fetch(`/api/orders/${submittedOrderId}/checkout`, {
         method: 'POST',
@@ -1340,15 +1369,42 @@ export default function ProductionBuilder({
       });
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.ok || typeof result.checkoutUrl !== 'string') {
+        checkoutTab?.close();
         setCheckoutStage('error');
         setCheckoutError(result?.error || 'Could not start secure checkout — please try again');
         return;
       }
-      window.open(result.checkoutUrl, '_blank', 'noopener');
+      setCheckoutUrl(result.checkoutUrl);
+      if (checkoutTab) {
+        checkoutTab.location.href = result.checkoutUrl;
+      }
       setCheckoutStage('awaiting-payment');
     } catch {
+      checkoutTab?.close();
       setCheckoutStage('error');
       setCheckoutError('Could not start secure checkout — please try again');
+    }
+  };
+
+  /**
+   * A direct, one-shot payment-status check — what "I've completed
+   * payment — check again" actually calls. Live-confirmed defect: that
+   * button previously called startGate3Checkout itself, which starts a
+   * WHOLE NEW checkout (and tries to open ANOTHER tab) rather than simply
+   * checking whether the existing one was already paid — the button's own
+   * label never matched what the code did.
+   */
+  const checkGate3PaymentStatus = async () => {
+    if (!submittedOrderId) return;
+    try {
+      const response = await fetch(`/api/orders/${submittedOrderId}/payment-status`);
+      const result = await response.json().catch(() => null);
+      if (response.ok && result?.ok && result.paymentStatus === 'paid') {
+        setCheckoutStage('confirmed');
+      }
+    } catch {
+      // Transient network error — the guardian can just tap the button
+      // again, same as the automatic poll below simply trying again.
     }
   };
 
@@ -2391,7 +2447,17 @@ export default function ProductionBuilder({
                   {checkoutStage === 'awaiting-payment' ? (
                     <>
                       <p aria-live="polite">Waiting for payment confirmation…</p>
-                      <button type="button" className="uk-wizard-primary compact" onClick={startGate3Checkout}>
+                      {checkoutUrl && (
+                        <a
+                          href={checkoutUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="uk-gate3-checkout-reopen"
+                        >
+                          Open secure checkout
+                        </a>
+                      )}
+                      <button type="button" className="uk-wizard-primary compact" onClick={checkGate3PaymentStatus}>
                         I&apos;ve completed payment — check again
                       </button>
                     </>

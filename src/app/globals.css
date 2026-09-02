@@ -3255,6 +3255,19 @@ a { text-decoration: none; color: inherit; }
   justify-items: start;
 }
 
+/* A manual fallback for reopening/re-reaching the real checkout URL —
+   immune to any popup-blocker timing edge case, since it's a real click
+   on a real link rather than a scripted window.open(). Restrained on
+   purpose: the button below it ("I've completed payment — check again")
+   stays the primary action for the common case. */
+.uk-gate3-checkout-reopen {
+  color: var(--wizard-accent);
+  font-size: 13.5px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .uk-production-snapshot span {
   color: var(--wizard-soft);
   font-family: var(--font-jbmono), ui-monospace, monospace;
