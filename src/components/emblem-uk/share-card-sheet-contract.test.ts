@@ -106,6 +106,37 @@ describe('ShareCardSheet — sharing mechanism order and cleanup', () => {
  * text block is the only thing every share target is guaranteed to show
  * verbatim.
  */
+/**
+ * Regression coverage for a live-reported diagnosability gap: a real
+ * failure kept showing the exact same generic message regardless of
+ * which of three genuinely different steps (capturing the image,
+ * creating the public share link, or finishing the share/download) had
+ * actually failed — impossible to tell apart from a screenshot alone.
+ * Each stage now dispatches its own distinct wording.
+ */
+describe('ShareCardSheet — each failure stage has its own distinct message, so a report identifies which stage broke', () => {
+  it('getShareImage() failing dispatches CARD_SHARE_CAPTURE_FAILURE, not the generic message', () => {
+    const idx = sheet.indexOf('dataUrl = await getShareImage();');
+    const catchIdx = sheet.indexOf('catch {', idx);
+    const section = sheet.slice(catchIdx, sheet.indexOf('return;', catchIdx));
+    expect(section).toContain('message: CARD_SHARE_CAPTURE_FAILURE');
+    expect(section).not.toContain('CARD_SHARE_GENERIC_FAILURE');
+  });
+
+  it('createCardSharePublicPage failing without its own server-provided error dispatches CARD_SHARE_LINK_FAILURE, not the generic message', () => {
+    const idx = sheet.indexOf('const publicPage = await createCardSharePublicPage');
+    const section = sheet.slice(idx, sheet.indexOf('return;', idx));
+    expect(section).toContain('publicPage.error || CARD_SHARE_LINK_FAILURE');
+    expect(section).not.toContain('CARD_SHARE_GENERIC_FAILURE');
+  });
+
+  it('a server-provided error from createCardSharePublicPage is still shown verbatim, never overridden by the generic fallback', () => {
+    const idx = sheet.indexOf('const publicPage = await createCardSharePublicPage');
+    const section = sheet.slice(idx, sheet.indexOf('return;', idx));
+    expect(section).toMatch(/message:\s*publicPage\.error\s*\|\|/);
+  });
+});
+
 describe('ShareCardSheet — the shared text carries the real per-share link (migration 0085), appears exactly once, and is never derived from a client-supplied value', () => {
   it('navigator.share is called with the file and messageText only — never also a separate url (which caused the reported duplication)', () => {
     const idx = sheet.indexOf('navigator.share({');

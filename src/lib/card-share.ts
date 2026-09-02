@@ -185,3 +185,14 @@ export function cardShareStageReducer(state: CardShareStage, action: CardShareAc
 }
 
 export const CARD_SHARE_GENERIC_FAILURE = 'We could not prepare this image right now. Please try again.';
+
+/**
+ * Deliberately distinct wording per failure stage (capture vs. link
+ * creation vs. finishing the share) — a live-reported failure kept
+ * surfacing CARD_SHARE_GENERIC_FAILURE with no way to tell, from the
+ * screenshot alone, which of three genuinely different steps had actually
+ * failed. Whichever exact message a guardian reports next now identifies
+ * the stage without needing server logs.
+ */
+export const CARD_SHARE_CAPTURE_FAILURE = 'We could not prepare your card image. Please try again.';
+export const CARD_SHARE_LINK_FAILURE = 'We could not create your shareable link. Please try again.';

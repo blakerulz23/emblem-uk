@@ -2,8 +2,10 @@
 
 import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import {
+  CARD_SHARE_CAPTURE_FAILURE,
   CARD_SHARE_CONFIRMATION_LABEL,
   CARD_SHARE_GENERIC_FAILURE,
+  CARD_SHARE_LINK_FAILURE,
   CARD_SHARE_MESSAGE_TEXT,
   CARD_SHARE_RECALL_NOTICE,
   CARD_SHARE_WARNING,
@@ -185,7 +187,12 @@ export default function ShareCardSheet({
       try {
         dataUrl = await getShareImage();
       } catch {
-        dispatch({ type: 'fail', message: CARD_SHARE_GENERIC_FAILURE });
+        // Distinct wording from the two failure branches below — see
+        // card-share.ts's own comment: a live-reported failure kept
+        // showing the same generic message regardless of which of these
+        // three genuinely different steps had failed, making it
+        // impossible to diagnose from a screenshot alone.
+        dispatch({ type: 'fail', message: CARD_SHARE_CAPTURE_FAILURE });
         return;
       }
 
@@ -195,7 +202,7 @@ export default function ShareCardSheet({
       // between the consent step above and this call is rejected here.
       const publicPage = await createCardSharePublicPage(orderId, dataUrl);
       if (!publicPage.ok || !publicPage.token) {
-        dispatch({ type: 'fail', message: publicPage.error || CARD_SHARE_GENERIC_FAILURE });
+        dispatch({ type: 'fail', message: publicPage.error || CARD_SHARE_LINK_FAILURE });
         return;
       }
       const messageText = buildCardShareMessageText(cardSharePublicPageUrl(publicPage.token));
