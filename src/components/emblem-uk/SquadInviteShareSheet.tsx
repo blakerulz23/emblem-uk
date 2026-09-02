@@ -25,20 +25,23 @@ import {
  * untouched by this file — the ordinary single-builder success screen
  * keeps its existing look exactly as before.
  *
- * `eligibility` is computed fresh, server-side, by the same unmodified
- * get_card_share_eligibility RPC (migration 0078) called through the same
- * unmodified /api/card-share/eligibility route — this component adds no
- * new authorization path. Today, every Squad Invite order has
- * orders.authority_status left null (Squad Invite's own four commit-time
- * declarations are a separate, less specific schema — see this branch's
- * PR description) — get_card_share_eligibility's own existing check
- * `authority_status is distinct from 'confirmed'` therefore returns
- * `{eligible:false, reason:'not_authorized'}` for every Squad Invite
- * guardian today, safely and correctly, with nothing new added or relaxed
- * here to make that so. The primary action below simply stays hidden
- * (not_authorized is a "hide entirely" reason, same as the ordinary
- * builder) until separate, dedicated foundation work gives Squad Invite
- * its own real, persisted relationship evidence.
+ * `eligibility` is computed fresh, server-side, by the same
+ * get_card_share_eligibility RPC (migration 0078, extended for Squad
+ * Invite by migration 0084) called through the same unmodified
+ * /api/card-share/eligibility route — this component adds no new
+ * authorization path of its own. 0084 is a founder-approved, explicitly
+ * risk-accepted extension: Squad Invite's own commit-time declaration
+ * schema cannot distinguish a direct parent/guardian from another adult
+ * submitting "with the parent's permission" (one checkbox covers both),
+ * so this branch cannot enforce the same relationship = 'parent_guardian'
+ * proof the ordinary builder's branch requires — see 0084's own header
+ * comment for the full reasoning. Every other check still applies at full
+ * strength: the authenticated caller must be the exact guardian who
+ * completed the commitment, the two sharing-relevant declarations must be
+ * currently granted (and not later withdrawn) in the persisted
+ * squad_invite_permissions audit table, the card must be a genuine
+ * single-child order, non-suspended/revoked, with an approved design on
+ * the same Custom Collection allowlist the ordinary builder enforces.
  */
 export default function SquadInviteShareSheet({
   orderId,
