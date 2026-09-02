@@ -3920,26 +3920,60 @@ a { text-decoration: none; color: inherit; }
   background: #fff;
   padding: 20px 20px 68px;
   box-shadow: 0 20px 45px rgba(16, 16, 21, 0.12);
-  /* The Custom Collection card templates (CardArt.tsx's
-     CustomCollectionCardArt et al.) render at a fixed pixel width by
-     design (size={340} for a non-compact PlayerCard, used for crisp,
-     hand-tuned overlay positioning) — never fluid/percentage-based. The
-     `.uk-real-card` rule below only constrains ITS OWN wrapper box, not
-     the fixed-width card inside it, so on a narrow phone the card
-     genuinely overflows this container. .uk-edit-preview (the pre-
-     success review step's own card preview) already carries this same
-     protection — this rule was simply missing it, letting the overflow
-     bleed out to the page level (a lopsided, seemingly "uncentred" card
-     bleeding past the right edge, confirmed live) instead of staying
-     contained within this rounded box the way the review step's
-     identical card already does.
-  */
+  /* Safety net only, not the fix itself — see the `.uk-real-card` rule
+     below for what actually makes the fixed-pixel-width card fit. This
+     just guarantees the rounded corners stay clean if a transform ever
+     rounds a fraction of a pixel past the box in some browser. */
   overflow: hidden;
 }
 
+/* .uk-real-card (CardFace's own wrapper div) has no competing inline
+   style, so width/aspect-ratio apply cleanly here — but its CHILD
+   (CardArt's actual root — every CardArt sub-renderer returns exactly
+   one root div at this nesting depth, e.g. CustomCollectionCardArt,
+   EmjflCardArt) sets width/height/border-radius/font-size/padding as
+   INLINE PIXEL styles computed in JS from the `size` prop (340 for a
+   non-compact PlayerCard) — border-radius and font-size are NOT
+   percentages of anything, so overriding just the outer width here
+   (the earlier `overflow: hidden` fix) only clips the card; it doesn't
+   make it fit. The one way to shrink a fixed-pixel-computed subtree
+   uniformly, without touching CardArt's own code (its DOM output must
+   stay byte-identical — other pages, and print capture, still need it
+   rendered natively at full size), is to visually scale it with
+   `transform: scale()` and reserve the resulting box with CSS: */
 .uk-card-share-preview .uk-real-card {
   width: min(280px, 100%);
   max-width: 100%;
+  aspect-ratio: 340 / 476;
+  overflow: hidden;
+  position: relative;
+  /* Establishes the query container CardArt's own root scales against —
+     100cqw always equals THIS element's own (already-responsive) content
+     width, so the scale factor recomputes continuously at any viewport,
+     not just at a fixed breakpoint. */
+  container-type: inline-size;
+  /* .uk-real-card's OWN generic rule (below, unscoped) sets
+     `display: grid; justify-content: center` for unrelated callers —
+     still in effect here too. Without an explicit grid-template-columns,
+     the implicit single column sizes to fit its child's CONTENT width —
+     and since the child's un-transformed layout width is still the full
+     340px (transform is paint-only, it never shrinks layout size),
+     justify-content: center centers THAT 340px track inside this
+     276-280px box, pushing the (still correctly scaled) card equally
+     past both edges instead of flush against them — confirmed live via
+     a Playwright-measured reproduction of this exact rule chain, off by
+     precisely (340 - rendered width) / 2 on each side. minmax(0, 1fr)
+     forces the column to the container's own available width instead. */
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.uk-card-share-preview .uk-real-card > div {
+  transform-origin: top left;
+  /* CardArt's own root is always rendered at a literal 340px (see this
+     rule's own comment) regardless of `side` (front/back) or template
+     family — every sub-renderer sets width: W where W = the same `size`
+     prop, so one fixed 340px divisor is correct for all of them here. */
+  transform: scale(calc(100cqw / 340px));
 }
 
 /* Rotation is applied only to this wrapper, around the card's own visual
