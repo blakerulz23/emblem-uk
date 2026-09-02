@@ -1898,6 +1898,17 @@ a { text-decoration: none; color: inherit; }
   font-weight: 700;
 }
 
+/* The finished card is the emotional focus of this screen — same fixed-
+   dimension preview frame the pre-success review step already uses
+   (.uk-edit-preview), so nothing shifts layout when the phase flips from
+   'form' to 'success'. */
+.uk-squad-invite-success-card {
+  margin-top: 16px;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
 .uk-squad-invite-success-actions {
   display: grid;
   gap: 10px;
@@ -1912,6 +1923,30 @@ a { text-decoration: none; color: inherit; }
   margin-top: 0;
 }
 
+/* Secondary — "View squad progress": a real action, deliberately not the
+   dominant CTA. An outline button, not a filled one, so it never competes
+   with Share your card for attention. */
+.uk-squad-invite-success-outline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--wizard-line);
+  border-radius: 999px;
+  padding: 12px 20px;
+  color: var(--wizard-ink);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+}
+
+.uk-squad-invite-success-outline:hover {
+  border-color: var(--wizard-accent);
+  color: var(--wizard-accent);
+}
+
+/* Tertiary — "Return to Emblem homepage": a quiet text link, the lowest-
+   weight action on the screen. */
 .uk-squad-invite-success-secondary {
   display: block;
   text-align: center;
@@ -1922,29 +1957,95 @@ a { text-decoration: none; color: inherit; }
   text-underline-offset: 3px;
 }
 
-.uk-squad-review-success .uk-squad-invite-success-list {
-  margin: 18px 0 0;
+.uk-squad-invite-success-next {
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid var(--wizard-line);
+}
+
+.uk-squad-invite-success-next h2 {
+  margin: 0 0 10px;
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 15px;
+}
+
+.uk-squad-invite-success-next ul {
+  margin: 0;
   padding: 0;
   list-style: none;
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
-.uk-squad-review-success .uk-squad-invite-success-list li {
+.uk-squad-invite-success-next li {
   position: relative;
-  padding-left: 26px;
+  padding-left: 22px;
   color: var(--wizard-soft);
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.4;
 }
 
-.uk-squad-review-success .uk-squad-invite-success-list li::before {
-  content: '✓';
+.uk-squad-invite-success-next li::before {
+  content: '';
   position: absolute;
   left: 0;
-  top: 0;
-  color: var(--wizard-accent);
-  font-weight: 900;
+  top: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--wizard-accent);
+}
+
+.uk-squad-invite-success-privacy {
+  margin: 14px 0 0;
+  color: var(--wizard-faint);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* SquadInviteShareSheet — the "Share your card" primary action and its
+   ineligible/loading states, plus the caption-preview block inside the
+   confirm dialog shared with .uk-card-share-modal above. */
+.uk-squad-share {
+  display: contents;
+}
+
+.uk-squad-share-loading {
+  opacity: 0.55;
+  cursor: default;
+  pointer-events: none;
+}
+
+.uk-squad-share-blocked {
+  margin: 0;
+  color: var(--wizard-faint);
+  font-size: 13px;
+  text-align: center;
+}
+
+.uk-squad-share-caption-preview {
+  border: 1px solid var(--wizard-line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fbfaf7;
+}
+
+.uk-squad-share-caption-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--wizard-faint);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.uk-squad-share-caption-preview p {
+  margin: 0;
+  color: var(--wizard-ink);
+  font-size: 13px;
+  white-space: pre-line;
 }
 
 @media (min-width: 900px) {

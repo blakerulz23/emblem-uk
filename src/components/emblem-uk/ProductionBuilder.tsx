@@ -36,6 +36,7 @@ import BackgroundRemovalStep from './builder-steps/BackgroundRemovalStep';
 import AdultPermissionStep from './builder-steps/AdultPermissionStep';
 import GuardianPendingScreen from './builder-steps/GuardianPendingScreen';
 import ShareCardSheet from './ShareCardSheet';
+import SquadInviteShareSheet from './SquadInviteShareSheet';
 import CoachCardSection from './CoachCardSection';
 import PricingSummaryCard from './PricingSummaryCard';
 import { useOrderPricingQuote } from './useOrderPricingQuote';
@@ -324,6 +325,11 @@ export default function ProductionBuilder({
   });
   const [squadInviteAccepted, setSquadInviteAccepted] = useState<Record<string, boolean>>({});
   const [squadInvitePhase, setSquadInvitePhase] = useState<'form' | 'success'>('form');
+  // Captured from the commit route's own response body once a commitment
+  // genuinely succeeds — never derived from squadInviteContext.participationId,
+  // which is an invitation/session identifier, not an order id, and must
+  // never be treated as one (see this branch's authorization-boundary notes).
+  const [squadInviteOrderId, setSquadInviteOrderId] = useState<string | null>(null);
   const [squadInviteOutcome, setSquadInviteOutcome] = useState<SquadInviteCommitOutcome>(null);
   const [squadInviteSubmitting, setSquadInviteSubmitting] = useState(false);
   const squadInviteSubmittingRef = useRef(false);
@@ -1027,11 +1033,11 @@ export default function ProductionBuilder({
    * the caller already turns into a visible, retryable failure — never a
    * silently incomplete image.
    */
-  const fetchProxiedShareAssetAsLocalUrl = async (kind: 'photo' | 'badge'): Promise<{ url: string; revoke: () => void }> => {
+  const fetchProxiedShareAssetAsLocalUrl = async (kind: 'photo' | 'badge', orderIdForProxy: string): Promise<{ url: string; revoke: () => void }> => {
     const response = await fetch('/api/card-share/photo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
-      body: JSON.stringify({ orderId: submittedOrderId, kind }),
+      body: JSON.stringify({ orderId: orderIdForProxy, kind }),
     });
     if (!response.ok) throw new Error('Could not load an image required for this card');
     const blob = await response.blob();
@@ -1045,25 +1051,30 @@ export default function ProductionBuilder({
   const needsLocalizing = (url?: string | null): url is string =>
     Boolean(url) && !isLocalAssetUrl(url!) && !url!.startsWith('/');
 
-  const captureShareImage = async (): Promise<string> => {
-    const approvedPlayer = summary.approvedPlayers[0];
-    if (!approvedPlayer) throw new Error('Could not prepare card image');
-    if (!submittedOrderId) throw new Error('Could not prepare card image');
+  // Parameterised so the exact same capture path (proxy any private S3
+  // asset through /api/card-share/photo, render off-screen in the same
+  // rig, wait for real pixels, capture) serves both the ordinary builder's
+  // own order and Squad Invite's — see captureSquadInviteShareImage below.
+  // captureShareImage is kept as a zero-behaviour-change wrapper so the
+  // ordinary builder's call site and its existing tests are untouched.
+  const captureShareImageFor = async (orderIdForCapture: string | null, playerForCapture: PlayerDraft | undefined): Promise<string> => {
+    if (!playerForCapture) throw new Error('Could not prepare card image');
+    if (!orderIdForCapture) throw new Error('Could not prepare card image');
 
     const revokers: Array<() => void> = [];
     try {
-      let capturePlayer = approvedPlayer;
+      let capturePlayer = playerForCapture;
 
       const photoUrl = capturePlayer.photo?.srcUrl;
       if (needsLocalizing(photoUrl)) {
-        const local = await fetchProxiedShareAssetAsLocalUrl('photo');
+        const local = await fetchProxiedShareAssetAsLocalUrl('photo', orderIdForCapture);
         revokers.push(local.revoke);
         capturePlayer = { ...capturePlayer, photo: { ...capturePlayer.photo!, srcUrl: local.url } };
       }
 
       const badgeUrl = capturePlayer.badgeUrl;
       if (needsLocalizing(badgeUrl)) {
-        const local = await fetchProxiedShareAssetAsLocalUrl('badge');
+        const local = await fetchProxiedShareAssetAsLocalUrl('badge', orderIdForCapture);
         revokers.push(local.revoke);
         capturePlayer = { ...capturePlayer, badgeUrl: local.url };
       }
@@ -1096,6 +1107,13 @@ export default function ProductionBuilder({
       for (const revoke of revokers) revoke();
     }
   };
+
+  const captureShareImage = (): Promise<string> => captureShareImageFor(submittedOrderId, summary.approvedPlayers[0]);
+  // Squad Invite's success screen has no summary.approvedPlayers (that
+  // array is populated by the ordinary multi-player review step, which
+  // Squad Invite never uses) — its one child is order.players[0], the same
+  // object the pre-success review preview already renders via PlayerCard.
+  const captureSquadInviteShareImage = (): Promise<string> => captureShareImageFor(squadInviteOrderId, order.players[0]);
 
   const submitEnquiry = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1495,6 +1513,8 @@ export default function ProductionBuilder({
         setSquadInviteOutcome(body?.reason === 'campaign_closed' ? 'campaign_closed' : 'unavailable');
         return;
       }
+      const successBody = await response.json().catch(() => null) as { orderId?: string } | null;
+      if (successBody?.orderId) setSquadInviteOrderId(successBody.orderId);
       setSquadInvitePhase('success');
       succeeded = true;
       // submittingRef intentionally stays true on success — one-shot
@@ -2150,18 +2170,35 @@ export default function ProductionBuilder({
                 {squadInvitePhase === 'success' ? (
                   <div className="uk-squad-review-success" role="status" aria-live="polite">
                     <p className="uk-wizard-kicker">Squad Invite</p>
-                    <h1>Your child&apos;s card is saved.</h1>
-                    {order.club && <p className="uk-squad-invite-success-team">{order.club}</p>}
-                    <ul className="uk-squad-invite-success-list">
-                      <li>A payment request will be emailed to you once your team&apos;s price is confirmed — nothing is charged today.</li>
-                      <li>Emblem staff review this card before it goes into production.</li>
-                      <li>Production begins only after payment, in a future approved live flow.</li>
-                      <li>Cards are delivered together to the approved organiser/coach.</li>
-                      <li>Your organiser sees aggregate team progress only — never this card&apos;s details.</li>
-                    </ul>
+                    <h1>Your child&apos;s card is saved</h1>
+                    {order.club && <p className="uk-squad-invite-success-team">It&apos;s been added to {order.club}&apos;s squad order.</p>}
+
+                    <div className="uk-squad-invite-success-card">
+                      <div className="uk-edit-preview" role="img" aria-label="Your child's finished Emblem card">
+                        <PlayerCard order={order} player={squadInvitePlayer} side={cardSide} />
+                      </div>
+                      <div className="uk-card-side-toggle wide" aria-label="Choose card side">
+                        <button type="button" className={cardSide === 'front' ? 'active' : ''} onClick={() => setCardSide('front')}>Front</button>
+                        <button type="button" className={cardSide === 'back' ? 'active' : ''} onClick={() => setCardSide('back')}>Back</button>
+                      </div>
+                    </div>
+
                     <div className="uk-squad-invite-success-actions">
-                      <a className="uk-wizard-primary" href="/squad-invite/join">Return to Squad Invite</a>
-                      <a className="uk-squad-invite-success-secondary" href="/">Return to Emblem homepage</a>
+                      {squadInviteOrderId && (
+                        <SquadInviteShareSheet orderId={squadInviteOrderId} getShareImage={captureSquadInviteShareImage} />
+                      )}
+                      <Link href="/squad-invite/join" className="uk-squad-invite-success-outline">View squad progress</Link>
+                      <Link href="/" className="uk-squad-invite-success-secondary">Return to Emblem homepage</Link>
+                    </div>
+
+                    <div className="uk-squad-invite-success-next">
+                      <h2>What happens next</h2>
+                      <ul>
+                        <li>Emblem staff review this card before it goes into production.</li>
+                        <li>A payment request will be emailed to you once your team&apos;s price is confirmed — nothing is charged today.</li>
+                        <li>The completed cards are delivered together to your approved organiser or coach.</li>
+                      </ul>
+                      <p className="uk-squad-invite-success-privacy">Your organiser can see the squad&apos;s overall progress, not your child&apos;s card details or photograph.</p>
                     </div>
                   </div>
                 ) : (
