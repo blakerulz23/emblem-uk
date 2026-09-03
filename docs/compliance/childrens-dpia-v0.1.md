@@ -523,6 +523,54 @@ item 4, risk R4) — the RPCs correctly check that the caller is a
 *recorded* guardian, not that the guardian relationship was ever properly
 established in the first place.
 
+## Correction — three more section 12 items checked against current code — 31 August 2026
+
+**Status: implementation evidence only. One item fully resolved (and was
+actually correct from this document's very first draft — an original
+research gap, not later staleness); two are genuinely partial, corrected
+to say so precisely rather than either "open" or "resolved." Does not
+change the overall recommendation below.**
+
+**Item 6 — noindex on public profiles: already resolved, and always was.**
+`src/app/player/[publicPlayerId]/page.tsx` has exported
+`metadata = { robots: { index: false, follow: false } }` since the commit
+that created the page — before this DPIA's 12 August 2026 first draft.
+This document's original claim ("No robots/noindex protection was
+identified") was incorrect from day one, not something that became stale
+later — recorded here for an honest record, not to assign blame. Risk R8's
+"existing verified controls" should read as including this.
+
+**Item 8 / risk R12 — upload moderation: genuinely partial, not open.**
+Migration `0063_squad_invite_photo_moderation.sql` gives staff a real
+content-rejection action (`reject_squad_invite_card_photo`, wired to a
+"Reject photo" button in `/staff/queue`) — but **verified in local
+source: it only renders for `order.source === 'squad_invite'`**
+(`staff/queue/page.tsx` line 664). The ordinary individual/team builder
+path has no equivalent staff action to reject a photo on content grounds.
+Scanning, public reporting, CSAM response advice, and staff training
+remain entirely unaddressed for every order type. This closes part of R12
+for Squad Invite specifically; it does not close item 8 as a whole.
+
+**Item 10 / risk R20 — retention automation: genuinely partial, not
+open.** `vercel.json` runs two real crons daily:
+`sweep-abandoned-uploads` and `sweep-expired-artwork`. Media/print
+retention has real automated expiry. **Verified in local source: no
+automated expiry exists for claim-attempt logs, `active_viewers`
+presence data, invite expiry cleanup, or application/request logs** —
+the other categories item 10 names. Item 10 should be read as "media
+retention: done; everything else in the list: still open," not as a
+single pass/fail.
+
+**Checked and confirmed still fully open, unaffected by this note:**
+item 3 (privacy/terms — `src/app/privacy/page.tsx` still contains the
+literal placeholder "Last updated [DATE]"), item 4 / risk R4 (no dispute
+or freeze mechanism for an incorrect guardian claim exists anywhere in
+source), item 11 (no product-wide technical control against real child
+data reaching dev/staging was found — only Squad Invite's own preview-
+safety mechanism, which is a different, narrower thing), and item 12 (no
+MFA anywhere in source). These are stated here as confirmed-still-open,
+not newly discovered.
+
 ## Evidence labels and risk method
 
 - **VERIFIED** — directly supported by repository evidence cited in this document.
@@ -705,7 +753,7 @@ Player OS / Coach OS
 
 **VERIFIED.** New/unclaimed players default to public sharing disabled. A guardian RPC can enable/disable it; staff can enable/disable/rotate the public ID. Only allowlisted fields and moments explicitly `public` with eligible verification status are returned. Internal IDs, DOB, age, height, foot, ambitions, guardians, assessments, focus, strengths and claim token are excluded ([0039](../../supabase/migrations/0039_guardian_public_profile_control.sql); [public-player-profile.ts](../../src/lib/public-player-profile.ts)).
 
-**UNKNOWN.** No `robots`/`noindex` protection was identified on the public profile page; search-engine behaviour must be tested and controlled.
+**RESOLVED — see the 31 August 2026 correction note below.** `robots: { index: false, follow: false }` has been present on the public profile page since it was created, predating even this document's first draft. Search-engine behaviour (crawling despite the meta tag, sitemaps, cache) has not been independently tested.
 
 ### Lost-card deactivation
 
@@ -786,11 +834,11 @@ ICO age bands (0–5, 6–9, 10–12, 13–15, 16–17) are useful design guides
 | R5 Excessive coach access | Child; privacy invasion, unfair evaluation | Team-wide access and rich fields including DOB | RLS; coach relationship checks; exact DOB special RPC | M / High / High | Role/field matrix, least privilege, purpose-specific views, access logging/review, remove DOB unless essential. Owner: Product + Club Welfare | Medium |
 | R6 Former coach retains access | Child; ongoing unauthorised access | No automatic assignment expiry/season review | Direct connection can be removed by guardian/self | H / High / **High** | Season expiry, club offboarding, periodic guardian review, revoke all coach sessions/links on removal. Owner: Club admin + Product | Low–Medium |
 | R7 Private Player OS exposed through public profile | Child; broad disclosure | Service-role public query bypasses RLS; implementation error | Explicit DTO allowlist, visibility gate, eligible public moments only, 15-min URLs | M / Critical / High | Independent security tests; deny-by-default regression tests; cache headers; monitor route changes; child-friendly preview. Owner: Security | Low–Medium |
-| R8 Search-engine indexing | Child; durable discoverability | Public stable URLs, identifiable content | Random public ID; guardian disable/rotation | M / High / High | `noindex,nofollow`, robots controls, cache removal/runbook, avoid sitemaps, search-engine de-index request process. Owner: Web + DPO | Low |
+| R8 Search-engine indexing | Child; durable discoverability | Public stable URLs, identifiable content | Random public ID; guardian disable/rotation; `noindex,nofollow` meta tag present since page creation (31 Aug 2026 correction) | M / High / High | Independently test crawl behaviour despite the meta tag; cache removal/runbook, avoid sitemaps, search-engine de-index request process. Owner: Web + DPO | Low |
 | R9 Identification by name/club/team/age/location | Child; stalking, unwanted contact | Combined public attributes and image | Public DTO excludes DOB/age/height; visibility opt-in | H / High / **High** | Pseudonym/first-name default; omit team/season/squad number; granular preview/choices; forbid location; safeguarding review. Owner: Product | Medium |
 | R10 Scraping/downloading photos | Child; copying, facial misuse | Public signed URL can be downloaded; stable page | 15-minute URL; private S3 bucket | H / High / **High** | Default no public photo; transformed low-resolution/watermarked derivative; CSP/hotlink controls; takedown monitoring; warn that technical prevention is limited. Owner: Security + Product | Medium–High |
 | R11 Bullying/comparison/public ranking | Children; distress, exclusion, lost opportunity | Stats, scores, assessments, strengths, moments | Assessments excluded publicly; no public leaderboard/XP found | M / High / High | Prohibit ranking; age-appropriate presentation; contest/correct controls; safeguarding reporting; test with children. Owner: Product + Safeguarding | Low–Medium |
-| R12 Inappropriate uploads | Children/public/staff; harmful content or unlawful imagery | Free text/photo/video; no moderation workflow evidenced | Terms prohibit inappropriate content; coach verification states | M / Critical / High | Upload rules, scanning/moderation, report/block/escalation, CSAM response advice, staff training, minimal access. Owner: Safeguarding | Medium |
+| R12 Inappropriate uploads | Children/public/staff; harmful content or unlawful imagery | Free text/photo/video | Terms prohibit inappropriate content; staff can reject a photo on content grounds for Squad Invite orders specifically (migration 0063, see 31 Aug 2026 correction) — **not** for the ordinary individual/team builder path | M / Critical / High | Extend content-rejection to every order type, not just Squad Invite; scanning/moderation, report/block/escalation, CSAM response advice, staff training, minimal access. Owner: Safeguarding | Medium |
 | R13 Staff misuse | Children/families; broad unauthorised access | Service-role/staff production capability | `staff_accounts`, `requireStaff`, approval attribution, RLS/no client access | M / Critical / High | MFA, least privilege, joiner/mover/leaver, audit every sensitive view/action, periodic review, dual control for export/public override. Owner: Security | Low–Medium |
 | R14 Compromised guardian/coach account | Child; disclosure or harmful edits | Email OTP/session compromise | Server `getUser`; recent OTP reauth for account deletion; scoped RLS | M / Critical / High | MFA/passkeys for staff/coaches, session/device controls, security notifications, recovery/freeze, anomaly detection. Owner: Security | Medium |
 | R15 Insecure third party/transfer | Children/adults; breach, reuse, overseas access | Cloud/AI/email/commerce suppliers | Server-held keys; private S3; no secret values client-side identified | M / Critical / High | Article 28/transfer review, UK regions where suitable, AI no-training/retention confirmation, supplier register, incident terms. Owner: DPO + Procurement | Medium |
@@ -798,7 +846,7 @@ ICO age bands (0–5, 6–9, 10–12, 13–15, 16–17) are useful design guides
 | R17 Withdrawn consent not propagated | Child; continued public/AI processing | Copies, caches, supplier retention, printed card | Guardian disable/unpublish and delete tools | M / High / High | Map consent dependencies; supplier deletion; cache purge; explain irreversible physical copies/downloads; record withdrawal. Owner: DPO + Product | Medium |
 | R18 Club transfer | Child; old coach/team access and wrong public identity | `team_id`/coach relations persist; historic snapshots | Direct coach removal exists | H / High / **High** | Atomic transfer workflow: end old access, review content visibility, notify guardian, preserve only justified history. Owner: Club admin + Product | Low–Medium |
 | R19 Full DOB disclosure | Child; identity theft/safeguarding | (Gate 2 Stage A, 24 August 2026: exact DOB is no longer collected, stored, read or write-accessible by any application role — see the dated note above.) | Every value erased; both read RPCs dropped; write path no longer accepts a date of birth | Was M / Critical / High | Column drop (Stage B), production release + independent verification of Stage A, backup-retention exposure still open. Owner: DPO + Product | Lower, not yet closed |
-| R20 Excessive retention | All; increased breach and future-use risk | No comprehensive schedules/jobs | Cascades and some deletion tools; invite expiry | H / High / High | Approved schedule per inventory, automated expiry, backup/log coverage, annual review. Owner: DPO + Engineering | Low–Medium |
+| R20 Excessive retention | All; increased breach and future-use risk | No comprehensive schedules/jobs | Cascades and some deletion tools; invite expiry; **automated daily expiry for abandoned uploads and expired artwork specifically** (`vercel.json` crons, see 31 Aug 2026 correction) — claim logs, presence data, and application logs still have none | H / High / High | Approved schedule per inventory; extend automated expiry to claim-attempt logs, `active_viewers`, and application/request logs; backup/log coverage; annual review. Owner: DPO + Engineering | Low–Medium |
 | R21 Real child data in staging/dev | Child; weaker environment exposure | Copies, screenshots, local exports | Separate project references inferred | M / Critical / High | Written prohibition; synthetic data; masked refresh only; separate keys/access; scanning and deletion attestations. Owner: Security | Low |
 | R22 AI changes/misrepresents child photo | Child; dignity, bias, stereotyping | Generative model creates edited/stylised image | User chooses feature; fallback exists | M / High / High | Non-AI default; clear notice/preview/approval; prohibit sensitive inference; quality/bias tests; delete provider inputs/outputs. Owner: Product + DPO | Medium |
 | R23 Claim-attempt log becomes credential dataset | Children/users; token replay and location inference | Raw code attempt + IP stored | Service-role-only table | M / High / High | Hash/tokenise attempts, never retain valid codes, short TTL, restricted incident access. Owner: Security | Low |
@@ -828,11 +876,11 @@ Consultation should test: comprehension of privacy notices and NFC behaviour; ex
 3. Replace placeholder privacy/terms with layered adult/child notices covering OS, NFC, exact DOB, coaches, public sharing, AI, suppliers, retention and rights.
 4. Implement parental-responsibility/authority verification and incorrect-claim dispute/freeze.
 5. ~~Implement lost/stolen-card token revocation/replacement distinct from public-ID rotation.~~ **Resolved — migration 0075, see the 29 August 2026 correction note.**
-6. Add `noindex` and test cache/search behaviour for all public child profiles; reduce default public fields/photos.
+6. ~~Add `noindex`~~ **already present — see 31 August 2026 correction note.** Still open: test cache/search behaviour for all public child profiles; reduce default public fields/photos.
 7. Approve field-by-field minimisation; remove or tightly justify height, ambitions and append-only evaluation data. Exact DOB itself was actioned in Gate 2 Stage A (24 August 2026, see the dated note above) — collection, storage and read/write access are stopped; column removal (Stage B) and independent verification of Stage A in production remain outstanding.
-8. Establish upload moderation/safeguarding/reporting and staff escalation.
+8. Establish upload moderation/safeguarding/reporting and staff escalation. **Partially done** (Squad Invite orders only — see 31 Aug 2026 correction note); ordinary builder orders still have no equivalent.
 9. Execute supplier due diligence, Article 28 terms, transfer assessments and AI input/output retention/training commitments.
-10. Approve retention schedule and automate high-risk expiry: claim logs, presence, invites, media/prints, public caches, logs and deletion backups.
+10. Approve retention schedule and automate high-risk expiry: claim logs, presence, invites, **media/prints (done — see 31 Aug 2026 correction note)**, public caches, logs and deletion backups.
 11. Prohibit real child data in development/staging; implement synthetic/masked test data and access reviews.
 12. Test RLS/RPC/public DTO and staff permissions independently; enable MFA/strong staff access and sensitive-action audit.
 13. ~~Convert manual player/S3 deletion into a verifiable workflow or demonstrate operational capacity, reconciliation and backup expiry.~~ **Substantially resolved — migration 0076, see the 29 August 2026 correction note.** One residual product decision remains: no pre-delete backup/dispute window exists in the automated path.
