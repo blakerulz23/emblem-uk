@@ -17,13 +17,17 @@
  * between the desktop two-column layout and the mobile/tablet horizontal
  * scroller, so chapter copy is never duplicated in the markup.
  *
- * Imagery: only existing, already-approved marketing photos already used
- * elsewhere on this same homepage (seed-jacob.png, seed-leo.png,
- * coachos-moment-goal.png — see src/app/page.tsx). No coach+player photo or
- * trophy/award photo exists in the repo today — see the two `photo: null`
- * chapters below, which render a restrained icon-based placeholder tile
- * instead of inventing or reusing any private upload. Flagged again in
- * this task's own report.
+ * Imagery: First Card and Matchday Memories reuse existing, already-approved
+ * marketing photos already used elsewhere on this same homepage
+ * (seed-jacob.png, coachos-moment-goal.png — see src/app/page.tsx).
+ *
+ * Coach Recognition, Milestones and Awards use three new synthetic marketing
+ * photos (public/assets/marketing/player-os-*.png) — supplied directly by
+ * the site owner for this purpose, trimmed to their real content bounds
+ * (no crop marks/canvas padding) but otherwise unedited. No real child's
+ * photo is used anywhere in this file; every image is either a pre-existing
+ * approved asset or an owner-supplied synthetic one added for this section
+ * specifically.
  */
 
 const ORANGE = 'var(--accent, #ff5a1f)';
@@ -79,21 +83,21 @@ const CHAPTERS: Chapter[] = [
   {
     id: 'coach-recognition',
     title: 'COACH RECOGNITION',
-    photo: null,
+    photo: { src: '/assets/marketing/player-os-coach-recognition.png', alt: 'Coach and player photo used to illustrate coach recognition' },
     label: 'Strong attitude. Leads by example.',
     meta: 'Coach Taylor · 14.11.2024',
   },
   {
     id: 'milestones',
     title: 'MILESTONES',
-    photo: { src: '/seed-leo.png', alt: 'Player photo used to illustrate a season milestone' },
+    photo: { src: '/assets/marketing/player-os-milestones.png', alt: 'Player photo, viewed from behind at sunset, used to illustrate a season milestone' },
     label: '50 APPEARANCES',
     meta: '03.02.2025',
   },
   {
     id: 'awards',
     title: 'AWARDS',
-    photo: null,
+    photo: { src: '/assets/marketing/player-os-awards.png', alt: 'Player holding a trophy, used to illustrate an award' },
     label: 'PLAYER OF THE MONTH',
     meta: 'APR 2025',
     mark: 'crown',
