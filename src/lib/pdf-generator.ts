@@ -1,6 +1,7 @@
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import sharp from 'sharp';
 import { PRINT_SPECS, ProductKind, pdfPageSize } from './print-specs';
+import { validateMasterBytes } from './print-master-validation';
 
 export interface DesignPayload {
   product: ProductKind;
@@ -315,6 +316,75 @@ export async function buildPdf(payload: DesignPayload): Promise<Buffer> {
         color: rgb(0.066, 0.427, 1),  // #116DFF
       });
     }
+  }
+
+  const bytes = await pdf.save();
+  return Buffer.from(bytes);
+}
+
+/**
+ * Verified print-master PDF path — the replacement for buildFullBleedRaster
+ * for any order that has a real, stored full-bleed master (print-master-
+ * render.ts + print-master-storage.ts). No mirror, no blur, no fit/cover/
+ * contain math: the master is already a genuine, correctly-composed
+ * 826x1126px full-bleed raster, so this only ever draws it 1:1 across the
+ * page. Crop marks are added here as separate PDF vector instructions,
+ * exactly as the legacy path already does — never baked into the master
+ * PNG itself (see print-master-render.ts's own "no crop marks" contract).
+ *
+ * Every master is re-validated here (dimensions, MIME, digest) even though
+ * print-master-storage.ts's fetchVerifiedPrintMaster already validates on
+ * read — this function must never trust a caller that skipped that step,
+ * since a malformed/wrong-size/tampered buffer reaching page.drawImage
+ * with width/height hardcoded to the page size would otherwise silently
+ * stretch or corrupt the output exactly like the defect this whole
+ * workflow exists to eliminate.
+ */
+export interface VerifiedMasterInput {
+  bytes: Buffer;
+  expectedSha256: string;
+}
+
+export async function buildPdfFromVerifiedMasters(params: {
+  front: VerifiedMasterInput;
+  back: VerifiedMasterInput;
+  meta?: DesignPayload['meta'];
+}): Promise<Buffer> {
+  const spec = PRINT_SPECS.card;
+  const { width, height } = pdfPageSize(spec);
+
+  const front = await validateMasterBytes({ bytes: params.front.bytes, expectedSha256: params.front.expectedSha256 });
+  const back = await validateMasterBytes({ bytes: params.back.bytes, expectedSha256: params.back.expectedSha256 });
+
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(`Print: ${spec.label} (verified master)`);
+  pdf.setAuthor('Emblem / Last Shot Cards');
+  if (params.meta?.orderRef) pdf.setSubject(`Order ${params.meta.orderRef}`);
+  if (params.meta) pdf.setKeywords(Object.entries(params.meta).map(([k, v]) => `${k}:${v}`));
+
+  const bleedPt = spec.bleedIn * 72;
+  const markLen = 12;
+  const k = rgb(0, 0, 0);
+  const drawCropMarks = (page: Awaited<ReturnType<typeof pdf.addPage>>) => {
+    page.drawLine({ start: { x: 0, y: height - bleedPt }, end: { x: markLen, y: height - bleedPt }, thickness: 0.5, color: k });
+    page.drawLine({ start: { x: bleedPt, y: height }, end: { x: bleedPt, y: height - markLen }, thickness: 0.5, color: k });
+    page.drawLine({ start: { x: width, y: height - bleedPt }, end: { x: width - markLen, y: height - bleedPt }, thickness: 0.5, color: k });
+    page.drawLine({ start: { x: width - bleedPt, y: height }, end: { x: width - bleedPt, y: height - markLen }, thickness: 0.5, color: k });
+    page.drawLine({ start: { x: 0, y: bleedPt }, end: { x: markLen, y: bleedPt }, thickness: 0.5, color: k });
+    page.drawLine({ start: { x: bleedPt, y: 0 }, end: { x: bleedPt, y: markLen }, thickness: 0.5, color: k });
+    page.drawLine({ start: { x: width, y: bleedPt }, end: { x: width - markLen, y: bleedPt }, thickness: 0.5, color: k });
+    page.drawLine({ start: { x: width - bleedPt, y: 0 }, end: { x: width - bleedPt, y: markLen }, thickness: 0.5, color: k });
+  };
+
+  for (const validated of [front, back]) {
+    const page = pdf.addPage([width, height]);
+    const img = await pdf.embedPng(validated.bytes);
+    // Direct 1:1 placement — no fit/cover/contain, no cropping, no scale
+    // math beyond mapping the raster's own pixel grid onto the page's own
+    // point grid (both already the same 826x1126 @ 2.75x3.75in @300dpi
+    // geometry from print-master-geometry.ts / print-specs.ts).
+    page.drawImage(img, { x: 0, y: 0, width, height });
+    drawCropMarks(page);
   }
 
   const bytes = await pdf.save();

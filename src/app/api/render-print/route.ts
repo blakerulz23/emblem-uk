@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { randomUUID } from 'crypto';
-import { buildPdf, DesignPayload } from '@/lib/pdf-generator';
+import { buildPdf, buildPdfFromVerifiedMasters, DesignPayload } from '@/lib/pdf-generator';
 import { uploadPdf, getSignedDownloadUrl } from '@/lib/s3-client';
 import { PRINT_SPECS } from '@/lib/print-specs';
 import { consumeAnonymousRequestRateLimit } from '@/lib/anonymous-request-rate-limit';
 import { BUILDER_SUBMISSION_COOKIE, verifyBuilderSubmissionCapability } from '@/lib/builder-submission-capability';
 import { hasValidBuilderCsrf } from '@/lib/builder-request-security';
+import { createServiceRoleClient } from '@/lib/supabase/server';
+import { fetchVerifiedPrintMaster, type PrintMasterRow } from '@/lib/print-master-storage';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -50,16 +52,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'request too large' }, { status: 413 });
     }
 
-    const body = (await req.json()) as DesignPayload & { submissionKey?: string };
+    const body = (await req.json()) as DesignPayload & { submissionKey?: string; printMasterPlayerId?: string };
 
     if (!body.product || !PRINT_SPECS[body.product]) {
       return NextResponse.json({ error: 'invalid product' }, { status: 400 });
     }
-    if (!isValidImageDataUrl(body.frontImageDataUrl)) {
+
+    // Verified print-master path: mutually exclusive with the legacy
+    // frontImageDataUrl/backImageDataUrl capture upload — a request names
+    // WHICH player's already-confirmed master to use, never uploads image
+    // bytes of its own. This is the ONLY new request shape; the legacy
+    // shape below is completely unchanged and stays the default whenever
+    // printMasterPlayerId is absent, so no existing caller is affected.
+    const usingVerifiedMaster = typeof body.printMasterPlayerId === 'string' && body.printMasterPlayerId.length > 0;
+
+    if (!usingVerifiedMaster && !isValidImageDataUrl(body.frontImageDataUrl)) {
       return NextResponse.json({ error: 'frontImageDataUrl must be a valid, bounded image data URL' }, { status: 400 });
     }
-    if (body.backImageDataUrl !== undefined && !isValidImageDataUrl(body.backImageDataUrl)) {
+    if (!usingVerifiedMaster && body.backImageDataUrl !== undefined && !isValidImageDataUrl(body.backImageDataUrl)) {
       return NextResponse.json({ error: 'backImageDataUrl, when provided, must be a valid, bounded image data URL' }, { status: 400 });
+    }
+    if (usingVerifiedMaster && body.printMasterPlayerId!.length > 200) {
+      return NextResponse.json({ error: 'printMasterPlayerId is too long' }, { status: 400 });
     }
     if (body.meta !== undefined) {
       if (typeof body.meta !== 'object' || body.meta === null || Array.isArray(body.meta)) {
@@ -97,7 +111,44 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'too many requests' }, { status: 429 });
     }
 
-    const pdf = await buildPdf(body);
+    let pdf: Buffer;
+    if (usingVerifiedMaster) {
+      // Order-scoped lookup only — submissionId comes from the verified
+      // capability above, never from the request body, so a caller can
+      // never name another submission's master. A missing/invalid/
+      // wrong-sized/digest-mismatched master is a hard failure here: this
+      // path must never silently fall back to buildPdf()'s legacy
+      // mirror-bleed pipeline.
+      const service = createServiceRoleClient();
+      const { data: rows, error: lookupError } = await service
+        .from('print_masters')
+        .select('*')
+        .eq('submission_id', submissionId)
+        .eq('player_id', body.printMasterPlayerId)
+        .eq('product', body.product)
+        .eq('status', 'confirmed')
+        .limit(1);
+      if (lookupError || !rows || rows.length === 0) {
+        return NextResponse.json({ error: 'No confirmed print master found for this player' }, { status: 404 });
+      }
+      const row = rows[0] as PrintMasterRow;
+      try {
+        const [frontBytes, backBytes] = await Promise.all([
+          fetchVerifiedPrintMaster(row, 'front'),
+          fetchVerifiedPrintMaster(row, 'back'),
+        ]);
+        pdf = await buildPdfFromVerifiedMasters({
+          front: { bytes: frontBytes, expectedSha256: row.front_sha256 },
+          back: { bytes: backBytes, expectedSha256: row.back_sha256 },
+          meta: body.meta,
+        });
+      } catch (masterErr) {
+        console.error('[render-print] verified-master build failed:', masterErr instanceof Error ? masterErr.message : 'unknown error');
+        return NextResponse.json({ error: 'Stored print master failed verification' }, { status: 422 });
+      }
+    } else {
+      pdf = await buildPdf(body);
+    }
 
     // Server-derived key only, from the verified capability's own id —
     // never from any client-supplied value.

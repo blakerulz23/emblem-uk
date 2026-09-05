@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Supabase CLI local cache (project-link metadata, not source)
 supabase/.temp/
+
+# Local print-pipeline POC (blakeugoogbonna@gmail.com, contained experiment - not for production)
+local-print-poc/
