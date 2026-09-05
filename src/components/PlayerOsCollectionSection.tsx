@@ -52,6 +52,10 @@ type Chapter = {
    *  purely decorative (never the only carrier of meaning: every chapter
    *  already has a text title and label). */
   mark?: 'stamp' | 'crown';
+  /** First Card conceptually IS a physical Emblem trading card, so it gets
+   *  a graded-slab treatment (an offset card peeking out behind it) —
+   *  every other chapter is a candid photo taped into the album, no slab. */
+  slab?: boolean;
 };
 
 const CHAPTERS: Chapter[] = [
@@ -62,6 +66,7 @@ const CHAPTERS: Chapter[] = [
     label: 'First card',
     meta: '12.08.2024',
     mark: 'stamp',
+    slab: true,
   },
   {
     id: 'matchday-memories',
@@ -97,31 +102,33 @@ const CHAPTERS: Chapter[] = [
 
 function PhotoMount({ chapter }: { chapter: Chapter }) {
   return (
-    <div className="pos-mount" aria-hidden={chapter.photo ? undefined : true}>
-      <span className="pos-tape pos-tape-l" aria-hidden="true" />
-      <span className="pos-tape pos-tape-r" aria-hidden="true" />
-      {chapter.photo ? (
-        <img className="pos-photo" src={chapter.photo.src} alt={chapter.photo.alt} loading="lazy" decoding="async" />
-      ) : (
-        <div className="pos-placeholder" role="img" aria-label={`Placeholder image — no ${chapter.title.toLowerCase()} photo asset is available yet`}>
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="4" width="18" height="16" rx="2.2" />
-            <circle cx="9" cy="9.5" r="1.6" />
-            <path d="M4 17l4.5-4.5 3 3L16 11l4 5" />
-          </svg>
-          <span>Photo coming soon</span>
-        </div>
-      )}
-      {chapter.mark === 'stamp' && (
-        <span className="pos-mark pos-mark-stamp" aria-hidden="true">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" /><path d="M9 12l2 2 4-4" /></svg>
-        </span>
-      )}
-      {chapter.mark === 'crown' && (
-        <span className="pos-mark pos-mark-crown" aria-hidden="true">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 8.5l3 3 5.5-6 5.5 6 3-3-2 9h-13z" /></svg>
-        </span>
-      )}
+    <div className={`pos-mount-wrap${chapter.slab ? ' pos-mount-wrap--slab' : ''}`}>
+      <div className="pos-mount" aria-hidden={chapter.photo ? undefined : true}>
+        <span className="pos-tape pos-tape-l" aria-hidden="true" />
+        <span className="pos-tape pos-tape-r" aria-hidden="true" />
+        {chapter.photo ? (
+          <img className="pos-photo" src={chapter.photo.src} alt={chapter.photo.alt} loading="lazy" decoding="async" />
+        ) : (
+          <div className="pos-placeholder" role="img" aria-label={`Placeholder image — no ${chapter.title.toLowerCase()} photo asset is available yet`}>
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="16" rx="2.2" />
+              <circle cx="9" cy="9.5" r="1.6" />
+              <path d="M4 17l4.5-4.5 3 3L16 11l4 5" />
+            </svg>
+            <span>Photo coming soon</span>
+          </div>
+        )}
+        {chapter.mark === 'stamp' && (
+          <span className="pos-mark pos-mark-stamp" aria-hidden="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" /><path d="M9 12l2 2 4-4" /></svg>
+          </span>
+        )}
+        {chapter.mark === 'crown' && (
+          <span className="pos-mark pos-mark-crown" aria-hidden="true">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 8.5l3 3 5.5-6 5.5 6 3-3-2 9h-13z" /></svg>
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -162,19 +169,26 @@ export default function PlayerOsCollectionSection() {
         #player-os .pos-intro-eyebrow { display: flex; align-items: center; gap: 9px; font-family: ${font.cond}; font-weight: 700; letter-spacing: .22em; font-size: 12.5px; color: ${ORANGE}; margin: 0 0 16px; }
         #player-os .pos-intro-eyebrow::before { content: ''; width: 7px; height: 7px; border-radius: 999px; background: ${ORANGE}; flex-shrink: 0; }
         #player-os h2 { font-family: ${font.display}; font-weight: 800; font-size: clamp(36px,4.6vw,54px); line-height: 1.02; letter-spacing: -.01em; margin: 0 0 18px; color: #F7F3EC; text-wrap: balance; }
-        #player-os .pos-intro-body { font-family: ${font.body}; font-size: 16.5px; line-height: 1.65; color: #B4AC9F; margin: 0; max-width: 42ch; }
+        #player-os .pos-intro-body { font-family: ${font.body}; font-size: 16.5px; line-height: 1.65; color: #B4AC9F; margin: 0 0 22px; max-width: 42ch; }
+        #player-os .pos-intro-rule { width: 30px; height: 2px; background: ${ORANGE}; margin: 0 0 14px; border: 0; }
+        #player-os .pos-intro-tag { font-family: ${font.cond}; font-size: 11px; font-weight: 600; letter-spacing: .12em; color: #8B8478; line-height: 1.7; margin: 0; text-transform: uppercase; }
+        #player-os .pos-brandline { display: flex; align-items: center; gap: 12px; margin-top: 28px; font-family: ${font.cond}; font-size: 10.5px; font-weight: 600; letter-spacing: .3em; color: #6E6558; text-transform: uppercase; }
+        #player-os .pos-brandline-rule { width: 26px; height: 1px; background: rgba(255,255,255,.18); }
         #player-os .pos-season-head { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin: 0 0 18px; font-family: ${font.cond}; font-size: 11.5px; font-weight: 600; letter-spacing: .2em; color: #9C9486; }
         #player-os .pos-season-head strong { color: #D8D2C6; font-weight: 600; }
         #player-os .pos-season-rule { flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, rgba(255,255,255,.02), rgba(255,255,255,.18)); }
-        #player-os .pos-collection { position: relative; border: 1px solid rgba(239,140,76,.35); border-radius: 22px; background: linear-gradient(180deg, #17140f 0%, #121110 100%); box-shadow: 0 30px 60px -30px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.03); }
-        #player-os .pos-row { display: flex; list-style: none; margin: 0; padding: 0; }
+        #player-os .pos-collection { position: relative; border: 1px solid rgba(239,140,76,.35); border-radius: 22px; background: linear-gradient(180deg, #1a1712 0%, #100e0b 100%); box-shadow: 0 30px 60px -30px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.03); isolation: isolate; }
+        #player-os .pos-collection::before { content: ''; position: absolute; inset: 0; border-radius: inherit; opacity: .5; mix-blend-mode: overlay; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E"); }
+        #player-os .pos-row { display: flex; list-style: none; margin: 0; padding: 0; position: relative; z-index: 1; }
         #player-os .pos-chapter { flex: 1 1 0; min-width: 0; padding: 22px 16px; position: relative; }
         #player-os .pos-chapter + .pos-chapter { border-left: 1px solid rgba(255,255,255,.08); }
-        #player-os .pos-chapter h3 { font-family: ${font.cond}; font-size: 12px; font-weight: 700; letter-spacing: .1em; color: #EDE7DC; margin: 0 0 6px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.14); }
-        #player-os .pos-mount { position: relative; margin-top: 16px; border-radius: 6px; background: #050403; border: 1px solid rgba(0,0,0,.6); box-shadow: 0 14px 26px -14px rgba(0,0,0,.75); overflow: hidden; aspect-ratio: 3/4; }
+        #player-os .pos-chapter h3 { font-family: ${font.display}; font-weight: 800; font-size: 15px; letter-spacing: -.005em; color: #F4F0E9; margin: 0 0 6px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.14); text-transform: uppercase; }
+        #player-os .pos-mount-wrap { position: relative; margin-top: 20px; }
+        #player-os .pos-mount-wrap--slab::before { content: ''; position: absolute; top: 8px; bottom: -6px; right: -10px; left: 8px; border-radius: 6px; background: linear-gradient(160deg, rgba(239,140,76,.9), rgba(150,72,32,.55)); box-shadow: 0 10px 22px -10px rgba(0,0,0,.8); z-index: 0; }
+        #player-os .pos-mount { position: relative; z-index: 1; border-radius: 6px; background: #050403; border: 1px solid rgba(0,0,0,.6); box-shadow: 0 14px 26px -14px rgba(0,0,0,.75); overflow: hidden; aspect-ratio: 3/4; }
         #player-os .pos-photo { width: 100%; height: 100%; object-fit: cover; object-position: center 18%; display: block; filter: saturate(1.02) contrast(1.02); }
         #player-os .pos-placeholder { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #6E6558; background: repeating-linear-gradient(135deg, rgba(255,255,255,.02) 0 8px, transparent 8px 16px); font-family: ${font.cond}; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; }
-        #player-os .pos-tape { position: absolute; top: -7px; width: 46px; height: 20px; background: rgba(210,205,195,.16); border: 1px solid rgba(255,255,255,.12); transform: rotate(-3deg); z-index: 2; backdrop-filter: blur(1px); }
+        #player-os .pos-tape { position: absolute; top: -7px; width: 46px; height: 20px; background: linear-gradient(180deg, rgba(224,220,212,.22), rgba(224,220,212,.08)); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 2px 6px rgba(0,0,0,.35); transform: rotate(-3deg); z-index: 2; backdrop-filter: blur(2px); }
         #player-os .pos-tape-l { left: 10px; }
         #player-os .pos-tape-r { right: 10px; transform: rotate(3deg); }
         #player-os .pos-mark { position: absolute; right: 8px; bottom: 8px; z-index: 3; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 999px; background: rgba(11,10,9,.72); border: 1.5px solid rgba(239,140,76,.7); color: ${ORANGE}; box-shadow: 0 6px 16px -6px rgba(0,0,0,.8); }
@@ -217,13 +231,19 @@ export default function PlayerOsCollectionSection() {
           <p className="pos-intro-body">
             From first appearances and matchday memories to coach recognition and personal milestones, Player OS brings their football journey together season by season.
           </p>
+          <hr className="pos-intro-rule" aria-hidden="true" />
+          <p className="pos-intro-tag">More than a season.<br />A brighter tomorrow.</p>
+          <p className="pos-brandline">
+            <span className="pos-brandline-rule" aria-hidden="true" />
+            Play. Remember. Belong.
+          </p>
         </div>
 
         <div>
           <div className="pos-season-head">
             <span>SEASON COLLECTION</span>
             <span className="pos-season-rule" aria-hidden="true" />
-            <strong>2024 / 2025</strong>
+            <strong>2026 / 2027</strong>
           </div>
 
           <div className="pos-collection">
