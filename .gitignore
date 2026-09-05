@@ -45,3 +45,4 @@ supabase/.temp/
 
 # Local print-pipeline POC (blakeugoogbonna@gmail.com, contained experiment - not for production)
 local-print-poc/
+player-os-verification/
