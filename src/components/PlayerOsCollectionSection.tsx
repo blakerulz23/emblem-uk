@@ -172,13 +172,23 @@ export default function PlayerOsCollectionSection() {
         #player-os .pos-intro-body { font-family: ${font.body}; font-size: 16.5px; line-height: 1.65; color: #B4AC9F; margin: 0 0 22px; max-width: 42ch; }
         #player-os .pos-intro-rule { width: 30px; height: 2px; background: ${ORANGE}; margin: 0 0 14px; border: 0; }
         #player-os .pos-intro-tag { font-family: ${font.cond}; font-size: 11px; font-weight: 600; letter-spacing: .12em; color: #8B8478; line-height: 1.7; margin: 0; text-transform: uppercase; }
+        #player-os .pos-handwritten-note { font-family: ${font.hand}; font-size: 20px; line-height: 1.25; color: rgba(180,172,159,.5); margin: 26px 0 0; transform: rotate(-4deg); transform-origin: left center; }
         #player-os .pos-brandline { display: flex; align-items: center; gap: 12px; margin-top: 28px; font-family: ${font.cond}; font-size: 10.5px; font-weight: 600; letter-spacing: .3em; color: #6E6558; text-transform: uppercase; }
         #player-os .pos-brandline-rule { width: 26px; height: 1px; background: rgba(255,255,255,.18); }
+        /* Above 1300px there's genuine spare whitespace at the section's
+           bottom-right (matching the design reference's own placement) — on
+           anything narrower that space doesn't reliably exist, so the line
+           stays in normal flow under the intro instead of ever risking an
+           overlap with the collection panel. */
+        @media (min-width: 1300px) {
+          #player-os .pos-brandline { position: absolute; right: clamp(24px,3vw,48px); bottom: 26px; margin-top: 0; }
+        }
         #player-os .pos-season-head { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin: 0 0 18px; font-family: ${font.cond}; font-size: 11.5px; font-weight: 600; letter-spacing: .2em; color: #9C9486; }
         #player-os .pos-season-head strong { color: #D8D2C6; font-weight: 600; }
         #player-os .pos-season-rule { flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, rgba(255,255,255,.02), rgba(255,255,255,.18)); }
         #player-os .pos-collection { position: relative; border: 1px solid rgba(239,140,76,.35); border-radius: 22px; background: linear-gradient(180deg, #1a1712 0%, #100e0b 100%); box-shadow: 0 30px 60px -30px rgba(0,0,0,.75), inset 0 1px 0 rgba(255,255,255,.03); isolation: isolate; }
-        #player-os .pos-collection::before { content: ''; position: absolute; inset: 0; border-radius: inherit; opacity: .5; mix-blend-mode: overlay; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E"); }
+        #player-os .pos-collection::before { content: ''; position: absolute; inset: 0; border-radius: inherit; opacity: .7; mix-blend-mode: overlay; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E"); }
+        #player-os .pos-collection::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: radial-gradient(140% 90% at 0% 0%, rgba(239,140,76,.10), transparent 55%); }
         #player-os .pos-row { display: flex; list-style: none; margin: 0; padding: 0; position: relative; z-index: 1; }
         #player-os .pos-chapter { flex: 1 1 0; min-width: 0; padding: 22px 16px; position: relative; }
         #player-os .pos-chapter + .pos-chapter { border-left: 1px solid rgba(255,255,255,.08); }
@@ -187,12 +197,13 @@ export default function PlayerOsCollectionSection() {
         #player-os .pos-mount-wrap--slab::before { content: ''; position: absolute; top: 8px; bottom: -6px; right: -10px; left: 8px; border-radius: 6px; background: linear-gradient(160deg, rgba(239,140,76,.9), rgba(150,72,32,.55)); box-shadow: 0 10px 22px -10px rgba(0,0,0,.8); z-index: 0; }
         #player-os .pos-mount { position: relative; z-index: 1; border-radius: 6px; background: #050403; border: 1px solid rgba(0,0,0,.6); box-shadow: 0 14px 26px -14px rgba(0,0,0,.75); overflow: hidden; aspect-ratio: 3/4; }
         #player-os .pos-photo { width: 100%; height: 100%; object-fit: cover; object-position: center 18%; display: block; filter: saturate(1.02) contrast(1.02); }
-        #player-os .pos-placeholder { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #6E6558; background: repeating-linear-gradient(135deg, rgba(255,255,255,.02) 0 8px, transparent 8px 16px); font-family: ${font.cond}; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; }
-        #player-os .pos-tape { position: absolute; top: -7px; width: 46px; height: 20px; background: linear-gradient(180deg, rgba(224,220,212,.22), rgba(224,220,212,.08)); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 2px 6px rgba(0,0,0,.35); transform: rotate(-3deg); z-index: 2; backdrop-filter: blur(2px); }
+        #player-os .pos-placeholder { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: rgba(200,190,175,.55); background: radial-gradient(120% 90% at 50% 30%, #2a231a 0%, #171310 55%, #0c0a08 100%); font-family: ${font.cond}; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+        #player-os .pos-placeholder svg { opacity: .6; }
+        #player-os .pos-tape { position: absolute; top: -7px; width: 46px; height: 20px; background: linear-gradient(115deg, rgba(226,221,212,.24) 0%, rgba(226,221,212,.1) 40%, rgba(226,221,212,.22) 60%, rgba(226,221,212,.09) 100%); border: 1px solid rgba(255,255,255,.15); box-shadow: 0 2px 6px rgba(0,0,0,.35); transform: rotate(-3deg); z-index: 2; backdrop-filter: blur(2px); }
         #player-os .pos-tape-l { left: 10px; }
         #player-os .pos-tape-r { right: 10px; transform: rotate(3deg); }
         #player-os .pos-mark { position: absolute; right: 8px; bottom: 8px; z-index: 3; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 999px; background: rgba(11,10,9,.72); border: 1.5px solid rgba(239,140,76,.7); color: ${ORANGE}; box-shadow: 0 6px 16px -6px rgba(0,0,0,.8); }
-        #player-os .pos-label { margin-top: 12px; background: #1a1713; border: 1px solid rgba(255,255,255,.08); border-radius: 4px; padding: 10px 12px; transform: rotate(-0.6deg); box-shadow: 0 8px 16px -10px rgba(0,0,0,.6); }
+        #player-os .pos-label { margin-top: 12px; background: #1d1a15; border: 1px solid rgba(255,255,255,.08); border-radius: 0 0 4px 4px; padding: 16px 12px 10px; transform: rotate(-0.6deg); box-shadow: 0 8px 16px -10px rgba(0,0,0,.6); clip-path: polygon(0% 7%, 7% 1%, 15% 5%, 23% 0%, 31% 6%, 39% 1%, 47% 4%, 55% 0%, 63% 5%, 71% 2%, 79% 6%, 87% 1%, 94% 4%, 100% 0%, 100% 100%, 0% 100%); }
         #player-os .pos-label-line { font-family: ${font.body}; font-weight: 700; font-size: 13.5px; line-height: 1.35; color: #F1ECE2; margin: 0; }
         #player-os .pos-label-meta { font-family: ${font.cond}; font-size: 10.5px; letter-spacing: .05em; color: #9C9486; margin: 5px 0 0; }
         #player-os .pos-future { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; height: 100%; min-height: 260px; border: 1px dashed rgba(255,255,255,.22); border-radius: 12px; margin-top: 16px; padding: 22px 14px; gap: 12px; }
@@ -233,6 +244,7 @@ export default function PlayerOsCollectionSection() {
           </p>
           <hr className="pos-intro-rule" aria-hidden="true" />
           <p className="pos-intro-tag">More than a season.<br />A brighter tomorrow.</p>
+          <p className="pos-handwritten-note">Small moments.<br />Big futures.</p>
           <p className="pos-brandline">
             <span className="pos-brandline-rule" aria-hidden="true" />
             Play. Remember. Belong.
