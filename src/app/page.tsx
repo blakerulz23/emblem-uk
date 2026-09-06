@@ -1,6 +1,6 @@
 ﻿import Link from 'next/link';
 import Icon from '@/components/builder/emblem/Icon';
-import DigitalProfileSection from '@/components/DigitalProfileSection';
+import PlayerOsCollectionSection from '@/components/PlayerOsCollectionSection';
 import {
   FaqAccordion,
   HowItWorksSection,
@@ -131,7 +131,7 @@ export default function Home() {
         </div>
       </section>
 
-      <DigitalProfileSection />
+      <PlayerOsCollectionSection />
 
       <section id="journey" className="emh-forever-section">
         <HowItWorksSection />
