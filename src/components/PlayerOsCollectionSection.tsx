@@ -17,17 +17,24 @@
  * between the desktop two-column layout and the mobile/tablet horizontal
  * scroller, so chapter copy is never duplicated in the markup.
  *
- * Imagery: First Card and Matchday Memories reuse existing, already-approved
- * marketing photos already used elsewhere on this same homepage
- * (seed-jacob.png, coachos-moment-goal.png — see src/app/page.tsx).
+ * Imagery: all five photo chapters (public/assets/marketing/player-os-*.png)
+ * are synthetic marketing photos supplied directly by the site owner for
+ * this section, trimmed to their real content bounds (no crop marks/canvas
+ * padding) but otherwise unedited. No real child's photo is used anywhere
+ * in this file.
  *
- * Coach Recognition, Milestones and Awards use three new synthetic marketing
- * photos (public/assets/marketing/player-os-*.png) — supplied directly by
- * the site owner for this purpose, trimmed to their real content bounds
- * (no crop marks/canvas padding) but otherwise unedited. No real child's
- * photo is used anywhere in this file; every image is either a pre-existing
- * approved asset or an owner-supplied synthetic one added for this section
- * specifically.
+ * These were supplied as individually-isolated layers (one photo per file,
+ * each on its own oversized transparent canvas at its original absolute
+ * position) alongside a separate full-panel background/texture layer. Only
+ * the photo layers are used as raster images here — the background,
+ * tape, torn-label and divider treatment are all real CSS below, not the
+ * supplied raster layers, because those were authored at one fixed pixel
+ * canvas and don't reflow: same reasoning as this file's own "no flattened
+ * screenshot" constraint, just discovered again one layer at a time. CSS
+ * lets every one of those elements resize, reflow and restack correctly
+ * from 320px up to a 1440px+ desktop; a fixed background raster with
+ * absolutely-positioned overlays on top would only ever look right at the
+ * one canvas size it was authored for.
  */
 
 const ORANGE = 'var(--accent, #ff5a1f)';
@@ -56,26 +63,23 @@ type Chapter = {
    *  purely decorative (never the only carrier of meaning: every chapter
    *  already has a text title and label). */
   mark?: 'stamp' | 'crown';
-  /** First Card conceptually IS a physical Emblem trading card, so it gets
-   *  a graded-slab treatment (an offset card peeking out behind it) —
-   *  every other chapter is a candid photo taped into the album, no slab. */
-  slab?: boolean;
 };
 
 const CHAPTERS: Chapter[] = [
   {
     id: 'first-card',
     title: 'FIRST CARD',
-    photo: { src: '/seed-jacob.png', alt: 'Portrait photo used to illustrate a player’s first Emblem card' },
+    photo: { src: '/assets/marketing/player-os-first-card.png', alt: 'Portrait photo, styled as a graded trading card, used to illustrate a player’s first Emblem card' },
     label: 'First card',
     meta: '12.08.2024',
     mark: 'stamp',
-    slab: true,
+    // This photo already has the card-holder/slab edge baked into it
+    // (owner-supplied), so it needs no extra CSS treatment for that effect.
   },
   {
     id: 'matchday-memories',
     title: 'MATCHDAY MEMORIES',
-    photo: { src: '/assets/marketing/coachos-moment-goal.png', alt: 'Matchday action photo used to illustrate a captured football memory' },
+    photo: { src: '/assets/marketing/player-os-matchday.png', alt: 'Matchday action photo used to illustrate a captured football memory' },
     label: 'Good football brings good people.',
     meta: '28.09.2024',
     handwritten: true,
@@ -106,7 +110,7 @@ const CHAPTERS: Chapter[] = [
 
 function PhotoMount({ chapter }: { chapter: Chapter }) {
   return (
-    <div className={`pos-mount-wrap${chapter.slab ? ' pos-mount-wrap--slab' : ''}`}>
+    <div className="pos-mount-wrap">
       <div className="pos-mount" aria-hidden={chapter.photo ? undefined : true}>
         <span className="pos-tape pos-tape-l" aria-hidden="true" />
         <span className="pos-tape pos-tape-r" aria-hidden="true" />
@@ -198,8 +202,7 @@ export default function PlayerOsCollectionSection() {
         #player-os .pos-chapter + .pos-chapter { border-left: 1px solid rgba(255,255,255,.08); }
         #player-os .pos-chapter h3 { font-family: ${font.display}; font-weight: 800; font-size: 15px; letter-spacing: -.005em; color: #F4F0E9; margin: 0 0 6px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.14); text-transform: uppercase; }
         #player-os .pos-mount-wrap { position: relative; margin-top: 20px; }
-        #player-os .pos-mount-wrap--slab::before { content: ''; position: absolute; top: 8px; bottom: -6px; right: -10px; left: 8px; border-radius: 6px; background: linear-gradient(160deg, rgba(239,140,76,.9), rgba(150,72,32,.55)); box-shadow: 0 10px 22px -10px rgba(0,0,0,.8); z-index: 0; }
-        #player-os .pos-mount { position: relative; z-index: 1; border-radius: 6px; background: #050403; border: 1px solid rgba(0,0,0,.6); box-shadow: 0 14px 26px -14px rgba(0,0,0,.75); overflow: hidden; aspect-ratio: 3/4; }
+        #player-os .pos-mount { position: relative; border-radius: 6px; background: #050403; border: 1px solid rgba(0,0,0,.6); box-shadow: 0 14px 26px -14px rgba(0,0,0,.75); overflow: hidden; aspect-ratio: 3/4; }
         #player-os .pos-photo { width: 100%; height: 100%; object-fit: cover; object-position: center 18%; display: block; filter: saturate(1.02) contrast(1.02); }
         #player-os .pos-placeholder { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: rgba(200,190,175,.55); background: radial-gradient(120% 90% at 50% 30%, #2a231a 0%, #171310 55%, #0c0a08 100%); font-family: ${font.cond}; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
         #player-os .pos-placeholder svg { opacity: .6; }
