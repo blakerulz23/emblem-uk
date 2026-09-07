@@ -120,7 +120,7 @@ function FamilyPhoto({ variant, photo }: { variant: 'confirmed' | 'ready' | 'in-
 function FamilyTiles() {
   return (
     <div className="sqi-family-tiles">
-      <span className="sqi-sr-only">Example family progress — three sample cards illustrating how each family's own card moves through the journey; not real Squad Invite participants —</span>
+      <span className="sqi-sr-only">Example family progress — three sample cards illustrating how each family’s own card moves through the journey; not real Squad Invite participants —</span>
       {SQUAD_INVITE_JOURNEY_DEMO.familyTiles.map((tile) => (
         <div key={tile.id} className="sqi-family-tile">
           <FamilyPhoto variant={tile.variant} photo={tile.photo} />
