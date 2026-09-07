@@ -25,7 +25,7 @@ import { isRealSquadInviteUiPath } from '@/lib/squad-invite-preview-safety';
 // else (Builder, Player OS, Staff tools, /lastshot, dead/internal routes)
 // keeps its current typography untouched, even where it shares the same
 // Navbar/Footer chrome.
-const MARKETING_ROUTES = ['/', '/about', '/pricing', '/privacy', '/terms', '/card-setup-preview'];
+const MARKETING_ROUTES = ['/', '/about', '/pricing', '/privacy', '/terms', '/trust-and-safeguarding', '/card-setup-preview'];
 
 export default function ConditionalChrome({
   children,
