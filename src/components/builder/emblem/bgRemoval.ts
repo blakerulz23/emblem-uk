@@ -36,145 +36,20 @@ async function resizeToJpegDataUrl(file: Blob): Promise<string> {
   });
 }
 
-// Pixels at or above this brightness are pure background — fully transparent.
-const FULLY_BACKGROUND = 252;
-// Pixels at or above this brightness are *candidates* for despill — but
-// only if they're also spatially near a background pixel (see EDGE_RADIUS
-// below); spatial adjacency, not brightness, is what actually decides
-// whether a pixel gets touched, so this only needs to be low enough to
-// cheaply skip pixels that obviously can't be part of any white blend at
-// all (near-black). For a dark subject like brown/black hair, minComp at
-// full opacity can be as low as ~20-30 and rises almost the entire way to
-// 255 across the real blend band — the old 225-245 band, and an earlier
-// version of this fix's own 150 cutoff, both still caught only the last
-// sliver closest to pure white and left most of the real edge untouched at
-// full opacity with its colour still contaminated by white. Kept low
-// deliberately; the adjacency check is the real safety net now, not this.
-const EDGE_START = 5;
-// How many pixels away from an actual background pixel a candidate pixel
-// can be and still be treated as "near the silhouette boundary." Brightness
-// alone can't tell a genuine edge-blend pixel (hair fading into white) apart
-// from a pixel that's just naturally bright deep inside the subject (light
-// skin, a white shirt) — this is exactly the false positive an earlier,
-// brightness-only version of this function hit on skin-tone edges (see
-// bgRemoval.despill.test.ts). Requiring actual adjacency to background
-// pixels is what makes the wide EDGE_START safe: an interior bright pixel
-// is never near real background, so it's left alone regardless of how
-// bright it is.
-const EDGE_RADIUS = 9;
-// Deliberately no gamma/choke curve on the recovered alpha here: an earlier
-// version of this fix pushed alpha toward 0 with an exponent to hide
-// residual fringe, but that distorts the alpha estimate for pixels close to
-// fully opaque too — which then makes the despill step below subtract too
-// much of the white contribution and overshoots into clamped, wrong colour
-// (caught by this file's own tests). A plain linear estimate, despilled
-// accurately, is more faithful than a coarse "trim the edge" heuristic.
-
-function clamp255(v: number): number {
-  return Math.max(0, Math.min(255, Math.round(v)));
-}
-
-/**
- * Keys a subject-on-white-background image to transparency, in place.
- *
- * The naive version of this (a single global brightness threshold -> alpha
- * only, no colour correction) leaves a visible light/white "halo" around
- * soft edges like hair: an edge pixel is a genuine blend of the subject's
- * true colour and the white backdrop, so merely making it partially
- * transparent without also correcting its RGB leaves it still tinted toward
- * white. Composited onto a light card template that's invisible; composited
- * onto a dark one (space/galaxy backgrounds, dark jerseys) it reads as a
- * distinct halo ring — this is the exact defect reported on Miles's and
- * Roy's cards.
- *
- * Two things are needed to fix it, and both matter:
- *
- * 1. Un-premultiply ("despill"): once we've estimated a pixel's alpha, we
- *    can recover its true foreground colour by subtracting the background's
- *    proportional contribution back out, rather than leaving the observed
- *    (white-blended) colour as-is.
- * 2. Spatial adjacency, not brightness alone, decides *which* pixels are
- *    edge candidates: brightness by itself can't distinguish a genuinely
- *    bright subject pixel (light skin, a white shirt, deep inside the
- *    subject) from a background-blended edge pixel — only proximity to an
- *    actual background pixel can. Skipping this was a real bug caught by
- *    this file's own tests during development: widening the brightness band
- *    enough to catch dark-hair edges started keying real skin pixels
- *    transparent too, until adjacency was added as a second, required
- *    condition.
- *
- * Pure function, no DOM/Canvas dependency, so it's directly unit-testable —
- * see bgRemoval.despill.test.ts.
- */
-export function despillAndKeyWhite(data: Uint8ClampedArray, width: number, height: number): void {
-  const pixelCount = width * height;
-  const minComp = new Uint8ClampedArray(pixelCount);
-  const isBackground = new Uint8Array(pixelCount);
-
-  for (let p = 0; p < pixelCount; p++) {
-    const i = p * 4;
-    const mc = Math.min(data[i], data[i + 1], data[i + 2]);
-    minComp[p] = mc;
-    isBackground[p] = mc >= FULLY_BACKGROUND ? 1 : 0;
-  }
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const p = y * width + x;
-      const i = p * 4;
-
-      if (isBackground[p]) {
-        data[i + 3] = 0;
-        continue;
-      }
-      if (minComp[p] < EDGE_START) {
-        // Not bright enough to be an edge-blend candidate at all — leave
-        // untouched regardless of position.
-        continue;
-      }
-
-      let nearBackground = false;
-      for (let dy = -EDGE_RADIUS; dy <= EDGE_RADIUS && !nearBackground; dy++) {
-        const ny = y + dy;
-        if (ny < 0 || ny >= height) continue;
-        const rowStart = ny * width;
-        for (let dx = -EDGE_RADIUS; dx <= EDGE_RADIUS; dx++) {
-          const nx = x + dx;
-          if (nx < 0 || nx >= width) continue;
-          if (isBackground[rowStart + nx]) {
-            nearBackground = true;
-            break;
-          }
-        }
-      }
-      if (!nearBackground) {
-        // Bright, but nowhere near real background — a genuine light
-        // subject pixel (skin, a white shirt), not an edge blend.
-        continue;
-      }
-
-      const bgFraction = (minComp[p] - EDGE_START) / (FULLY_BACKGROUND - EDGE_START);
-      const rawAlpha = 1 - bgFraction;
-      const alpha = Math.max(0, Math.min(1, rawAlpha));
-
-      if (alpha <= 0) {
-        data[i + 3] = 0;
-        continue;
-      }
-
-      // Un-premultiply: observed = fg*alpha + white*(1-alpha), so
-      // fg = (observed - white*(1-alpha)) / alpha.
-      const r = data[i], g = data[i + 1], b = data[i + 2];
-      data[i] = clamp255((r - 255 * (1 - alpha)) / alpha);
-      data[i + 1] = clamp255((g - 255 * (1 - alpha)) / alpha);
-      data[i + 2] = clamp255((b - 255 * (1 - alpha)) / alpha);
-      data[i + 3] = clamp255(alpha * 255);
-    }
-  }
-}
-
 // Take an image that has a (near-)white background and key those pixels to transparent.
 // Returns { dataUrl, w, h } so the caller can decide whether to also crop.
+//
+// FOUNDER DECISION (Blake, 7 September 2026): reverted to the plain
+// brightness-threshold version (matches emblem.cards/youthcards'
+// bgRemoval.ts exactly) after the despill+adjacency version (this file's
+// prior history) still left a visible warm-toned fringe on a backlit
+// outdoor photo — Gemini gave that photo a hard, non-anti-aliased cutout
+// edge, and the adjacency heuristic ended up "correcting" genuine opaque
+// edge pixels that were never actually blended with white, producing a
+// worse artifact than it removed. Known, accepted trade-off: this plain
+// version has no colour correction at all, so it can still show the
+// original white-halo defect (reported on Miles's and Roy's cards) on
+// photos where Gemini *does* anti-alias the cutout edge.
 async function alphaKeyWhite(dataUrl: string): Promise<{ dataUrl: string; w: number; h: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -186,7 +61,16 @@ async function alphaKeyWhite(dataUrl: string): Promise<{ dataUrl: string; w: num
       if (!ctx) { reject(new Error('No 2D context')); return; }
       ctx.drawImage(img, 0, 0);
       const id = ctx.getImageData(0, 0, c.width, c.height);
-      despillAndKeyWhite(id.data, c.width, c.height);
+      const d = id.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        const minComp = Math.min(r, g, b);
+        if (minComp >= 245) {
+          d[i + 3] = 0;
+        } else if (minComp >= 225) {
+          d[i + 3] = Math.round(((245 - minComp) / 20) * 255);
+        }
+      }
       ctx.putImageData(id, 0, 0);
       resolve({ dataUrl: c.toDataURL('image/png'), w: c.width, h: c.height });
     };
