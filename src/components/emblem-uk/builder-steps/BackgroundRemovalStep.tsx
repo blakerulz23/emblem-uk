@@ -44,7 +44,7 @@ export default function BackgroundRemovalStep({
   const [status, setStatus] = useState<Status>('processing');
   const [beforeUrl, setBeforeUrl] = useState<string | null>(null);
   const [afterUrl, setAfterUrl] = useState<string | null>(null);
-  const [method, setMethod] = useState<'gemini' | 'canvas' | null>(null);
+  const [method, setMethod] = useState<'imgly' | 'gemini' | 'canvas' | null>(null);
   const [committing, setCommitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -77,7 +77,7 @@ export default function BackgroundRemovalStep({
         const result = await removeBackgroundSmart(file);
         if (cancelled) return;
         setAfterUrl(result.dataUrl);
-        setMethod(result.method === 'gemini' ? 'gemini' : 'canvas');
+        setMethod(result.method);
         setStatus('ready');
       } catch {
         if (!cancelled) setStatus('error');

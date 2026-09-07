@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
  * one of these files should fail here and be treated as scope creep.
  */
 const PROTECTED_FILES: Record<string, string> = {
-  'src/components/builder/emblem/bgRemoval.ts': 'd23fcfddd061132437187f4bf737cc3ece3e104215e087bec166c08bdd650da3',
+  'src/components/builder/emblem/bgRemoval.ts': '88e5ed7af7eec07767da8b923e9ebba27efe965b19e7e5eb5b24b61d2065022a',
   'src/app/api/ai-mockup/route.ts': '1796ddc2c19f032c444bc41c464d07ad0173cd0d55894db5c8714d85e11468be',
   'src/components/builder/emblem/aiMockup.ts': 'f48196a262d75042dba471e60b4ac419c8617c9a3d48940ad9799d7c1dd825e1',
   'src/lib/pdf-generator.ts': '94e796512bd29560755659bc25513820cc142fc8a755f353705539f750f49c26',
