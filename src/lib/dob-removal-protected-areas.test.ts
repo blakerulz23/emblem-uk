@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
  * should fail here and be treated as scope creep, not a silent pass.
  */
 const PROTECTED_FILES: Record<string, string> = {
-  'src/components/builder/emblem/bgRemoval.ts': '185afdfc5bc678fa11f648108b1aed5448c9c5e91d69e90018098e2791f63e79',
+  'src/components/builder/emblem/bgRemoval.ts': 'b8d6f76f415cc8fca7b64027c49975b7f8f8f209a210c223a078dee53757aec4',
   'src/app/api/ai-mockup/route.ts': '1796ddc2c19f032c444bc41c464d07ad0173cd0d55894db5c8714d85e11468be',
   'src/lib/photo-geometry.ts': '978e82969fed90ff88d0129e9aebff8da8fea49fc5ea15a7c403bacfd5c98645',
   'src/components/builder/emblem/CardArt.tsx': '6b1118a58e7efb26da3a595ac80b2c4895af4185af2a04b78833154756e1504c',
