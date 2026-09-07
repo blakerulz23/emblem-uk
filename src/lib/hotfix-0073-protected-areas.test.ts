@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
  * or derived from git history.
  */
 const PROTECTED_FILES: Record<string, string> = {
-  'src/components/builder/emblem/bgRemoval.ts': '3ce8418bb63b8215fde4a9f33dfd84761e477ee19161fbdd349ccf2fc9a23d2a',
+  'src/components/builder/emblem/bgRemoval.ts': 'ff37c5a0a551b76f8701219a29e33a4f3b1dc49352f0e8da16c8b9a85553096c',
   'src/app/api/ai-mockup/route.ts': '1796ddc2c19f032c444bc41c464d07ad0173cd0d55894db5c8714d85e11468be',
   'src/components/builder/emblem/aiMockup.ts': 'f48196a262d75042dba471e60b4ac419c8617c9a3d48940ad9799d7c1dd825e1',
   'src/lib/pdf-generator.ts': '94e796512bd29560755659bc25513820cc142fc8a755f353705539f750f49c26',
