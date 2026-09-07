@@ -383,7 +383,7 @@ describe('ShareCardSheet — visibility gating', () => {
  */
 describe('ShareCardSheet — rotate control and order summary', () => {
   it('renders a rotate control, always (never gated on eligibility, unlike the share icon)', () => {
-    const idx = sheet.indexOf('uk-card-share-icon-btn rotate');
+    const idx = sheet.indexOf('uk-card-share-icon-group rotate');
     expect(idx).toBeGreaterThan(-1);
     // Must not be inside a showShareIcon-guarded block.
     const precedingShowShareIconIdx = sheet.lastIndexOf('{showShareIcon &&', idx);
@@ -408,7 +408,7 @@ describe('ShareCardSheet — rotate control and order summary', () => {
   it('the share icon button and the rotate button are positioned as siblings of the rotating wrapper, not inside it — so they never rotate with the card', () => {
     const wrapperIdx = sheet.indexOf('uk-card-share-preview-card');
     const wrapperCloseIdx = sheet.indexOf('</div>', wrapperIdx);
-    const rotateBtnIdx = sheet.indexOf('uk-card-share-icon-btn rotate');
+    const rotateBtnIdx = sheet.indexOf('uk-card-share-icon-group rotate');
     expect(rotateBtnIdx).toBeGreaterThan(wrapperCloseIdx);
   });
 
@@ -446,7 +446,7 @@ describe('ShareCardSheet — the design preview and its share affordance', () =>
   });
 
   it('the share icon button only appears once eligible and while nothing else is already in progress', () => {
-    const idx = sheet.indexOf('uk-card-share-icon-btn share');
+    const idx = sheet.indexOf('uk-card-share-icon-group share');
     const guardSection = sheet.slice(Math.max(0, idx - 200), idx);
     expect(guardSection).toContain('{showShareIcon && (');
     const showShareIconIdx = sheet.indexOf('const showShareIcon');
@@ -454,8 +454,11 @@ describe('ShareCardSheet — the design preview and its share affordance', () =>
     expect(showShareIconLine).toContain("stage.type === 'closed'");
   });
 
-  it('the icon button has an accessible name (icon-only, no visible label text)', () => {
+  it('the icon button has both an accessible name and a visible text label — the rotate control is otherwise indistinguishable once it is the only control showing (once stage.type leaves \'closed\', the share icon disappears)', () => {
     expect(sheet).toContain('aria-label="Share your card design"');
+    expect(sheet).toContain('aria-label="Rotate card preview"');
+    expect(sheet).toContain('<span className="uk-card-share-icon-label">Rotate</span>');
+    expect(sheet).toContain('<span className="uk-card-share-icon-label">Share</span>');
   });
 
   it('the confirmation step renders as a dismissible overlay, and the backdrop click cancels the same way the Cancel button does', () => {

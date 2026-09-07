@@ -292,30 +292,36 @@ export default function ShareCardSheet({
         <div className="uk-card-share-preview-card" style={{ transform: `rotate(${rotation}deg)` }}>
           {preview}
         </div>
-        <button
-          type="button"
-          className="uk-card-share-icon-btn rotate"
-          aria-label="Rotate card preview"
-          onClick={() => setRotation((current) => (current + 90) % 360)}
-        >
-          <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
-            <path d="M20 12a8 8 0 1 1-2.34-5.66" />
-            <path d="M20 4v5h-5" />
-          </svg>
-        </button>
-        {showShareIcon && (
+        <div className="uk-card-share-icon-group rotate">
           <button
             type="button"
-            className="uk-card-share-icon-btn share"
-            aria-label="Share your card design"
-            onClick={() => dispatch({ type: 'open' })}
+            className="uk-card-share-icon-btn"
+            aria-label="Rotate card preview"
+            onClick={() => setRotation((current) => (current + 90) % 360)}
           >
             <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
-              <path d="M12 3v12" />
-              <path d="M7.5 7.5L12 3l4.5 4.5" />
-              <path d="M5 12v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+              <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+              <path d="M20 4v5h-5" />
             </svg>
           </button>
+          <span className="uk-card-share-icon-label">Rotate</span>
+        </div>
+        {showShareIcon && (
+          <div className="uk-card-share-icon-group share">
+            <button
+              type="button"
+              className="uk-card-share-icon-btn"
+              aria-label="Share your card design"
+              onClick={() => dispatch({ type: 'open' })}
+            >
+              <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                <path d="M12 3v12" />
+                <path d="M7.5 7.5L12 3l4.5 4.5" />
+                <path d="M5 12v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
+              </svg>
+            </button>
+            <span className="uk-card-share-icon-label">Share</span>
+          </div>
         )}
       </div>
 

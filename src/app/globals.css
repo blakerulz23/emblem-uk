@@ -3923,7 +3923,10 @@ a { text-decoration: none; color: inherit; }
    rather than separate labelled buttons below. Extra bottom padding (vs.
    the 14px on every other side) is deliberate: it reserves a clear gutter
    below the card art itself for both controls, so neither one ever sits
-   on top of the design (the photo, name, number, badge). */
+   on top of the design (the photo, name, number, badge). 80px (was 68px
+   before each control grew a visible text label) = 48px icon + 4px gap +
+   ~13px label + 8px bottom offset, so the label never gets clipped by
+   this element's own overflow:hidden. */
 .uk-card-share-preview {
   position: relative;
   display: grid;
@@ -3931,7 +3934,7 @@ a { text-decoration: none; color: inherit; }
   margin-bottom: 8px;
   border-radius: 22px;
   background: #fff;
-  padding: 20px 20px 68px;
+  padding: 20px 20px 80px;
   box-shadow: 0 20px 45px rgba(16, 16, 21, 0.12);
   /* Safety net only, not the fix itself — see the `.uk-real-card` rule
      below for what actually makes the fixed-pixel-width card fit. This
@@ -4009,11 +4012,35 @@ a { text-decoration: none; color: inherit; }
 /* Both controls share one understated look — plain white circle, subtle
    border and shadow, accent-coloured icon — matching weight for weight,
    rather than one reading as "primary" (a solid fill) and the other as
-   secondary. Position is the only thing the .rotate/.share modifiers
-   change. */
-.uk-card-share-icon-btn {
+   secondary. Each is wrapped with a visible text label (.uk-card-share-icon-group)
+   so it still reads as a button once it's the only control showing — the
+   rotate icon is otherwise indistinguishable from decoration once the share
+   icon disappears (stage.type leaves 'closed'). Position is the only thing
+   the .rotate/.share modifiers on the group change. */
+.uk-card-share-icon-group {
   position: absolute;
-  bottom: 14px;
+  bottom: 8px;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.uk-card-share-icon-group.share {
+  right: 10px;
+}
+
+.uk-card-share-icon-group.rotate {
+  left: 10px;
+}
+
+.uk-card-share-icon-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--wizard-muted, #6b7280);
+  letter-spacing: 0.02em;
+}
+
+.uk-card-share-icon-btn {
   width: 48px;
   height: 48px;
   border: 1px solid var(--wizard-line);
@@ -4024,14 +4051,6 @@ a { text-decoration: none; color: inherit; }
   place-items: center;
   cursor: pointer;
   box-shadow: 0 8px 18px rgba(16, 16, 21, 0.12);
-}
-
-.uk-card-share-icon-btn.share {
-  right: 14px;
-}
-
-.uk-card-share-icon-btn.rotate {
-  left: 14px;
 }
 
 .uk-card-share-icon-btn:hover {
