@@ -13,9 +13,10 @@
  * animation dependency, keyboard-scrollable by giving the row itself a
  * tabIndex and a11y label.
  *
- * Content is a single CHAPTERS array rendered once; CSS alone reflows it
- * between the desktop two-column layout and the mobile/tablet horizontal
- * scroller, so chapter copy is never duplicated in the markup.
+ * All copy and chapter data lives in SEASON_COLLECTION_DEMO below and is
+ * rendered once from that single array — CSS alone reflows it between the
+ * desktop two-column layout and the mobile/tablet horizontal scroller, so
+ * chapter content is never duplicated in the markup.
  *
  * Imagery: all five photo chapters (public/assets/marketing/player-os-*.png)
  * are synthetic marketing photos supplied directly by the site owner for
@@ -46,108 +47,203 @@ const font = {
   hand: 'var(--font-caveat), "Segoe Print", "Comic Sans MS", cursive',
 };
 
-type Chapter = {
+type Photo = { src: string; alt: string };
+
+/** A moment that has already happened this season — full-intensity photo,
+ *  tape, torn-paper label, a real recorded date. */
+type CompletedChapter = {
   id: string;
-  title: string;
-  /** Real, already-approved marketing photo — null for the two chapters
-   *  with no matching asset in the repo (see file header). */
-  photo: { src: string; alt: string } | null;
-  /** Primary label line shown on the dark paper tile under the photo. */
+  state: 'completed';
+  heading: string;
+  photo: Photo;
   label: string;
-  /** Secondary line — a date, or (Coach Recognition) the coach's name. */
-  meta?: string;
-  /** Handwritten-style label (Matchday Memories' note) uses the brand's
-   *  existing --font-caveat token rather than the default label font. */
+  /** Shown alongside the date on one meta line (Coach Recognition only). */
+  supportingCopy?: string;
+  date: string;
   handwritten?: boolean;
-  /** Small decorative corner mark — a foil-style stamp or a crown, both
-   *  purely decorative (never the only carrier of meaning: every chapter
-   *  already has a text title and label). */
-  mark?: 'stamp' | 'crown';
+  mark?: 'stamp';
+  /** Real torn-paper label tile texture (owner-supplied), used only for
+   *  completed chapters — reinforcing "already collected" the same way the
+   *  muted/dashed treatment reinforces "upcoming" below. */
+  labelTexture?: string;
+  /** A tiny extra tape/note accent overlapping the label — Matchday only,
+   *  matching its already-handwritten note. */
+  noteAccent?: boolean;
 };
 
-const CHAPTERS: Chapter[] = [
-  {
-    id: 'first-card',
-    title: 'FIRST CARD',
-    photo: { src: '/assets/marketing/player-os-first-card.png', alt: 'Portrait photo, styled as a graded trading card, used to illustrate a player’s first Emblem card' },
-    label: 'First card',
-    meta: '12.08.2024',
-    mark: 'stamp',
-    // This photo already has the card-holder/slab edge baked into it
-    // (owner-supplied), so it needs no extra CSS treatment for that effect.
-  },
-  {
-    id: 'matchday-memories',
-    title: 'MATCHDAY MEMORIES',
-    photo: { src: '/assets/marketing/player-os-matchday.png', alt: 'Matchday action photo used to illustrate a captured football memory' },
-    label: 'Good football brings good people.',
-    meta: '28.09.2024',
-    handwritten: true,
-  },
-  {
-    id: 'coach-recognition',
-    title: 'COACH RECOGNITION',
-    photo: { src: '/assets/marketing/player-os-coach-recognition.png', alt: 'Coach and player photo used to illustrate coach recognition' },
-    label: 'Strong attitude. Leads by example.',
-    meta: 'Coach Taylor · 14.11.2024',
-  },
-  {
-    id: 'milestones',
-    title: 'MILESTONES',
-    photo: { src: '/assets/marketing/player-os-milestones.png', alt: 'Player photo, viewed from behind at sunset, used to illustrate a season milestone' },
-    label: '50 APPEARANCES',
-    meta: '03.02.2025',
-  },
-  {
-    id: 'awards',
-    title: 'AWARDS',
-    photo: { src: '/assets/marketing/player-os-awards.png', alt: 'Player holding a trophy, used to illustrate an award' },
-    label: 'PLAYER OF THE MONTH',
-    meta: 'APR 2025',
-    mark: 'crown',
-  },
-];
+/** A moment expected later this season — same photo mount, but visibly not
+ *  yet collected: muted image, dashed border, an eyebrow instead of a
+ *  date, no filled badge. Never marked disabled/unavailable — still fully
+ *  readable and keyboard-reachable, just styled as "anticipated." */
+type UpcomingChapter = {
+  id: string;
+  state: 'upcoming';
+  heading: string;
+  photo: Photo;
+  eyebrow: string;
+  label: string;
+  supportingCopy?: string;
+  /** Awards' crown becomes an outline mark here — never a solid/filled
+   *  badge, which would read as already-won. */
+  outlineMark?: 'crown';
+};
 
-function PhotoMount({ chapter }: { chapter: Chapter }) {
+/** The open-ended final chapter — no photo, no date, nothing collected
+ *  yet. The most incomplete of the three states by design. */
+type FutureChapter = {
+  id: string;
+  state: 'future';
+  heading: string;
+  title: string;
+  more: string;
+};
+
+type Chapter = CompletedChapter | UpcomingChapter | FutureChapter;
+
+/**
+ * Static synthetic homepage demonstration content — not read from any
+ * order, player profile or database. Every date below is hand-picked to
+ * read as "this season, already happened" (completed chapters) or
+ * deliberately has no date at all (upcoming/future chapters); nothing here
+ * is derived from the system clock, so the story stays internally
+ * coherent regardless of when the page is actually viewed. Review and
+ * update this whole object together (never just one date/label in
+ * isolation) whenever the featured season changes.
+ */
+const SEASON_COLLECTION_DEMO: {
+  seasonLabel: string;
+  seasonRange: string;
+  chapters: Chapter[];
+} = {
+  seasonLabel: 'SEASON COLLECTION',
+  seasonRange: '2026 / 2027',
+  chapters: [
+    {
+      id: 'first-card',
+      state: 'completed',
+      heading: 'FIRST CARD',
+      photo: { src: '/assets/marketing/player-os-first-card.png', alt: 'Portrait photo, styled as a graded trading card, used to illustrate a player’s first Emblem card' },
+      label: 'First card',
+      date: '12.08.2026',
+      mark: 'stamp',
+      labelTexture: '/assets/marketing/player-os-label-first-card.png',
+      // This photo already has the card-holder/slab edge baked into it
+      // (owner-supplied), so it needs no extra CSS treatment for that effect.
+    },
+    {
+      id: 'matchday-memories',
+      state: 'completed',
+      heading: 'MATCHDAY MEMORIES',
+      photo: { src: '/assets/marketing/player-os-matchday.png', alt: 'Matchday action photo used to illustrate a captured football memory' },
+      label: 'Good football brings good people.',
+      date: '30.08.2026',
+      handwritten: true,
+      labelTexture: '/assets/marketing/player-os-label-matchday.png',
+      noteAccent: true,
+    },
+    {
+      id: 'coach-recognition',
+      state: 'completed',
+      heading: 'COACH RECOGNITION',
+      photo: { src: '/assets/marketing/player-os-coach-recognition.png', alt: 'Coach and player photo used to illustrate coach recognition' },
+      label: 'Strong attitude. Leads by example.',
+      supportingCopy: 'Coach Taylor',
+      date: '05.09.2026',
+      labelTexture: '/assets/marketing/player-os-label-coach.png',
+    },
+    {
+      id: 'milestones',
+      state: 'upcoming',
+      heading: 'MILESTONES',
+      photo: { src: '/assets/marketing/player-os-milestones.png', alt: 'Player photo, viewed from behind at sunset, used to illustrate a season milestone still to come' },
+      eyebrow: 'NEXT MILESTONE',
+      label: '50 APPEARANCES',
+      supportingCopy: 'Still to come',
+    },
+    {
+      id: 'awards',
+      state: 'upcoming',
+      heading: 'AWARDS',
+      photo: { src: '/assets/marketing/player-os-awards.png', alt: 'Player photo used to illustrate an award still to be won this season' },
+      eyebrow: 'NEXT AWARD',
+      label: 'Waiting for their next achievement.',
+      outlineMark: 'crown',
+    },
+    {
+      id: 'whats-next',
+      state: 'future',
+      heading: 'WHAT’S NEXT',
+      title: 'The next chapter hasn’t happened yet.',
+      more: 'More to come…',
+    },
+  ],
+};
+
+/** Visually-hidden, unambiguous state text for screen-reader users — the
+ *  visible copy already implies state (a real date vs. "Still to come" vs.
+ *  "hasn't happened yet"), but this makes it explicit rather than implied. */
+function stateAnnouncement(state: Chapter['state']): string {
+  if (state === 'completed') return 'Completed.';
+  if (state === 'upcoming') return 'Upcoming.';
+  return 'Not yet started.';
+}
+
+function StampMark() {
+  return (
+    <span className="pos-mark pos-mark-stamp" aria-hidden="true">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" /><path d="M9 12l2 2 4-4" /></svg>
+    </span>
+  );
+}
+
+/** Always the outline variant — Awards is the only chapter that uses this
+ *  mark, and it's always in the `upcoming` state (see the doc comment on
+ *  UpcomingChapter's outlineMark: a filled crown would read as already won). */
+function CrownMark() {
+  return (
+    <span className="pos-mark pos-mark-crown pos-mark--outline" aria-hidden="true">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 8.5l3 3 5.5-6 5.5 6 3-3-2 9h-13z" /></svg>
+    </span>
+  );
+}
+
+function PhotoMount({ chapter }: { chapter: CompletedChapter | UpcomingChapter }) {
+  const upcoming = chapter.state === 'upcoming';
   return (
     <div className="pos-mount-wrap">
-      <div className="pos-mount" aria-hidden={chapter.photo ? undefined : true}>
-        <span className="pos-tape pos-tape-l" aria-hidden="true" />
-        <span className="pos-tape pos-tape-r" aria-hidden="true" />
-        {chapter.photo ? (
-          <img className="pos-photo" src={chapter.photo.src} alt={chapter.photo.alt} loading="lazy" decoding="async" />
-        ) : (
-          <div className="pos-placeholder" role="img" aria-label={`Placeholder image — no ${chapter.title.toLowerCase()} photo asset is available yet`}>
-            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="16" rx="2.2" />
-              <circle cx="9" cy="9.5" r="1.6" />
-              <path d="M4 17l4.5-4.5 3 3L16 11l4 5" />
-            </svg>
-            <span>Photo coming soon</span>
-          </div>
-        )}
-        {chapter.mark === 'stamp' && (
-          <span className="pos-mark pos-mark-stamp" aria-hidden="true">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z" /><path d="M9 12l2 2 4-4" /></svg>
-          </span>
-        )}
-        {chapter.mark === 'crown' && (
-          <span className="pos-mark pos-mark-crown" aria-hidden="true">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 8.5l3 3 5.5-6 5.5 6 3-3-2 9h-13z" /></svg>
-          </span>
-        )}
+      <div className={`pos-mount${upcoming ? ' pos-mount--upcoming' : ''}`}>
+        <span className={`pos-tape pos-tape-l${upcoming ? ' pos-tape--faint' : ''}`} aria-hidden="true" />
+        <span className={`pos-tape pos-tape-r${upcoming ? ' pos-tape--faint' : ''}`} aria-hidden="true" />
+        <img className={`pos-photo${upcoming ? ' pos-photo--muted' : ''}`} src={chapter.photo.src} alt={chapter.photo.alt} loading="lazy" decoding="async" />
+        {chapter.state === 'completed' && chapter.mark === 'stamp' && <StampMark />}
+        {chapter.state === 'upcoming' && chapter.outlineMark === 'crown' && <CrownMark />}
       </div>
+      {chapter.state === 'completed' && chapter.noteAccent && <span className="pos-tape-note" aria-hidden="true" />}
     </div>
   );
 }
 
-function ChapterLabel({ chapter }: { chapter: Chapter }) {
+function ChapterLabel({ chapter }: { chapter: CompletedChapter | UpcomingChapter }) {
+  const upcoming = chapter.state === 'upcoming';
+  const texture = chapter.state === 'completed' ? chapter.labelTexture : undefined;
   return (
-    <div className="pos-label">
-      <p className="pos-label-line" style={chapter.handwritten ? { fontFamily: font.hand, fontSize: 17 } : undefined}>
+    <div
+      className={`pos-label${upcoming ? ' pos-label--upcoming' : ''}`}
+      style={texture ? { backgroundImage: `url('${texture}')` } : undefined}
+    >
+      {upcoming && <p className="pos-label-eyebrow">{chapter.eyebrow}</p>}
+      <p
+        className="pos-label-line"
+        style={chapter.state === 'completed' && chapter.handwritten ? { fontFamily: font.hand, fontSize: 17 } : undefined}
+      >
         {chapter.label}
       </p>
-      {chapter.meta && <p className="pos-label-meta">{chapter.meta}</p>}
+      {chapter.state === 'completed' && (
+        <p className="pos-label-meta">{chapter.supportingCopy ? `${chapter.supportingCopy} · ${chapter.date}` : chapter.date}</p>
+      )}
+      {chapter.state === 'upcoming' && chapter.supportingCopy && (
+        <p className="pos-label-status">{chapter.supportingCopy}</p>
+      )}
     </div>
   );
 }
@@ -203,23 +299,43 @@ export default function PlayerOsCollectionSection() {
         #player-os .pos-chapter h3 { font-family: ${font.display}; font-weight: 800; font-size: 15px; letter-spacing: -.005em; color: #F4F0E9; margin: 0 0 6px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.14); text-transform: uppercase; }
         #player-os .pos-mount-wrap { position: relative; margin-top: 20px; }
         #player-os .pos-mount { position: relative; border-radius: 6px; background: #050403; border: 1px solid rgba(0,0,0,.6); box-shadow: 0 14px 26px -14px rgba(0,0,0,.75); overflow: hidden; aspect-ratio: 3/4; }
+        /* Upcoming: dashed, lighter border instead of a solid archived-photo
+           mount — one of several non-colour signals (with the muted photo
+           filter and the eyebrow/status text) that this hasn't happened yet. */
+        #player-os .pos-mount--upcoming { border: 1px dashed rgba(255,255,255,.28); box-shadow: none; }
         #player-os .pos-photo { width: 100%; height: 100%; object-fit: cover; object-position: center 18%; display: block; filter: saturate(1.02) contrast(1.02); }
-        #player-os .pos-placeholder { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: rgba(200,190,175,.55); background: radial-gradient(120% 90% at 50% 30%, #2a231a 0%, #171310 55%, #0c0a08 100%); font-family: ${font.cond}; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
-        #player-os .pos-placeholder svg { opacity: .6; }
-        #player-os .pos-tape { position: absolute; top: -7px; width: 46px; height: 20px; background: linear-gradient(115deg, rgba(226,221,212,.24) 0%, rgba(226,221,212,.1) 40%, rgba(226,221,212,.22) 60%, rgba(226,221,212,.09) 100%); border: 1px solid rgba(255,255,255,.15); box-shadow: 0 2px 6px rgba(0,0,0,.35); transform: rotate(-3deg); z-index: 2; backdrop-filter: blur(2px); }
+        #player-os .pos-photo--muted { filter: saturate(.5) brightness(.82) contrast(.94); }
+        #player-os .pos-tape { position: absolute; top: -7px; width: 46px; height: 20px; background-image: url('/assets/marketing/player-os-tape-a.png'); background-size: cover; background-position: center; box-shadow: 0 2px 6px rgba(0,0,0,.35); transform: rotate(-3deg); z-index: 2; opacity: .92; }
+        /* Upcoming: a smaller, plainer tape scrap and lower opacity — one
+           more non-colour signal (with the dashed border and muted photo)
+           that this hasn't actually been stuck into the album yet. */
+        #player-os .pos-tape--faint { background-image: url('/assets/marketing/player-os-tape-b.png'); opacity: .4; }
+        /* Sits on pos-mount-wrap (not inside the clipped/torn pos-label),
+           at the seam where the photo meets its label. */
+        #player-os .pos-tape-note { position: absolute; bottom: -6px; left: 50%; width: 34px; height: 16px; background-image: url('/assets/marketing/player-os-tape-note.png'); background-size: cover; background-position: center; transform: translateX(-50%) rotate(2deg); z-index: 4; opacity: .95; }
         #player-os .pos-tape-l { left: 10px; }
         #player-os .pos-tape-r { right: 10px; transform: rotate(3deg); }
         #player-os .pos-mark { position: absolute; right: 8px; bottom: 8px; z-index: 3; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 999px; background: rgba(11,10,9,.72); border: 1.5px solid rgba(239,140,76,.7); color: ${ORANGE}; box-shadow: 0 6px 16px -6px rgba(0,0,0,.8); }
-        #player-os .pos-label { margin-top: 12px; background: #1d1a15; border: 1px solid rgba(255,255,255,.08); border-radius: 0 0 4px 4px; padding: 16px 12px 10px; transform: rotate(-0.6deg); box-shadow: 0 8px 16px -10px rgba(0,0,0,.6); clip-path: polygon(0% 7%, 7% 1%, 15% 5%, 23% 0%, 31% 6%, 39% 1%, 47% 4%, 55% 0%, 63% 5%, 71% 2%, 79% 6%, 87% 1%, 94% 4%, 100% 0%, 100% 100%, 0% 100%); }
+        /* Outline mark (Awards, upcoming): no filled backing at all — a
+           ring only, so it can never be mistaken for an award already won. */
+        /* A faint dark scrim (never a solid fill) keeps the ring readable
+           regardless of what's behind it in the photo — still clearly "not
+           a filled badge," just enough contrast to stay visible. */
+        #player-os .pos-mark--outline { background: rgba(5,4,3,.4); border: 1.5px dashed rgba(239,140,76,.8); color: rgba(239,140,76,.95); box-shadow: 0 2px 8px rgba(0,0,0,.4); backdrop-filter: blur(1px); }
+        #player-os .pos-label { position: relative; margin-top: 12px; background-color: #1d1a15; background-size: cover; background-position: center; border: 1px solid rgba(255,255,255,.08); border-radius: 0 0 4px 4px; padding: 16px 12px 10px; transform: rotate(-0.6deg); box-shadow: 0 8px 16px -10px rgba(0,0,0,.6); clip-path: polygon(0% 7%, 7% 1%, 15% 5%, 23% 0%, 31% 6%, 39% 1%, 47% 4%, 55% 0%, 63% 5%, 71% 2%, 79% 6%, 87% 1%, 94% 4%, 100% 0%, 100% 100%, 0% 100%); }
+        #player-os .pos-label--upcoming { background: #17140f; border: 1px dashed rgba(255,255,255,.14); box-shadow: none; }
+        #player-os .pos-label-eyebrow { font-family: ${font.cond}; font-weight: 700; font-size: 10px; letter-spacing: .16em; color: rgba(239,140,76,.75); margin: 0 0 6px; text-transform: uppercase; }
         #player-os .pos-label-line { font-family: ${font.body}; font-weight: 700; font-size: 13.5px; line-height: 1.35; color: #F1ECE2; margin: 0; }
+        #player-os .pos-label--upcoming .pos-label-line { color: #D9D2C4; }
         #player-os .pos-label-meta { font-family: ${font.cond}; font-size: 10.5px; letter-spacing: .05em; color: #9C9486; margin: 5px 0 0; }
+        #player-os .pos-label-status { font-family: ${font.cond}; font-size: 10.5px; font-style: italic; letter-spacing: .05em; color: #8B8478; margin: 5px 0 0; }
         #player-os .pos-future { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; height: 100%; min-height: 260px; border: 1px dashed rgba(255,255,255,.22); border-radius: 12px; margin-top: 16px; padding: 22px 14px; gap: 12px; }
         #player-os .pos-future-icon { display: grid; place-items: center; width: 46px; height: 46px; color: #8B8478; }
         #player-os .pos-future-title { font-family: ${font.body}; font-size: 13.5px; line-height: 1.5; color: #C9C2B4; margin: 0; max-width: 20ch; }
         #player-os .pos-future-rule { width: 32px; height: 1px; background: rgba(255,255,255,.18); }
         #player-os .pos-future-more { font-family: ${font.hand}; font-size: 18px; color: #8B8478; margin: 0; }
         #player-os .pos-row:focus-visible { outline: 2px solid ${ORANGE}; outline-offset: 4px; border-radius: 22px; }
-        #player-os .pos-sr-desc { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+        #player-os .pos-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
         @media (max-width: 1024px) {
           #player-os .pos-inner { grid-template-columns: minmax(0,1fr); }
@@ -260,14 +376,14 @@ export default function PlayerOsCollectionSection() {
 
         <div>
           <div className="pos-season-head">
-            <span>SEASON COLLECTION</span>
+            <span>{SEASON_COLLECTION_DEMO.seasonLabel}</span>
             <span className="pos-season-rule" aria-hidden="true" />
-            <strong>2026 / 2027</strong>
+            <strong>{SEASON_COLLECTION_DEMO.seasonRange}</strong>
           </div>
 
           <div className="pos-collection">
-            <p className="pos-sr-desc">
-              A horizontally scrollable collection of six chapters: First Card, Matchday Memories, Coach Recognition, Milestones, Awards, and a final, not-yet-written chapter. Scroll or swipe to browse; each chapter is illustrative homepage content.
+            <p className="pos-sr-only">
+              A horizontally scrollable collection of six chapters: First Card, Matchday Memories and Coach Recognition (already collected this season), Milestones and Awards (still to come), and a final chapter that hasn&rsquo;t started yet. Scroll or swipe to browse; each chapter is illustrative homepage content.
             </p>
             <ol
               className="pos-row"
@@ -275,28 +391,30 @@ export default function PlayerOsCollectionSection() {
               role="region"
               aria-label="Season collection chapters, scrollable"
             >
-              {CHAPTERS.map((chapter) => (
+              {SEASON_COLLECTION_DEMO.chapters.map((chapter) => (
                 <li key={chapter.id} className="pos-chapter">
-                  <h3>{chapter.title}</h3>
-                  <PhotoMount chapter={chapter} />
-                  <ChapterLabel chapter={chapter} />
+                  <h3>{chapter.heading}</h3>
+                  <span className="pos-sr-only">{stateAnnouncement(chapter.state)}</span>
+                  {chapter.state === 'future' ? (
+                    <div className="pos-future">
+                      <span className="pos-future-icon" aria-hidden="true">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 2.5l8.2 4.7v9.6L12 21.5l-8.2-4.7V7.2z" />
+                          <path d="M12 8l1.4 3 3.1.4-2.3 2.2.6 3.1L12 15.2l-2.8 1.5.6-3.1-2.3-2.2 3.1-.4z" />
+                        </svg>
+                      </span>
+                      <p className="pos-future-title">{chapter.title}</p>
+                      <span className="pos-future-rule" aria-hidden="true" />
+                      <p className="pos-future-more">{chapter.more}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <PhotoMount chapter={chapter} />
+                      <ChapterLabel chapter={chapter} />
+                    </>
+                  )}
                 </li>
               ))}
-
-              <li className="pos-chapter" aria-label="Future chapter, not yet available">
-                <h3>WHAT&rsquo;S NEXT</h3>
-                <div className="pos-future">
-                  <span className="pos-future-icon" aria-hidden="true">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 2.5l8.2 4.7v9.6L12 21.5l-8.2-4.7V7.2z" />
-                      <path d="M12 8l1.4 3 3.1.4-2.3 2.2.6 3.1L12 15.2l-2.8 1.5.6-3.1-2.3-2.2 3.1-.4z" />
-                    </svg>
-                  </span>
-                  <p className="pos-future-title">The next chapter hasn&rsquo;t happened yet.</p>
-                  <span className="pos-future-rule" aria-hidden="true" />
-                  <p className="pos-future-more">More to come&hellip;</p>
-                </div>
-              </li>
             </ol>
           </div>
         </div>
