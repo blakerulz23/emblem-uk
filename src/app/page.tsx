@@ -1,6 +1,7 @@
 ﻿import Link from 'next/link';
 import Icon from '@/components/builder/emblem/Icon';
 import PlayerOsCollectionSection from '@/components/PlayerOsCollectionSection';
+import TrustSafeguardingPanel from '@/components/TrustSafeguardingPanel';
 import SquadInviteJourneySection from '@/components/SquadInviteJourneySection';
 import {
   FaqAccordion,
@@ -99,6 +100,8 @@ export default function Home() {
       </section>
 
       <PlayerOsCollectionSection />
+
+      <TrustSafeguardingPanel />
 
       <section id="journey" className="emh-forever-section">
         <HowItWorksSection />
