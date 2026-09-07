@@ -36,20 +36,95 @@ async function resizeToJpegDataUrl(file: Blob): Promise<string> {
   });
 }
 
+// Same brightness bands the plain threshold version used (see this file's
+// history): >=245 is fully background, 225-244 gets a linear partial-alpha
+// ramp.
+const FULLY_BACKGROUND = 245;
+const PARTIAL_BACKGROUND_START = 225;
+
+/**
+ * Keys a subject-on-white-background image to transparency, in place.
+ *
+ * FOUNDER DECISION (Blake, 7 September 2026): a brightness-threshold-only
+ * version (matching emblem.cards/youthcards' bgRemoval.ts) replaced an
+ * earlier despill+adjacency version here after that version left a visible
+ * warm-toned fringe on a backlit outdoor photo — Gemini gave that photo a
+ * hard, non-anti-aliased cutout edge, and despill's adjacency heuristic
+ * "corrected" genuine opaque edge pixels that were never actually blended
+ * with white. That plain version's accepted trade-off was no colour
+ * correction at all — but pure brightness has a second failure mode this
+ * function now also fixes: any sufficiently bright pixel gets keyed
+ * transparent regardless of *where* it is, so an isolated bright patch deep
+ * inside the subject (a highlight, a JPEG-compression block, a shadowed
+ * gap between the legs) can get punched into a visible hole even though
+ * it's nowhere near the real background — reported live as a blocky cutout
+ * mid-body on an otherwise-correct card.
+ *
+ * The fix is connectivity, not colour: a pixel only counts as background if
+ * it's reachable from the image's actual outer edge by walking through
+ * other sufficiently-bright pixels (8-connected flood fill seeded from the
+ * border). A real background region is always connected to the border by
+ * definition; an isolated bright interior pixel — no matter how bright —
+ * never is, so it's left fully opaque. This adds no colour correction, so
+ * it doesn't reintroduce the despill overcorrection this file's history
+ * already ruled out; it only narrows *which* bright pixels are eligible to
+ * be keyed at all.
+ *
+ * Pure function, no DOM/Canvas dependency, so it's directly unit-testable —
+ * see bgRemoval.interior-holes.test.ts.
+ */
+export function keyWhiteConnectedToBorder(data: Uint8ClampedArray, width: number, height: number): void {
+  const pixelCount = width * height;
+  const minComp = new Uint8ClampedArray(pixelCount);
+  for (let p = 0; p < pixelCount; p++) {
+    const i = p * 4;
+    minComp[p] = Math.min(data[i], data[i + 1], data[i + 2]);
+  }
+
+  const visited = new Uint8Array(pixelCount);
+  const queue = new Int32Array(pixelCount);
+  let queueLength = 0;
+
+  const tryEnqueue = (p: number) => {
+    if (visited[p] || minComp[p] < PARTIAL_BACKGROUND_START) return;
+    visited[p] = 1;
+    queue[queueLength++] = p;
+  };
+
+  for (let x = 0; x < width; x++) {
+    tryEnqueue(x);
+    tryEnqueue((height - 1) * width + x);
+  }
+  for (let y = 0; y < height; y++) {
+    tryEnqueue(y * width);
+    tryEnqueue(y * width + (width - 1));
+  }
+
+  let head = 0;
+  while (head < queueLength) {
+    const p = queue[head++];
+    const x = p % width;
+    const y = (p - x) / width;
+    if (x > 0) tryEnqueue(p - 1);
+    if (x < width - 1) tryEnqueue(p + 1);
+    if (y > 0) tryEnqueue(p - width);
+    if (y < height - 1) tryEnqueue(p + width);
+    if (x > 0 && y > 0) tryEnqueue(p - width - 1);
+    if (x < width - 1 && y > 0) tryEnqueue(p - width + 1);
+    if (x > 0 && y < height - 1) tryEnqueue(p + width - 1);
+    if (x < width - 1 && y < height - 1) tryEnqueue(p + width + 1);
+  }
+
+  for (let p = 0; p < pixelCount; p++) {
+    if (!visited[p]) continue;
+    const i = p * 4;
+    const mc = minComp[p];
+    data[i + 3] = mc >= FULLY_BACKGROUND ? 0 : Math.round(((FULLY_BACKGROUND - mc) / (FULLY_BACKGROUND - PARTIAL_BACKGROUND_START)) * 255);
+  }
+}
+
 // Take an image that has a (near-)white background and key those pixels to transparent.
 // Returns { dataUrl, w, h } so the caller can decide whether to also crop.
-//
-// FOUNDER DECISION (Blake, 7 September 2026): reverted to the plain
-// brightness-threshold version (matches emblem.cards/youthcards'
-// bgRemoval.ts exactly) after the despill+adjacency version (this file's
-// prior history) still left a visible warm-toned fringe on a backlit
-// outdoor photo — Gemini gave that photo a hard, non-anti-aliased cutout
-// edge, and the adjacency heuristic ended up "correcting" genuine opaque
-// edge pixels that were never actually blended with white, producing a
-// worse artifact than it removed. Known, accepted trade-off: this plain
-// version has no colour correction at all, so it can still show the
-// original white-halo defect (reported on Miles's and Roy's cards) on
-// photos where Gemini *does* anti-alias the cutout edge.
 async function alphaKeyWhite(dataUrl: string): Promise<{ dataUrl: string; w: number; h: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -61,16 +136,7 @@ async function alphaKeyWhite(dataUrl: string): Promise<{ dataUrl: string; w: num
       if (!ctx) { reject(new Error('No 2D context')); return; }
       ctx.drawImage(img, 0, 0);
       const id = ctx.getImageData(0, 0, c.width, c.height);
-      const d = id.data;
-      for (let i = 0; i < d.length; i += 4) {
-        const r = d[i], g = d[i + 1], b = d[i + 2];
-        const minComp = Math.min(r, g, b);
-        if (minComp >= 245) {
-          d[i + 3] = 0;
-        } else if (minComp >= 225) {
-          d[i + 3] = Math.round(((245 - minComp) / 20) * 255);
-        }
-      }
+      keyWhiteConnectedToBorder(id.data, c.width, c.height);
       ctx.putImageData(id, 0, 0);
       resolve({ dataUrl: c.toDataURL('image/png'), w: c.width, h: c.height });
     };
