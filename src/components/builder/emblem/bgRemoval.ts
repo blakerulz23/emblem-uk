@@ -1,5 +1,40 @@
-// Browser-side background removal via the Gemini /api/ai-mockup endpoint.
-// Drop-in replacement for the old @imgly version — same exports + return shape.
+// Browser-side background removal.
+//
+// Primary path: @imgly/background-removal — a real ML segmentation model
+// (WASM/ONNX) that classifies the actual, original photo's pixels as
+// foreground/background rather than redrawing the image. It cannot
+// hallucinate, duplicate, or alter content, because it never generates any
+// new pixels — the whole class of defect this file's history hit with a
+// Gemini generative-repaint cutout (a warm fringe, real background bleeding
+// through, a blocky interior hole, and duplicated jersey text — four
+// distinct defects from ONE reference photo in a single day) is structurally
+// impossible here.
+//
+// FOUNDER DECISION (Blake, 7 September 2026): this library was already used
+// here once before — next.config.mjs still carries webpack config written
+// specifically for it (aliasing out its Node-only ONNX runtime), and
+// JewelryEditScreen.tsx/KeychainEditScreen.tsx/WristbandEditScreen.tsx still
+// show "Cut out (clean)" / "Used the ML model." copy whenever
+// removeBackgroundSmart's result isn't the 'canvas' fallback — copy that's
+// been quietly describing Gemini's generative repaint as "the ML model"
+// ever since this file was switched away from @imgly, and becomes literally
+// true again with this change. No changes needed to any of those three
+// files.
+//
+// Deliberately no custom `publicPath` (self-hosting the model/wasm files) —
+// git history here shows exactly that configuration broke this exact
+// library's cutout once before; the library's own default, IMG.LY-hosted
+// CDN is what's proven to work. Also deliberately no COOP/COEP headers for
+// SharedArrayBuffer/multi-threaded WASM — this app tried that too, and it
+// silently broke every cross-origin image sitewide (signed S3 photo URLs
+// discarded by the browser — see next.config.mjs's own git history). The
+// accepted trade-off is single-threaded, slower WASM execution, not a
+// correctness issue.
+//
+// Gemini (the retry + border-connectivity alpha-keying pipeline this file
+// already had) remains as a fallback for the rare case @imgly fails to load
+// or run at all in a given browser — not thrown away, only demoted to
+// "only when real segmentation genuinely can't run here."
 
 const MAX_DIM = 1024;
 const JPEG_QUALITY = 0.92;
@@ -273,6 +308,27 @@ export type RemoveBgResult = {
   method: 'gemini' | 'canvas' | 'imgly';
 };
 
+// 35s, matching the exact timeout this library's config used the last time
+// it ran correctly in this codebase family (see this file's own top comment)
+// — long enough for a cold, uncached model download, short enough that a
+// genuinely stuck load still falls back to Gemini rather than hanging the
+// builder indefinitely.
+const IMGLY_TIMEOUT_MS = 35_000;
+
+async function tryImglyRemoval(file: File): Promise<string> {
+  const removed = (async () => {
+    // Dynamic import: this model is only ever needed on the background-
+    // removal step, so it must never be part of the initial builder bundle.
+    const { removeBackground } = await import('@imgly/background-removal');
+    const blob: Blob = await removeBackground(file);
+    return await readBlobAsDataUrl(blob);
+  })();
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('@imgly/background-removal timed out')), IMGLY_TIMEOUT_MS),
+  );
+  return await Promise.race([removed, timeout]);
+}
+
 // Up to this many Gemini calls total before giving up and using whichever
 // attempt scored best — matches the reported defect one extra retry would
 // very likely have avoided (a second call on the same photo came back
@@ -305,10 +361,24 @@ async function requestGeminiCutout(imageBase64: string): Promise<string | null> 
 }
 
 export async function removeBackgroundSmart(file: File): Promise<RemoveBgResult> {
-  // 1. Resize + re-encode to keep the payload sensible
+  // 1. Real segmentation first — see this file's top comment for why.
+  try {
+    const dataUrl = await tryImglyRemoval(file);
+    const cropped = await cropToContent(dataUrl);
+    return { dataUrl: cropped, method: 'imgly' };
+  } catch (err) {
+    if (typeof console !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.warn('[bg-removal] @imgly failed, falling back to Gemini:', err);
+    }
+  }
+
+  // 2. Fallback: the Gemini cutout pipeline, only reached when real
+  // segmentation couldn't run in this browser at all.
+  // 2a. Resize + re-encode to keep the payload sensible
   const resized = await resizeToJpegDataUrl(file);
 
-  // 2. Ask Gemini to put the subject on a white background, retrying if the
+  // 2b. Ask Gemini to put the subject on a white background, retrying if the
   // result's border shows the background wasn't fully replaced (see
   // borderCleanFraction's own comment above for why this can happen at
   // all) — keeping whichever attempt scored best in case none pass.
