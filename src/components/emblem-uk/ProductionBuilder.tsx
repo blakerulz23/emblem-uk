@@ -566,6 +566,22 @@ export default function ProductionBuilder({
     enquiryStatus === 'sent' && submittedAuthorityStatus === 'confirmed' && order.type === 'single' && submittedOrderId && soleApprovedPlayer
       ? { orderId: submittedOrderId, player: soleApprovedPlayer }
       : null;
+  // TEMP DIAGNOSTIC (remove alongside the logging in captureShareImageFor
+  // once the reported "share image doesn't match what was just edited"
+  // defect is confirmed/fixed) — logs whenever the crop actually feeding
+  // the on-screen preview changes, so a live repro's console shows exactly
+  // when the preview updated relative to when share capture ran.
+  const soleApprovedPlayerCropKey = JSON.stringify(soleApprovedPlayer?.photo?.crop ?? null);
+  useEffect(() => {
+    if (!shareableOrderContext) return;
+    // eslint-disable-next-line no-console
+    console.log('[SHARE-CAPTURE-DIAG] preview crop changed', {
+      t: Date.now(),
+      playerId: shareableOrderContext.player.id,
+      crop: shareableOrderContext.player.photo?.crop,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soleApprovedPlayerCropKey]);
   const stats = sportConfig[order.sport].stats;
   const orderMode = orderModeLimits[order.type];
   const visibleOrderType = order.type === 'single' ? 'single' : 'squad';
@@ -1066,6 +1082,20 @@ export default function ProductionBuilder({
     if (!playerForCapture) throw new Error('Could not prepare card image');
     if (!orderIdForCapture) throw new Error('Could not prepare card image');
 
+    // TEMP DIAGNOSTIC (remove once the reported "share image doesn't match
+    // what was just edited" defect is confirmed/fixed) — logs the exact
+    // crop this call started with, and what's actually in the DOM the
+    // instant before html2canvas captures it, so a live repro tells us
+    // definitively whether this is a stale-data issue or a render-timing
+    // race, instead of reasoning about it after the fact from screenshots.
+    // eslint-disable-next-line no-console
+    console.log('[SHARE-CAPTURE-DIAG] start', {
+      t: Date.now(),
+      playerId: playerForCapture.id,
+      crop: playerForCapture.photo?.crop,
+      srcUrl: playerForCapture.photo?.srcUrl,
+    });
+
     const revokers: Array<() => void> = [];
     try {
       let capturePlayer = playerForCapture;
@@ -1083,6 +1113,13 @@ export default function ProductionBuilder({
         revokers.push(local.revoke);
         capturePlayer = { ...capturePlayer, badgeUrl: local.url };
       }
+
+      // eslint-disable-next-line no-console
+      console.log('[SHARE-CAPTURE-DIAG] capturePlayer finalised (about to render off-screen)', {
+        t: Date.now(),
+        crop: capturePlayer.photo?.crop,
+        srcUrl: capturePlayer.photo?.srcUrl,
+      });
 
       setShareCapturePlayer(capturePlayer);
       try {
@@ -1104,7 +1141,22 @@ export default function ProductionBuilder({
           throw new Error('Could not prepare the card image for sharing');
         }
 
-        return await captureElementToPng(el, { pixelRatio: 2, backgroundColor: '#ffffff' });
+        // TEMP DIAGNOSTIC — reads the ACTUAL live DOM transform of every
+        // <img> in the off-screen rig at the exact instant before capture.
+        // If this doesn't match capturePlayer.photo.crop above, that's
+        // direct proof of a render-timing race (React state hasn't been
+        // committed/painted into this DOM yet) rather than stale data
+        // upstream of this function.
+        // eslint-disable-next-line no-console
+        console.log('[SHARE-CAPTURE-DIAG] live DOM transforms right before captureElementToPng', {
+          t: Date.now(),
+          transforms: imgs.map((img) => img.style.transform || getComputedStyle(img).transform),
+        });
+
+        const result = await captureElementToPng(el, { pixelRatio: 2, backgroundColor: '#ffffff' });
+        // eslint-disable-next-line no-console
+        console.log('[SHARE-CAPTURE-DIAG] capture complete', { t: Date.now() });
+        return result;
       } finally {
         setShareCapturePlayer(null);
       }
