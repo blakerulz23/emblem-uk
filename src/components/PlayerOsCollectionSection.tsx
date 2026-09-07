@@ -363,7 +363,7 @@ export default function PlayerOsCollectionSection() {
           <p id="player-os-heading" className="pos-intro-eyebrow">PLAYER OS</p>
           <h2>Their season, collected.</h2>
           <p className="pos-intro-body">
-            From first appearances and matchday memories to coach recognition and personal milestones, Player OS brings their football journey together season by season.
+            Tap their Emblem card to open Player OS&mdash;a private digital profile where families save matchday memories and coaches add verified recognition, milestones and awards. Their football story grows with them, season by season.
           </p>
           <hr className="pos-intro-rule" aria-hidden="true" />
           <p className="pos-intro-tag">More than a season.<br />A brighter tomorrow.</p>
