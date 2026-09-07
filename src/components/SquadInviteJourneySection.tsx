@@ -7,15 +7,21 @@ import SquadInviteCopyLinkButton from './SquadInviteCopyLinkButton';
  * Replaces the previous bulk-upload/single-organiser "Order Session ->
  * Coach OS" narrative with Emblem's current, safer model: one organiser
  * starts a Squad Invite; each family builds and confirms its own child's
- * card; the organiser only ever sees aggregate progress, never a public
+ * card; the organiser only ever sees aggregate progress, never a real
  * roster of names/photos/guardians; completed cards are printed and
  * delivered together once the squad target is reached.
  *
  * Static synthetic homepage demonstration content — every name, date,
- * status and count below is illustrative marketing copy, not read from
- * any real Squad Invite, order or database record. Review this whole
- * object together (not just individual fields) if the underlying Squad
- * Invite product flow changes.
+ * status, count and photo below is illustrative marketing material, not
+ * read from any real Squad Invite, order or database record. The Stage 2
+ * family-card photos (squad-invite-family-card-*.png) are owner-approved
+ * synthetic marketing personas already used elsewhere on this site, used
+ * here to make the illustrative example feel concrete — never real
+ * organiser-visible data. A real Squad Invite organiser view still never
+ * shows individual child names/photos/guardian details; only this
+ * marketing illustration does. Review this whole object together (not
+ * just individual fields) if the underlying Squad Invite product flow
+ * changes.
  *
  * Plain server component apart from the one genuinely-interactive piece
  * (the demo "copy invite link" button, its own small client island in
@@ -48,9 +54,9 @@ const SQUAD_INVITE_JOURNEY_DEMO = {
     reassurance: 'Share this link with your team’s families. Keep it private.',
   },
   familyTiles: [
-    { id: 'confirmed', status: 'CARD CONFIRMED', variant: 'confirmed' },
-    { id: 'ready', status: 'READY', variant: 'ready' },
-    { id: 'in-progress', status: 'IN PROGRESS', variant: 'in-progress' },
+    { id: 'confirmed', status: 'CARD CONFIRMED', variant: 'confirmed', photo: '/assets/marketing/squad-invite-family-card-1.png' },
+    { id: 'ready', status: 'READY', variant: 'ready', photo: '/assets/marketing/squad-invite-family-card-2.png' },
+    { id: 'in-progress', status: 'IN PROGRESS', variant: 'in-progress', photo: '/assets/marketing/squad-invite-family-card-3.png' },
   ] as const,
   stages: [
     {
@@ -96,13 +102,17 @@ function OrganiserPanel() {
   );
 }
 
-function FamilyAvatar({ variant }: { variant: 'confirmed' | 'ready' | 'in-progress' }) {
+function FamilyPhoto({ variant, photo }: { variant: 'confirmed' | 'ready' | 'in-progress'; photo: string }) {
   return (
-    <span className={`sqi-family-avatar sqi-family-avatar--${variant}`} aria-hidden="true">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="8.5" r="3.4" />
-        <path d="M5 20c0-3.6 3.1-6.5 7-6.5s7 2.9 7 6.5" />
-      </svg>
+    <span className={`sqi-family-photo-wrap sqi-family-photo-wrap--${variant}`} aria-hidden="true">
+      <img className="sqi-family-photo" src={photo} alt="" loading="lazy" decoding="async" />
+      {variant === 'confirmed' && (
+        <span className="sqi-family-badge">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12.5l4.5 4.5L19 7" />
+          </svg>
+        </span>
+      )}
     </span>
   );
 }
@@ -110,10 +120,10 @@ function FamilyAvatar({ variant }: { variant: 'confirmed' | 'ready' | 'in-progre
 function FamilyTiles() {
   return (
     <div className="sqi-family-tiles">
-      <span className="sqi-sr-only">Example family progress —</span>
+      <span className="sqi-sr-only">Example family progress — three sample cards illustrating how each family's own card moves through the journey; not real Squad Invite participants —</span>
       {SQUAD_INVITE_JOURNEY_DEMO.familyTiles.map((tile) => (
         <div key={tile.id} className="sqi-family-tile">
-          <FamilyAvatar variant={tile.variant} />
+          <FamilyPhoto variant={tile.variant} photo={tile.photo} />
           <span className={`sqi-family-status sqi-family-status--${tile.variant}`}>{tile.status}</span>
         </div>
       ))}
@@ -123,11 +133,13 @@ function FamilyTiles() {
 
 function CardStack() {
   return (
-    <div className="sqi-card-stack" aria-hidden="true">
-      <span className="sqi-stack-card sqi-stack-card-3" />
-      <span className="sqi-stack-card sqi-stack-card-2" />
-      <span className="sqi-stack-card sqi-stack-card-1" />
-    </div>
+    <img
+      className="sqi-stack-photo"
+      src="/assets/marketing/squad-invite-card-stack-box.png"
+      alt="A finished set of printed Emblem player cards beside their presentation box"
+      loading="lazy"
+      decoding="async"
+    />
   );
 }
 
@@ -148,14 +160,16 @@ export default function SquadInviteJourneySection({
           triggers a hydration mismatch. */}
       <style dangerouslySetInnerHTML={{ __html: `
         .sqi-section { position: relative; background: radial-gradient(720px 420px at 82% 18%, rgba(233,116,53,.10), transparent 68%), #fdfcfa; color: #16130f; border-radius: clamp(24px,4vw,40px); }
-        .sqi-intro { max-width: 640px; margin: 0 0 40px; }
+        .sqi-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; margin: 0 0 40px; }
+        .sqi-intro { max-width: 600px; }
         .sqi-intro > p:not(.emh-eyebrow) { margin: 16px 0 0; color: #5f574f; font-size: 16.5px; line-height: 1.65; max-width: 56ch; }
-        .sqi-progress { margin: 24px 0 0; padding: 16px 20px; max-width: 460px; border: 1px solid rgba(20,17,15,.1); border-radius: 16px; background: rgba(255,255,255,.55); }
-        .sqi-progress-label { display: block; font-family: var(--font-jbmono), monospace; font-size: 13px; font-weight: 700; letter-spacing: .06em; color: #16130f; margin: 0 0 8px; }
+        .sqi-progress { flex: 0 0 auto; width: 100%; max-width: 280px; margin: 2px 0 0; padding: 18px 20px; border: 1px solid rgba(20,17,15,.1); border-radius: 16px; background: #fff; box-shadow: 0 20px 46px -34px rgba(20,17,15,.3); }
+        .sqi-progress-percent { display: block; font-family: var(--font-sora), system-ui, sans-serif; font-size: 34px; font-weight: 800; letter-spacing: -0.02em; color: #16130f; line-height: 1; }
+        .sqi-progress-label { display: block; font-family: var(--font-jbmono), monospace; font-size: 12px; font-weight: 700; letter-spacing: .06em; color: #8b8478; margin: 4px 0 12px; }
         .sqi-progress-track { height: 8px; border-radius: 999px; background: #f0e3d8; overflow: hidden; }
         .sqi-progress-fill { display: block; height: 100%; border-radius: 999px; background: #f1601d; }
         .sqi-progress-note { margin: 10px 0 0; color: #756c62; font-size: 12.5px; line-height: 1.5; }
-        .sqi-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; margin-top: 28px; }
+        .sqi-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; margin-top: 20px; }
         .sqi-cta { min-height: 44px; }
         .sqi-offer { display: inline-flex; align-items: center; max-width: 460px; margin: 0; padding: 8px 16px; border: 1px solid rgba(241,96,29,.4); border-radius: 999px; background: transparent; color: #b3480f; font-family: var(--font-jbmono), monospace; font-size: 11.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; line-height: 1.4; }
 
@@ -183,20 +197,17 @@ export default function SquadInviteJourneySection({
 
         .sqi-family-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
         .sqi-family-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 6px; border-radius: 12px; background: #fff; border: 1px solid rgba(20,17,15,.08); }
-        .sqi-family-avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 999px; background: rgba(20,17,15,.06); color: #8b8478; }
-        .sqi-family-avatar--confirmed, .sqi-family-avatar--ready { background: rgba(241,96,29,.1); color: #b3480f; }
-        .sqi-family-avatar--in-progress { border: 1px dashed rgba(20,17,15,.25); background: transparent; }
+        .sqi-family-photo-wrap { position: relative; display: block; width: 54px; height: 76px; border-radius: 7px; overflow: visible; }
+        .sqi-family-photo { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 7px; box-shadow: 0 10px 20px -12px rgba(20,17,15,.5); }
+        .sqi-family-photo-wrap--ready .sqi-family-photo { outline: 2px solid rgba(241,96,29,.55); outline-offset: 1px; }
+        .sqi-family-photo-wrap--in-progress .sqi-family-photo { opacity: .45; filter: grayscale(.3); }
+        .sqi-family-badge { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center; width: 19px; height: 19px; border-radius: 999px; background: #17a968; border: 2px solid #fff; }
         .sqi-family-status { font-family: var(--font-jbmono), monospace; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-align: center; color: #5f574f; }
         .sqi-family-status--confirmed { color: #147a4c; }
         .sqi-family-status--ready { color: #b3480f; }
         .sqi-family-status--in-progress { color: #8b8478; font-style: italic; }
 
-        .sqi-card-stack { position: relative; height: 96px; margin: 4px 0 10px 40%; }
-        .sqi-stack-card { position: absolute; left: 0; top: 0; width: 62px; height: 86px; border-radius: 9px; background: linear-gradient(160deg, #1c1a17, var(--ink, #0b0b0f)); border: 1px solid rgba(255,255,255,.08); box-shadow: 0 16px 30px -18px rgba(0,0,0,.5); }
-        .sqi-stack-card::after { content: ''; position: absolute; left: 8px; top: 8px; width: 16px; height: 3px; border-radius: 2px; background: var(--accent, #ff5a1f); }
-        .sqi-stack-card-1 { transform: translate(0,10px) rotate(-6deg); z-index: 3; }
-        .sqi-stack-card-2 { transform: translate(14px,3px) rotate(2deg); z-index: 2; }
-        .sqi-stack-card-3 { transform: translate(28px,-4px) rotate(9deg); z-index: 1; }
+        .sqi-stack-photo { display: block; width: 100%; max-width: 220px; height: auto; margin: 4px auto 10px; }
 
         .sqi-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
@@ -220,10 +231,14 @@ export default function SquadInviteJourneySection({
           .sqi-stage:nth-child(2)::after { display: none; }
         }
 
+        @media (max-width: 860px) {
+          .sqi-top { flex-direction: column; }
+          .sqi-progress { max-width: none; }
+        }
+
         @media (max-width: 640px) {
           .sqi-section { padding: 56px 20px !important; }
           .sqi-intro { max-width: none; }
-          .sqi-progress { max-width: none; }
           .sqi-actions { width: 100%; }
           .sqi-cta { width: 100%; }
           .sqi-offer { max-width: none; white-space: normal; text-align: center; justify-content: center; }
@@ -232,12 +247,15 @@ export default function SquadInviteJourneySection({
         }
       ` }} />
 
-      <div className="sqi-intro">
-        <p className="emh-eyebrow">{eyebrow}</p>
-        <h2 id="sqi-heading">{headline}</h2>
-        <p>{supporting}</p>
+      <div className="sqi-top">
+        <div className="sqi-intro">
+          <p className="emh-eyebrow">{eyebrow}</p>
+          <h2 id="sqi-heading">{headline}</h2>
+          <p>{supporting}</p>
+        </div>
 
         <div className="sqi-progress" role="group" aria-label="Squad progress example">
+          <span className="sqi-progress-percent">{progress.percent}%</span>
           <span className="sqi-progress-label">{progress.label}</span>
           <div
             className="sqi-progress-track"
@@ -250,15 +268,6 @@ export default function SquadInviteJourneySection({
             <span className="sqi-progress-fill" style={{ width: `${progress.percent}%` }} />
           </div>
           <p className="sqi-progress-note">{progress.note}</p>
-        </div>
-
-        <div className="sqi-actions">
-          {squadInviteEnabled && (
-            <Link className="emh-btn emh-btn-primary sqi-cta" href={ctaHref}>
-              {ctaLabel}
-            </Link>
-          )}
-          <p className="sqi-offer">{offerPill}</p>
         </div>
       </div>
 
@@ -276,6 +285,16 @@ export default function SquadInviteJourneySection({
               {stage.id === 'delivered' && <CardStack />}
               {'supporting' in stage && stage.supporting && <p className="sqi-stage-supporting">{stage.supporting}</p>}
             </div>
+            {stage.id === 'start' && (
+              <div className="sqi-actions">
+                {squadInviteEnabled && (
+                  <Link className="emh-btn emh-btn-primary sqi-cta" href={ctaHref}>
+                    {ctaLabel}
+                  </Link>
+                )}
+                <p className="sqi-offer">{offerPill}</p>
+              </div>
+            )}
           </li>
         ))}
       </ol>
