@@ -8008,6 +8008,26 @@ a { text-decoration: none; color: inherit; }
   font-weight: 800;
 }
 
+.emh-faq-answer-link {
+  display: inline-block;
+  margin-top: 4px;
+  color: #ef6c2f;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: rgba(239, 108, 47, 0.4);
+  text-underline-offset: 3px;
+  border-radius: 4px;
+}
+
+.emh-faq-answer-link:hover {
+  text-decoration-color: currentColor;
+}
+
+.emh-faq-answer-link:focus-visible {
+  outline: 2px solid #ef6c2f;
+  outline-offset: 3px;
+}
+
 .emh-faq-chip-list {
   display: flex;
   flex-wrap: wrap;

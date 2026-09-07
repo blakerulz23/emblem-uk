@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { MouseEvent, useEffect, useRef, useState } from 'react';
 
 type Moment = {
@@ -17,6 +18,10 @@ type FaqItem = {
   lead?: string;
   answer?: string;
   chips?: string[];
+  /** Optional inline text link appended after the answer — e.g. a pointer
+   *  through to a dedicated policy page for questions the short answer
+   *  can only summarise. */
+  link?: { label: string; href: string };
 };
 type DigitalMoment = {
   key: string;
@@ -150,6 +155,17 @@ const faqItems: FaqItem[] = [
     question: 'What is an Emblem card?',
     answer:
       'An Emblem card is a personalised premium trading card with built-in NFC. Tap it with a compatible phone to open the player’s digital profile, where their milestones, achievements and memories can grow over time.',
+  },
+  {
+    question: 'How is my child’s information protected?',
+    answer:
+      'Player profiles are private by default and managed through guardian-controlled access. Emblem limits the information displayed, verifies coach contributions and provides controls for sharing, access and deletion.',
+    link: { label: 'Learn how we protect players →', href: '/trust-and-safeguarding' },
+  },
+  {
+    question: 'What happens if an Emblem card is lost?',
+    answer:
+      'Contact us and we can disable the card’s digital connection. Finding the physical card does not give someone access to the guardian account or private management controls.',
   },
   {
     question: 'Do I need to download an app?',
@@ -776,6 +792,17 @@ export function FaqAccordion() {
                       <span key={chip}>{chip}</span>
                     ))}
                   </div>
+                )}
+                {item.link && (
+                  <p>
+                    <Link
+                      className="emh-faq-answer-link"
+                      href={item.link.href}
+                      tabIndex={isOpen ? 0 : -1}
+                    >
+                      {item.link.label}
+                    </Link>
+                  </p>
                 )}
               </div>
             </div>
