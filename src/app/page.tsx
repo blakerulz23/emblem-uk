@@ -1,46 +1,13 @@
 ﻿import Link from 'next/link';
 import Icon from '@/components/builder/emblem/Icon';
 import PlayerOsCollectionSection from '@/components/PlayerOsCollectionSection';
+import SquadInviteJourneySection from '@/components/SquadInviteJourneySection';
 import {
   FaqAccordion,
   HowItWorksSection,
   TapVideo,
 } from './HomeEffects';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
-
-const squadGroups = [
-  {
-    number: '1',
-    heading: 'Build the squad',
-    items: [
-      'Bulk-upload player photos',
-      'Apply one design across the team',
-      'Review and approve every card',
-    ],
-  },
-  {
-    number: '2',
-    heading: 'Keep their stories growing',
-    items: [
-      'Verify moments submitted by parents',
-      'Award player achievements',
-      'Manage every profile from one dashboard',
-    ],
-  },
-];
-
-const rosterPreview = [
-  { shirt: '10', name: 'Jacob Thompson', meta: 'Midfielder · 2 prints', swatch: '#F1601D', status: 'Approved', statusClass: 'ready', photo: '/seed-jacob.png' },
-  { shirt: '7', name: 'Leo Barnes', meta: 'Winger · 2 prints', swatch: '#2F6BD6', status: 'Ready', statusClass: 'ready', photo: '/seed-leo.png' },
-];
-
-const coachOsAvatars = [
-  { name: 'Jacob Thompson', photo: '/seed-jacob.png' },
-  { name: 'Leo Barnes', photo: '/seed-leo.png' },
-  { name: 'Squad player', photo: '/assets/marketing/coachos-avatar-1.png' },
-  { name: 'Squad player', photo: '/assets/marketing/coachos-avatar-2.png' },
-  { name: 'Squad player', photo: '/assets/marketing/coachos-avatar-3.png' },
-];
 
 const tiers = [
   {
@@ -163,133 +130,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section id="squad" className="emh-section emh-squad">
-        <div className="emh-squad-copy">
-          <p className="emh-eyebrow">For coaches & teams</p>
-          <h2>One order. A whole season connected.</h2>
-          <p>
-            Create every player&rsquo;s card in one team session, then use Coach OS to recognise achievements, verify submitted moments and keep the squad&rsquo;s profiles growing throughout the season.
-          </p>
-        </div>
-
-        <div className="emh-squad-groups">
-          {squadGroups.map((group) => (
-            <div key={group.number} className="emh-squad-group">
-              <div className="emh-squad-group-top">
-                <span className="emh-squad-group-number">{group.number}</span>
-                <h3>{group.heading}</h3>
-              </div>
-              <ul>
-                {group.items.map((item) => (
-                  <li key={item}>
-                    <span className="emh-squad-check" aria-hidden="true"><Icon name="check" size={11} /></span>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-
-        <div className="emh-squad-cta-row">
-          <Link className="emh-btn emh-btn-primary" href="/builder?mode=squad">
-            BUILD YOUR SQUAD
-            <Icon name="chevR" size={18} />
-          </Link>
-          <p className="emh-squad-offer">
-            <Icon name="slab" size={14} />
-            Full-squad orders include a free coach card
-          </p>
-          {squadInviteEnabled && (
-            <Link className="emh-btn emh-btn-secondary" href="/squad-invite/start">
-              CREATE A SQUAD INVITE
-              <Icon name="chevR" size={18} />
-            </Link>
-          )}
-        </div>
-
-        <div className="emh-squad-panels">
-          <div className="emh-roster-card">
-            <div className="emh-roster-head">
-              <div>
-                <p>Order session</p>
-                <h3>AFC Oldham U12s</h3>
-              </div>
-            </div>
-            <div className="emh-order-progress-row">
-              <span className="emh-order-progress-label">14 / 16 ready</span>
-              <span className="emh-progress-bar"><span style={{ width: '87.5%' }} /></span>
-            </div>
-            <div className="emh-roster-list">
-              {rosterPreview.map((row) => (
-                <div key={row.name} className="emh-order-row">
-                  <span className="emh-order-row-photo">
-                    <img src={row.photo} alt="" />
-                    <em className="emh-order-row-number" style={{ background: row.swatch }}>{row.shirt}</em>
-                  </span>
-                  <div>
-                    <strong>{row.name}</strong>
-                    <small>{row.meta}</small>
-                  </div>
-                  <em className={`emh-status emh-status-${row.statusClass}`}>{row.status}</em>
-                </div>
-              ))}
-            </div>
-            <p className="emh-panel-footer">Review and approve every card before printing.</p>
-          </div>
-
-          <div className="emh-squad-connector" aria-hidden="true">
-            <Icon name="chevR" size={28} stroke={3} />
-          </div>
-
-          <div className="emh-coachos-card">
-            <div className="emh-coachos-head">
-              <p>Coach OS</p>
-              <h3>Squad overview</h3>
-              <span className="emh-coachos-sub">Season in progress</span>
-            </div>
-
-            <div className="emh-coachos-avatars">
-              {coachOsAvatars.map((player) => (
-                <span key={player.name + player.photo} className="emh-coachos-avatar">
-                  <img src={player.photo} alt="" />
-                </span>
-              ))}
-              <span className="emh-coachos-avatar emh-coachos-avatar-more">+9</span>
-            </div>
-
-            <div className="emh-coachos-block">
-              <p className="emh-coachos-label">Moment awaiting verification</p>
-              <div className="emh-coachos-moment">
-                <img className="emh-coachos-moment-thumb" src="/assets/marketing/coachos-moment-goal.png" alt="" />
-                <div>
-                  <strong>Goal vs. Rochdale</strong>
-                  <small>Submitted by parent</small>
-                  <small>Today</small>
-                </div>
-              </div>
-              <span className="emh-coachos-approve">
-                Approve
-                <Icon name="chevR" size={13} />
-              </span>
-            </div>
-
-            <div className="emh-coachos-block">
-              <p className="emh-coachos-label">Achievement awarded</p>
-              <div className="emh-coachos-achievement">
-                <span className="emh-coachos-shield" aria-hidden="true"><Icon name="shield" size={20} /></span>
-                <div>
-                  <strong>Top Assist</strong>
-                  <small>Awarded to Jacob Thompson</small>
-                  <small>Today</small>
-                </div>
-              </div>
-            </div>
-
-            <p className="emh-panel-footer emh-panel-footer-dark">Recognise achievements and keep every profile growing.</p>
-          </div>
-        </div>
-      </section>
+      <SquadInviteJourneySection squadInviteEnabled={squadInviteEnabled} ctaHref="/squad-invite/start" />
 
       <section id="pricing" className="emh-section emh-pricing">
         <p className="emh-eyebrow">Pricing</p>
