@@ -4,7 +4,7 @@
  * Replaces the old drag-to-unlock / scroll-pinned "THE DIGITAL PROFILE"
  * lock-screen walkthrough (removed) with a static, always-visible dark
  * archival "season collection" — a horizontal row of illustrative chapters
- * (first card, matchday memories, coach recognition, milestones, awards,
+ * (first card, matchday memories, coach insights, milestones, awards,
  * and an unfinished future chapter).
  *
  * Deliberately a plain server component: no drag state, no scroll listener,
@@ -55,9 +55,13 @@ type CompletedChapter = {
   id: string;
   state: 'completed';
   heading: string;
+  /** A short line under the heading, explaining what this chapter type is —
+   *  Coach Insights only, since it's the one chapter whose name alone
+   *  doesn't make clear it covers both praise and what to work on next. */
+  subheading?: string;
   photo: Photo;
   label: string;
-  /** Shown alongside the date on one meta line (Coach Recognition only). */
+  /** Shown alongside the date on one meta line (Coach Insights only). */
   supportingCopy?: string;
   date: string;
   handwritten?: boolean;
@@ -144,9 +148,13 @@ const SEASON_COLLECTION_DEMO: {
     {
       id: 'coach-recognition',
       state: 'completed',
-      heading: 'COACH RECOGNITION',
-      photo: { src: '/assets/marketing/player-os-coach-recognition.png', alt: 'Coach and player photo used to illustrate coach recognition' },
-      label: 'Strong attitude. Leads by example.',
+      heading: 'COACH INSIGHTS',
+      subheading: 'What’s going well. What to practise next.',
+      photo: { src: '/assets/marketing/player-os-coach-recognition.png', alt: 'Coach and player photo used to illustrate coach insights' },
+      // Illustrative only — a fictional coach's name and note, shown to
+      // demonstrate what a real Coach Assessment (player_assessments) looks
+      // like, never presented as an actual testimonial.
+      label: 'Great movement into space. Next session, practise checking over your shoulder before receiving the ball.',
       supportingCopy: 'Coach Taylor',
       date: '05.09.2026',
       labelTexture: '/assets/marketing/player-os-label-coach.png',
@@ -297,6 +305,7 @@ export default function PlayerOsCollectionSection() {
         #player-os .pos-chapter { flex: 1 1 0; min-width: 0; padding: 22px 16px; position: relative; }
         #player-os .pos-chapter + .pos-chapter { border-left: 1px solid rgba(255,255,255,.08); }
         #player-os .pos-chapter h3 { font-family: ${font.display}; font-weight: 800; font-size: 15px; letter-spacing: -.005em; color: #F4F0E9; margin: 0 0 6px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,.14); text-transform: uppercase; }
+        #player-os .pos-chapter-sub { font-family: ${font.body}; font-size: 11.5px; line-height: 1.4; color: #9C9486; margin: -2px 0 0; }
         #player-os .pos-mount-wrap { position: relative; margin-top: 20px; }
         #player-os .pos-mount { position: relative; border-radius: 6px; background: #050403; border: 1px solid rgba(0,0,0,.6); box-shadow: 0 14px 26px -14px rgba(0,0,0,.75); overflow: hidden; aspect-ratio: 3/4; }
         /* Upcoming: dashed, lighter border instead of a solid archived-photo
@@ -361,12 +370,12 @@ export default function PlayerOsCollectionSection() {
       <div className="pos-inner">
         <div>
           <p id="player-os-heading" className="pos-intro-eyebrow">PLAYER OS</p>
-          <h2>Their season, collected.</h2>
+          <h2>Their progress, explained.<br />Their season, collected.</h2>
           <p className="pos-intro-body">
-            Tap their Emblem card to open Player OS&mdash;a private digital profile where families save matchday memories and coaches add verified recognition, milestones and awards. Their football story grows with them, season by season.
+            Tap their Emblem card to open Player OS&mdash;a private football profile where families keep matchday memories, milestones and coach feedback together. Celebrate their progress and revisit guidance throughout the season.
           </p>
           <hr className="pos-intro-rule" aria-hidden="true" />
-          <p className="pos-intro-tag">More than a season.<br />A brighter tomorrow.</p>
+          <p className="pos-intro-tag">Memories to keep.<br />Progress to understand.</p>
           <p className="pos-handwritten-note">Small moments.<br />Big futures.</p>
           <p className="pos-brandline">
             <span className="pos-brandline-rule" aria-hidden="true" />
@@ -383,7 +392,7 @@ export default function PlayerOsCollectionSection() {
 
           <div className="pos-collection">
             <p className="pos-sr-only">
-              A horizontally scrollable collection of six chapters: First Card, Matchday Memories and Coach Recognition (already collected this season), Milestones and Awards (still to come), and a final chapter that hasn&rsquo;t started yet. Scroll or swipe to browse; each chapter is illustrative homepage content.
+              A horizontally scrollable collection of six chapters: First Card, Matchday Memories and Coach Insights (already collected this season), Milestones and Awards (still to come), and a final chapter that hasn&rsquo;t started yet. Scroll or swipe to browse; each chapter is illustrative homepage content.
             </p>
             <ol
               className="pos-row"
@@ -394,6 +403,9 @@ export default function PlayerOsCollectionSection() {
               {SEASON_COLLECTION_DEMO.chapters.map((chapter) => (
                 <li key={chapter.id} className="pos-chapter">
                   <h3>{chapter.heading}</h3>
+                  {chapter.state === 'completed' && chapter.subheading && (
+                    <p className="pos-chapter-sub">{chapter.subheading}</p>
+                  )}
                   <span className="pos-sr-only">{stateAnnouncement(chapter.state)}</span>
                   {chapter.state === 'future' ? (
                     <div className="pos-future">
