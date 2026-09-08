@@ -1177,8 +1177,7 @@ a { text-decoration: none; color: inherit; }
 .uk-wizard-fields input,
 .uk-wizard-fields select,
 .uk-player-editor input,
-.uk-player-editor select,
-.uk-stat-grid input {
+.uk-player-editor select {
   width: 100%;
   min-height: 52px;
   border: 1px solid var(--wizard-line);
@@ -2676,8 +2675,7 @@ a { text-decoration: none; color: inherit; }
 }
 
 .uk-field-grid label,
-.uk-field-stack label,
-.uk-stat-grid label {
+.uk-field-stack label {
   display: grid;
   gap: 6px;
   color: #5f574d;
@@ -2748,7 +2746,6 @@ a { text-decoration: none; color: inherit; }
 .uk-field-grid select,
 .uk-field-stack input,
 .uk-field-stack select,
-.uk-stat-grid input,
 .uk-roster-table input {
   width: 100%;
   min-height: 42px;
@@ -4765,31 +4762,6 @@ a { text-decoration: none; color: inherit; }
   text-transform: uppercase;
 }
 
-.uk-card-stats {
-  position: absolute;
-  left: 7%;
-  right: 7%;
-  bottom: 4%;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
-}
-
-.uk-card-stats span {
-  border-radius: 6px;
-  background: rgba(255,255,255,0.1);
-  padding: 6px 4px;
-  text-align: center;
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.uk-card-stats strong {
-  display: block;
-  font-size: 15px;
-}
-
 .uk-player-card small {
   position: absolute;
   left: 7%;
@@ -4881,32 +4853,6 @@ a { text-decoration: none; color: inherit; }
   font-size: 64px;
   font-weight: 900;
   line-height: 0.9;
-}
-
-.uk-back-stats {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 7px;
-}
-
-.uk-back-stats span {
-  border: 1px solid rgba(255,255,255,0.16);
-  border-radius: 7px;
-  background: rgba(255,255,255,0.08);
-  padding: 10px 6px;
-  text-align: center;
-  color: rgba(255,255,255,0.72);
-  font-size: 11px;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.uk-back-stats strong {
-  display: block;
-  color: #fff;
-  font-size: 22px;
 }
 
 .uk-back-memory {
@@ -5054,14 +5000,9 @@ a { text-decoration: none; color: inherit; }
   object-fit: contain;
 }
 
-.uk-field-stack,
-.uk-stat-grid {
+.uk-field-stack {
   display: grid;
   gap: 10px;
-}
-
-.uk-stat-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .uk-empty-state {
