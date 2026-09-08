@@ -137,6 +137,27 @@ describe('cardShareStageReducer', () => {
     expect(failed).toEqual({ type: 'failed', message: 'boom' });
     expect(cardShareStageReducer(failed, { type: 'reset' })).toEqual({ type: 'closed' });
   });
+
+  /**
+   * Founder-reported: native sharing being unavailable, or navigator.share
+   * rejecting for a reason other than the guardian cancelling (most
+   * notably losing the "user activation" window during the async prep
+   * before it's called), must never look identical to a silent download —
+   * both land here instead, carrying which of the two happened, so the
+   * component can show explicit alternative actions rather than quietly
+   * saving a file under a control labelled Share.
+   */
+  it('manual-options carries which of the two reasons triggered it, from either "unsupported" (device lacks the API) or "share-failed" (attempted and rejected, not cancelled)', () => {
+    expect(cardShareStageReducer({ type: 'preparing' }, { type: 'manual-options', reason: 'unsupported' }))
+      .toEqual({ type: 'manual-options', reason: 'unsupported' });
+    expect(cardShareStageReducer({ type: 'preparing' }, { type: 'manual-options', reason: 'share-failed' }))
+      .toEqual({ type: 'manual-options', reason: 'share-failed' });
+  });
+
+  it('manual-options can be reset back to closed, same as a failure', () => {
+    const manual = cardShareStageReducer({ type: 'preparing' }, { type: 'manual-options', reason: 'unsupported' });
+    expect(cardShareStageReducer(manual, { type: 'reset' })).toEqual({ type: 'closed' });
+  });
 });
 
 describe('fetchCardShareEligibility', () => {
@@ -192,11 +213,18 @@ describe('cardSharePublicPageUrl / buildCardShareMessageText — the real per-sh
     expect(cardSharePublicPageUrl('b'.repeat(64))).toBe(`https://example-preview.vercel.app/card-share/${'b'.repeat(64)}`);
   });
 
-  it('buildCardShareMessageText carries exactly the given URL through, with the same fixed wording and exactly one URL', () => {
+  it('labels the real per-share URL as viewing this card, not creating a new one — the founder-reported mislabel this fixes', () => {
     const url = 'https://emblem-uk.vercel.app/card-share/' + 'c'.repeat(64);
     const text = buildCardShareMessageText(url);
-    expect(text).toBe(`Look what I made with Emblem.\nCreate your own card: ${url}`);
+    expect(text).toContain(`View my card: ${url}`);
+    expect(text).not.toMatch(new RegExp(`Create your own card:\\s*${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     expect(text.split(url).length - 1).toBe(1);
+  });
+
+  it('separately offers the real, generic builder link (not the per-card URL) as the "create your own" CTA', () => {
+    const url = 'https://emblem-uk.vercel.app/card-share/' + 'd'.repeat(64);
+    const text = buildCardShareMessageText(url);
+    expect(text).toContain(`Create your own: ${CARD_SHARE_LINK_URL}`);
   });
 });
 

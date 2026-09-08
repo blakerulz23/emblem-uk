@@ -20,6 +20,20 @@ import {
   type CardShareEligibility,
 } from '@/lib/card-share';
 
+/** True only when this browser can genuinely open a native share sheet for
+ * a file payload — checked with the real file once it exists, never
+ * assumed from `navigator.share`'s mere presence (some browsers implement
+ * it for URLs/text only, and canShare({files}) is what actually tells them
+ * apart). */
+function canShareFile(file: File): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    typeof navigator.share === 'function' &&
+    typeof navigator.canShare === 'function' &&
+    navigator.canShare({ files: [file] })
+  );
+}
+
 /**
  * Guardian-controlled card-front sharing (Work Package B, draft/
  * unreleased). All decision logic lives in card-share.ts (testable, no
@@ -79,6 +93,17 @@ export default function ShareCardSheet({
   // 0085) — distinct from CARD_SHARE_MESSAGE_TEXT, which is the generic
   // preview only.
   const [shareMessageText, setShareMessageText] = useState('');
+  // The bare per-share URL, for the "Copy share link" manual option — kept
+  // separate from shareMessageText (the full composed caption) since the
+  // two are copied by two different, separately-labelled buttons.
+  const [shareUrl, setShareUrl] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
+  // Set once image + link preparation succeeds, whenever native sharing
+  // isn't going to complete the job (unsupported, or attempted and
+  // rejected for a reason other than the guardian cancelling) — holds
+  // everything the manual-options buttons need to act on without
+  // re-running any of that preparation.
+  const [preparedShare, setPreparedShare] = useState<{ blob: Blob; fileName: string } | null>(null);
   // Guards against a slow eligibility response from an earlier order
   // landing after the component has already unmounted or moved to a
   // different order — same stale-attempt discipline as AdultPermissionStep.
@@ -166,6 +191,35 @@ export default function ShareCardSheet({
     }
   };
 
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      // Same fallback reasoning as handleCopyMessage — the link is also
+      // visible as part of the printed message text above these buttons.
+    }
+  };
+
+  // Only ever runs from an explicit guardian click on "Download card
+  // image" in the manual-options UI — never automatically, so a browser
+  // that can't (or wouldn't) open the native share sheet never looks like
+  // it silently saved a file under a control labelled Share.
+  const handleDownloadNow = () => {
+    if (!preparedShare) return;
+    const objectUrl = URL.createObjectURL(preparedShare.blob);
+    try {
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = preparedShare.fileName;
+      link.click();
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+    }
+    dispatch({ type: 'downloaded' });
+  };
+
   const handleContinue = async () => {
     if (sharingRef.current) return;
     if (stage.type !== 'confirming' || !stage.checked) return;
@@ -205,14 +259,30 @@ export default function ShareCardSheet({
         dispatch({ type: 'fail', message: publicPage.error || CARD_SHARE_LINK_FAILURE });
         return;
       }
-      const messageText = buildCardShareMessageText(cardSharePublicPageUrl(publicPage.token));
+      const realShareUrl = cardSharePublicPageUrl(publicPage.token);
+      const messageText = buildCardShareMessageText(realShareUrl);
+      setShareUrl(realShareUrl);
       setShareMessageText(messageText);
 
       try {
         const blob = await (await fetch(dataUrl)).blob();
-        const file = new File([blob], `emblem-card-${orderId.slice(0, 8)}.jpg`, { type: blob.type || 'image/jpeg' });
+        const fileName = `emblem-card-${orderId.slice(0, 8)}.jpg`;
+        const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
 
-        if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+        // FOUNDER-REPORTED BUG (fixed): this used to fall straight through
+        // to an automatic download whenever native sharing wasn't
+        // supported OR failed for any non-cancel reason — including,
+        // almost certainly, the exact case flagged live: the async work
+        // above (recording consent, generating the image, creating the
+        // public page) can run long enough to lose the "user activation"
+        // window some browsers require navigator.share to be called
+        // within, which then rejects looking identical to "unsupported".
+        // Either way, a guardian who tapped a button labelled "Continue to
+        // share" got a silently-saved file with no explanation. Both cases
+        // now stop here instead and hand the guardian explicit,
+        // separately-labelled choices (setPreparedShare below) — nothing
+        // is ever downloaded without a distinct action for it.
+        if (canShareFile(file)) {
           try {
             // `text` alone, never also `url`: messageText already contains
             // the exact, single link as ordinary readable text. Passing
@@ -232,7 +302,10 @@ export default function ShareCardSheet({
             // Best-effort only: navigator.share() already resolved, so the
             // share itself genuinely succeeded regardless of whether this
             // also succeeds — a clipboard failure here must never be
-            // reported as a failed share.
+            // reported as a failed share. And resolving is all this API
+            // ever promises: it says the share sheet accepted the
+            // hand-off, never that any specific recipient received or
+            // opened it, so the 'shared' state below is worded to match.
             try {
               await navigator.clipboard.writeText(messageText);
             } catch {
@@ -242,40 +315,30 @@ export default function ShareCardSheet({
             dispatch({ type: 'shared' });
             return;
           } catch (shareErr) {
-            // A user cancelling the native share sheet lands here (most
-            // browsers reject navigator.share's promise with an
+            // A guardian cancelling the native share sheet lands here
+            // (most browsers reject navigator.share's promise with an
             // AbortError) — treated as a quiet cancellation, not a
-            // failure, since nothing went wrong and the guardian's own
+            // failure: nothing was created, nothing is offered, the
             // consent event already stands.
             if (shareErr instanceof Error && shareErr.name === 'AbortError') {
               dispatch({ type: 'reset' });
               return;
             }
-            // Any other rejection (most notably iOS Safari's Web Share
-            // "user activation" expiring — this feature's own network
-            // round-trip, uploading the image and creating the public
-            // share page, can easily take longer than that window allows
-            // — confirmed live: a real share attempt failed exactly this
-            // way) falls through to the download fallback below rather
-            // than hard-failing. A guardian who hits this still gets a
-            // working result; only a genuine AbortError is ever silent.
+            // Any other rejection — including a lost user-activation
+            // window — surfaces explicit manual options, never a silent
+            // download.
+            setPreparedShare({ blob, fileName });
+            dispatch({ type: 'manual-options', reason: 'share-failed' });
+            return;
           }
         }
 
-        const objectUrl = URL.createObjectURL(blob);
-        try {
-          const link = document.createElement('a');
-          link.href = objectUrl;
-          link.download = file.name;
-          link.click();
-        } finally {
-          URL.revokeObjectURL(objectUrl);
-        }
-        dispatch({ type: 'downloaded' });
+        setPreparedShare({ blob, fileName });
+        dispatch({ type: 'manual-options', reason: 'unsupported' });
       } catch {
-        // Only genuine failures preparing the blob/file or triggering the
-        // download itself land here now — every navigator.share() outcome
-        // (cancel, success, or a fallback-worthy error) is handled above.
+        // Only a genuine failure preparing the blob/file itself lands
+        // here — every navigator.share() outcome (cancel, success, or a
+        // fallback worth surfacing) is handled above.
         dispatch({ type: 'fail', message: CARD_SHARE_GENERIC_FAILURE });
       }
     } finally {
@@ -353,6 +416,22 @@ export default function ShareCardSheet({
       )}
 
       {stage.type === 'preparing' && <p aria-live="polite">Preparing your image…</p>}
+      {stage.type === 'manual-options' && (
+        <div role="status">
+          <p>
+            {stage.reason === 'unsupported'
+              ? "Your image and link are ready. This device doesn't support sharing directly, so pick how you'd like to send it:"
+              : "Your image and link are ready, but we couldn't open the share sheet on this device. Pick how you'd like to send it instead:"}
+          </p>
+          <p className="uk-card-share-download-message">{shareMessageText}</p>
+          <div className="uk-card-share-manual-actions">
+            <button type="button" onClick={handleCopyLink}>{linkCopied ? 'Copied' : 'Copy share link'}</button>
+            <button type="button" onClick={handleCopyMessage}>{messageCopied ? 'Copied' : 'Copy message'}</button>
+            <button type="button" onClick={handleDownloadNow}>Download card image</button>
+          </div>
+          <p className="uk-card-share-recall">{CARD_SHARE_RECALL_NOTICE}</p>
+        </div>
+      )}
       {stage.type === 'shared' && (
         <div role="status">
           {/* Some apps (confirmed: WhatsApp Desktop) attach the image but

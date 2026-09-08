@@ -248,6 +248,21 @@ function isLocalAssetUrl(url?: string) {
   return Boolean(url && (url.startsWith('blob:') || url.startsWith('data:')));
 }
 
+// TEMP DIAGNOSTIC helper (remove alongside the [SHARE-CAPTURE-DIAG] logging
+// once the reported share-capture-crop defect is confirmed/fixed) —
+// categorises a photo URL for logging without ever printing the URL
+// itself: a signed S3 URL is a bearer credential (anyone who reads a log
+// containing one could fetch the private child photo it points to), so
+// the diagnostic only ever needed to know which kind of source was in
+// play, never the URL/token contents.
+function describeCaptureUrlKind(url?: string | null): 'none' | 'blob' | 'data' | 'same-origin-asset' | 'remote-signed' {
+  if (!url) return 'none';
+  if (url.startsWith('blob:')) return 'blob';
+  if (url.startsWith('data:')) return 'data';
+  if (url.startsWith('/')) return 'same-origin-asset';
+  return 'remote-signed';
+}
+
 /**
  * Thrown only when an upload request genuinely reached /api/order-assets
  * and the server responded with a non-ok status (e.g. storage
@@ -1093,7 +1108,11 @@ export default function ProductionBuilder({
       t: Date.now(),
       playerId: playerForCapture.id,
       crop: playerForCapture.photo?.crop,
-      srcUrl: playerForCapture.photo?.srcUrl,
+      // Never the actual URL — a signed S3 URL is itself a bearer
+      // credential (anyone who reads it can fetch the private photo), and
+      // this diagnostic only ever needed to know which KIND of source was
+      // in play, never the URL/token contents.
+      srcUrlKind: describeCaptureUrlKind(playerForCapture.photo?.srcUrl),
     });
 
     const revokers: Array<() => void> = [];
@@ -1118,7 +1137,7 @@ export default function ProductionBuilder({
       console.log('[SHARE-CAPTURE-DIAG] capturePlayer finalised (about to render off-screen)', {
         t: Date.now(),
         crop: capturePlayer.photo?.crop,
-        srcUrl: capturePlayer.photo?.srcUrl,
+        srcUrlKind: describeCaptureUrlKind(capturePlayer.photo?.srcUrl),
       });
 
       setShareCapturePlayer(capturePlayer);

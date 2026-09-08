@@ -4140,6 +4140,17 @@ a { text-decoration: none; color: inherit; }
   align-items: center;
 }
 
+/* Three explicit, equally-weighted choices (Copy link / Copy message /
+   Download) shown when native sharing isn't going to complete the job —
+   never a single button that silently downloads under a Share label.
+   Wraps on narrow phone widths rather than overflowing. */
+.uk-card-share-manual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
 .uk-next-steps span {
   margin-top: 2px;
   color: var(--wizard-soft);

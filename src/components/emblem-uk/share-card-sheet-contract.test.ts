@@ -62,19 +62,38 @@ describe('ShareCardSheet — cancellation creates nothing', () => {
 });
 
 describe('ShareCardSheet — sharing mechanism order and cleanup', () => {
-  it('attempts navigator.share (Web Share API with a File) before the download fallback', () => {
-    const shareIdx = sheet.indexOf('navigator.share(');
-    const downloadIdx = sheet.indexOf('createObjectURL');
+  it('attempts navigator.share (Web Share API with a File) inside handleContinue, gated by the real canShareFile(file) check', () => {
+    const idx = sheet.indexOf('const handleContinue');
+    const fnBody = sheet.slice(idx, sheet.indexOf('\n  };', idx));
+    const shareIdx = fnBody.indexOf('navigator.share(');
+    const gateIdx = fnBody.indexOf('canShareFile(file)');
     expect(shareIdx).toBeGreaterThan(-1);
-    expect(downloadIdx).toBeGreaterThan(shareIdx);
+    expect(gateIdx).toBeGreaterThan(-1);
+    expect(gateIdx).toBeLessThan(shareIdx);
   });
 
-  it('checks navigator.canShare before calling navigator.share, and gates on File support specifically', () => {
-    expect(sheet).toContain('navigator.canShare && navigator.canShare({ files: [file] })');
+  it('canShareFile checks navigator.share and navigator.canShare with the real file, never assumed from the API\'s mere presence', () => {
+    const idx = sheet.indexOf('function canShareFile');
+    const fnBody = sheet.slice(idx, sheet.indexOf('\n}', idx));
+    expect(fnBody).toContain("typeof navigator.share === 'function'");
+    expect(fnBody).toContain("typeof navigator.canShare === 'function'");
+    expect(fnBody).toContain('navigator.canShare({ files: [file] })');
+  });
+
+  it('the actual download (createObjectURL) only ever runs from handleDownloadNow — an explicit, separate function handleContinue never calls itself', () => {
+    const downloadFnIdx = sheet.indexOf('const handleDownloadNow');
+    expect(downloadFnIdx).toBeGreaterThan(-1);
+    const fnBody = sheet.slice(downloadFnIdx, sheet.indexOf('\n  };', downloadFnIdx));
+    expect(fnBody).toContain('URL.createObjectURL(preparedShare.blob)');
+
+    const continueIdx = sheet.indexOf('const handleContinue');
+    const continueBody = sheet.slice(continueIdx, sheet.indexOf('\n  };', continueIdx));
+    expect(continueBody).not.toContain('createObjectURL');
+    expect(continueBody).not.toContain('handleDownloadNow()');
   });
 
   it('revokes the object URL immediately after triggering the download, via finally', () => {
-    const createIdx = sheet.indexOf('URL.createObjectURL(blob)');
+    const createIdx = sheet.indexOf('URL.createObjectURL(preparedShare.blob)');
     const revokeIdx = sheet.indexOf('URL.revokeObjectURL(objectUrl)');
     const finallyIdx = sheet.indexOf('finally {', createIdx);
     expect(createIdx).toBeGreaterThan(-1);
@@ -149,7 +168,8 @@ describe('ShareCardSheet — the shared text carries the real per-share link (mi
 
   it('messageText is built server-side from a genuine public-page token (createCardSharePublicPage), never a template literal or concatenation the client controls', () => {
     expect(sheet).toContain('const publicPage = await createCardSharePublicPage(orderId, dataUrl);');
-    expect(sheet).toContain('const messageText = buildCardShareMessageText(cardSharePublicPageUrl(publicPage.token));');
+    expect(sheet).toContain('const realShareUrl = cardSharePublicPageUrl(publicPage.token);');
+    expect(sheet).toContain('const messageText = buildCardShareMessageText(realShareUrl);');
     const idx = sheet.indexOf('navigator.share({');
     const callBody = sheet.slice(idx, sheet.indexOf('});', idx));
     expect(callBody).not.toMatch(/text:\s*`|text:\s*"/);
@@ -310,8 +330,8 @@ describe('ShareCardSheet — the card preview genuinely scales to fit on narrow 
   });
 });
 
-describe('ShareCardSheet — a non-cancel navigator.share() failure falls back to download, never a hard failure', () => {
-  it('navigator.share is wrapped in its own try/catch, nested inside the outer blob/download try — not sharing the outer catch directly', () => {
+describe('ShareCardSheet — a non-cancel navigator.share() failure surfaces explicit manual options, never a silent download', () => {
+  it('navigator.share is wrapped in its own try/catch, nested inside the outer blob/prep try — not sharing the outer catch directly', () => {
     const shareIdx = sheet.indexOf('navigator.share({');
     const innerTryIdx = sheet.lastIndexOf('try {', shareIdx);
     const outerTryIdx = sheet.lastIndexOf('try {', innerTryIdx - 1);
@@ -320,22 +340,40 @@ describe('ShareCardSheet — a non-cancel navigator.share() failure falls back t
     expect(outerTryIdx).toBeLessThan(innerTryIdx);
   });
 
-  it('a non-AbortError rejection from navigator.share has no early return, and no fail dispatch of its own — it falls through to the code below', () => {
+  /**
+   * Founder-reported bug (fixed): this used to fall through silently to an
+   * automatic download here — including, almost certainly, the exact
+   * live-reported case where the async prep before navigator.share() runs
+   * long enough to lose the browser's "user activation" window, which then
+   * rejects looking identical to "unsupported". Neither case is ever
+   * resolved by quietly saving a file under a button labelled Share —
+   * both now set preparedShare and dispatch the explicit manual-options
+   * stage instead, then return (no fallthrough to any download code).
+   */
+  it('a non-AbortError rejection sets preparedShare and dispatches manual-options (reason: share-failed), then returns — no fallthrough', () => {
     const idx = sheet.indexOf("shareErr.name === 'AbortError'");
-    const abortBlockEnd = sheet.indexOf('}', sheet.indexOf('return;', idx));
-    const catchBlockEnd = sheet.indexOf('}\n        }', abortBlockEnd);
-    const fallthroughSection = sheet.slice(abortBlockEnd, catchBlockEnd + 20);
-    expect(fallthroughSection).not.toContain("dispatch({ type: 'fail'");
-    expect(fallthroughSection).not.toContain('return;');
+    const abortReturnIdx = sheet.indexOf('return;', idx);
+    const section = sheet.slice(abortReturnIdx, sheet.indexOf('return;', abortReturnIdx + 10) + 10);
+    expect(section).toContain('setPreparedShare({ blob, fileName });');
+    expect(section).toContain("dispatch({ type: 'manual-options', reason: 'share-failed' });");
+    expect(section).toContain('return;');
   });
 
-  it('the code that actually performs the download (createObjectURL) sits after the navigator.share try/catch closes, still reachable on a share failure', () => {
-    const shareTryCatchIdx = sheet.indexOf("shareErr.name === 'AbortError'");
-    const downloadIdx = sheet.indexOf('URL.createObjectURL(blob)', shareTryCatchIdx);
-    expect(downloadIdx).toBeGreaterThan(shareTryCatchIdx);
+  it('the code that actually performs the download (createObjectURL) is NOT inside handleContinue at all — it only exists in the separate, explicitly-triggered handleDownloadNow', () => {
+    const continueIdx = sheet.indexOf('const handleContinue');
+    const continueBody = sheet.slice(continueIdx, sheet.indexOf('\n  };', continueIdx));
+    expect(continueBody).not.toContain('createObjectURL');
   });
 
-  it('the outer catch (blob/download failures only, now that share failures are handled separately) no longer inspects err.name at all', () => {
+  it('the device-unsupported path (canShareFile is false) also sets preparedShare and dispatches manual-options, never an automatic download', () => {
+    const idx = sheet.indexOf('if (canShareFile(file)) {');
+    const closeIdx = sheet.indexOf('\n        }\n\n        setPreparedShare', idx);
+    expect(closeIdx).toBeGreaterThan(idx);
+    const afterIfBlock = sheet.slice(closeIdx, closeIdx + 200);
+    expect(afterIfBlock).toContain("dispatch({ type: 'manual-options', reason: 'unsupported' });");
+  });
+
+  it('the outer catch (blob/file-prep failures only, now that share failures are handled separately) no longer inspects err.name at all', () => {
     const outerCatchIdx = sheet.lastIndexOf('} catch {');
     expect(outerCatchIdx).toBeGreaterThan(-1);
     const section = sheet.slice(outerCatchIdx, outerCatchIdx + 400);
