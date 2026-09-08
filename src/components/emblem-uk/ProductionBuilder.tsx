@@ -11,7 +11,6 @@ import { DEFAULT_EMJFL_CLUB, EAST_MANCHESTER_LEAGUE, EMJFL_CLUBS, getEmjflClub, 
 import { DIRECT_BUILDER_MAX_PAID_PLAYERS } from '@/lib/order-enquiry-validation';
 import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
 import { captureElementToPng, renderPrintFile, BUILDER_CSRF_HEADER, readBuilderCsrfCookie } from '@/lib/print-capture';
-import type { CaptureDiagnostics } from '@/lib/card-share';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import {
   createPlayer,
@@ -249,27 +248,6 @@ function isLocalAssetUrl(url?: string) {
   return Boolean(url && (url.startsWith('blob:') || url.startsWith('data:')));
 }
 
-/** SHA-256 of the actual decoded image bytes a data URL carries, truncated
- * to 16 hex chars — enough to prove two images are (or aren't) byte-
- * identical without needing the full digest or the image itself. */
-async function shortContentHash(dataUrl: string): Promise<string> {
-  const base64 = dataUrl.split(',')[1] || '';
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
-}
-
-function measureDataUrlDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
-    img.onerror = () => reject(new Error('Could not measure generated image'));
-    img.src = dataUrl;
-  });
-}
-
 /**
  * Thrown only when an upload request genuinely reached /api/order-assets
  * and the server responded with a non-ok status (e.g. storage
@@ -483,11 +461,6 @@ export default function ProductionBuilder({
   // captureShareImage.
   const [shareCapturePlayer, setShareCapturePlayer] = useState<PlayerDraft | null>(null);
   const shareCaptureRef = useRef<HTMLDivElement | null>(null);
-  // Set once per captureShareImageFor call, read back on-demand by
-  // ShareCardSheet's own diagnostic snapshot (getCaptureDiagnostics prop) —
-  // see captureShareImageFor's own comment for why this replaced the
-  // earlier ad-hoc [SHARE-CAPTURE-DIAG] console logging.
-  const lastCaptureDiagnosticsRef = useRef<CaptureDiagnostics | null>(null);
   // Double-submit guard — a ref, not enquiryStatus state. Two clicks fired
   // on the same tick both run submitEnquiry before React has processed the
   // first setEnquiryStatus('sending') and re-rendered with a fresh
@@ -593,19 +566,6 @@ export default function ProductionBuilder({
     enquiryStatus === 'sent' && submittedAuthorityStatus === 'confirmed' && order.type === 'single' && submittedOrderId && soleApprovedPlayer
       ? { orderId: submittedOrderId, player: soleApprovedPlayer }
       : null;
-  // Read fresh on every render — this is deliberately NOT memoized/cached,
-  // so ShareCardSheet's download-time diagnostic snapshot always compares
-  // against whatever crop is genuinely live right now, not a value from
-  // whenever this component last happened to re-render for some other
-  // reason. Part of the automatic, correlated snapshot mechanism (see
-  // CaptureDiagnostics in this file, and handleDownloadNow in
-  // ShareCardSheet.tsx) that replaced the earlier ad-hoc
-  // [SHARE-CAPTURE-DIAG] console logging, which required manually
-  // expanding collapsed console objects and couldn't itself prove whether
-  // a downloaded asset actually corresponded to the current design.
-  const currentPlayerSnapshot = shareableOrderContext
-    ? { playerId: shareableOrderContext.player.id, crop: shareableOrderContext.player.photo?.crop ?? null }
-    : null;
   const stats = sportConfig[order.sport].stats;
   const orderMode = orderModeLimits[order.type];
   const visibleOrderType = order.type === 'single' ? 'single' : 'squad';
@@ -1144,28 +1104,7 @@ export default function ProductionBuilder({
           throw new Error('Could not prepare the card image for sharing');
         }
 
-        // The live DOM transform of every <img> in the off-screen rig at
-        // the exact instant before capture — part of the correlated
-        // snapshot below, not printed on its own anymore (see
-        // CaptureDiagnostics's own comment for why this replaced the
-        // earlier ad-hoc, manually-expanded [SHARE-CAPTURE-DIAG] logging).
-        const offscreenImageTransforms = imgs.map((img) => img.style.transform || getComputedStyle(img).transform);
-
-        const result = await captureElementToPng(el, { pixelRatio: 2, backgroundColor: '#ffffff' });
-
-        const [generatedDims, contentHash] = await Promise.all([
-          measureDataUrlDimensions(result),
-          shortContentHash(result),
-        ]);
-        lastCaptureDiagnosticsRef.current = {
-          capturedAt: Date.now(),
-          capturePlayerId: capturePlayer.id,
-          captureCropRequested: capturePlayer.photo?.crop ?? null,
-          offscreenImageTransforms,
-          generatedImage: { width: generatedDims.width, height: generatedDims.height, contentHash },
-        };
-
-        return result;
+        return await captureElementToPng(el, { pixelRatio: 2, backgroundColor: '#ffffff' });
       } finally {
         setShareCapturePlayer(null);
       }
@@ -1173,8 +1112,6 @@ export default function ProductionBuilder({
       for (const revoke of revokers) revoke();
     }
   };
-
-  const getCaptureDiagnostics = (): CaptureDiagnostics | null => lastCaptureDiagnosticsRef.current;
 
   const captureShareImage = (): Promise<string> => captureShareImageFor(submittedOrderId, summary.approvedPlayers[0]);
   // Squad Invite's success screen has no summary.approvedPlayers (that
@@ -2563,8 +2500,6 @@ export default function ProductionBuilder({
                   <ShareCardSheet
                     orderId={shareableOrderContext.orderId}
                     getShareImage={captureShareImage}
-                    getCaptureDiagnostics={getCaptureDiagnostics}
-                    currentPlayerSnapshot={currentPlayerSnapshot}
                     preview={<PlayerCard order={order} player={shareableOrderContext.player} side="front" />}
                     summary={{
                       collectionName: order.collectionName || 'Custom Collection',

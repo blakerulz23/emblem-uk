@@ -11,12 +11,12 @@ const css = readFileSync('src/app/globals.css', 'utf8');
  * its actual decision logic already lives in card-share.ts and is unit-
  * tested there directly. This guards the wiring itself: the order of
  * operations the product spec requires (consent before image generation,
- * cancel creates nothing, Web Share attempted before the download
+ * closing creates nothing, Web Share attempted before the copy-link
  * fallback, object URLs released) can only be proven by reading the
  * source.
  */
 describe('ShareCardSheet — consent is recorded before any image is generated', () => {
-  it('handleContinue calls recordCardShareConsent before calling getShareImage', () => {
+  it('ensurePrepared calls recordCardShareConsent before calling getShareImage', () => {
     const consentIdx = sheet.indexOf('recordCardShareConsent(orderId');
     const getImageIdx = sheet.indexOf('getShareImage()');
     expect(consentIdx).toBeGreaterThan(-1);
@@ -30,40 +30,59 @@ describe('ShareCardSheet — consent is recorded before any image is generated',
     const getImageIdx = sheet.indexOf('getShareImage()');
     expect(failReturnIdx).toBeGreaterThan(consentIdx);
     expect(failReturnIdx).toBeLessThan(getImageIdx);
-    expect(sheet.slice(failReturnIdx, getImageIdx)).toContain('return;');
+    expect(sheet.slice(failReturnIdx, getImageIdx)).toContain('return null;');
   });
 });
 
 describe('ShareCardSheet — duplicate clicks do not create duplicate confirmed events', () => {
-  it('handleContinue is guarded by a synchronous ref, not only the (stale-closure-prone) reducer state', () => {
-    const idx = sheet.indexOf('const handleContinue');
-    const fnStart = sheet.slice(idx, idx + 300);
-    expect(fnStart).toContain('if (sharingRef.current) return;');
-    expect(fnStart).toContain('sharingRef.current = true;');
+  it('ensurePrepared returns the SAME in-flight promise to every caller instead of starting a second attempt — the mechanism behind "prevent duplicate operations"', () => {
+    const idx = sheet.indexOf('const ensurePrepared');
+    const fnBody = sheet.slice(idx, sheet.indexOf('\n  };', idx));
+    expect(fnBody).toContain('if (preparePromiseRef.current) return preparePromiseRef.current;');
+    expect(fnBody).toContain('preparePromiseRef.current = attempt;');
   });
 
-  it('the guard is released in a finally, so a completed or failed attempt always allows a genuine retry', () => {
-    const idx = sheet.indexOf('const handleContinue');
+  it('already-prepared state is returned synchronously without re-running consent/capture at all', () => {
+    const idx = sheet.indexOf('const ensurePrepared');
     const fnBody = sheet.slice(idx, sheet.indexOf('\n  };', idx));
-    expect(fnBody).toContain('sharingRef.current = false;');
-    const finallyIdx = fnBody.lastIndexOf('finally {');
-    expect(fnBody.slice(finallyIdx)).toContain('sharingRef.current = false;');
+    const preparedCheckIdx = fnBody.indexOf('if (prepared) return Promise.resolve(prepared);');
+    const consentIdx = fnBody.indexOf('recordCardShareConsent(orderId');
+    expect(preparedCheckIdx).toBeGreaterThan(-1);
+    expect(consentIdx).toBeGreaterThan(preparedCheckIdx);
+  });
+
+  it('the in-flight ref is always cleared once the attempt settles, so a genuine retry after failure is always possible', () => {
+    const idx = sheet.indexOf('const ensurePrepared');
+    const fnBody = sheet.slice(idx, sheet.indexOf('\n  };', idx));
+    expect(fnBody).toContain('void attempt.finally(() => {');
+    expect(fnBody).toContain('if (preparePromiseRef.current === attempt) preparePromiseRef.current = null;');
   });
 });
 
-describe('ShareCardSheet — cancellation creates nothing', () => {
-  it('handleCancel never calls getShareImage', () => {
-    const cancelFnIdx = sheet.indexOf('const handleCancel');
-    const nextFnIdx = sheet.indexOf('const handleContinue');
-    const cancelBody = sheet.slice(cancelFnIdx, nextFnIdx);
-    expect(cancelBody).not.toContain('getShareImage');
-    expect(cancelBody).toContain("recordCardShareConsent(orderId, 'cancelled')");
+describe('ShareCardSheet — closing the panel creates nothing', () => {
+  it('handleClose never calls getShareImage', () => {
+    const closeFnIdx = sheet.indexOf('const handleClose');
+    const nextFnIdx = sheet.indexOf('const ensurePrepared');
+    const closeBody = sheet.slice(closeFnIdx, nextFnIdx);
+    expect(closeBody).not.toContain('getShareImage');
+    expect(closeBody).toContain("recordCardShareConsent(orderId, 'cancelled')");
+  });
+
+  it('reopening resets checked, any error, and any previously prepared share, so a new consent event is genuinely fresh', () => {
+    const idx = sheet.indexOf('const resetPanelState');
+    const fnBody = sheet.slice(idx, sheet.indexOf('\n  };', idx));
+    expect(fnBody).toContain('setChecked(false);');
+    expect(fnBody).toContain('setErrorMessage(null);');
+    expect(fnBody).toContain('setPrepared(null);');
+    const openIdx = sheet.indexOf('const handleOpen');
+    const openBody = sheet.slice(openIdx, sheet.indexOf('\n  };', openIdx));
+    expect(openBody).toContain('resetPanelState();');
   });
 });
 
 describe('ShareCardSheet — sharing mechanism order and cleanup', () => {
-  it('attempts navigator.share (Web Share API with a File) inside handleContinue, gated by the real canShareFile(file) check', () => {
-    const idx = sheet.indexOf('const handleContinue');
+  it('attempts navigator.share (Web Share API with a File) inside handleShareNow, gated by the real canShareFile(file) check', () => {
+    const idx = sheet.indexOf('const handleShareNow');
     const fnBody = sheet.slice(idx, sheet.indexOf('\n  };', idx));
     const shareIdx = fnBody.indexOf('navigator.share(');
     const gateIdx = fnBody.indexOf('canShareFile(file)');
@@ -80,20 +99,21 @@ describe('ShareCardSheet — sharing mechanism order and cleanup', () => {
     expect(fnBody).toContain('navigator.canShare({ files: [file] })');
   });
 
-  it('the actual download (createObjectURL) only ever runs from handleDownloadNow — an explicit, separate function handleContinue never calls itself', () => {
+  it('the actual download (createObjectURL) only ever runs from handleDownloadNow — a separate function neither handleShareNow, handleCopyLink nor handleCopyMessage ever calls', () => {
     const downloadFnIdx = sheet.indexOf('const handleDownloadNow');
     expect(downloadFnIdx).toBeGreaterThan(-1);
     const fnBody = sheet.slice(downloadFnIdx, sheet.indexOf('\n  };', downloadFnIdx));
-    expect(fnBody).toContain('URL.createObjectURL(preparedShare.blob)');
+    expect(fnBody).toContain('URL.createObjectURL(share.blob)');
 
-    const continueIdx = sheet.indexOf('const handleContinue');
-    const continueBody = sheet.slice(continueIdx, sheet.indexOf('\n  };', continueIdx));
-    expect(continueBody).not.toContain('createObjectURL');
-    expect(continueBody).not.toContain('handleDownloadNow()');
+    for (const fn of ['handleShareNow', 'handleCopyLink', 'handleCopyMessage']) {
+      const idx = sheet.indexOf(`const ${fn}`);
+      const body = sheet.slice(idx, sheet.indexOf('\n  };', idx));
+      expect(body).not.toContain('createObjectURL');
+    }
   });
 
   it('revokes the object URL immediately after triggering the download, via finally', () => {
-    const createIdx = sheet.indexOf('URL.createObjectURL(preparedShare.blob)');
+    const createIdx = sheet.indexOf('URL.createObjectURL(share.blob)');
     const revokeIdx = sheet.indexOf('URL.revokeObjectURL(objectUrl)');
     const finallyIdx = sheet.indexOf('finally {', createIdx);
     expect(createIdx).toBeGreaterThan(-1);
@@ -101,83 +121,63 @@ describe('ShareCardSheet — sharing mechanism order and cleanup', () => {
     expect(revokeIdx).toBeGreaterThan(finallyIdx);
   });
 
+  it('downloading writes nothing to the clipboard — only Copy link and Copy message do that, each from its own explicit click', () => {
+    const idx = sheet.indexOf('const handleDownloadNow');
+    const fnBody = sheet.slice(idx, sheet.indexOf('\n  };', idx));
+    expect(fnBody).not.toContain('clipboard');
+  });
+
   it('never persists the generated image anywhere beyond the in-flight fetch/blob conversion (no fetch to an upload endpoint, no new storage call)', () => {
     expect(sheet).not.toMatch(/\/api\/order-assets|createServiceRoleClient|storage\.from/);
   });
 
-  it('never creates a public /share/... page, a signed URL, or any recipient-specific link — the only URL ever shared is the fixed, generic builder link', () => {
+  it('never creates a public /share/... page, a signed URL, or any recipient-specific link — the only URL ever shared is the real per-share public page created through createCardSharePublicPage', () => {
     expect(sheet).not.toMatch(/\/share\/|getSignedDownloadUrl|signedUrl/i);
   });
 });
 
-/**
- * Web Share carries the fixed, generic message (never anything derived
- * from this order) alongside the file, and the download fallback surfaces
- * the identical wording so a guardian who falls back to a manual download
- * can still paste the same caption by hand.
- *
- * Regression coverage: manual WhatsApp Desktop testing on the previous
- * build (files + text + url all supplied together) showed the link twice
- * and the "Look what I made…" line missing entirely — WhatsApp composed
- * its own caption from `url` rather than reliably combining it with
- * `text`. CARD_SHARE_MESSAGE_TEXT already contains the link as ordinary
- * text, so the fix is to never also pass a separate `url` — one opaque
- * text block is the only thing every share target is guaranteed to show
- * verbatim.
- */
-/**
- * Regression coverage for a live-reported diagnosability gap: a real
- * failure kept showing the exact same generic message regardless of
- * which of three genuinely different steps (capturing the image,
- * creating the public share link, or finishing the share/download) had
- * actually failed — impossible to tell apart from a screenshot alone.
- * Each stage now dispatches its own distinct wording.
- */
 describe('ShareCardSheet — each failure stage has its own distinct message, so a report identifies which stage broke', () => {
-  it('getShareImage() failing dispatches CARD_SHARE_CAPTURE_FAILURE, not the generic message', () => {
+  it('getShareImage() failing sets CARD_SHARE_CAPTURE_FAILURE, not the generic message', () => {
     const idx = sheet.indexOf('dataUrl = await getShareImage();');
     const catchIdx = sheet.indexOf('catch {', idx);
-    const section = sheet.slice(catchIdx, sheet.indexOf('return;', catchIdx));
-    expect(section).toContain('message: CARD_SHARE_CAPTURE_FAILURE');
+    const section = sheet.slice(catchIdx, sheet.indexOf('return null;', catchIdx));
+    expect(section).toContain('setErrorMessage(CARD_SHARE_CAPTURE_FAILURE)');
     expect(section).not.toContain('CARD_SHARE_GENERIC_FAILURE');
   });
 
-  it('createCardSharePublicPage failing without its own server-provided error dispatches CARD_SHARE_LINK_FAILURE, not the generic message', () => {
+  it('createCardSharePublicPage failing without its own server-provided error sets CARD_SHARE_LINK_FAILURE, not the generic message', () => {
     const idx = sheet.indexOf('const publicPage = await createCardSharePublicPage');
-    const section = sheet.slice(idx, sheet.indexOf('return;', idx));
+    const section = sheet.slice(idx, sheet.indexOf('return null;', idx));
     expect(section).toContain('publicPage.error || CARD_SHARE_LINK_FAILURE');
     expect(section).not.toContain('CARD_SHARE_GENERIC_FAILURE');
   });
 
   it('a server-provided error from createCardSharePublicPage is still shown verbatim, never overridden by the generic fallback', () => {
     const idx = sheet.indexOf('const publicPage = await createCardSharePublicPage');
-    const section = sheet.slice(idx, sheet.indexOf('return;', idx));
-    expect(section).toMatch(/message:\s*publicPage\.error\s*\|\|/);
+    const section = sheet.slice(idx, sheet.indexOf('return null;', idx));
+    expect(section).toMatch(/setErrorMessage\(publicPage\.error\s*\|\|/);
   });
 });
 
 describe('ShareCardSheet — the shared text carries the real per-share link (migration 0085), appears exactly once, and is never derived from a client-supplied value', () => {
-  it('navigator.share is called with the file and messageText only — never also a separate url (which caused the reported duplication)', () => {
+  it('navigator.share is called with the file and the prepared messageText only — never also a separate url (which caused the reported duplication)', () => {
     const idx = sheet.indexOf('navigator.share({');
     const callBody = sheet.slice(idx, sheet.indexOf('});', idx));
     expect(callBody).toContain('files: [file]');
-    expect(callBody).toContain('text: messageText');
+    expect(callBody).toContain('text: share.messageText');
     expect(callBody).not.toContain('url:');
     expect(callBody).not.toContain('orderId');
   });
 
-  it('messageText is built server-side from a genuine public-page token (createCardSharePublicPage), never a template literal or concatenation the client controls', () => {
+  it('messageText is built inside ensurePrepared from a genuine public-page token (createCardSharePublicPage), never a template literal or concatenation the client controls', () => {
     expect(sheet).toContain('const publicPage = await createCardSharePublicPage(orderId, dataUrl);');
-    expect(sheet).toContain('const realShareUrl = cardSharePublicPageUrl(publicPage.token);');
-    expect(sheet).toContain('const messageText = buildCardShareMessageText(realShareUrl);');
-    const idx = sheet.indexOf('navigator.share({');
-    const callBody = sheet.slice(idx, sheet.indexOf('});', idx));
-    expect(callBody).not.toMatch(/text:\s*`|text:\s*"/);
+    expect(sheet).toContain('const shareUrl = cardSharePublicPageUrl(publicPage.token);');
+    expect(sheet).toContain('const messageText = buildCardShareMessageText(shareUrl);');
   });
 
-  it('an ineligible/failed public-page creation fails the whole share attempt before ever calling navigator.share or getShareImage a second time', () => {
+  it('an ineligible/failed public-page creation fails the whole prepare attempt before ever calling navigator.share or getShareImage a second time', () => {
     const createIdx = sheet.indexOf('createCardSharePublicPage(orderId, dataUrl)');
-    const failIdx = sheet.indexOf("if (!publicPage.ok || !publicPage.token)");
+    const failIdx = sheet.indexOf('if (!publicPage.ok || !publicPage.token)');
     const shareIdx = sheet.indexOf('navigator.share({');
     expect(createIdx).toBeGreaterThan(-1);
     expect(failIdx).toBeGreaterThan(createIdx);
@@ -190,19 +190,10 @@ describe('ShareCardSheet — the shared text carries the real per-share link (mi
     expect(callBody).toMatch(/files:\s*\[file\]/);
   });
 
-  it('the downloaded-status view displays the real per-share message (shareMessageText), not the generic preview constant', () => {
-    const idx = sheet.indexOf("stage.type === 'downloaded'");
-    const section = sheet.slice(idx, idx + 350);
-    expect(section).toContain('{shareMessageText}');
-  });
-
-  it('the downloaded-status view also offers a copy control for that same wording', () => {
-    const idx = sheet.indexOf("stage.type === 'downloaded'");
-    const section = sheet.slice(idx, idx + 350);
-    expect(section).toContain('onClick={handleCopyMessage}');
-    const copyFnIdx = sheet.indexOf('const handleCopyMessage');
-    const copyFnBody = sheet.slice(copyFnIdx, sheet.indexOf('\n  };', copyFnIdx));
-    expect(copyFnBody).toContain('navigator.clipboard.writeText(shareMessageText || CARD_SHARE_MESSAGE_TEXT)');
+  it('Copy message copies the prepared share\'s real messageText, never the generic preview constant, once prepared', () => {
+    const idx = sheet.indexOf('const handleCopyMessage');
+    const fnBody = sheet.slice(idx, sheet.indexOf('\n  };', idx));
+    expect(fnBody).toContain('navigator.clipboard.writeText(share.messageText)');
   });
 });
 
@@ -212,94 +203,55 @@ describe('ShareCardSheet — the shared text carries the real per-share link (mi
  * rejected. Manual testing found WhatsApp Desktop specifically drops the
  * caption while still accepting the file. Since this can't be detected,
  * the honest fix is to never confidently claim the message was included:
- * a defensive clipboard copy happens after every successful native share
- * too (not just the download fallback), and the visible copy afterwards
- * is worded as a possibility, not a certainty.
+ * a defensive clipboard copy happens after every successful native share.
  */
 describe('ShareCardSheet — honest handling of a platform that may silently drop the caption', () => {
   it('after a successful navigator.share, the message is also copied to the clipboard defensively, before reporting success', () => {
     const shareIdx = sheet.indexOf('navigator.share({');
     const shareCloseIdx = sheet.indexOf('});', shareIdx);
-    const sharedDispatchIdx = sheet.indexOf("dispatch({ type: 'shared' })", shareCloseIdx);
-    const clipboardIdx = sheet.indexOf('navigator.clipboard.writeText(messageText)', shareCloseIdx);
+    const sharedSetIdx = sheet.indexOf('setShared(true)', shareCloseIdx);
+    const clipboardIdx = sheet.indexOf('navigator.clipboard.writeText(share.messageText)', shareCloseIdx);
     expect(clipboardIdx).toBeGreaterThan(shareCloseIdx);
-    expect(sharedDispatchIdx).toBeGreaterThan(clipboardIdx);
+    expect(sharedSetIdx).toBeGreaterThan(clipboardIdx);
   });
 
   it('a clipboard failure after a successful share is swallowed locally and never reported as a failed/cancelled share', () => {
     const shareIdx = sheet.indexOf('navigator.share({');
     const shareCloseIdx = sheet.indexOf('});', shareIdx);
-    const clipboardIdx = sheet.indexOf('navigator.clipboard.writeText(messageText)', shareCloseIdx);
+    const clipboardIdx = sheet.indexOf('navigator.clipboard.writeText(share.messageText)', shareCloseIdx);
     const localCatchIdx = sheet.indexOf('} catch {', clipboardIdx);
-    const sharedDispatchIdx = sheet.indexOf("dispatch({ type: 'shared' })", shareCloseIdx);
+    const sharedSetIdx = sheet.indexOf('setShared(true)', shareCloseIdx);
     expect(localCatchIdx).toBeGreaterThan(clipboardIdx);
-    expect(localCatchIdx).toBeLessThan(sharedDispatchIdx);
+    expect(localCatchIdx).toBeLessThan(sharedSetIdx);
   });
 
-  it('the "shared" success state never asserts the message definitely arrived — it names the real possibility that it didn\'t', () => {
-    const idx = sheet.indexOf("stage.type === 'shared'");
-    const section = sheet.slice(idx, idx + 500);
-    expect(section).toMatch(/didn.t appear|may not have|if the message/i);
-    expect(section).not.toBe("<p role=\"status\">Shared. {CARD_SHARE_RECALL_NOTICE}</p>");
-  });
-
-  it('the "shared" state offers the identical copy-message affordance as the download fallback, for a consistent experience either way', () => {
-    const sharedIdx = sheet.indexOf("stage.type === 'shared'");
-    const sharedSection = sheet.slice(sharedIdx, sheet.indexOf("stage.type === 'downloaded'", sharedIdx));
-    expect(sharedSection).toContain('{shareMessageText}');
-    expect(sharedSection).toContain('onClick={handleCopyMessage}');
-    expect(sharedSection).toContain('uk-card-share-download-message');
-  });
-
-  it('cancelling the native share sheet is still never reported as shared, and no clipboard copy happens on that path', () => {
+  it('cancelling the native share sheet is never treated as a failure and never demotes Copy link to primary — it silently returns, changing nothing else', () => {
     const idx = sheet.indexOf("shareErr.name === 'AbortError'");
-    const section = sheet.slice(idx, idx + 100);
-    expect(section).toContain("dispatch({ type: 'reset' });");
+    const section = sheet.slice(idx, idx + 60);
+    expect(section).toContain('return;');
+    expect(section).not.toContain('setShareUnavailable');
+  });
+
+  it('cancelling the native share sheet records no confirmed consent of its own (consent was already recorded once, by ensurePrepared, before the share attempt) and writes nothing to the clipboard', () => {
+    const idx = sheet.indexOf("shareErr.name === 'AbortError'");
+    const section = sheet.slice(idx, idx + 60);
+    expect(section).not.toContain("recordCardShareConsent(orderId, 'confirmed')");
     expect(section).not.toContain('navigator.clipboard');
   });
 
-  it('cancelling the native share sheet is never reported as a successful share, and records no confirmed consent (only handleCancel/handleContinue can record "confirmed", and neither runs on cancel)', () => {
+  it('a genuine (non-cancel) share failure sets shareUnavailable, making Copy link the primary action from then on — the explicit fallback the product spec requires', () => {
     const idx = sheet.indexOf("shareErr.name === 'AbortError'");
-    const section = sheet.slice(idx, idx + 100);
-    expect(section).toContain("dispatch({ type: 'reset' });");
-    expect(section).not.toContain("dispatch({ type: 'shared' })");
-    expect(section).not.toContain("recordCardShareConsent(orderId, 'confirmed')");
+    const section = sheet.slice(idx, sheet.indexOf('\n    }', idx));
+    expect(section).toContain('setShareUnavailable(true);');
+  });
+
+  it('a device that never supported navigator.share starts with Copy link already primary, before any attempt is even made', () => {
+    const idx = sheet.indexOf('const [shareUnavailable, setShareUnavailable] = useState(');
+    const section = sheet.slice(idx, sheet.indexOf(');', idx) + 1);
+    expect(section).toContain("typeof navigator.share === 'function'");
   });
 });
 
-/**
- * Regression coverage for a live-preview-confirmed defect: adding the
- * public-page upload step (migration 0085) before navigator.share()
- * inserts a real network round-trip between the guardian's tap and the
- * share call — long enough, on iOS Safari specifically, that the
- * browser's Web Share "user activation" window can expire before
- * share() is even invoked. That produces a rejection that is NOT an
- * AbortError, and the previous code treated every non-abort rejection as
- * a hard failure — so a guardian who hit this got "We could not prepare
- * this image right now" with a perfectly good image already sitting in
- * memory. The fix: navigator.share() gets its own try/catch: an
- * AbortError still resets silently, but any OTHER rejection falls
- * through to the same download fallback already used when Web Share
- * isn't supported at all, rather than failing the whole attempt.
- */
-/**
- * Regression coverage for a live-confirmed layout defect, in two stages.
- * Every CardArt sub-renderer (CustomCollectionCardArt, EmjflCardArt, etc.)
- * sets its own root div's width/height/border-radius/font-size/padding as
- * fixed INLINE PIXEL values computed in JS from the `size` prop (340 for
- * a non-compact PlayerCard) — never percentages, never fluid. An initial
- * fix added `overflow: hidden` to contain the bleed, which stopped the
- * whole page from scrolling horizontally but only CLIPPED the oversized
- * card rather than making it fit — reported live as still overflowing.
- * The actual fix scales the fixed-pixel subtree down with CSS
- * `transform: scale()`, driven by a CSS container query (100cqw) so the
- * ratio recomputes continuously at any viewport width, not just a fixed
- * breakpoint — the standard technique for shrinking an element whose
- * internal layout can't be safely made fluid via width overrides alone
- * (font-size/border-radius/padding here are independent fixed pixel
- * values, not percentages, so they would NOT rescale from a plain
- * width/height CSS override).
- */
 describe('ShareCardSheet — the card preview genuinely scales to fit on narrow viewports, not merely clipped', () => {
   it('.uk-card-share-preview keeps overflow: hidden as a safety net only, not the fix itself', () => {
     const idx = css.indexOf('.uk-card-share-preview {');
@@ -328,70 +280,30 @@ describe('ShareCardSheet — the card preview genuinely scales to fit on narrow 
     expect(rule).toContain('transform: scale(calc(100cqw / 340px))');
     expect(rule).toContain('transform-origin: top left');
   });
-});
 
-describe('ShareCardSheet — a non-cancel navigator.share() failure surfaces explicit manual options, never a silent download', () => {
-  it('navigator.share is wrapped in its own try/catch, nested inside the outer blob/prep try — not sharing the outer catch directly', () => {
-    const shareIdx = sheet.indexOf('navigator.share({');
-    const innerTryIdx = sheet.lastIndexOf('try {', shareIdx);
-    const outerTryIdx = sheet.lastIndexOf('try {', innerTryIdx - 1);
-    expect(innerTryIdx).toBeGreaterThan(-1);
-    expect(outerTryIdx).toBeGreaterThan(-1);
-    expect(outerTryIdx).toBeLessThan(innerTryIdx);
+  it('the compact thumbnail uses the identical container-query scaling technique, at its own smaller width, so it is never distorted or stretched', () => {
+    const idx = css.indexOf('.uk-card-share-thumb {');
+    const rule = css.slice(idx, css.indexOf('\n}', idx));
+    expect(rule).toContain('aspect-ratio: 340 / 476');
+    expect(rule).toContain('container-type: inline-size');
+    const childIdx = css.indexOf('.uk-card-share-thumb .uk-real-card > div {');
+    expect(childIdx).toBeGreaterThan(-1);
+    expect(css.slice(childIdx, css.indexOf('\n}', childIdx))).toContain('transform: scale(calc(100cqw / 340px))');
   });
 
-  /**
-   * Founder-reported bug (fixed): this used to fall through silently to an
-   * automatic download here — including, almost certainly, the exact
-   * live-reported case where the async prep before navigator.share() runs
-   * long enough to lose the browser's "user activation" window, which then
-   * rejects looking identical to "unsupported". Neither case is ever
-   * resolved by quietly saving a file under a button labelled Share —
-   * both now set preparedShare and dispatch the explicit manual-options
-   * stage instead, then return (no fallthrough to any download code).
-   */
-  it('a non-AbortError rejection sets preparedShare and dispatches manual-options (reason: share-failed), then returns — no fallthrough', () => {
-    const idx = sheet.indexOf("shareErr.name === 'AbortError'");
-    const abortReturnIdx = sheet.indexOf('return;', idx);
-    const section = sheet.slice(abortReturnIdx, sheet.indexOf('return;', abortReturnIdx + 10) + 10);
-    expect(section).toContain('setPreparedShare({ blob, fileName, preparedAt: Date.now() });');
-    expect(section).toContain("dispatch({ type: 'manual-options', reason: 'share-failed' });");
-    expect(section).toContain('return;');
-  });
-
-  it('the code that actually performs the download (createObjectURL) is NOT inside handleContinue at all — it only exists in the separate, explicitly-triggered handleDownloadNow', () => {
-    const continueIdx = sheet.indexOf('const handleContinue');
-    const continueBody = sheet.slice(continueIdx, sheet.indexOf('\n  };', continueIdx));
-    expect(continueBody).not.toContain('createObjectURL');
-  });
-
-  it('the device-unsupported path (canShareFile is false) also sets preparedShare and dispatches manual-options, never an automatic download', () => {
-    const idx = sheet.indexOf('if (canShareFile(file)) {');
-    const closeIdx = sheet.indexOf('\n        }\n\n        setPreparedShare', idx);
-    expect(closeIdx).toBeGreaterThan(idx);
-    const afterIfBlock = sheet.slice(closeIdx, closeIdx + 200);
-    expect(afterIfBlock).toContain("dispatch({ type: 'manual-options', reason: 'unsupported' });");
-  });
-
-  it('the outer catch (blob/file-prep failures only, now that share failures are handled separately) no longer inspects err.name at all', () => {
-    const outerCatchIdx = sheet.lastIndexOf('} catch {');
-    expect(outerCatchIdx).toBeGreaterThan(-1);
-    const section = sheet.slice(outerCatchIdx, outerCatchIdx + 400);
-    expect(section).not.toContain('AbortError');
-    expect(section).toContain("dispatch({ type: 'fail', message: CARD_SHARE_GENERIC_FAILURE });");
+  it('the thumbnail also constrains the implicit grid column — live-measured regression: omitting this rendered the scaled card almost entirely outside the 44px visible window, at a large negative offset, not merely off-centre', () => {
+    const idx = css.indexOf('.uk-card-share-thumb .uk-real-card {');
+    expect(idx).toBeGreaterThan(-1);
+    const rule = css.slice(idx, css.indexOf('\n}', idx));
+    expect(rule).toContain('grid-template-columns: minmax(0, 1fr)');
   });
 });
 
 describe('ShareCardSheet — visibility gating', () => {
   it('the design preview is never gated on eligibility — only the share control and any blocked message are', () => {
-    // No early `return null` exists anywhere before the component's own
-    // final JSX return — the preview (and rotate control) must render
-    // regardless of whether eligibility has resolved yet, or resolved to
-    // an ineligible/hidden reason. Only showShareIcon/showBlockedMessage
-    // gate what appears ON TOP of that preview.
     const returnIdx = sheet.indexOf('return (');
     const bodyBeforeReturn = sheet.slice(0, returnIdx);
-    expect(bodyBeforeReturn).not.toMatch(/return null;/);
+    expect(bodyBeforeReturn).not.toMatch(/return null;\n {2}\}\n/);
   });
 
   it('never shows the share icon before eligibility resolves', () => {
@@ -406,24 +318,18 @@ describe('ShareCardSheet — visibility gating', () => {
     expect(line).toContain('!shouldHideCardShareEntirely(eligibility!.reason)');
   });
 
-  it('the confirmation sheet never pre-ticks the checkbox — opening always starts unticked (cardShareStageReducer\'s own "open" case)', () => {
-    expect(sheet).toContain("checked={stage.checked}");
+  it('the confirmation checkbox never starts pre-ticked — every open (fresh or reopened) resets it via resetPanelState', () => {
+    expect(sheet).toContain('checked={checked}');
     expect(sheet).not.toContain('checked={true}');
+    const idx = sheet.indexOf('const resetPanelState');
+    expect(sheet.slice(idx, sheet.indexOf('\n  };', idx))).toContain('setChecked(false);');
   });
 });
 
-/**
- * Card-preview redesign (inspired by the supplied reference): the real
- * on-screen card front, rotate and share controls, and a small textual
- * order summary all live in one frame inside "Your order" now — there is
- * exactly one sharing entry point on the page (see the ProductionBuilder
- * describe block below for proof the old standalone panel is gone).
- */
 describe('ShareCardSheet — rotate control and order summary', () => {
   it('renders a rotate control, always (never gated on eligibility, unlike the share icon)', () => {
     const idx = sheet.indexOf('uk-card-share-icon-btn rotate');
     expect(idx).toBeGreaterThan(-1);
-    // Must not be inside a showShareIcon-guarded block.
     const precedingShowShareIconIdx = sheet.lastIndexOf('{showShareIcon &&', idx);
     expect(precedingShowShareIconIdx === -1 || precedingShowShareIconIdx > idx).toBe(true);
   });
@@ -438,8 +344,6 @@ describe('ShareCardSheet — rotate control and order summary', () => {
     expect(idx).toBeGreaterThan(-1);
     const onClickIdx = sheet.indexOf('setRotation((current) => (current + 90) % 360)');
     expect(onClickIdx).toBeGreaterThan(-1);
-    // The rotation transform is applied to a wrapper div, not to `preview`
-    // itself, and the wrapper never appears inside getShareImage/capture code.
     expect(sheet).toContain('className="uk-card-share-preview-card" style={{ transform: `rotate(${rotation}deg)` }}');
   });
 
@@ -448,6 +352,12 @@ describe('ShareCardSheet — rotate control and order summary', () => {
     const wrapperCloseIdx = sheet.indexOf('</div>', wrapperIdx);
     const rotateBtnIdx = sheet.indexOf('uk-card-share-icon-btn rotate');
     expect(rotateBtnIdx).toBeGreaterThan(wrapperCloseIdx);
+  });
+
+  it('the share icon button returns keyboard focus to itself once the panel closes, via its own ref', () => {
+    expect(sheet).toContain('ref={shareIconRef}');
+    const idx = sheet.indexOf("if (stage.type === 'closed') shareIconRef.current?.focus();");
+    expect(idx).toBeGreaterThan(-1);
   });
 
   it('displays the collection name, player count and print count from the summary prop — never a hidden/private field', () => {
@@ -463,17 +373,7 @@ describe('ShareCardSheet — rotate control and order summary', () => {
   });
 });
 
-/**
- * Visual redesign: the design is shown on screen (the same PlayerCard
- * ProductionBuilder already renders elsewhere, handed in as `preview` — see
- * this component's own top comment on why it stays a plain ReactNode
- * rather than an import of card-definition.tsx), with the share affordance
- * placed directly on it, and the confirmation step is a focused overlay
- * rather than an inline block. None of this changes the underlying
- * eligibility/consent/capture logic already covered above and in
- * card-share.ts — only where and how the same states are presented.
- */
-describe('ShareCardSheet — the design preview and its share affordance', () => {
+describe('ShareCardSheet — the design preview, thumbnail, and share affordance', () => {
   it('renders the caller-supplied preview inside the same box the share icon sits on', () => {
     const previewIdx = sheet.indexOf('<div className="uk-card-share-preview">');
     const braceIdx = sheet.indexOf('{preview}', previewIdx);
@@ -483,7 +383,13 @@ describe('ShareCardSheet — the design preview and its share affordance', () =>
     expect(iconBtnIdx).toBeGreaterThan(braceIdx);
   });
 
-  it('the share icon button only appears once eligible and while nothing else is already in progress', () => {
+  it('the compact thumbnail renders the SAME preview node a second time — never a separate rendering path that could drift out of sync with the real design', () => {
+    const idx = sheet.indexOf('uk-card-share-thumb"');
+    const section = sheet.slice(idx, idx + 100);
+    expect(section).toContain('{preview}');
+  });
+
+  it('the share icon button only appears once eligible and while the panel is closed', () => {
     const idx = sheet.indexOf('uk-card-share-icon-btn share');
     const guardSection = sheet.slice(Math.max(0, idx - 200), idx);
     expect(guardSection).toContain('{showShareIcon && (');
@@ -496,22 +402,26 @@ describe('ShareCardSheet — the design preview and its share affordance', () =>
     expect(sheet).toContain('aria-label="Share your card design"');
   });
 
-  it('the confirmation step renders as a dismissible overlay, and the backdrop click cancels the same way the Cancel button does', () => {
+  it('the panel is a clearly visible, labelled close control — not just an aria-label on a bare icon', () => {
+    expect(sheet).toContain('className="uk-card-share-close" aria-label="Close"');
+  });
+
+  it('the panel renders as a dismissible overlay, and the backdrop click closes the same way the close button does', () => {
     const idx = sheet.indexOf('uk-card-share-modal-backdrop');
     const section = sheet.slice(idx, idx + 400);
-    expect(section).toContain('onClick={handleCancel}');
+    expect(section).toContain('onClick={handleClose}');
     expect(section).toContain('onClick={(event) => event.stopPropagation()}');
   });
 
-  it('Escape closes the overlay the same safe way Cancel does (never a silent close that skips recording cancellation)', () => {
+  it('Escape closes the overlay the same safe way the close button does (never a silent close that skips recording cancellation)', () => {
     const idx = sheet.indexOf("if (event.key === 'Escape')");
     expect(idx).toBeGreaterThan(-1);
     const section = sheet.slice(idx, idx + 60);
-    expect(section).toContain('handleCancel();');
+    expect(section).toContain('handleClose();');
   });
 
-  it('moves focus into the overlay when it opens, and keeps Tab cycling within its own three controls only', () => {
-    const idx = sheet.indexOf('if (stage.type !== \'confirming\') return;');
+  it('moves focus into the overlay when it opens (including while preparing, not only once fully open), and keeps Tab cycling within its own controls only', () => {
+    const idx = sheet.indexOf("if (stage.type === 'closed') return;");
     const fnBody = sheet.slice(idx, sheet.indexOf('}, [stage.type]);', idx));
     expect(fnBody).toContain('.focus();');
     expect(fnBody).toContain("event.key !== 'Tab'");
@@ -526,12 +436,25 @@ describe('ShareCardSheet — the design preview and its share affordance', () =>
     expect(classNameIdx - refIdx).toBeLessThan(60);
   });
 
-  it('still records the same consent version/warning/recall copy inside the redesigned overlay — the redesign never touches what is disclosed or agreed to', () => {
-    const idx = sheet.indexOf('uk-card-share-modal"');
+  it('still records the same consent version/warning/recall copy inside the redesigned panel — the redesign never touches what is disclosed or agreed to', () => {
+    const idx = sheet.indexOf('className="uk-card-share-modal"');
     const fnBody = sheet.slice(idx, sheet.indexOf('</div>\n      )}', idx));
     expect(fnBody).toContain('{CARD_SHARE_WARNING}');
     expect(fnBody).toContain('{CARD_SHARE_RECALL_NOTICE}');
     expect(fnBody).toContain('{CARD_SHARE_CONFIRMATION_LABEL}');
+  });
+
+  it('every one of Share now / Copy link / Copy message / Download image is disabled until the guardian ticks the acknowledgement', () => {
+    const idx = sheet.indexOf('className="uk-card-share-modal"');
+    const fnBody = sheet.slice(idx, sheet.indexOf('</div>\n      )}', idx));
+    const disabledCount = (fnBody.match(/disabled=\{!checked/g) || []).length;
+    expect(disabledCount).toBeGreaterThanOrEqual(4);
+  });
+
+  it('shows accurate, action-specific feedback text — "Link copied", "Message copied", "Download started" — never one generic "Copied" for every button', () => {
+    expect(sheet).toContain("linkCopied ? 'Link copied' : 'Copy link'");
+    expect(sheet).toContain("messageCopied ? 'Message copied' : 'Copy message'");
+    expect(sheet).toContain("downloadStarted ? 'Download started' : 'Download image'");
   });
 });
 
@@ -567,7 +490,7 @@ describe('ProductionBuilder — ShareCardSheet is only mounted for a single-chil
     expect(afterHandoff).not.toContain('captureShareImage');
   });
 
-  it('passes the real, visible, on-screen PlayerCard as the preview, the real order id, and the real collection/player/print summary — never the off-screen capture rig\'s player', () => {
+  it('passes the real, visible, on-screen PlayerCard as the preview, the real order id, and the real collection/player/print summary — never the off-screen capture rig\'s player, and no leftover diagnostic props', () => {
     const idx = builder.indexOf('<ShareCardSheet');
     const tagSection = builder.slice(idx, idx + 650);
     expect(tagSection).toContain('orderId={shareableOrderContext.orderId}');
@@ -575,37 +498,17 @@ describe('ProductionBuilder — ShareCardSheet is only mounted for a single-chil
     expect(tagSection).toContain("collectionName: order.collectionName || 'Custom Collection'");
     expect(tagSection).toContain('playerCount: summary.approvedPlayers.length');
     expect(tagSection).toContain('printCount: summary.approvedPrints');
+    expect(tagSection).not.toContain('getCaptureDiagnostics');
+    expect(tagSection).not.toContain('currentPlayerSnapshot');
   });
 
-  /**
-   * Founder-requested automatic diagnostic snapshot (live-reported crop/
-   * framing mismatch between the preview and the downloaded image, still
-   * open): getCaptureDiagnostics reads back whatever captureShareImageFor
-   * last measured about its own capture, and currentPlayerSnapshot is
-   * derived fresh on every render (never memoized) so a download-time
-   * comparison always reflects whatever crop is genuinely live right now.
-   */
-  it('wires getCaptureDiagnostics and currentPlayerSnapshot into ShareCardSheet, both sourced from the same live state the preview itself uses', () => {
-    const idx = builder.indexOf('<ShareCardSheet');
-    const tagSection = builder.slice(idx, idx + 650);
-    expect(tagSection).toContain('getCaptureDiagnostics={getCaptureDiagnostics}');
-    expect(tagSection).toContain('currentPlayerSnapshot={currentPlayerSnapshot}');
-  });
-
-  it('currentPlayerSnapshot is derived directly from shareableOrderContext.player, not a separately-cached value that could drift out of sync', () => {
-    const idx = builder.indexOf('const currentPlayerSnapshot');
-    expect(idx).toBeGreaterThan(-1);
-    const line = builder.slice(idx, builder.indexOf(';', builder.indexOf(';', idx) + 1) + 1);
-    expect(line).toContain('shareableOrderContext.player.id');
-    expect(line).toContain('shareableOrderContext.player.photo?.crop');
-  });
-
-  it('getCaptureDiagnostics reads the same ref captureShareImageFor writes to, not a stale snapshot taken at some earlier render', () => {
-    expect(builder).toContain('const lastCaptureDiagnosticsRef = useRef<CaptureDiagnostics | null>(null);');
-    expect(builder).toContain('const getCaptureDiagnostics = (): CaptureDiagnostics | null => lastCaptureDiagnosticsRef.current;');
-    const captureIdx = builder.indexOf('const captureShareImageFor');
-    const fnBody = builder.slice(captureIdx, builder.indexOf('\n  };', captureIdx));
-    expect(fnBody).toContain('lastCaptureDiagnosticsRef.current = {');
+  it('no diagnostic plumbing remains anywhere in this file: no CaptureDiagnostics type, no diagnostics ref, no per-capture content hashing/dimension measuring', () => {
+    expect(builder).not.toContain('CaptureDiagnostics');
+    expect(builder).not.toContain('lastCaptureDiagnosticsRef');
+    expect(builder).not.toContain('getCaptureDiagnostics');
+    expect(builder).not.toContain('shortContentHash');
+    expect(builder).not.toContain('measureDataUrlDimensions');
+    expect(builder).not.toContain('offscreenImageTransforms');
   });
 
   it('the off-screen capture rig that actually produces the shared image contains only the PlayerCard — never the rotate/share buttons or any other on-screen control', () => {
@@ -657,11 +560,8 @@ describe('ProductionBuilder — ShareCardSheet is only mounted for a single-chil
  * to a private, signed S3 URL by orderWithUploadedAssets — a cross-origin
  * image html2canvas cannot draw onto canvas without the bucket's CORS
  * cooperation, even though the very same <img> displays fine anywhere
- * else on the page. A first fix attempt (fetching that URL directly from
- * the browser) hit exactly this: confirmed via a live browser console log
- * as a genuine CORS block from the (correctly private) production bucket,
- * not a bug in the fetch call. The actual fix is a same-origin server-side
- * proxy (/api/card-share/photo, backed by migration 0079's
+ * else on the page. The actual fix is a same-origin server-side proxy
+ * (/api/card-share/photo, backed by migration 0079's
  * get_card_share_asset_key) — captureShareImage cannot be unit-tested
  * directly (no jsdom — see this file's own top comment), so this proves
  * the fix's actual wiring by reading the source: every remote image is
@@ -701,7 +601,7 @@ describe('ProductionBuilder — captureShareImage waits for and verifies the pla
   it('the proxy call never sends a client-supplied key or S3 URL — only the caller-supplied orderId and kind', () => {
     const idx = builder.indexOf('const fetchProxiedShareAssetAsLocalUrl');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
-    expect(fnBody).toContain("body: JSON.stringify({ orderId: orderIdForProxy, kind })");
+    expect(fnBody).toContain('body: JSON.stringify({ orderId: orderIdForProxy, kind })');
     expect(fnBody).not.toMatch(/photoUrl|badgeUrl|storageKey/);
   });
 

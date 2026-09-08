@@ -4088,18 +4088,250 @@ a { text-decoration: none; color: inherit; }
   padding: 16px;
 }
 
+/* min(400px, ...) rather than a bare 360px cap: comfortable on desktop
+   (the reference's own centred, capped-width panel) without the modal
+   ever exceeding the viewport with room to spare on either side on a
+   narrow phone. position: relative anchors .uk-card-share-close. */
 .uk-card-share-modal {
-  width: min(360px, 100%);
+  position: relative;
+  width: min(400px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
   display: grid;
   gap: 10px;
   border-radius: 18px;
   background: #fff;
-  padding: 20px;
+  padding: 24px 20px 20px;
   box-shadow: 0 24px 60px rgba(16, 16, 21, 0.28);
 }
 
 .uk-card-share-modal h3 {
   margin: 0;
+  color: var(--wizard-ink);
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.uk-card-share-subtext {
+  margin: 0;
+  color: var(--wizard-soft);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* Clearly visible, not just an aria-label on a bare icon — a light-filled
+   circle with a visible border, matching weight with .uk-card-share-icon-btn
+   elsewhere in this panel rather than the near-invisible plain-icon close
+   controls this app avoided everywhere else. */
+.uk-card-share-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 999px;
+  background: var(--wizard-surface);
+  color: var(--wizard-soft);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.uk-card-share-close:hover {
+  border-color: var(--wizard-accent);
+  color: var(--wizard-accent);
+}
+
+.uk-card-share-close:focus-visible {
+  outline: 3px solid var(--wizard-accent);
+  outline-offset: 2px;
+}
+
+.uk-card-share-close svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* The compact thumbnail + caption row — same "here's what you're sharing"
+   pattern as the reference. The thumbnail renders the SAME `preview` node
+   as the full-size card above (never a second rendering path), scaled
+   down with the identical container-query technique as
+   .uk-card-share-preview .uk-real-card below, just at a smaller width, so
+   it always matches the current design and its true proportions exactly. */
+.uk-card-share-thumb-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--wizard-surface);
+}
+
+.uk-card-share-thumb {
+  width: 44px;
+  aspect-ratio: 340 / 476;
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+  border-radius: 6px;
+  container-type: inline-size;
+}
+
+.uk-card-share-thumb .uk-real-card {
+  width: 100cqw;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  /* Without this, .uk-real-card's own generic (unscoped) `display: grid;
+     justify-content: center` rule sizes the implicit grid column to the
+     CHILD's un-transformed 340px layout width (transform is paint-only,
+     it never shrinks layout size) and centers that 340px track inside
+     this much narrower box — pushing the still-correctly-scaled card
+     mostly outside the visible window instead of flush against its
+     edges. Same fix, same reason, as .uk-card-share-preview .uk-real-card
+     below. */
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.uk-card-share-thumb .uk-real-card > div {
+  transform-origin: top left;
+  transform: scale(calc(100cqw / 340px));
+}
+
+.uk-card-share-thumb-caption {
+  margin: 0;
+  min-width: 0;
+  color: var(--wizard-ink);
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: break-word;
+}
+
+.uk-card-share-preparing {
+  margin: 0;
+  color: var(--wizard-soft);
+  font-size: 13px;
+}
+
+/* Share now / Copy link — one is always the visually primary (solid
+   orange, .uk-card-share-cta) action, the other secondary (outlined); see
+   ShareCardSheet.tsx's shareUnavailable for which is which and why. Both
+   stack full-width on narrow phones and share a row once there's room. */
+.uk-card-share-actions-primary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.uk-card-share-cta,
+.uk-card-share-cta-secondary {
+  flex: 1 1 140px;
+  min-height: 52px;
+  min-width: 0;
+  border-radius: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.uk-card-share-cta {
+  border: 0;
+  background: var(--wizard-accent);
+  color: #fff;
+  box-shadow: 0 14px 28px var(--wizard-glow);
+}
+
+.uk-card-share-cta-secondary {
+  border: 1px solid var(--wizard-line);
+  background: #fff;
+  color: var(--wizard-ink);
+}
+
+.uk-card-share-cta:disabled,
+.uk-card-share-cta-secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
+
+.uk-card-share-cta:focus-visible,
+.uk-card-share-cta-secondary:focus-visible,
+.uk-card-share-cta-tertiary:focus-visible {
+  outline: 3px solid var(--wizard-accent);
+  outline-offset: 2px;
+}
+
+.uk-card-share-cta-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  display: grid;
+  place-items: center;
+}
+
+.uk-card-share-cta-icon svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Copy message / Download image — clearly styled but visually quieter
+   than the two primary actions above, matching weight with each other. */
+.uk-card-share-actions-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.uk-card-share-cta-tertiary {
+  flex: 1 1 140px;
+  min-height: 44px;
+  min-width: 0;
+  border: 1px solid var(--wizard-line);
+  border-radius: 12px;
+  background: var(--wizard-surface);
+  color: var(--wizard-soft);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.uk-card-share-cta-tertiary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.uk-card-share-cta-tertiary svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .uk-card-share-eyebrow {
@@ -4134,52 +4366,15 @@ a { text-decoration: none; color: inherit; }
   color: var(--wizard-ink);
 }
 
+/* Still used by SquadInviteShareSheet.tsx's own "Continue -> Cancel"
+   action row — that flow is deliberately untouched by this panel's
+   redesign (see ShareCardSheet.tsx's own top comment on why it now owns a
+   separate, local stage machine instead of sharing one with Squad
+   Invite). */
 .uk-card-share-actions {
   display: flex;
   gap: 10px;
   align-items: center;
-}
-
-/* Three explicit, equally-weighted choices (Copy link / Copy message /
-   Download) shown when native sharing isn't going to complete the job —
-   never a single button that silently downloads under a Share label.
-   Wraps on narrow phone widths rather than overflowing. */
-.uk-card-share-manual-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 8px 0;
-}
-
-/* The automatic download-provenance snapshot (see buildDownloadProvenanceSnapshot
-   in card-share.ts) — a plain, copyable text block, not styled as an error
-   or a warning, since it appears on every successful download, not just a
-   failure. */
-.uk-card-share-diagnostics {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--wizard-line);
-}
-
-.uk-card-share-diagnostics-note {
-  font-size: 12px;
-  color: var(--wizard-soft);
-  margin: 0 0 6px;
-}
-
-.uk-card-share-diagnostics-text {
-  width: 100%;
-  box-sizing: border-box;
-  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
-  font-size: 11px;
-  line-height: 1.4;
-  padding: 8px;
-  border: 1px solid var(--wizard-line);
-  border-radius: 8px;
-  background: #fafafa;
-  color: var(--wizard-ink);
-  resize: vertical;
-  margin-bottom: 6px;
 }
 
 .uk-next-steps span {
