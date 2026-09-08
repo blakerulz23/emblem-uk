@@ -26,6 +26,15 @@ import { isRealSquadInviteUiPath } from '@/lib/squad-invite-preview-safety';
 // keeps its current typography untouched, even where it shares the same
 // Navbar/Footer chrome.
 const MARKETING_ROUTES = ['/', '/about', '/pricing', '/privacy', '/terms', '/trust-and-safeguarding', '/card-setup-preview'];
+// /card-share/[token] is a dynamic route (usePathname() returns the real
+// token, never the literal '/card-share/[token]'), so it can't live in the
+// exact-match list above — matched by prefix instead, same technique
+// isPlayerProfile already uses below. It reuses .emh-btn/.emh-eyebrow (the
+// same CTA and label styles the rest of the marketing site uses), which
+// only resolve to the correct typeface (Manrope/Sora, not Builder's own
+// Instrument-Sans-based binding) once this route is inside the marketing
+// shell too.
+const isCardSharePublicPage = (pathname: string) => pathname.startsWith('/card-share/');
 
 export default function ConditionalChrome({
   children,
@@ -40,7 +49,7 @@ export default function ConditionalChrome({
   const isPlayerProfile = pathname.startsWith('/player/');
   const isHome = pathname === '/';
   const isSyntheticSquadInvitePreview = pathname.startsWith('/dev/squad-invite-preview') || pathname.startsWith('/review/squad-invite');
-  const isMarketing = MARKETING_ROUTES.includes(pathname);
+  const isMarketing = MARKETING_ROUTES.includes(pathname) || isCardSharePublicPage(pathname);
   const notice = disposableSquadInvitePreview && isRealSquadInviteUiPath(pathname)
     ? <DisposableSquadInviteNotice />
     : null;
