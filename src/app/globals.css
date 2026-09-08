@@ -1676,6 +1676,48 @@ a { text-decoration: none; color: inherit; }
   margin-bottom: 14px;
 }
 
+.uk-crop-controls-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.uk-crop-auto-fit,
+.uk-crop-reset {
+  flex: 1 1 auto;
+  min-height: 40px;
+  min-width: 0;
+  border-radius: 12px;
+  padding: 0 12px;
+  cursor: pointer;
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.uk-crop-auto-fit {
+  border: none;
+  background: var(--wizard-accent);
+  color: #fff;
+}
+
+.uk-crop-auto-fit:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.uk-crop-reset {
+  border: 1px solid var(--wizard-line);
+  background: #fff;
+  color: var(--wizard-ink);
+}
+
 .uk-crop-controls label {
   grid-template-columns: 88px 38px minmax(0, 1fr);
   align-items: center;

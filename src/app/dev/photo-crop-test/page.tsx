@@ -39,7 +39,12 @@ export default function PhotoCropTestPage() {
  * comparison render matching a specific real card's *non-sensitive* saved
  * fields (template/crop/name/position/number/team) — never a real photo or
  * any private data, since this page is never linked from the product.
- * ?templateId=&name=&position=&number=&team=&cropX=&cropY=&cropScale=&logo=&photo=
+ * ?templateId=&name=&position=&number=&team=&cropX=&cropY=&cropScale=&logo=&photo=&naturalWidth=&naturalHeight=
+ * naturalWidth/naturalHeight are the fixture photo's own real pixel size —
+ * required to exercise computePhotoGeometry's below-scale-1 reveal-more
+ * branch (photo-geometry.ts), since that branch only activates once a
+ * photo's natural size is known (CardArt is also rendered server-side,
+ * where nothing can measure an <img> to discover it on its own).
  */
 function PhotoCropTestInner() {
   const params = useSearchParams();
@@ -60,6 +65,8 @@ function PhotoCropTestInner() {
       scale: Number(params.get('cropScale') ?? 0.8),
     },
     stats: { apps: '', goals: '', assists: '' },
+    photoNaturalWidth: params.has('naturalWidth') ? Number(params.get('naturalWidth')) : undefined,
+    photoNaturalHeight: params.has('naturalHeight') ? Number(params.get('naturalHeight')) : undefined,
   };
   const fixturePhoto = params.get('photo') || '/last-shot/caden-isaacs.png';
   const nativeFrontRef = useRef<HTMLDivElement>(null);

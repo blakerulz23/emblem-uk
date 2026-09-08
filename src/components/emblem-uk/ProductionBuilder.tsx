@@ -11,6 +11,7 @@ import { DEFAULT_EMJFL_CLUB, EAST_MANCHESTER_LEAGUE, EMJFL_CLUBS, getEmjflClub, 
 import { DIRECT_BUILDER_MAX_PAID_PLAYERS } from '@/lib/order-enquiry-validation';
 import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
 import { captureElementToPng, renderPrintFile, BUILDER_CSRF_HEADER, readBuilderCsrfCookie } from '@/lib/print-capture';
+import { autoFitPatchForPhoto } from '@/lib/card-photo-auto-fit';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import {
   createPlayer,
@@ -684,6 +685,36 @@ export default function ProductionBuilder({
       badgeUrl: undefined,
       templateId: preferredTemplateForClub(club.id) as TemplateId,
     });
+  };
+
+  const [autoFittingPlayerId, setAutoFittingPlayerId] = useState<string | null>(null);
+
+  // "Auto-fit player" (manual button) — recomputes from the player's
+  // current photo on demand. Goes through patchPlayer like every other
+  // edit here, so it inherits the same re-approval confirmation a
+  // previously-approved card already requires for any change.
+  const autoFitPlayerPhoto = async (id: string) => {
+    const player = order.players.find((p) => p.id === id);
+    const src = player?.photo?.srcUrl;
+    if (!src) return;
+    setAutoFittingPlayerId(id);
+    try {
+      const autoFit = await autoFitPatchForPhoto(src);
+      if (!autoFit) return;
+      patchPlayer(id, { photo: player?.photo ? { ...player.photo, ...autoFit } : undefined });
+    } finally {
+      setAutoFittingPlayerId(null);
+    }
+  };
+
+  // "Reset to suggested framing" — restores the crop Auto-fit last computed
+  // for this photo, never a blind {x:0,y:0,scale:1}, so it stays a genuine
+  // "undo my manual tweaks" rather than reintroducing the cropped-hair/
+  // missing-legs default.
+  const resetPlayerPhotoToSuggested = (id: string) => {
+    const player = order.players.find((p) => p.id === id);
+    if (!player?.photo?.suggestedCrop) return;
+    patchPlayer(id, { photo: { ...player.photo, crop: player.photo.suggestedCrop } });
   };
 
   const patchPlayer = (id: string, patch: Partial<PlayerDraft>) => {
@@ -2037,11 +2068,26 @@ export default function ProductionBuilder({
               </div>
               {selectedPlayer.photo ? (
                 <div className="uk-crop-controls">
+                  <div className="uk-crop-controls-actions">
+                    <button
+                      type="button"
+                      className="uk-crop-auto-fit"
+                      onClick={() => autoFitPlayerPhoto(selectedPlayer.id)}
+                      disabled={autoFittingPlayerId === selectedPlayer.id}
+                    >
+                      {autoFittingPlayerId === selectedPlayer.id ? 'Fitting…' : 'Auto-fit player'}
+                    </button>
+                    {selectedPlayer.photo.suggestedCrop && (
+                      <button type="button" className="uk-crop-reset" onClick={() => resetPlayerPhotoToSuggested(selectedPlayer.id)}>
+                        Reset to suggested framing
+                      </button>
+                    )}
+                  </div>
                   <label>
-                    Zoom <b>{selectedPlayer.photo.crop.scale.toFixed(1)}x</b>
+                    Zoom <b>{selectedPlayer.photo.crop.scale.toFixed(2)}x</b>
                     <input
                       type="range"
-                      min={0.7}
+                      min={0.25}
                       max={1.8}
                       step={0.05}
                       value={selectedPlayer.photo.crop.scale}
@@ -2964,6 +3010,8 @@ function orderPlayerToFaceData(order: OrderDraft, player: PlayerDraft): CardFace
     logo: playerBadge(order, player),
     photoCrop: player.photo ? { x: player.photo.crop.x || 0, y: player.photo.crop.y || 0, scale: player.photo.crop.scale || 1 } : null,
     stats: player.stats,
+    photoNaturalWidth: player.photo?.naturalWidth,
+    photoNaturalHeight: player.photo?.naturalHeight,
   };
 }
 

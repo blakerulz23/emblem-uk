@@ -8,6 +8,27 @@ import { computePhotoGeometry } from '@/lib/photo-geometry';
 import { SPORT_STATS, type CardTemplate, type Details, type Family, type SportId } from './data';
 import Icon from './Icon';
 
+/**
+ * The photo's own natural pixel size — needed so computePhotoGeometry can
+ * reveal real source content when zoomed out instead of just shrinking an
+ * already-cropped window (see that module's doc). Deliberately a plain prop,
+ * not a self-measuring hook: CardArt is also rendered server-side (Collection
+ * OS's PDF/print path, via card-definition.tsx -> os-data.ts), where there
+ * is no DOM/Image() to measure with. The one place this actually gets
+ * measured is card-photo-auto-fit.ts, run client-side once when a photo is
+ * set, and persisted on PhotoAsset — every caller here just threads that
+ * stored value through. Omitted (or the photo hasn't been measured yet, or
+ * predates this fix) falls back to computePhotoGeometry's exact legacy
+ * formula — unchanged rendering, same as if this prop didn't exist.
+ */
+type PhotoNaturalSizeProp = { photoNaturalWidth?: number; photoNaturalHeight?: number };
+
+function toSizingArg(natural: PhotoNaturalSizeProp, boxWidth: number, boxHeight: number) {
+  const { photoNaturalWidth, photoNaturalHeight } = natural;
+  if (!photoNaturalWidth || !photoNaturalHeight) return null;
+  return { naturalWidth: photoNaturalWidth, naturalHeight: photoNaturalHeight, boxWidth, boxHeight };
+}
+
 type Style = {
   bg: string;
   ink: string;
@@ -101,6 +122,8 @@ function RealCardArt({
   photoScale = 1,
   photoOffsetX = 0,
   photoOffsetY = 0,
+  photoNaturalWidth,
+  photoNaturalHeight,
 }: {
   template: CardTemplate;
   photo: string | null;
@@ -115,7 +138,7 @@ function RealCardArt({
   photoScale?: number;
   photoOffsetX?: number;
   photoOffsetY?: number;
-}) {
+} & PhotoNaturalSizeProp) {
   const W = size;
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
@@ -185,7 +208,11 @@ function RealCardArt({
               inset: 0,
               width: '100%',
               height: '100%',
-              ...computePhotoGeometry({ x: photoOffsetX, y: photoOffsetY, scale: photoScale }, 'center 10%'),
+              ...computePhotoGeometry(
+                { x: photoOffsetX, y: photoOffsetY, scale: photoScale },
+                'center 10%',
+                toSizingArg({ photoNaturalWidth, photoNaturalHeight }, W, H)
+              ),
             }}
           />
         </div>
@@ -1282,6 +1309,8 @@ function EmjflCardArt({
   photoScale = 1,
   photoOffsetX = 0,
   photoOffsetY = 0,
+  photoNaturalWidth,
+  photoNaturalHeight,
 }: {
   photo: string | null;
   details: Details | null;
@@ -1293,7 +1322,7 @@ function EmjflCardArt({
   photoScale?: number;
   photoOffsetX?: number;
   photoOffsetY?: number;
-}) {
+} & PhotoNaturalSizeProp) {
   const W = size;
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
@@ -1330,7 +1359,11 @@ function EmjflCardArt({
               alt=""
               style={{
                 position: 'absolute', inset: 0, width: '100%', height: '100%',
-                ...computePhotoGeometry({ x: photoOffsetX, y: photoOffsetY, scale: photoScale }, 'center 12%'),
+                ...computePhotoGeometry(
+                  { x: photoOffsetX, y: photoOffsetY, scale: photoScale },
+                  'center 12%',
+                  toSizingArg({ photoNaturalWidth, photoNaturalHeight }, W, H)
+                ),
               }}
             />
           </div>
@@ -1464,6 +1497,8 @@ function HollinwoodCardArt({
   photoScale = 1,
   photoOffsetX = 0,
   photoOffsetY = 0,
+  photoNaturalWidth,
+  photoNaturalHeight,
 }: {
   template: CardTemplate;
   photo: string | null;
@@ -1476,7 +1511,7 @@ function HollinwoodCardArt({
   photoScale?: number;
   photoOffsetX?: number;
   photoOffsetY?: number;
-}) {
+} & PhotoNaturalSizeProp) {
   const W = size;
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
@@ -1513,7 +1548,11 @@ function HollinwoodCardArt({
               alt=""
               style={{
                 position: 'absolute', inset: 0, width: '100%', height: '100%',
-                ...computePhotoGeometry({ x: photoOffsetX, y: photoOffsetY, scale: photoScale }, 'center 12%'),
+                ...computePhotoGeometry(
+                  { x: photoOffsetX, y: photoOffsetY, scale: photoScale },
+                  'center 12%',
+                  toSizingArg({ photoNaturalWidth, photoNaturalHeight }, W, H)
+                ),
               }}
             />
           </div>
@@ -1599,6 +1638,8 @@ function CustomCollectionCardArt({
   photoScale = 1,
   photoOffsetX = 0,
   photoOffsetY = 0,
+  photoNaturalWidth,
+  photoNaturalHeight,
 }: {
   template: CardTemplate;
   photo: string | null;
@@ -1611,7 +1652,7 @@ function CustomCollectionCardArt({
   photoScale?: number;
   photoOffsetX?: number;
   photoOffsetY?: number;
-}) {
+} & PhotoNaturalSizeProp) {
   const W = size;
   const d = details || ({} as Partial<Details>);
   const variant = getCustomCollectionVariant(template.id);
@@ -1669,7 +1710,11 @@ function CustomCollectionCardArt({
               alt=""
               style={{
                 position: 'absolute', inset: 0, width: '100%', height: '100%',
-                ...computePhotoGeometry({ x: photoOffsetX, y: photoOffsetY, scale: photoScale }, 'center 12%'),
+                ...computePhotoGeometry(
+                  { x: photoOffsetX, y: photoOffsetY, scale: photoScale },
+                  'center 12%',
+                  toSizingArg({ photoNaturalWidth, photoNaturalHeight }, W, H)
+                ),
               }}
             />
           </div>
@@ -1996,6 +2041,8 @@ export default function CardArt({
   photoScale = 1,
   photoOffsetX = 0,
   photoOffsetY = 0,
+  photoNaturalWidth,
+  photoNaturalHeight,
 }: {
   template: CardTemplate;
   photo: string | null;
@@ -2013,7 +2060,7 @@ export default function CardArt({
   photoScale?: number;
   photoOffsetX?: number;
   photoOffsetY?: number;
-}) {
+} & PhotoNaturalSizeProp) {
   // Back of card
   if (side === 'back' && template.family === 'Futuristic') {
     return <RealCardBack details={details} logo={logo} stats={stats} backText={backText} physical={physical} accent={template.accent} size={size} selected={selected} dim={dim} style={style} />;
@@ -2043,18 +2090,18 @@ export default function CardArt({
     return <CustomCollectionCardBack template={template} details={details} logo={logo} size={size} selected={selected} dim={dim} style={style} />;
   }
   if (template.family === 'EMJFL') {
-    return <EmjflCardArt photo={photo} details={details} logo={logo} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} />;
+    return <EmjflCardArt photo={photo} details={details} logo={logo} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} photoNaturalWidth={photoNaturalWidth} photoNaturalHeight={photoNaturalHeight} />;
   }
   if (template.family === 'Hollinwood') {
-    return <HollinwoodCardArt template={template} photo={photo} details={details} logo={logo} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} />;
+    return <HollinwoodCardArt template={template} photo={photo} details={details} logo={logo} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} photoNaturalWidth={photoNaturalWidth} photoNaturalHeight={photoNaturalHeight} />;
   }
   if (template.family === 'Custom') {
-    return <CustomCollectionCardArt template={template} photo={photo} details={details} logo={logo} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} />;
+    return <CustomCollectionCardArt template={template} photo={photo} details={details} logo={logo} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} photoNaturalWidth={photoNaturalWidth} photoNaturalHeight={photoNaturalHeight} />;
   }
 
   // Route to real PNG renderer for Futuristic / Chrome / Galaxy templates
   if (template.bgPath) {
-    return <RealCardArt template={template} photo={photo} details={details} size={size} selected={selected} dim={dim} style={style} logo={logo} stats={stats} sport={sport} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} />;
+    return <RealCardArt template={template} photo={photo} details={details} size={size} selected={selected} dim={dim} style={style} logo={logo} stats={stats} sport={sport} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} photoNaturalWidth={photoNaturalWidth} photoNaturalHeight={photoNaturalHeight} />;
   }
 
   const s = familyStyle(template.family, template.accent);
