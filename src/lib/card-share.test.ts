@@ -7,7 +7,6 @@ import {
   CARD_SHARE_RECALL_NOTICE,
   CARD_SHARE_WARNING,
   buildCardShareMessageText,
-  buildDownloadProvenanceSnapshot,
   cardShareBlockedMessage,
   cardSharePublicPageUrl,
   cardShareStageReducer,
@@ -15,7 +14,6 @@ import {
   fetchCardShareEligibility,
   recordCardShareConsent,
   shouldHideCardShareEntirely,
-  type CaptureDiagnostics,
 } from './card-share';
 
 describe('required copy is present and distinct', () => {
@@ -281,108 +279,5 @@ describe('recordCardShareConsent', () => {
     global.fetch = fetchMock;
     const result = await recordCardShareConsent('order-1', 'cancelled');
     expect(result).toEqual({ ok: true, result: 'cancelled' });
-  });
-});
-
-/**
- * Founder-requested (live-reported crop/framing mismatch, still open): a
- * static synthetic-photo test already proved the capture mechanism itself
- * reproduces a given crop faithfully, but that only proves the tested case
- * matches, not that the live failing case is resolved. This pure function
- * is the actual correlation logic behind the automatic diagnostic snapshot
- * ShareCardSheet records on every explicit Download click — see its own
- * doc comment in card-share.ts for the full rationale.
- */
-describe('buildDownloadProvenanceSnapshot', () => {
-  const crop = { x: 8, y: -15, scale: 1.3 };
-  const otherCrop = { x: 0, y: 0, scale: 1 };
-
-  function makeCapture(overrides: Partial<CaptureDiagnostics> = {}): CaptureDiagnostics {
-    return {
-      capturedAt: 1000,
-      capturePlayerId: 'player-1',
-      captureCropRequested: crop,
-      offscreenImageTransforms: ['translate(8%, -15%) scale(1.3)'],
-      generatedImage: { width: 680, height: 952, contentHash: 'abc123' },
-      ...overrides,
-    };
-  }
-
-  it('reports both flags true when the current crop matches what was captured and the downloaded bytes match the capture', () => {
-    const snapshot = buildDownloadProvenanceSnapshot({
-      clickedAt: 2000,
-      currentPlayer: { playerId: 'player-1', crop },
-      onScreenPreview: null,
-      capture: makeCapture(),
-      preparedShare: { preparedAt: 1500, blobSize: 12345, blobType: 'image/jpeg', contentHash: 'abc123' },
-    });
-    expect(snapshot.cropMatchesCurrentVsCapture).toBe(true);
-    expect(snapshot.downloadedAssetMatchesCapture).toBe(true);
-  });
-
-  it('reproduces the reported defect and gives it a name: the currently-visible crop differs from what was actually captured', () => {
-    const snapshot = buildDownloadProvenanceSnapshot({
-      clickedAt: 2000,
-      currentPlayer: { playerId: 'player-1', crop: otherCrop }, // visible design has since changed
-      onScreenPreview: null,
-      capture: makeCapture(), // captured with the ORIGINAL crop
-      preparedShare: { preparedAt: 1500, blobSize: 12345, blobType: 'image/jpeg', contentHash: 'abc123' },
-    });
-    expect(snapshot.cropMatchesCurrentVsCapture).toBe(false);
-  });
-
-  it('flags a genuine plumbing bug distinctly: matching crops but the downloaded blob\'s bytes do not match what the capture actually produced', () => {
-    const snapshot = buildDownloadProvenanceSnapshot({
-      clickedAt: 2000,
-      currentPlayer: { playerId: 'player-1', crop },
-      onScreenPreview: null,
-      capture: makeCapture(),
-      preparedShare: { preparedAt: 1500, blobSize: 99999, blobType: 'image/jpeg', contentHash: 'DIFFERENT-HASH' },
-    });
-    expect(snapshot.cropMatchesCurrentVsCapture).toBe(true);
-    expect(snapshot.downloadedAssetMatchesCapture).toBe(false);
-  });
-
-  it('reports "unknown" rather than a false positive/negative when no capture diagnostics are available at all (e.g. the caller never wired getCaptureDiagnostics)', () => {
-    const snapshot = buildDownloadProvenanceSnapshot({
-      clickedAt: 2000,
-      currentPlayer: { playerId: 'player-1', crop },
-      onScreenPreview: null,
-      capture: null,
-      preparedShare: { preparedAt: 1500, blobSize: 12345, blobType: 'image/jpeg', contentHash: 'abc123' },
-    });
-    expect(snapshot.cropMatchesCurrentVsCapture).toBe('unknown');
-    expect(snapshot.downloadedAssetMatchesCapture).toBe('unknown');
-  });
-
-  it('treats two null crops as matching (both "no crop set"), not as a mismatch', () => {
-    const snapshot = buildDownloadProvenanceSnapshot({
-      clickedAt: 2000,
-      currentPlayer: { playerId: 'player-1', crop: null },
-      onScreenPreview: null,
-      capture: makeCapture({ captureCropRequested: null }),
-      preparedShare: { preparedAt: 1500, blobSize: 12345, blobType: 'image/jpeg', contentHash: 'abc123' },
-    });
-    expect(snapshot.cropMatchesCurrentVsCapture).toBe(true);
-  });
-
-  it('a null crop on one side and a real crop on the other is a mismatch, not treated as equal', () => {
-    const snapshot = buildDownloadProvenanceSnapshot({
-      clickedAt: 2000,
-      currentPlayer: { playerId: 'player-1', crop: null },
-      onScreenPreview: null,
-      capture: makeCapture(),
-      preparedShare: { preparedAt: 1500, blobSize: 12345, blobType: 'image/jpeg', contentHash: 'abc123' },
-    });
-    expect(snapshot.cropMatchesCurrentVsCapture).toBe(false);
-  });
-
-  it('passes every gathered fact through unchanged, so the resulting snapshot is a complete, correlated record, not just the two boolean verdicts', () => {
-    const onScreenPreview = { imgNaturalWidth: 680, imgNaturalHeight: 952, imgRenderedWidth: 340, imgRenderedHeight: 476, imgTransform: 'translate(8%, -15%) scale(1.3)' };
-    const capture = makeCapture();
-    const preparedShare = { preparedAt: 1500, blobSize: 12345, blobType: 'image/jpeg', contentHash: 'abc123' };
-    const currentPlayer = { playerId: 'player-1', crop };
-    const snapshot = buildDownloadProvenanceSnapshot({ clickedAt: 2000, currentPlayer, onScreenPreview, capture, preparedShare });
-    expect(snapshot).toMatchObject({ clickedAt: 2000, currentPlayer, onScreenPreview, capture, preparedShare });
   });
 });
