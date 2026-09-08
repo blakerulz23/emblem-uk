@@ -795,7 +795,15 @@ a { text-decoration: none; color: inherit; }
   gap: 14px;
 }
 
-.uk-wizard-choice-list button {
+/* The two order-type options are native radio inputs wrapped in their own
+   label — clicking anywhere in the label (icon, copy, padding) toggles the
+   input natively, with zero custom click-delegation JS, and the browser's
+   own arrow-key-between-radios behaviour comes for free. The input itself
+   is visually hidden (.uk-choice-native-radio below) but stays in the
+   focus/tab order and keeps its native checked semantics — the custom
+   ring (.uk-choice-radio) is purely decorative and driven off the same
+   real state via the .active class already computed in JS. */
+.uk-wizard-choice-list label {
   width: 100%;
   min-height: 118px;
   border: 1px solid var(--wizard-line);
@@ -810,12 +818,42 @@ a { text-decoration: none; color: inherit; }
   text-align: left;
   cursor: pointer;
   box-shadow: 0 14px 30px rgba(16,16,21,0.04);
+  /* Border/background/shadow all change on select or hover — nothing here
+     ever moves/scales the card, so the click target never shifts. */
 }
 
-.uk-wizard-choice-list button.active {
+.uk-wizard-choice-list label:hover {
+  border-color: var(--wizard-accent);
+}
+
+.uk-wizard-choice-list label:active {
+  background: #fff3ea;
+}
+
+.uk-wizard-choice-list label.active {
   border-color: var(--wizard-accent);
   background: #fff7f1;
   box-shadow: inset 0 0 0 1px var(--wizard-accent), 0 18px 38px var(--wizard-glow);
+}
+
+/* Visually hidden but still focusable/tabbable — never display:none or
+   visibility:hidden, either of which would drop it from the keyboard/AT
+   focus order entirely and break native radio keyboard support. */
+.uk-choice-native-radio {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.uk-wizard-choice-list label:has(.uk-choice-native-radio:focus-visible) {
+  outline: 3px solid var(--wizard-accent);
+  outline-offset: 2px;
 }
 
 .uk-choice-icon {
@@ -912,13 +950,12 @@ a { text-decoration: none; color: inherit; }
   font-style: normal;
 }
 
-/* One shared control for all three order-type options: an empty
-   light-grey ring by default, filled with an orange ring + centred dot
-   once selected. "Selected" means different things per card — a real,
-   persistent app-state match for the two buttons (order.type), a
-   transient hover/focus-visible highlight for the link card, since
-   clicking it navigates away rather than staying "selected" — but the
-   visual treatment itself is identical everywhere via this one class. */
+/* Shared control for the two order-type options: an empty light-grey ring
+   by default, filled with an orange ring + centred dot once its radio
+   input is actually checked (real, persistent order.type state — not a
+   hover effect). The Invite-your-squad card uses a right arrow instead
+   (.uk-choice-arrow below), never this radio ring — it isn't part of this
+   radiogroup and clicking it navigates away rather than selecting anything. */
 .uk-choice-radio {
   width: 22px;
   height: 22px;
@@ -928,15 +965,11 @@ a { text-decoration: none; color: inherit; }
   position: relative;
 }
 
-.uk-wizard-choice-list button.active .uk-choice-radio,
-.uk-wizard-choice-invite:hover .uk-choice-radio,
-.uk-wizard-choice-invite:focus-visible .uk-choice-radio {
+.uk-wizard-choice-list label.active .uk-choice-radio {
   border-color: var(--wizard-accent);
 }
 
-.uk-wizard-choice-list button.active .uk-choice-radio::after,
-.uk-wizard-choice-invite:hover .uk-choice-radio::after,
-.uk-wizard-choice-invite:focus-visible .uk-choice-radio::after {
+.uk-wizard-choice-list label.active .uk-choice-radio::after {
   content: '';
   position: absolute;
   inset: 4px;
@@ -944,7 +977,66 @@ a { text-decoration: none; color: inherit; }
   background: var(--wizard-accent);
 }
 
-/* Privacy reassurance beneath the three choice cards — new, additive,
+/* Invite-your-squad's trailing indicator — a plain right arrow, since this
+   card recommends a different, separate flow rather than offering itself
+   as a selectable option. Only ever tinted on hover/focus (a transient
+   interactive cue), never persistently, matching the card's own border
+   staying neutral by default so the recommendation never reads as already
+   selected. */
+.uk-choice-arrow {
+  width: 22px;
+  height: 22px;
+  justify-self: end;
+  display: grid;
+  place-items: center;
+  color: var(--wizard-soft);
+}
+
+.uk-choice-arrow svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.uk-wizard-choice-invite:hover .uk-choice-arrow,
+.uk-wizard-choice-invite:focus-visible .uk-choice-arrow {
+  color: var(--wizard-accent);
+}
+
+/* Subtle divider introducing the separate Squad Invite recommendation
+   below Continue — a plain rule with a centred label, matching this
+   panel's existing monospace/soft-colour convention (.uk-choice-badge)
+   rather than introducing a new typographic voice. */
+.uk-choice-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0 14px;
+}
+
+.uk-choice-divider::before,
+.uk-choice-divider::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--wizard-line);
+}
+
+.uk-choice-divider span {
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--wizard-soft);
+  text-align: center;
+  white-space: normal;
+}
+
+/* Privacy reassurance beneath the choice cards — new, additive,
    never hidden by selection state (order.type changes don't touch this). */
 .uk-choice-reassurance {
   display: flex;

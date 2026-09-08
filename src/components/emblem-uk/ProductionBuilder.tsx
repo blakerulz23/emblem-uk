@@ -98,8 +98,8 @@ function readSquadInviteCsrfCookie(): string {
 type SquadInviteCommitOutcome = null | 'sign_in_required' | 'unavailable' | 'validation' | 'network' | 'photo_upload_failed' | 'campaign_closed';
 
 const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'person' | 'group' }> = [
-  { id: 'single', title: 'One player', copy: 'Create one card from one football photo.', icon: 'person' },
-  { id: 'squad', title: 'A whole team', copy: 'Build sibling sets, friend groups, or the full squad in one session.', icon: 'group' },
+  { id: 'single', title: 'One player', copy: 'Create a card for one player.', icon: 'person' },
+  { id: 'squad', title: 'A whole team', copy: "Create several players' cards yourself.", icon: 'group' },
 ];
 
 const collections = [
@@ -1730,80 +1730,83 @@ export default function ProductionBuilder({
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Start order</p>
               <h1>Who are you building for?</h1>
-              <p className="uk-wizard-copy">Are you creating one card, or a whole team?</p>
+              <p className="uk-wizard-copy">Choose how you&apos;d like to create your cards.</p>
               <div className="uk-wizard-choice-list" role="radiogroup" aria-label="Who are you building for?">
-                {orderTypes.map((type) => (
-                  <button
-                    key={type.id}
-                    type="button"
-                    className={visibleOrderType === type.id ? 'active' : ''}
-                    role="radio"
-                    aria-checked={visibleOrderType === type.id}
-                    onClick={() => patchOrder({ type: type.id })}
-                  >
-                    <span className="uk-choice-icon" aria-hidden="true">
-                      {type.icon === 'person' ? (
-                        <svg viewBox="0 0 24 24" role="img">
-                          <circle cx="12" cy="8" r="3.5" />
-                          <path d="M5.8 20c0-4 2.7-7 6.2-7s6.2 3 6.2 7" />
-                        </svg>
-                      ) : (
-                        <svg viewBox="0 0 24 24" role="img">
-                          <circle cx="9" cy="8.5" r="3" />
-                          <circle cx="16.5" cy="9.5" r="2.5" />
-                          <path d="M3.8 20c0-3.8 2.3-6.3 5.2-6.3s5.2 2.5 5.2 6.3" />
-                          <path d="M13.8 15c2.8.2 4.7 2.3 4.7 5" />
-                        </svg>
-                      )}
-                    </span>
-                    <span>
-                      <strong>{type.title}</strong>
-                      <small>{type.copy}</small>
-                    </span>
-                    <span className="uk-choice-radio" aria-hidden="true" />
-                  </button>
-                ))}
-                {squadInviteEnabled && (
-                  <a
-                    href="/squad-invite/start"
-                    className="uk-wizard-choice-invite"
-                    role="radio"
-                    aria-checked="false"
-                    onKeyDown={(event) => {
-                      if (event.key === ' ' || event.key === 'Spacebar') {
-                        event.preventDefault();
-                        window.location.assign('/squad-invite/start');
-                      }
-                    }}
-                  >
-                    <span className="uk-choice-icon" aria-hidden="true">
-                      {/* eslint-disable-next-line @next/next/no-img-element -- a
-                          fixed 38px decorative icon inside a small circular
-                          badge; next/image's overhead (loader, layout shift
-                          reservation) isn't warranted here, matching how this
-                          same badge already renders hand-drawn SVGs for the
-                          other two options via a plain element, not <Image>. */}
-                      <img src="/invite-squad-icon.png" alt="" />
-                    </span>
-                    <span>
-                      <em className="uk-choice-badge">Best for clubs</em>
-                      <strong>Invite your squad</strong>
-                      <small>Share a private link so each parent creates their child&apos;s card.</small>
-                    </span>
-                    <span className="uk-choice-radio" aria-hidden="true" />
-                  </a>
-                )}
+                {orderTypes.map((type) => {
+                  const inputId = `order-type-${type.id}`;
+                  return (
+                    <label key={type.id} htmlFor={inputId} className={visibleOrderType === type.id ? 'active' : ''}>
+                      <input
+                        type="radio"
+                        id={inputId}
+                        name="orderType"
+                        className="uk-choice-native-radio"
+                        checked={visibleOrderType === type.id}
+                        onChange={() => patchOrder({ type: type.id })}
+                      />
+                      <span className="uk-choice-icon" aria-hidden="true">
+                        {type.icon === 'person' ? (
+                          <svg viewBox="0 0 24 24" role="img">
+                            <circle cx="12" cy="8" r="3.5" />
+                            <path d="M5.8 20c0-4 2.7-7 6.2-7s6.2 3 6.2 7" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" role="img">
+                            <circle cx="9" cy="8.5" r="3" />
+                            <circle cx="16.5" cy="9.5" r="2.5" />
+                            <path d="M3.8 20c0-3.8 2.3-6.3 5.2-6.3s5.2 2.5 5.2 6.3" />
+                            <path d="M13.8 15c2.8.2 4.7 2.3 4.7 5" />
+                          </svg>
+                        )}
+                      </span>
+                      <span>
+                        <strong>{type.title}</strong>
+                        <small>{type.copy}</small>
+                      </span>
+                      <span className="uk-choice-radio" aria-hidden="true" />
+                    </label>
+                  );
+                })}
               </div>
-              {squadInviteEnabled && (
-                <div className="uk-choice-reassurance">
-                  <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
-                    <path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z" />
-                    <path d="M9 12l2 2 4-4" />
-                  </svg>
-                  <span>Parents only see their own child&apos;s details.</span>
-                </div>
-              )}
               <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('collection')}>Continue</button>
+
+              {squadInviteEnabled && (
+                <>
+                  <div className="uk-choice-divider" role="separator">
+                    <span>Want parents to create their own?</span>
+                  </div>
+                  <div className="uk-wizard-choice-list">
+                    <a href="/squad-invite/start" className="uk-wizard-choice-invite">
+                      <span className="uk-choice-icon" aria-hidden="true">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- a
+                            fixed 38px decorative icon inside a small circular
+                            badge; next/image's overhead (loader, layout shift
+                            reservation) isn't warranted here, matching how this
+                            same badge already renders hand-drawn SVGs for the
+                            other two options via a plain element, not <Image>. */}
+                        <img src="/invite-squad-icon.png" alt="" />
+                      </span>
+                      <span>
+                        <em className="uk-choice-badge">Best for clubs</em>
+                        <strong>Invite your squad</strong>
+                        <small>Send a private link so each parent creates their child&apos;s card.</small>
+                      </span>
+                      <span className="uk-choice-arrow" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" role="img">
+                          <path d="M9 5l7 7-7 7" />
+                        </svg>
+                      </span>
+                    </a>
+                  </div>
+                  <div className="uk-choice-reassurance">
+                    <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                      <path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z" />
+                      <path d="M9 12l2 2 4-4" />
+                    </svg>
+                    <span>Parents only see their own child&apos;s details.</span>
+                  </div>
+                </>
+              )}
             </section>
           )}
 
