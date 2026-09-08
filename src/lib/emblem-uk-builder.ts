@@ -144,18 +144,23 @@ export const templates: TemplateConfig[] = [
 
 export const DEFAULT_CUSTOM_TEMPLATE_ID: CustomCollectionTemplateId = CUSTOM_COLLECTION_VARIANTS[0].id;
 
+// Apps/Goals/Assists were removed from the card-order journey (season stats
+// belong to Player OS/Coach OS instead, where they can be updated live and
+// coach-verified — see player_assessments/player_strengths/player_goals).
+// Traced first: no card template (EMJFL/Hollinwood/Custom Collection), print
+// asset, or Player OS/Coach OS feature ever read sportConfig's old `stats`
+// array or a player's `stats` field — it was collected but never displayed
+// anywhere. PlayerDraft.stats itself stays (createPlayer below still
+// defaults it to `{}`, and any already-persisted order/player row keeps
+// whatever historical values it has — this only stops new orders from
+// collecting more).
 export const sportConfig = {
   football: {
     label: 'Football',
     disabled: false,
     positions: ['GK', 'RB', 'CB', 'LB', 'CDM', 'CM', 'CAM', 'RW', 'LW', 'ST'],
-    stats: [
-      { key: 'apps', label: 'Apps' },
-      { key: 'goals', label: 'Goals' },
-      { key: 'assists', label: 'Assists' },
-    ],
   },
-} satisfies Record<Sport, { label: string; disabled: boolean; positions: string[]; stats: Array<{ key: string; label: string }> }>;
+} satisfies Record<Sport, { label: string; disabled: boolean; positions: string[] }>;
 
 export const statusCopy: Record<PlayerStatus, string> = {
   approved: 'Ready for production',
@@ -177,7 +182,12 @@ export function createPlayer(seed?: Partial<PlayerDraft>): PlayerDraft {
     clubEdited: seed?.clubEdited,
     position: seed?.position || '',
     kitNo: seed?.kitNo || '',
-    stats: seed?.stats || { apps: '', goals: '', assists: '' },
+    // No longer collected by the builder (see sportConfig's own comment
+    // above) — defaults empty rather than seeding apps/goals/assists keys
+    // that nothing in the UI shows or edits any more. A seed carrying real
+    // historical values (an existing in-progress or duplicated player)
+    // still passes through untouched.
+    stats: seed?.stats || {},
     photo: seed?.photo,
     templateId: seed?.templateId,
     prints: seed?.prints || 1,

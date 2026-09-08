@@ -567,7 +567,6 @@ export default function ProductionBuilder({
     enquiryStatus === 'sent' && submittedAuthorityStatus === 'confirmed' && order.type === 'single' && submittedOrderId && soleApprovedPlayer
       ? { orderId: submittedOrderId, player: soleApprovedPlayer }
       : null;
-  const stats = sportConfig[order.sport].stats;
   const orderMode = orderModeLimits[order.type];
   const visibleOrderType = order.type === 'single' ? 'single' : 'squad';
   // Gate 3 — read-only, copy-only signal (NEXT_PUBLIC_ vars are already
@@ -734,7 +733,6 @@ export default function ProductionBuilder({
     const nextType: OrderType = options?.promoteSingle && order.type === 'single' ? 'set' : order.type;
     if (order.players.length >= orderModeLimits[nextType].maxPlayers) return;
     const player = createPlayer({
-      stats: Object.fromEntries(stats.map((stat) => [stat.key, ''])),
       templateId: order.templateDefault,
       club: order.club,
       emjflClubId: order.emjflClubId,
@@ -818,7 +816,6 @@ export default function ProductionBuilder({
       clubEdited: player.clubEdited,
       position: player.position,
       kitNo: '',
-      stats: player.stats,
       templateId: player.templateId || order.templateDefault,
       prints: player.prints,
     });
@@ -981,7 +978,6 @@ export default function ProductionBuilder({
 
       while (photoIndex < photoAssets.length && players.length < maxPlayers) {
         players.push(createPlayer({
-          stats: Object.fromEntries(stats.map((stat) => [stat.key, ''])),
           templateId: current.templateDefault,
           club: current.club,
           emjflClubId: current.emjflClubId,
@@ -1582,7 +1578,6 @@ export default function ProductionBuilder({
               crop: photo.crop,
               bgRemoved: photo.bgRemoved,
             },
-            stats: player.stats,
             accepted: Object.fromEntries(SQUAD_INVITE_REQUIRED_DECLARATIONS.map((declaration) => [declaration.purpose, Boolean(squadInviteAccepted[declaration.purpose])])),
           }),
         });
@@ -2885,7 +2880,6 @@ function PlayerEditor({
   onBadge: (playerId: string, file?: File) => void;
 }) {
   const status = derivePlayerStatus(player);
-  const stats = sportConfig[order.sport].stats;
   const isCustomCollection = order.collectionType === 'custom';
 
   return (
@@ -2978,17 +2972,6 @@ function PlayerEditor({
           />
         </label>
       </div>
-      <div className="uk-stat-grid">
-        {stats.map((stat) => (
-          <label key={stat.key}>
-            {stat.label}
-            <input
-              value={player.stats[stat.key] || ''}
-              onChange={(event) => onPatch(player.id, { stats: { ...player.stats, [stat.key]: event.target.value } })}
-            />
-          </label>
-        ))}
-      </div>
       {player.approvedAt && <p className="uk-approval-note">Approved cards are locked. Any edit asks for confirmation and returns the card to review.</p>}
     </div>
   );
@@ -3035,7 +3018,6 @@ function PlayerCard({
   forPrint?: boolean;
 }) {
   const template = selectedTemplate(order, player);
-  const stats = sportConfig[order.sport].stats;
   const useRealBuilderArt =
     (order.collectionType === 'official' && (template.id === 'emjfl-official' || isHollinwoodTemplateId(template.id))) ||
     (order.collectionType === 'custom' && isCustomCollectionTemplateId(template.id));
@@ -3070,14 +3052,6 @@ function PlayerCard({
           <h3>{player.name || 'PLAYER 1'}</h3>
           <p>{player.position || 'Position'} / {order.league || 'Grassroots football'}</p>
         </div>
-        <div className="uk-back-stats">
-          {stats.map((stat) => (
-            <span key={stat.key}>
-              <strong>{player.stats[stat.key] || '-'}</strong>
-              {stat.label}
-            </span>
-          ))}
-        </div>
         <div className="uk-back-memory">
           <strong>Digital profile</strong>
           <span>Season stats, highlights, photos and memories attached to this keepsake.</span>
@@ -3097,14 +3071,6 @@ function PlayerCard({
       <div className="uk-card-band">
         <h3>{player.name || 'PLAYER 1'}</h3>
         <p>{playerClubName(order, player) || 'Club name'} / {player.position || 'Position'}</p>
-      </div>
-      <div className="uk-card-stats">
-        {stats.map((stat) => (
-          <span key={stat.key}>
-            <strong>{player.stats[stat.key] || '-'}</strong>
-            {stat.label}
-          </span>
-        ))}
       </div>
       <small>EMBLEM UK / {order.season}</small>
     </div>

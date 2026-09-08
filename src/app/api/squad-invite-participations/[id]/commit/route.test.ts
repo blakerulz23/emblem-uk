@@ -57,7 +57,9 @@ const VALID_BODY = {
   position: 'ST',
   printQuantity: 1,
   photo: { storageKey: 'order-assets/p-1/child/123-photo.jpg', storageUrl: 'https://example.test/photo.jpg', contentType: 'image/jpeg', crop: { x: 0, y: 0, scale: 1 }, bgRemoved: true },
-  stats: { apps: '', goals: '', assists: '' },
+  // No `stats` key — the builder no longer collects Apps/Goals/Assists, so
+  // this fixture matches what a real client now sends; the route's own
+  // `body.stats ?? {}` fallback (route.ts) covers its absence.
   accepted: VALID_ACCEPTED,
 };
 
