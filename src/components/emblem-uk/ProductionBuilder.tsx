@@ -11,6 +11,7 @@ import { DEFAULT_EMJFL_CLUB, EAST_MANCHESTER_LEAGUE, EMJFL_CLUBS, getEmjflClub, 
 import { DIRECT_BUILDER_MAX_PAID_PLAYERS } from '@/lib/order-enquiry-validation';
 import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
 import { captureElementToPng, renderPrintFile, BUILDER_CSRF_HEADER, readBuilderCsrfCookie } from '@/lib/print-capture';
+import type { CaptureDiagnostics } from '@/lib/card-share';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import {
   createPlayer,
@@ -248,19 +249,25 @@ function isLocalAssetUrl(url?: string) {
   return Boolean(url && (url.startsWith('blob:') || url.startsWith('data:')));
 }
 
-// TEMP DIAGNOSTIC helper (remove alongside the [SHARE-CAPTURE-DIAG] logging
-// once the reported share-capture-crop defect is confirmed/fixed) —
-// categorises a photo URL for logging without ever printing the URL
-// itself: a signed S3 URL is a bearer credential (anyone who reads a log
-// containing one could fetch the private child photo it points to), so
-// the diagnostic only ever needed to know which kind of source was in
-// play, never the URL/token contents.
-function describeCaptureUrlKind(url?: string | null): 'none' | 'blob' | 'data' | 'same-origin-asset' | 'remote-signed' {
-  if (!url) return 'none';
-  if (url.startsWith('blob:')) return 'blob';
-  if (url.startsWith('data:')) return 'data';
-  if (url.startsWith('/')) return 'same-origin-asset';
-  return 'remote-signed';
+/** SHA-256 of the actual decoded image bytes a data URL carries, truncated
+ * to 16 hex chars — enough to prove two images are (or aren't) byte-
+ * identical without needing the full digest or the image itself. */
+async function shortContentHash(dataUrl: string): Promise<string> {
+  const base64 = dataUrl.split(',')[1] || '';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+}
+
+function measureDataUrlDimensions(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => reject(new Error('Could not measure generated image'));
+    img.src = dataUrl;
+  });
 }
 
 /**
@@ -476,6 +483,11 @@ export default function ProductionBuilder({
   // captureShareImage.
   const [shareCapturePlayer, setShareCapturePlayer] = useState<PlayerDraft | null>(null);
   const shareCaptureRef = useRef<HTMLDivElement | null>(null);
+  // Set once per captureShareImageFor call, read back on-demand by
+  // ShareCardSheet's own diagnostic snapshot (getCaptureDiagnostics prop) —
+  // see captureShareImageFor's own comment for why this replaced the
+  // earlier ad-hoc [SHARE-CAPTURE-DIAG] console logging.
+  const lastCaptureDiagnosticsRef = useRef<CaptureDiagnostics | null>(null);
   // Double-submit guard — a ref, not enquiryStatus state. Two clicks fired
   // on the same tick both run submitEnquiry before React has processed the
   // first setEnquiryStatus('sending') and re-rendered with a fresh
@@ -581,22 +593,19 @@ export default function ProductionBuilder({
     enquiryStatus === 'sent' && submittedAuthorityStatus === 'confirmed' && order.type === 'single' && submittedOrderId && soleApprovedPlayer
       ? { orderId: submittedOrderId, player: soleApprovedPlayer }
       : null;
-  // TEMP DIAGNOSTIC (remove alongside the logging in captureShareImageFor
-  // once the reported "share image doesn't match what was just edited"
-  // defect is confirmed/fixed) — logs whenever the crop actually feeding
-  // the on-screen preview changes, so a live repro's console shows exactly
-  // when the preview updated relative to when share capture ran.
-  const soleApprovedPlayerCropKey = JSON.stringify(soleApprovedPlayer?.photo?.crop ?? null);
-  useEffect(() => {
-    if (!shareableOrderContext) return;
-    // eslint-disable-next-line no-console
-    console.log('[SHARE-CAPTURE-DIAG] preview crop changed', {
-      t: Date.now(),
-      playerId: shareableOrderContext.player.id,
-      crop: shareableOrderContext.player.photo?.crop,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [soleApprovedPlayerCropKey]);
+  // Read fresh on every render — this is deliberately NOT memoized/cached,
+  // so ShareCardSheet's download-time diagnostic snapshot always compares
+  // against whatever crop is genuinely live right now, not a value from
+  // whenever this component last happened to re-render for some other
+  // reason. Part of the automatic, correlated snapshot mechanism (see
+  // CaptureDiagnostics in this file, and handleDownloadNow in
+  // ShareCardSheet.tsx) that replaced the earlier ad-hoc
+  // [SHARE-CAPTURE-DIAG] console logging, which required manually
+  // expanding collapsed console objects and couldn't itself prove whether
+  // a downloaded asset actually corresponded to the current design.
+  const currentPlayerSnapshot = shareableOrderContext
+    ? { playerId: shareableOrderContext.player.id, crop: shareableOrderContext.player.photo?.crop ?? null }
+    : null;
   const stats = sportConfig[order.sport].stats;
   const orderMode = orderModeLimits[order.type];
   const visibleOrderType = order.type === 'single' ? 'single' : 'squad';
@@ -1097,24 +1106,6 @@ export default function ProductionBuilder({
     if (!playerForCapture) throw new Error('Could not prepare card image');
     if (!orderIdForCapture) throw new Error('Could not prepare card image');
 
-    // TEMP DIAGNOSTIC (remove once the reported "share image doesn't match
-    // what was just edited" defect is confirmed/fixed) — logs the exact
-    // crop this call started with, and what's actually in the DOM the
-    // instant before html2canvas captures it, so a live repro tells us
-    // definitively whether this is a stale-data issue or a render-timing
-    // race, instead of reasoning about it after the fact from screenshots.
-    // eslint-disable-next-line no-console
-    console.log('[SHARE-CAPTURE-DIAG] start', {
-      t: Date.now(),
-      playerId: playerForCapture.id,
-      crop: playerForCapture.photo?.crop,
-      // Never the actual URL — a signed S3 URL is itself a bearer
-      // credential (anyone who reads it can fetch the private photo), and
-      // this diagnostic only ever needed to know which KIND of source was
-      // in play, never the URL/token contents.
-      srcUrlKind: describeCaptureUrlKind(playerForCapture.photo?.srcUrl),
-    });
-
     const revokers: Array<() => void> = [];
     try {
       let capturePlayer = playerForCapture;
@@ -1132,13 +1123,6 @@ export default function ProductionBuilder({
         revokers.push(local.revoke);
         capturePlayer = { ...capturePlayer, badgeUrl: local.url };
       }
-
-      // eslint-disable-next-line no-console
-      console.log('[SHARE-CAPTURE-DIAG] capturePlayer finalised (about to render off-screen)', {
-        t: Date.now(),
-        crop: capturePlayer.photo?.crop,
-        srcUrlKind: describeCaptureUrlKind(capturePlayer.photo?.srcUrl),
-      });
 
       setShareCapturePlayer(capturePlayer);
       try {
@@ -1160,21 +1144,27 @@ export default function ProductionBuilder({
           throw new Error('Could not prepare the card image for sharing');
         }
 
-        // TEMP DIAGNOSTIC — reads the ACTUAL live DOM transform of every
-        // <img> in the off-screen rig at the exact instant before capture.
-        // If this doesn't match capturePlayer.photo.crop above, that's
-        // direct proof of a render-timing race (React state hasn't been
-        // committed/painted into this DOM yet) rather than stale data
-        // upstream of this function.
-        // eslint-disable-next-line no-console
-        console.log('[SHARE-CAPTURE-DIAG] live DOM transforms right before captureElementToPng', {
-          t: Date.now(),
-          transforms: imgs.map((img) => img.style.transform || getComputedStyle(img).transform),
-        });
+        // The live DOM transform of every <img> in the off-screen rig at
+        // the exact instant before capture — part of the correlated
+        // snapshot below, not printed on its own anymore (see
+        // CaptureDiagnostics's own comment for why this replaced the
+        // earlier ad-hoc, manually-expanded [SHARE-CAPTURE-DIAG] logging).
+        const offscreenImageTransforms = imgs.map((img) => img.style.transform || getComputedStyle(img).transform);
 
         const result = await captureElementToPng(el, { pixelRatio: 2, backgroundColor: '#ffffff' });
-        // eslint-disable-next-line no-console
-        console.log('[SHARE-CAPTURE-DIAG] capture complete', { t: Date.now() });
+
+        const [generatedDims, contentHash] = await Promise.all([
+          measureDataUrlDimensions(result),
+          shortContentHash(result),
+        ]);
+        lastCaptureDiagnosticsRef.current = {
+          capturedAt: Date.now(),
+          capturePlayerId: capturePlayer.id,
+          captureCropRequested: capturePlayer.photo?.crop ?? null,
+          offscreenImageTransforms,
+          generatedImage: { width: generatedDims.width, height: generatedDims.height, contentHash },
+        };
+
         return result;
       } finally {
         setShareCapturePlayer(null);
@@ -1183,6 +1173,8 @@ export default function ProductionBuilder({
       for (const revoke of revokers) revoke();
     }
   };
+
+  const getCaptureDiagnostics = (): CaptureDiagnostics | null => lastCaptureDiagnosticsRef.current;
 
   const captureShareImage = (): Promise<string> => captureShareImageFor(submittedOrderId, summary.approvedPlayers[0]);
   // Squad Invite's success screen has no summary.approvedPlayers (that
@@ -2571,6 +2563,8 @@ export default function ProductionBuilder({
                   <ShareCardSheet
                     orderId={shareableOrderContext.orderId}
                     getShareImage={captureShareImage}
+                    getCaptureDiagnostics={getCaptureDiagnostics}
+                    currentPlayerSnapshot={currentPlayerSnapshot}
                     preview={<PlayerCard order={order} player={shareableOrderContext.player} side="front" />}
                     summary={{
                       collectionName: order.collectionName || 'Custom Collection',

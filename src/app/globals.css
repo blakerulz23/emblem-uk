@@ -4151,6 +4151,37 @@ a { text-decoration: none; color: inherit; }
   margin: 8px 0;
 }
 
+/* The automatic download-provenance snapshot (see buildDownloadProvenanceSnapshot
+   in card-share.ts) — a plain, copyable text block, not styled as an error
+   or a warning, since it appears on every successful download, not just a
+   failure. */
+.uk-card-share-diagnostics {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--wizard-line);
+}
+
+.uk-card-share-diagnostics-note {
+  font-size: 12px;
+  color: var(--wizard-soft);
+  margin: 0 0 6px;
+}
+
+.uk-card-share-diagnostics-text {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 8px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 8px;
+  background: #fafafa;
+  color: var(--wizard-ink);
+  resize: vertical;
+  margin-bottom: 6px;
+}
+
 .uk-next-steps span {
   margin-top: 2px;
   color: var(--wizard-soft);

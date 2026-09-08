@@ -354,7 +354,7 @@ describe('ShareCardSheet — a non-cancel navigator.share() failure surfaces exp
     const idx = sheet.indexOf("shareErr.name === 'AbortError'");
     const abortReturnIdx = sheet.indexOf('return;', idx);
     const section = sheet.slice(abortReturnIdx, sheet.indexOf('return;', abortReturnIdx + 10) + 10);
-    expect(section).toContain('setPreparedShare({ blob, fileName });');
+    expect(section).toContain('setPreparedShare({ blob, fileName, preparedAt: Date.now() });');
     expect(section).toContain("dispatch({ type: 'manual-options', reason: 'share-failed' });");
     expect(section).toContain('return;');
   });
@@ -569,12 +569,43 @@ describe('ProductionBuilder — ShareCardSheet is only mounted for a single-chil
 
   it('passes the real, visible, on-screen PlayerCard as the preview, the real order id, and the real collection/player/print summary — never the off-screen capture rig\'s player', () => {
     const idx = builder.indexOf('<ShareCardSheet');
-    const tagSection = builder.slice(idx, idx + 500);
+    const tagSection = builder.slice(idx, idx + 650);
     expect(tagSection).toContain('orderId={shareableOrderContext.orderId}');
     expect(tagSection).toContain('preview={<PlayerCard order={order} player={shareableOrderContext.player} side="front" />}');
     expect(tagSection).toContain("collectionName: order.collectionName || 'Custom Collection'");
     expect(tagSection).toContain('playerCount: summary.approvedPlayers.length');
     expect(tagSection).toContain('printCount: summary.approvedPrints');
+  });
+
+  /**
+   * Founder-requested automatic diagnostic snapshot (live-reported crop/
+   * framing mismatch between the preview and the downloaded image, still
+   * open): getCaptureDiagnostics reads back whatever captureShareImageFor
+   * last measured about its own capture, and currentPlayerSnapshot is
+   * derived fresh on every render (never memoized) so a download-time
+   * comparison always reflects whatever crop is genuinely live right now.
+   */
+  it('wires getCaptureDiagnostics and currentPlayerSnapshot into ShareCardSheet, both sourced from the same live state the preview itself uses', () => {
+    const idx = builder.indexOf('<ShareCardSheet');
+    const tagSection = builder.slice(idx, idx + 650);
+    expect(tagSection).toContain('getCaptureDiagnostics={getCaptureDiagnostics}');
+    expect(tagSection).toContain('currentPlayerSnapshot={currentPlayerSnapshot}');
+  });
+
+  it('currentPlayerSnapshot is derived directly from shareableOrderContext.player, not a separately-cached value that could drift out of sync', () => {
+    const idx = builder.indexOf('const currentPlayerSnapshot');
+    expect(idx).toBeGreaterThan(-1);
+    const line = builder.slice(idx, builder.indexOf(';', builder.indexOf(';', idx) + 1) + 1);
+    expect(line).toContain('shareableOrderContext.player.id');
+    expect(line).toContain('shareableOrderContext.player.photo?.crop');
+  });
+
+  it('getCaptureDiagnostics reads the same ref captureShareImageFor writes to, not a stale snapshot taken at some earlier render', () => {
+    expect(builder).toContain('const lastCaptureDiagnosticsRef = useRef<CaptureDiagnostics | null>(null);');
+    expect(builder).toContain('const getCaptureDiagnostics = (): CaptureDiagnostics | null => lastCaptureDiagnosticsRef.current;');
+    const captureIdx = builder.indexOf('const captureShareImageFor');
+    const fnBody = builder.slice(captureIdx, builder.indexOf('\n  };', captureIdx));
+    expect(fnBody).toContain('lastCaptureDiagnosticsRef.current = {');
   });
 
   it('the off-screen capture rig that actually produces the shared image contains only the PlayerCard — never the rotate/share buttons or any other on-screen control', () => {
