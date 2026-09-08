@@ -40,6 +40,14 @@ export type CropTransform = {
   scale: number;
 };
 
+// Fractions (0..1) of the photo's own natural width/height — the bounding
+// box of non-transparent pixels, from detectSubjectBounds (subject-bounds.ts).
+// Only meaningful for a photo with real alpha transparency (the Gemini
+// cutout path); identifies where the cutout's opaque content sits, not
+// where a face/head is — see that module's own doc for why this must never
+// be treated as face/landmark detection.
+export type SubjectBounds = { x0: number; y0: number; x1: number; y1: number };
+
 export type PhotoAsset = {
   srcUrl: string;
   hiResUrl?: string;
@@ -50,6 +58,18 @@ export type PhotoAsset = {
   crop: CropTransform;
   bgRemoved: boolean;
   fileName?: string;
+  // Measured once (Image().naturalWidth/Height) when the photo is set —
+  // lets computePhotoGeometry reveal genuine source content when zoomed out
+  // instead of just shrinking an already-cropped window (photo-geometry.ts).
+  naturalWidth?: number;
+  naturalHeight?: number;
+  subjectBounds?: SubjectBounds;
+  // The crop Auto-fit last computed for this photo — what "Reset to
+  // suggested framing" restores. Distinct from `crop` itself so a
+  // guardian's manual adjustment is never silently overwritten: Auto-fit
+  // only ever runs on an explicit action (a fresh photo, or the guardian
+  // pressing the button), never as a side effect of rendering.
+  suggestedCrop?: CropTransform;
 };
 
 export type PlayerDraft = {

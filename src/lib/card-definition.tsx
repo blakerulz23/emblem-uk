@@ -33,6 +33,13 @@ export type CardFaceData = {
   logo: string | null;
   photoCrop: { x: number; y: number; scale: number } | null;
   stats: Record<string, string> | null;
+  // The photo's own natural pixel size — lets computePhotoGeometry reveal
+  // real source content when zoomed out below scale 1 instead of just
+  // shrinking an already-cropped window (see photo-geometry.ts's doc).
+  // Optional and additive: omitted (or on a card predating this fix)
+  // falls back to the exact legacy cover-crop rendering, unchanged.
+  photoNaturalWidth?: number;
+  photoNaturalHeight?: number;
 };
 
 /** The persisted shape (supabase's card_definitions table) — a durable S3 reference for the photo, never a URL. See migration 0019_card_definitions.sql. */
@@ -46,7 +53,14 @@ export type CardDefinitionRow = {
   team: string;
   position: string | null;
   logo: string | null;
-  photo: { storageKey: string; contentType?: string; crop: { x: number; y: number; scale: number }; bgRemoved: boolean } | null;
+  photo: {
+    storageKey: string;
+    contentType?: string;
+    crop: { x: number; y: number; scale: number };
+    bgRemoved: boolean;
+    naturalWidth?: number;
+    naturalHeight?: number;
+  } | null;
   stats: Record<string, string> | null;
 };
 
@@ -62,6 +76,8 @@ export function cardDefinitionToFaceData(row: CardDefinitionRow): CardFaceData {
     logo: row.logo,
     photoCrop: row.photo?.crop ?? null,
     stats: row.stats,
+    photoNaturalWidth: row.photo?.naturalWidth,
+    photoNaturalHeight: row.photo?.naturalHeight,
   };
 }
 
@@ -124,6 +140,8 @@ export function CardFace({
         photoScale={data.photoCrop?.scale ?? 1}
         photoOffsetX={data.photoCrop?.x ?? 0}
         photoOffsetY={data.photoCrop?.y ?? 0}
+        photoNaturalWidth={data.photoNaturalWidth}
+        photoNaturalHeight={data.photoNaturalHeight}
         style={style}
       />
     </div>

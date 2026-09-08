@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { removeBackgroundSmart } from '@/components/builder/emblem/bgRemoval';
+import { autoFitPatchForPhoto } from '@/lib/card-photo-auto-fit';
 import type { PlayerDraft } from '@/lib/emblem-uk-builder';
 
 async function blobUrlToFile(url: string, name: string): Promise<File> {
@@ -91,13 +92,26 @@ export default function BackgroundRemovalStep({
 
   const handleContinue = async () => {
     if (status === 'processing' || committing) return;
-    if (afterUrl) {
+    if (afterUrl && player.photo) {
       setCommitting(true);
       try {
         const file = await dataUrlToFile(afterUrl, `${player.photo?.fileName || 'photo'}-cutout.png`);
         const url = URL.createObjectURL(file);
+        // Auto-fit Player runs once here, automatically, right after the
+        // cutout is ready — this is the "reliable starting composition"
+        // every guardian sees by default. It never runs again on its own
+        // after this (see the "Auto-fit player" button in the crop step for
+        // the only other place it runs) — a manual Horizontal/Vertical/Zoom
+        // adjustment made after this point is never silently overwritten.
+        const autoFit = await autoFitPatchForPhoto(url);
         onPatchPlayer(player.id, {
-          photo: player.photo ? { ...player.photo, srcUrl: url, hiResUrl: url, bgRemoved: true } : undefined,
+          photo: {
+            ...player.photo,
+            srcUrl: url,
+            hiResUrl: url,
+            bgRemoved: true,
+            ...(autoFit ?? {}),
+          },
         });
       } finally {
         setCommitting(false);
