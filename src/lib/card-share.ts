@@ -55,8 +55,18 @@ export function cardSharePublicPageUrl(token: string): string {
   return `${siteUrl}/card-share/${token}`;
 }
 
+/**
+ * FOUNDER-REPORTED BUG (fixed): this previously reused
+ * CARD_SHARE_MESSAGE_TEXT's "Create your own card" wording for `shareUrl`
+ * too — accurate for the generic /builder link that copy was written for,
+ * but wrong here: `shareUrl` is the real per-card public page (migration
+ * 0085), which shows THIS specific card, not a blank builder a recipient
+ * could use to start their own. Now describes each link by what it
+ * actually does — viewing this card vs. starting a new one — rather than
+ * describing both the same way.
+ */
 export function buildCardShareMessageText(shareUrl: string): string {
-  return `Look what I made with Emblem.\nCreate your own card: ${shareUrl}`;
+  return `Look what I made with Emblem.\nView my card: ${shareUrl}\nCreate your own: ${CARD_SHARE_LINK_URL}`;
 }
 
 /**
@@ -150,6 +160,19 @@ export type CardShareStage =
   | { type: 'preparing' }
   | { type: 'shared' }
   | { type: 'downloaded' }
+  /**
+   * The image and public link are ready, but the native share sheet either
+   * isn't supported on this device/browser, or was attempted and rejected
+   * for a reason other than the guardian cancelling it (most notably: the
+   * async work before this point — recording consent, generating the
+   * image, creating the public page — can run long enough to lose the
+   * "user activation" window some browsers require navigator.share to be
+   * called within, which otherwise silently looked identical to "not
+   * supported"). Either way, this is never resolved by quietly downloading
+   * a file under a button labelled Share — the guardian is shown explicit,
+   * separately-labelled choices instead.
+   */
+  | { type: 'manual-options'; reason: 'unsupported' | 'share-failed' }
   | { type: 'cancelled' }
   | { type: 'failed'; message: string };
 
@@ -160,6 +183,7 @@ export type CardShareAction =
   | { type: 'start-preparing' }
   | { type: 'shared' }
   | { type: 'downloaded' }
+  | { type: 'manual-options'; reason: 'unsupported' | 'share-failed' }
   | { type: 'fail'; message: string }
   | { type: 'reset' };
 
@@ -177,6 +201,8 @@ export function cardShareStageReducer(state: CardShareStage, action: CardShareAc
       return { type: 'shared' };
     case 'downloaded':
       return { type: 'downloaded' };
+    case 'manual-options':
+      return { type: 'manual-options', reason: action.reason };
     case 'fail':
       return { type: 'failed', message: action.message };
     case 'reset':
