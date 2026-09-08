@@ -10,6 +10,7 @@ import {
   CARD_SHARE_RECALL_NOTICE,
   CARD_SHARE_WARNING,
   buildCardShareMessageText,
+  buildDownloadProvenanceSnapshot,
   cardShareBlockedMessage,
   cardSharePublicPageUrl,
   cardShareStageReducer,
@@ -17,7 +18,9 @@ import {
   fetchCardShareEligibility,
   recordCardShareConsent,
   shouldHideCardShareEntirely,
+  type CaptureDiagnostics,
   type CardShareEligibility,
+  type CurrentPlayerSnapshot,
 } from '@/lib/card-share';
 
 /** True only when this browser can genuinely open a native share sheet for
@@ -32,6 +35,17 @@ function canShareFile(file: File): boolean {
     typeof navigator.canShare === 'function' &&
     navigator.canShare({ files: [file] })
   );
+}
+
+/** SHA-256 of a Blob's actual bytes, truncated to 16 hex chars — same
+ * shape/purpose as ProductionBuilder's shortContentHash (hashes a data
+ * URL instead, since that's the form captureShareImageFor produces): both
+ * exist to prove two images are byte-identical without either one ever
+ * carrying the image itself into a diagnostic snapshot. */
+async function shortBlobHash(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer();
+  const digest = await crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 }
 
 /**
@@ -65,11 +79,24 @@ function canShareFile(file: File): boolean {
 export default function ShareCardSheet({
   orderId,
   getShareImage,
+  getCaptureDiagnostics,
+  currentPlayerSnapshot,
   preview,
   summary,
 }: {
   orderId: string;
   getShareImage: () => Promise<string>;
+  /** Reads back whatever captureShareImageFor last measured about its own
+   * capture — undefined for callers that haven't wired the diagnostic
+   * mechanism up yet (e.g. SquadInviteShareSheet), in which case the
+   * download-provenance snapshot below just reports capture: null rather
+   * than throwing. */
+  getCaptureDiagnostics?: () => CaptureDiagnostics | null;
+  /** The player id + crop the caller's own live state says is showing
+   * right now — read fresh by the caller on every render, never memoized,
+   * so the download-provenance snapshot always compares against a
+   * genuinely current value. */
+  currentPlayerSnapshot?: CurrentPlayerSnapshot;
   preview: ReactNode;
   summary: { collectionName: string; playerCount: number; printCount: number };
 }) {
@@ -103,7 +130,16 @@ export default function ShareCardSheet({
   // rejected for a reason other than the guardian cancelling) — holds
   // everything the manual-options buttons need to act on without
   // re-running any of that preparation.
-  const [preparedShare, setPreparedShare] = useState<{ blob: Blob; fileName: string } | null>(null);
+  const [preparedShare, setPreparedShare] = useState<{ blob: Blob; fileName: string; preparedAt: number } | null>(null);
+  // The download-provenance snapshot from the most recent explicit
+  // Download click, as pretty-printed JSON ready to paste — see
+  // handleDownloadNow. Empty until a download has actually happened.
+  const [downloadDiagnosticsText, setDownloadDiagnosticsText] = useState('');
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  // Wraps `preview` — queried directly for its rendered <img> at download
+  // time, since `preview` itself is an opaque ReactNode this component
+  // never inspects otherwise.
+  const previewWrapperRef = useRef<HTMLDivElement | null>(null);
   // Guards against a slow eligibility response from an earlier order
   // landing after the component has already unmounted or moved to a
   // different order — same stale-attempt discipline as AdultPermissionStep.
@@ -206,8 +242,18 @@ export default function ShareCardSheet({
   // image" in the manual-options UI — never automatically, so a browser
   // that can't (or wouldn't) open the native share sheet never looks like
   // it silently saved a file under a control labelled Share.
-  const handleDownloadNow = () => {
+  //
+  // FOUNDER-REQUESTED (live-reported crop/framing mismatch, still open):
+  // also records one automatic, correlated diagnostic snapshot at the
+  // exact moment of this click — see buildDownloadProvenanceSnapshot's own
+  // doc comment in card-share.ts for exactly what it correlates and why.
+  // This replaces manually expanding collapsed console objects during a
+  // live repro, which is error-prone and — as a prior, careful static
+  // measurement already showed — cannot by itself distinguish "the capture
+  // mechanism is faithful" from "the live failing case is actually fixed".
+  const handleDownloadNow = async () => {
     if (!preparedShare) return;
+
     const objectUrl = URL.createObjectURL(preparedShare.blob);
     try {
       const link = document.createElement('a');
@@ -218,6 +264,61 @@ export default function ShareCardSheet({
       URL.revokeObjectURL(objectUrl);
     }
     dispatch({ type: 'downloaded' });
+
+    try {
+      const previewImg = previewWrapperRef.current?.querySelector<HTMLImageElement>('img') ?? null;
+      const onScreenPreview = previewImg
+        ? {
+            imgNaturalWidth: previewImg.naturalWidth,
+            imgNaturalHeight: previewImg.naturalHeight,
+            imgRenderedWidth: previewImg.getBoundingClientRect().width,
+            imgRenderedHeight: previewImg.getBoundingClientRect().height,
+            imgTransform: previewImg.style.transform || getComputedStyle(previewImg).transform,
+          }
+        : null;
+
+      const capture = getCaptureDiagnostics?.() ?? null;
+      const contentHash = await shortBlobHash(preparedShare.blob);
+      const preparedShareRecord = {
+        preparedAt: preparedShare.preparedAt,
+        blobSize: preparedShare.blob.size,
+        blobType: preparedShare.blob.type,
+        contentHash,
+      };
+
+      const snapshot = buildDownloadProvenanceSnapshot({
+        clickedAt: Date.now(),
+        currentPlayer: currentPlayerSnapshot ?? null,
+        onScreenPreview,
+        capture,
+        preparedShare: preparedShareRecord,
+      });
+
+      const text = JSON.stringify(snapshot, null, 2);
+      setDownloadDiagnosticsText(text);
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch {
+        // Clipboard denied/unavailable — the text is also rendered in a
+        // read-only textarea below with its own Copy button, so nothing is
+        // lost, just not automatic.
+      }
+    } catch (err) {
+      // A failure building the diagnostic snapshot itself must never
+      // affect the download that already succeeded above — surface it in
+      // the snapshot text area instead of throwing.
+      setDownloadDiagnosticsText(`Could not build diagnostic snapshot: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const handleCopyDiagnostics = async () => {
+    try {
+      await navigator.clipboard.writeText(downloadDiagnosticsText);
+      setDiagnosticsCopied(true);
+      setTimeout(() => setDiagnosticsCopied(false), 2000);
+    } catch {
+      // The text is already visible/selectable in the textarea itself.
+    }
   };
 
   const handleContinue = async () => {
@@ -327,13 +428,13 @@ export default function ShareCardSheet({
             // Any other rejection — including a lost user-activation
             // window — surfaces explicit manual options, never a silent
             // download.
-            setPreparedShare({ blob, fileName });
+            setPreparedShare({ blob, fileName, preparedAt: Date.now() });
             dispatch({ type: 'manual-options', reason: 'share-failed' });
             return;
           }
         }
 
-        setPreparedShare({ blob, fileName });
+        setPreparedShare({ blob, fileName, preparedAt: Date.now() });
         dispatch({ type: 'manual-options', reason: 'unsupported' });
       } catch {
         // Only a genuine failure preparing the blob/file itself lands
@@ -352,7 +453,13 @@ export default function ShareCardSheet({
   return (
     <div className="uk-card-share">
       <div className="uk-card-share-preview">
-        <div className="uk-card-share-preview-card" style={{ transform: `rotate(${rotation}deg)` }}>
+        {/* previewWrapperRef: imgTransform (the crop translate/scale) reads
+            the <img>'s OWN transform and is unaffected by this wrapper's
+            cosmetic rotate() above it. imgRenderedWidth/Height are the
+            post-rotation bounding box though — if the guardian has
+            cosmetically rotated the preview, expect those two swapped at
+            90°/270°; that's the rotation, not a capture defect. */}
+        <div ref={previewWrapperRef} className="uk-card-share-preview-card" style={{ transform: `rotate(${rotation}deg)` }}>
           {preview}
         </div>
         <button
@@ -448,6 +555,15 @@ export default function ShareCardSheet({
           <p>Downloaded. {CARD_SHARE_RECALL_NOTICE}</p>
           <p className="uk-card-share-download-message">{shareMessageText}</p>
           <button type="button" onClick={handleCopyMessage}>{messageCopied ? 'Copied' : 'Copy message'}</button>
+          {downloadDiagnosticsText && (
+            <div className="uk-card-share-diagnostics">
+              <p className="uk-card-share-diagnostics-note">
+                A diagnostic snapshot for this download was just copied to your clipboard automatically — paste it wherever you&apos;re reporting this. If the copy didn&apos;t work, use the button below.
+              </p>
+              <textarea readOnly value={downloadDiagnosticsText} rows={6} className="uk-card-share-diagnostics-text" onFocus={(event) => event.currentTarget.select()} />
+              <button type="button" onClick={handleCopyDiagnostics}>{diagnosticsCopied ? 'Copied' : 'Copy diagnostics'}</button>
+            </div>
+          )}
         </div>
       )}
       {stage.type === 'cancelled' && <p role="status">Cancelled — no image was created.</p>}
