@@ -26,7 +26,11 @@ const PROTECTED_FILES: Record<string, string> = {
   // not scope creep from an unrelated feature (same precedent as the
   // Shopify hash update noted below).
   'src/lib/photo-geometry.ts': 'a1222b902b3d305c5ee4b8f8da34b4c24c715ef9f50147abfd67b1a0e64c5a8e',
-  'src/components/builder/emblem/CardArt.tsx': '396cbe8ade9dfacff94b5d9fe291d562dc1aca1587bd79980b400c67f2038d4b',
+  // Updated for the player-position simplification (five customer-facing
+  // categories replacing GK/RB/CB/etc on the card) — a deliberate, reviewed
+  // change to card-art rendering itself, not scope creep from an unrelated
+  // feature (same precedent as the Auto-fit Player hash update).
+  'src/components/builder/emblem/CardArt.tsx': '800de28930fa1fc21a2b3df2325a262b4b96243d72f88fde667da0ed5b1ea1c0',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',

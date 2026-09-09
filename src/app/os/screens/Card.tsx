@@ -12,6 +12,7 @@ import EmptyState from './EmptyState';
 import type { OsActions } from '../OsApp';
 import type { OsState } from '../types';
 import { formatFoot, formatFootballAgeGroup, formatHeightCm, positionLabel } from '../coachFields';
+import { positionCardLabel } from '@/lib/player-position';
 import { useOsPhotoUpload } from '../useOsPhotoUpload';
 
 /**
@@ -182,7 +183,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
           </div>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 20, color: 'var(--os-ink)', lineHeight: 1.1 }}>{PLAYER_PROFILE.name}</div>
-            <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.08em', fontSize: 12.5, color: '#E97435', marginTop: 5 }}>{PLAYER_PROFILE.position.toUpperCase()}</div>
+            <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.08em', fontSize: 12.5, color: '#E97435', marginTop: 5 }}>{positionCardLabel(PLAYER_PROFILE.position)}</div>
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

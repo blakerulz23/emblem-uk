@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { isCanonicalPosition } from '@/lib/player-position';
 
 export const runtime = 'nodejs';
 
@@ -33,6 +34,13 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   const trimmed = position?.trim();
   if (!trimmed) {
     return NextResponse.json({ error: 'A position is required' }, { status: 400 });
+  }
+  // Enforces the five simplified categories for every *new* write going
+  // forward — a historical row can still hold an old specific-position
+  // value (nothing here rewrites those; see player-position.ts's own
+  // doc), this just stops a fresh edit from reintroducing one.
+  if (!isCanonicalPosition(trimmed)) {
+    return NextResponse.json({ error: 'Choose one of the five position categories.' }, { status: 400 });
   }
 
   const { data: secondaryPositionCleared, error } = await supabase.rpc('update_primary_position', {

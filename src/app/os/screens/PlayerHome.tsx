@@ -10,6 +10,7 @@ import { selectNewestUnreadForPlayer } from '@/lib/story-update-selection';
 import MomentMediaViewer from '../overlays/MomentMediaViewer';
 import { MomentThumbnail } from '../overlays/MomentThumbnail';
 import type { OsActions } from '../OsApp';
+import { positionDisplayLabel } from '@/lib/player-position';
 import { toMomentMediaItem, type RealMoment, type StoryUpdate } from '../osData';
 
 /**
@@ -198,7 +199,7 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
               </div>
               {(playerProfile.position || playerProfile.footballAgeGroup) && (
                 <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.04em', fontSize: 13.5, color: '#E97435', marginTop: 3 }}>
-                  {[playerProfile.position, playerProfile.footballAgeGroup].filter(Boolean).join(' • ')}
+                  {[positionDisplayLabel(playerProfile.position), playerProfile.footballAgeGroup].filter(Boolean).join(' • ')}
                 </div>
               )}
             </div>

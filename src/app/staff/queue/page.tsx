@@ -5,6 +5,7 @@ import { requireStaff } from '@/lib/require-staff';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
+import { positionCardLabel } from '@/lib/player-position';
 import {
   APPROVED_SORT_OPTIONS,
   buildStaffQueueUrl,
@@ -599,7 +600,7 @@ export default async function StaffQueuePage({
                 <div style={{ marginTop: 4, fontFamily: 'var(--font-manrope), system-ui', fontSize: 13, color: 'var(--ink-soft)' }}>
                   On the card: {order.designPreview.name}
                   {order.designPreview.number ? ` · #${order.designPreview.number}` : ''}
-                  {order.designPreview.position ? ` · ${order.designPreview.position}` : ''}
+                  {order.designPreview.position ? ` · ${positionCardLabel(order.designPreview.position)}` : ''}
                   {order.designPreview.team ? ` · ${order.designPreview.team}` : ''}
                 </div>
               )}
