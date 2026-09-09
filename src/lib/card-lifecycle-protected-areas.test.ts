@@ -35,11 +35,15 @@ const PROTECTED_FILES: Record<string, string> = {
   // change to card-art rendering itself, not scope creep from an unrelated
   // feature (same precedent as the Auto-fit Player hash update).
   //
-  // Updated again for the Hollinwood name/position typography correction —
-  // real Antonio Bold, measured coordinates/font-size/scale-down rule
-  // matching the supplied Canva reference PNGs, scoped to HollinwoodCardArt's
-  // own two <div>s only (verified via diff before this hash was touched).
-  'src/components/builder/emblem/CardArt.tsx': '2f283a472827d8e9c85a500982ca7f2f6df432d1a9336dd2f8389d594b61aad7',
+  // Updated again for the Hollinwood name/position typography correction,
+  // then a third time to generalise that same measured geometry into a
+  // shared module (src/lib/nameplate-typography.ts) used by Hollinwood,
+  // EMJFL and all three Custom Collection variants — geometry/font/fit-
+  // scale rules unified, colour and any card-specific effect stay local to
+  // each card's own render function (verified via diff before this hash
+  // was touched: RealCardArt/RealCardBack and every back-face renderer are
+  // untouched).
+  'src/components/builder/emblem/CardArt.tsx': 'ca7392d563cda1635d448002a76f436f5a23d6e65c89cd3e21fee3aa11e27dcf',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',

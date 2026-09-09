@@ -4,6 +4,7 @@
 import type { CSSProperties } from 'react';
 import { getCustomCollectionVariant } from '@/lib/custom-collection-manifest';
 import { getHollinwoodVariant } from '@/lib/hollinwood-manifest';
+import { nameFitScale, nameplateSlotStyle, type NameplateSlotGeometry } from '@/lib/nameplate-typography';
 import { computePhotoGeometry } from '@/lib/photo-geometry';
 import { positionCardLabel } from '@/lib/player-position';
 import { SPORT_STATS, type CardTemplate, type Details, type Family, type SportId } from './data';
@@ -40,18 +41,6 @@ type Style = {
   light?: boolean;
   mono?: boolean;
 };
-
-// minScale defaults to 0.68 (established for player names — never shrink a
-// name below ~two-thirds size) but is an explicit parameter so a genuinely
-// tighter slot (Custom Collection Galaxy's position label — see its own
-// call site's doc comment) can ask for more headroom than that default
-// permits, rather than the floor silently overriding every long word to
-// the same size regardless of how much longer one is than another.
-function nameFitScale(name: string | undefined, comfortableChars = 10, minScale = 0.68) {
-  const length = (name || '').trim().length;
-  if (length <= comfortableChars) return 1;
-  return Math.max(minScale, comfortableChars / length);
-}
 
 function familyStyle(fam: Family, accent: string): Style {
   switch (fam) {
@@ -1409,55 +1398,32 @@ function EmjflCardArt({
           </div>
         )}
 
-        {/* Player name — vertical, reads bottom-to-top. Position/size measured
-            pixel-for-pixel from the reference name.png layer (bbox 10.1–15.8%
-            x, 37.0–66.8% y on the 1050×1498 canonical canvas). */}
-        <div
-          style={{
-            position: 'absolute', left: '10.1%', top: '66.8%', width: H * 0.298, zIndex: 5,
-            transform: 'rotate(-90deg)', transformOrigin: 'left top',
-            color: '#fff', fontFamily: 'var(--font-oswald), system-ui', fontWeight: 800,
-            fontSize: W * 0.057, lineHeight: 1, letterSpacing: '0.01em', textTransform: 'uppercase',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            pointerEvents: 'none',
-          }}
-        >
+        {/* Player name / position — now on the shared vertical nameplate
+            geometry (nameplate-typography.ts), the same measured geometry
+            Hollinwood uses. EMJFL's own previous coordinates (10.1%/66.8%
+            name, 18.3%/58.9% position) were identical to Hollinwood's
+            pre-fix values — both cards had evidently copied the same
+            never-actually-measured starting point, not two independently
+            measured, genuinely different designs (see the PR description's
+            per-card measurement table). EMJFL keeps its own colour (white
+            name, #FF4B1F position — distinct from Hollinwood's #ff0000). */}
+        <div style={{ ...nameplateSlotStyle('name', W, H, d.name || '', '#fff'), zIndex: 5 }}>
           {d.name || 'Player Name'}
         </div>
 
-        {/* Position — vertical, small red accent, runs alongside the name
-            (not below it) per the reference poition.png layer. The word
-            "MIDFIELDER" itself only occupies y 48.9–58.7%; a separate red
-            accent tick trails below it from y 59.8–67.3%, lining its bottom
-            edge up with the name's baseline — reproduced as its own bar.
-            Full simplified-position wording (GOALKEEPER/DEFENDER/
-            MIDFIELDER/FORWARD/ALL-ROUNDER) can run longer than the
-            original abbreviations this box was sized for — nameFitScale's
-            same shrink-to-fit (already used for the player name above)
-            keeps every one of the five on one line without truncating.
-            comfortableChars=8 (not 10 — measured empirically, via a real
-            rendered-glyph-width check, not assumed: MIDFIELDER and
-            GOALKEEPER are both exactly 10 characters, but GOALKEEPER's
-            own letterforms render measurably wider at the same font size,
-            so a 10-char threshold left it overflowing by a few pixels
-            while MIDFIELDER alone fit). DEFENDER (8) and FORWARD (7) stay
-            at scale 1; the three longer words shrink modestly. */}
-        <div
-          style={{
-            position: 'absolute', left: '18.3%', top: '58.9%', width: H * 0.13, zIndex: 5,
-            transform: 'rotate(-90deg)', transformOrigin: 'left top',
-            color: '#FF4B1F', fontFamily: 'var(--font-oswald), system-ui', fontWeight: 700,
-            fontSize: W * 0.028 * nameFitScale(positionLabel, 8), lineHeight: 1, letterSpacing: '0.1em', textTransform: 'uppercase',
-            whiteSpace: 'nowrap', pointerEvents: 'none',
-          }}
-        >
+        <div style={{ ...nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F'), zIndex: 5 }}>
           {positionLabel}
         </div>
 
-        {/* Accent tick trailing below the position label */}
+        {/* Accent tick trailing below the position label — a real, EMJFL-only
+            decorative effect (not present on Hollinwood, which uses a real
+            PNG asset for the same role), preserved and re-anchored by the
+            same left/top delta the position label itself moved by, so it
+            keeps lining its top edge up with the label the way it always
+            did. */}
         <div
           style={{
-            position: 'absolute', left: '18.6%', top: '59.8%', width: Math.max(2, W * 0.005),
+            position: 'absolute', left: '17.87%', top: '53.74%', width: Math.max(2, W * 0.005),
             height: H * 0.0748, zIndex: 5, pointerEvents: 'none', borderRadius: 2,
             background: 'linear-gradient(180deg, #FF4B1F 0%, rgba(255,75,31,0.1) 100%)',
           }}
@@ -1599,42 +1565,14 @@ function HollinwoodCardArt({
           }}
         />
 
-        <div
-          style={{
-            position: 'absolute', left: '9.08%', top: '62.73%', width: H * 0.6, zIndex: 6,
-            transform: 'rotate(-90deg)', transformOrigin: 'left top',
-            color: '#fff', fontFamily: 'var(--font-antonio), Impact, sans-serif', fontWeight: 700,
-            // 0.0838 and comfortableChars=14 are both measured directly off the
-            // Canva reference (Hollinwood (80).png) at "JACOB THOMPSON" (14
-            // chars incl. space) — alpha-bounds-matched against the reference
-            // PNG's own glyph ink to within ~2px on a 1050x1498 canvas.
-            // Longer names scale down (never up) just enough to keep the same
-            // fixed bottom anchor without growing past the card's safe area.
-            fontSize: W * 0.0838 * nameFitScale(d.name || '', 14, 0.6),
-            lineHeight: 1, letterSpacing: '0em', textTransform: 'uppercase',
-            whiteSpace: 'nowrap', overflow: 'visible',
-            pointerEvents: 'none',
-          }}
-        >
+        {/* Hollinwood is the measured origin of the shared nameplate geometry
+            (see nameplate-typography.ts) — white name, fixed red position,
+            no per-card override needed. */}
+        <div style={{ ...nameplateSlotStyle('name', W, H, d.name || '', '#fff'), zIndex: 6 }}>
           {d.name || 'Player Name'}
         </div>
 
-        <div
-          style={{
-            position: 'absolute', left: '17.57%', top: '52.84%', width: H * 0.2, zIndex: 6,
-            transform: 'rotate(-90deg)', transformOrigin: 'left top',
-            color: '#ff0000', fontFamily: 'var(--font-antonio), Impact, sans-serif', fontWeight: 700,
-            // 0.0432 + comfortableChars=10 measured off Hollinwood (81).png at
-            // "MIDFIELDER" (10 chars, tied with GOALKEEPER for longest of the
-            // 5 canonical labels bar ALL-ROUNDER at 11) — minScale=0.85 covers
-            // ALL-ROUNDER's 10/11 ratio with margin, without imposing PR #85's
-            // tighter 0.68 floor (calibrated for a much smaller reference size)
-            // on Hollinwood's own, larger typography.
-            fontSize: W * 0.0432 * nameFitScale(positionLabel, 10, 0.85),
-            lineHeight: 1, letterSpacing: '0em', textTransform: 'uppercase',
-            whiteSpace: 'nowrap', overflow: 'visible', pointerEvents: 'none',
-          }}
-        >
+        <div style={{ ...nameplateSlotStyle('position', W, H, positionLabel, '#ff0000'), zIndex: 6 }}>
           {positionLabel}
         </div>
 
@@ -1695,34 +1633,37 @@ function CustomCollectionCardArt({
   const { assets } = variant;
   const isComic = variant.id === 'custom-comic';
   const playerName = d.name || 'Player Name';
-  const nameWidth = variant.nameBox?.width
-    ? H * (Number(variant.nameBox.width.replace('%', '')) / 100) * 1.18
-    : H * 0.298;
-  const positionWidth = variant.positionBox?.width
-    ? H * (Number(variant.positionBox.width.replace('%', '')) / 100)
-    : H * 0.13;
   const positionLabel = positionCardLabel(d.position, 'POSITION');
-  // Each Custom Collection variant sets its own positionBox fontSize/width —
-  // comfortableChars is calibrated per variant from that ratio (relative to
-  // EMJFL/Hollinwood's own 0.028-fontSize/0.13-width reference, corrected to
-  // comfortableChars=8 — see EmjflCardArt's own doc comment for why 8, not
-  // the naive 10, is the real measured-safe threshold there) rather than a
-  // single constant, so a denser variant starts shrinking sooner.
-  const positionFontSizeFactor = variant.positionBox?.fontSize ? Number(variant.positionBox.fontSize) : 0.028;
-  const positionWidthFactor = variant.positionBox?.width ? Number(variant.positionBox.width.replace('%', '')) / 100 : 0.13;
-  // Galaxy is a measured special case, not an extrapolation of the formula
-  // below: its font-size/width ratio is so much higher than every other
-  // variant's that nameFitScale's default 0.68 floor (correct for every
-  // other slot, and for player names generally) clamps GOALKEEPER/
-  // MIDFIELDER/ALL-ROUNDER all to the *same* size regardless of their
-  // different lengths, rather than letting the longest shrink further —
-  // confirmed with a real rendered-glyph-width check across all five
-  // words. comfortableChars=6 with a lower 0.5 floor (passed at the call
-  // site below) is the empirically-verified safe combination.
-  const positionComfortableChars = variant.id === 'custom-galaxy'
-    ? 6
-    : Math.max(6, Math.round(8 * (0.028 / 0.13) / (positionFontSizeFactor / positionWidthFactor)));
-  const positionMinScale = variant.id === 'custom-galaxy' ? 0.5 : 0.68;
+  // All three Custom Collection variants (Solar, Galaxy, Comic) measured to
+  // the same shared vertical nameplate geometry Hollinwood and EMJFL use —
+  // see the PR description's per-card measurement table. None of their
+  // manifest entries set nameBox/positionBox geometry fields any more; only
+  // genuinely different colour stays there. nameBoxOverride/positionBox-
+  // Override exist so a future variant CAN still override geometry, but
+  // only once a real measurement proves it needs to (per variant.nameBox/
+  // positionBox's own left/top/width/fontSize fields, still supported).
+  // Only include a key when the manifest actually set it — spreading an
+  // explicit `left: undefined` over the shared default would still assign
+  // the key (React then drops the CSS property entirely, leaving the div
+  // unpositioned), silently breaking a colour-only override like Solar's.
+  const nameBoxOverride: Partial<NameplateSlotGeometry> | undefined = variant.nameBox
+    ? {
+        ...(variant.nameBox.left ? { left: variant.nameBox.left } : {}),
+        ...(variant.nameBox.top ? { top: variant.nameBox.top } : {}),
+        ...(variant.nameBox.width ? { widthFactor: Number(variant.nameBox.width.replace('%', '')) / 100 } : {}),
+        ...(variant.nameBox.fontSize ? { fontSizeFactor: Number(variant.nameBox.fontSize) } : {}),
+      }
+    : undefined;
+  const positionBoxOverride: Partial<NameplateSlotGeometry> | undefined = variant.positionBox
+    ? {
+        ...(variant.positionBox.left ? { left: variant.positionBox.left } : {}),
+        ...(variant.positionBox.top ? { top: variant.positionBox.top } : {}),
+        ...(variant.positionBox.width ? { widthFactor: Number(variant.positionBox.width.replace('%', '')) / 100 } : {}),
+        ...(variant.positionBox.fontSize ? { fontSizeFactor: Number(variant.positionBox.fontSize) } : {}),
+      }
+    : undefined;
+  const nameColor = '#fff';
+  const positionColor = variant.positionBox?.color || template.accent;
   const customLayerFit: CSSProperties = {
     position: 'absolute',
     inset: 0,
@@ -1802,29 +1743,22 @@ function CustomCollectionCardArt({
           <img src={assets.emblemLogoPosition} alt="" style={{ ...customLayerFit, zIndex: 8 }} />
         ) : null}
 
+        {/* Shared vertical nameplate geometry (nameplate-typography.ts) —
+            Custom Collection's own design contributes a text-shadow (for
+            legibility over its own varied backgrounds/photo art, which
+            Hollinwood/EMJFL don't need) as a genuine pre-existing effect,
+            carried forward via `extra` rather than folded into the shared
+            geometry itself. The old padding/negative-margin pair this box
+            used to carry (meant to give the shadow paint room) is dropped —
+            overflow stays visible, so the shadow was never actually clipped
+            by it, and it was inflating this box's own measured bounding
+            box ~10% larger than Hollinwood/EMJFL's identical geometry. */}
         <div
           style={{
-            position: 'absolute',
-            left: variant.nameBox?.left || (isComic ? '10.6%' : '10.1%'),
-            top: variant.nameBox?.top || (isComic ? '66.8%' : '66.8%'),
-            width: nameWidth,
+            ...nameplateSlotStyle('name', W, H, playerName, nameColor, nameBoxOverride, {
+              textShadow: '0 2px 4px rgba(0,0,0,.45)',
+            }),
             zIndex: 8,
-            transform: variant.nameBox?.rotate ? `translate(-50%, -50%) rotate(${variant.nameBox.rotate})` : 'rotate(-90deg)',
-            transformOrigin: variant.nameBox?.rotate ? 'center center' : 'left top',
-            color: '#fff',
-            fontFamily: variant.nameBox?.fontFamily || 'var(--font-oswald), system-ui',
-            fontWeight: variant.nameBox?.fontWeight || 800,
-            fontSize: W * (variant.nameBox?.fontSize ? Number(variant.nameBox.fontSize) : isComic ? 0.064 : 0.057) * nameFitScale(playerName, 11),
-            lineHeight: 1.08,
-            letterSpacing: 0,
-            textTransform: 'uppercase',
-            whiteSpace: 'nowrap',
-            display: 'inline-block',
-            overflow: 'visible',
-            padding: `${W * 0.012}px ${W * 0.018}px`,
-            margin: `${-W * 0.012}px ${-W * 0.018}px`,
-            textShadow: '0 2px 4px rgba(0,0,0,.45)',
-            pointerEvents: 'none',
           }}
         >
           {playerName}
@@ -1832,23 +1766,10 @@ function CustomCollectionCardArt({
 
         <div
           style={{
-            position: 'absolute',
-            left: variant.positionBox?.left || (isComic ? '20.2%' : '18.3%'),
-            top: variant.positionBox?.top || '58.9%',
-            width: positionWidth,
+            ...nameplateSlotStyle('position', W, H, positionLabel, positionColor, positionBoxOverride, {
+              textShadow: '0 1px 2px rgba(0,0,0,.45)',
+            }),
             zIndex: 8,
-            transform: variant.positionBox?.rotate
-              ? `translate(-50%, -50%) rotate(${variant.positionBox.rotate})`
-              : 'rotate(-90deg)',
-            transformOrigin: variant.positionBox?.rotate ? 'center center' : 'left top',
-            color: variant.positionBox?.color || template.accent,
-            fontFamily: variant.positionBox?.fontFamily || 'var(--font-oswald), system-ui',
-            fontWeight: variant.positionBox?.fontWeight || 800,
-            fontSize: W * positionFontSizeFactor * nameFitScale(positionLabel, positionComfortableChars, positionMinScale),
-            lineHeight: 1,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,.45)', pointerEvents: 'none',
           }}
         >
           {positionLabel}

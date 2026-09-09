@@ -23,24 +23,26 @@ export type CustomCollectionVariant = {
     fontStyle?: string;
     fontWeight?: string;
   };
+  // Geometry (left/top/width/fontSize) is shared across every card via the
+  // vertical nameplate system (nameplate-typography.ts) — font family,
+  // weight and rotation are fixed there too (Antonio Bold, rotate(-90deg)),
+  // not overridable per variant, per the typography standard every card
+  // uses. A variant sets any of these ONLY once a real measurement proves
+  // its own nameplate genuinely differs from the shared default; `color` is
+  // the one field variants are expected to set routinely, since colour
+  // treatment (not geometry) is what actually varies card to card.
   positionBox?: {
-    left: string;
-    top: string;
+    left?: string;
+    top?: string;
     width?: string;
     fontSize?: string;
-    fontFamily?: string;
-    fontWeight?: string;
-    rotate?: string;
     color?: string;
   };
   nameBox?: {
-    left: string;
-    top: string;
+    left?: string;
+    top?: string;
     width?: string;
     fontSize?: string;
-    fontFamily?: string;
-    fontWeight?: string;
-    rotate?: string;
   };
   back?: {
     base: string;
@@ -90,23 +92,10 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       width: '21.5%',
       height: '15.1%',
     },
-    nameBox: {
-      left: '12.33%',
-      top: '51.5%',
-      width: '31.44%',
-      fontSize: '0.064',
-      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
-      fontWeight: '700',
-      rotate: '-90deg',
-    },
+    // nameBox/positionBox intentionally omitted — Solar measured to the
+    // same shared vertical nameplate geometry every other card here uses
+    // (nameplate-typography.ts); only its position colour differs.
     positionBox: {
-      left: '18.19%',
-      top: '51.17%',
-      width: '12.22%',
-      fontSize: '0.0305',
-      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
-      fontWeight: '700',
-      rotate: '-90deg',
       color: '#ef2222',
     },
     numberBox: {
@@ -162,19 +151,10 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
       fontWeight: '400',
     },
-    positionBox: {
-      left: '18.3%',
-      top: '58.9%',
-      width: '13%',
-      fontSize: '0.042',
-      fontWeight: '700',
-    },
-    nameBox: {
-      left: '10.1%',
-      top: '66.8%',
-      fontSize: '0.0855',
-      fontWeight: '700',
-    },
+    // nameBox/positionBox intentionally omitted — Galaxy measured to the
+    // same shared vertical nameplate geometry every other card here uses
+    // (nameplate-typography.ts); its position colour falls through to its
+    // own template.accent (#f16a31), same as before.
     back: {
       base: '/templates/custom-collection/galaxy/back-base.png',
       logoBox: {
@@ -227,24 +207,11 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       fontStyle: 'normal',
       fontWeight: '400',
     },
+    // nameBox intentionally omitted — Comic measured to the same shared
+    // vertical nameplate geometry every other card here uses
+    // (nameplate-typography.ts); only its position colour differs.
     positionBox: {
-      left: '18.14%',
-      top: '51.13%',
-      width: '12.22%',
-      fontSize: '0.0305',
-      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
-      fontWeight: '700',
-      rotate: '-90deg',
       color: '#ef2222',
-    },
-    nameBox: {
-      left: '12.33%',
-      top: '51.5%',
-      width: '31.44%',
-      fontSize: '0.064',
-      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
-      fontWeight: '700',
-      rotate: '-90deg',
     },
     back: {
       base: '/templates/custom-collection/comic/back-base.png',
