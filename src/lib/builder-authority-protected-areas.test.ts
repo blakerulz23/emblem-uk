@@ -32,7 +32,7 @@ const PROTECTED_FILES: Record<string, string> = {
   'src/components/builder/emblem/aiMockup.ts': 'f48196a262d75042dba471e60b4ac419c8617c9a3d48940ad9799d7c1dd825e1',
   'src/lib/pdf-generator.ts': '94e796512bd29560755659bc25513820cc142fc8a755f353705539f750f49c26',
   'src/lib/card-definition.tsx': '1c6e548d2dd64f5a4c6dc4a80f3414648119b935d12306786dc7a3e2908b26b5',
-  'src/lib/print-capture.ts': '8226f6d51869e8ee98ab68ed4636ef4b248a2b9b546d63dd2413b36bdb83184d',
+  'src/lib/print-capture.ts': 'e329ab40d2f67e3fdfa458f4c504e46bc9ebf8e9f5e98c337e9378cd95a08d07',
 };
 
 describe('protected areas remain byte-identical after the Adult Permission work package (migration 0071)', () => {

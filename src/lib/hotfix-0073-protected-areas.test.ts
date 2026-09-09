@@ -21,7 +21,9 @@ const PROTECTED_FILES: Record<string, string> = {
   'src/components/builder/emblem/aiMockup.ts': 'f48196a262d75042dba471e60b4ac419c8617c9a3d48940ad9799d7c1dd825e1',
   'src/lib/pdf-generator.ts': '94e796512bd29560755659bc25513820cc142fc8a755f353705539f750f49c26',
   'src/lib/card-definition.tsx': '1c6e548d2dd64f5a4c6dc4a80f3414648119b935d12306786dc7a3e2908b26b5',
-  'src/lib/print-capture.ts': '8226f6d51869e8ee98ab68ed4636ef4b248a2b9b546d63dd2413b36bdb83184d',
+  // Updated for the Hollinwood typography correction — see card-lifecycle-
+  // protected-areas.test.ts's own comment for the same reasoning.
+  'src/lib/print-capture.ts': 'e329ab40d2f67e3fdfa458f4c504e46bc9ebf8e9f5e98c337e9378cd95a08d07',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
 };

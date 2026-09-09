@@ -116,6 +116,17 @@ export async function captureElementToPng(
   el: HTMLElement,
   opts: CaptureOptions = {}
 ): Promise<string> {
+  // html2canvas paints whatever is already loaded/rendered at the moment
+  // it runs — a webfont (e.g. Hollinwood's Antonio Bold name/position
+  // layer) that's still downloading gets silently captured in its
+  // fallback face instead, with no error. document.fonts.ready resolves
+  // once every font actually referenced by the page has finished loading
+  // (or failed), so this guarantees the real face is what gets captured —
+  // never a race with the browser's own font-swap timing. Independent of,
+  // and unrelated to, the object-fit neutralisation below.
+  if (typeof document !== 'undefined' && document.fonts) {
+    await document.fonts.ready;
+  }
   const restore = await neutralizeObjectFitCoverForCapture(el);
   try {
     const canvas = await html2canvas(el, {
