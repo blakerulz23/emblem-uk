@@ -39,13 +39,23 @@ const PROTECTED_FILES: Record<string, string> = {
   // a third time to generalise that same measured geometry into a shared
   // module (src/lib/nameplate-typography.ts) used by Hollinwood, EMJFL and
   // all three Custom Collection variants, and a fourth time to extend that
-  // same shared module to cover the kit number too (centre-x/bottom-y
-  // anchored, real Antonio Bold, digit-count fit-scale) — geometry/font/
-  // fit-scale rules unified, colour and any card-specific effect (Comic's
-  // tilted, thin-outlined number) stay local to each card's own render
-  // function (verified via diff before this hash was touched: RealCardArt/
+  // same shared module to cover the kit number too, and a fifth time to
+  // fix a confirmed defect in that number treatment: the original
+  // -webkit-text-stroke width (calibrated purely to match the reference
+  // PNG's outer alpha bounds) came out to ~63% of the font's em-size,
+  // which swallowed the white interior of curved/enclosed digits (2, 0, 6,
+  // 8, 9) into a solid coloured block on every card except Comic (which
+  // already had its own much thinner override). Replaced with a layered-
+  // copy technique (scaled coloured copy behind, true-size white copy on
+  // top) that can't reproduce that failure mode by construction — verified
+  // against real renders of every digit 0-9 on every unified card (see
+  // nameplate-typography.ts's own doc comment and this PR's description
+  // for the full topology measurements). Geometry/font/fit-scale rules
+  // stay unified, colour and any card-specific effect (Comic's tilted,
+  // thin-outlined number) stay local to each card's own render function
+  // (verified via diff before this hash was touched: RealCardArt/
   // RealCardBack and every back-face renderer are untouched).
-  'src/components/builder/emblem/CardArt.tsx': '462458d722ddbe5cc6fdbd2cab5e696c0542b54540ef08747a603640ccf01889',
+  'src/components/builder/emblem/CardArt.tsx': '2d68eef83a3a6da7ebb931e4d98a8672605fabd60aa41f241bcf271a7665bd39',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',

@@ -4,7 +4,7 @@ import { resolve } from 'path';
 import {
   nameFitScale,
   nameplateSlotStyle,
-  nameplateNumberStyle,
+  nameplateNumberLayers,
   NAMEPLATE_GEOMETRY,
   NAMEPLATE_NUMBER_GEOMETRY,
   NAMEPLATE_FONT_FAMILY,
@@ -122,59 +122,111 @@ describe('NAMEPLATE_NUMBER_GEOMETRY — Hollinwood-measured kit-number calibrati
   it('matches the measured centre-x/bottom-y anchor and reference size', () => {
     expect(NAMEPLATE_NUMBER_GEOMETRY).toMatchObject({
       left: '14.67%',
-      top: '76.36%',
-      fontSizeFactor: 0.0793,
-      strokeFactor: 0.05,
+      top: '77.35%',
+      fontSizeFactor: 0.19,
+      outlineScale: 1.12,
       comfortableChars: 2,
       minScale: 0.8,
     });
   });
 });
 
-describe('nameplateNumberStyle', () => {
+describe('nameplateNumberLayers', () => {
   const W = 340;
 
-  it('centres horizontally and bottom-anchors vertically via transform, not a left-anchored box', () => {
-    const style = nameplateNumberStyle(W, '7', '#fff', '#0074ff');
-    expect(style.left).toBe('14.67%');
-    expect(style.top).toBe('76.36%');
-    expect(style.transform).toBe('translate(-50%, -100%)');
+  it('centres horizontally and bottom-anchors vertically via the wrapper transform, not a left-anchored box', () => {
+    const layers = nameplateNumberLayers(W, '7', '#fff', '#0074ff');
+    expect(layers.wrapper.left).toBe('14.67%');
+    expect(layers.wrapper.top).toBe('77.35%');
+    expect(layers.wrapper.transform).toBe('translate(-50%, -100%)');
   });
 
   it('renders one- and two-digit numbers at full reference scale (comfortableChars=2)', () => {
-    expect(nameplateNumberStyle(W, '7', '#fff', '#0074ff').fontSize).toBeCloseTo(W * 0.0793, 5);
-    expect(nameplateNumberStyle(W, '10', '#fff', '#0074ff').fontSize).toBeCloseTo(W * 0.0793, 5);
-    expect(nameplateNumberStyle(W, '99', '#fff', '#0074ff').fontSize).toBeCloseTo(W * 0.0793, 5);
+    expect(nameplateNumberLayers(W, '7', '#fff', '#0074ff').fill.fontSize).toBeCloseTo(W * 0.19, 5);
+    expect(nameplateNumberLayers(W, '10', '#fff', '#0074ff').fill.fontSize).toBeCloseTo(W * 0.19, 5);
+    expect(nameplateNumberLayers(W, '99', '#fff', '#0074ff').fill.fontSize).toBeCloseTo(W * 0.19, 5);
   });
 
-  it('scales down only for more than 2 digits, never stretches horizontally (no scaleX/width forced)', () => {
+  it('outline and fill layers always share the identical font-size, so the outline never runs ahead of or behind the fill at any digit count', () => {
+    for (const n of ['7', '10', '100']) {
+      const layers = nameplateNumberLayers(W, n, '#fff', '#0074ff');
+      expect(layers.outline.fontSize).toBe(layers.fill.fontSize);
+    }
+  });
+
+  it('scales down only for more than 2 digits, never stretches horizontally (no scaleX applied to fontSize, no forced width)', () => {
     // 3 digits: comfortableChars/length = 2/3 ≈ 0.667, clamped up to the 0.8 floor.
-    const style = nameplateNumberStyle(W, '100', '#fff', '#0074ff');
-    expect(style.fontSize).toBeCloseTo(W * 0.0793 * 0.8, 5);
-    expect(style.width).toBeUndefined();
-    expect(String(style.transform)).not.toContain('scale');
+    const layers = nameplateNumberLayers(W, '100', '#fff', '#0074ff');
+    expect(layers.fill.fontSize).toBeCloseTo(W * 0.19 * 0.8, 5);
+    expect(layers.fill.width).toBeUndefined();
   });
 
-  it('fill and stroke colour are independent, per-card parameters', () => {
-    const style = nameplateNumberStyle(W, '7', '#fff', '#FF4B1F');
-    expect(style.color).toBe('#fff');
-    expect(style.WebkitTextStroke).toBe(`${W * 0.05}px #FF4B1F`);
+  it('the outline is a proportional scaled copy, not a stroke — it cannot fully close a glyph counter the way an oversized stroke can, because the front (fill) layer is always drawn at true size on top', () => {
+    const layers = nameplateNumberLayers(W, '2', '#fff', '#ef2222');
+    expect(layers.outline.transform).toBe(`scale(${1.12})`);
+    expect(layers.outline.transformOrigin).toBe('center');
+    expect(layers.outline).not.toHaveProperty('WebkitTextStroke');
+    expect(layers.fill).not.toHaveProperty('WebkitTextStroke');
+  });
+
+  // Regression guard for the confirmed defect: at the old technique
+  // (-webkit-text-stroke, calibrated by forcing the outer alpha bounds to
+  // match Hollinwood (85).png regardless of the glyph's own shape), the
+  // stroke width came out to 63% of the font's em-size — enough to close
+  // "0"/"6"/"8"/"9"'s counters completely and merge both sides of "2"'s
+  // thin curve, rendering every affected card's number as a solid coloured
+  // block (confirmed with real screenshots against custom-solar/-galaxy/
+  // emjfl-official). The layered-copy technique can't reproduce that
+  // failure mode by construction (the front layer always draws at full,
+  // unshrunk size), but outlineScale could still be pushed large enough to
+  // visually overwhelm the fill even so — this pins it to a range verified
+  // (via real rendering across every digit 0-9 on every unified card, plus
+  // Comic's own thinner override) to keep every digit's interior and any
+  // enclosed counter clearly visible.
+  it('outlineScale — both the shared default and every per-card override — stays within a range verified not to swallow the glyph', () => {
+    expect(NAMEPLATE_NUMBER_GEOMETRY.outlineScale).toBeGreaterThan(1);
+    expect(NAMEPLATE_NUMBER_GEOMETRY.outlineScale).toBeLessThanOrEqual(1.2);
+    const cardArtSource = readFileSync(
+      resolve(process.cwd(), 'src/lib/custom-collection-manifest.ts'),
+      'utf8'
+    );
+    const overrides = Array.from(cardArtSource.matchAll(/outlineScale:\s*'([\d.]+)'/g)).map((m) => Number(m[1]));
+    expect(overrides.length).toBeGreaterThan(0); // Comic's own override should still be present
+    for (const scale of overrides) {
+      expect(scale).toBeGreaterThan(1);
+      expect(scale).toBeLessThanOrEqual(1.2);
+    }
+  });
+
+  it('fill and outline colour are independent, per-card parameters', () => {
+    const layers = nameplateNumberLayers(W, '7', '#fff', '#FF4B1F');
+    expect(layers.fill.color).toBe('#fff');
+    expect(layers.outline.color).toBe('#FF4B1F');
   });
 
   it('a colour-only override does not blank out the shared anchor (same undefined-spread hazard as nameplateSlotStyle)', () => {
-    const style = nameplateNumberStyle(W, '7', '#fff', '#111', { left: undefined, top: undefined, strokeFactor: 0.004 });
-    expect(style.left).toBe('14.67%');
-    expect(style.top).toBe('76.36%');
-    expect(style.WebkitTextStroke).toBe(`${W * 0.004}px #111`);
+    const layers = nameplateNumberLayers(W, '7', '#fff', '#111', { left: undefined, top: undefined, outlineScale: 1.035 });
+    expect(layers.wrapper.left).toBe('14.67%');
+    expect(layers.wrapper.top).toBe('77.35%');
+    expect(layers.outline.transform).toBe('scale(1.035)');
   });
 
-  it('a rotate/shadow extra (Comic\'s own treatment) overrides the base transform without losing centring intent explicitly, since the caller supplies the full transform string', () => {
-    const style = nameplateNumberStyle(W, '7', '#fff', '#111', undefined, {
+  it('a restrained per-card outline (Comic\'s own thin treatment) is smaller than the shared default', () => {
+    const shared = nameplateNumberLayers(W, '7', '#fff', '#111');
+    const comic = nameplateNumberLayers(W, '7', '#fff', '#111', { outlineScale: 1.035 });
+    const sharedGap = Number(String(shared.outline.transform).match(/scale\(([\d.]+)\)/)?.[1]) - 1;
+    const comicGap = Number(String(comic.outline.transform).match(/scale\(([\d.]+)\)/)?.[1]) - 1;
+    expect(comicGap).toBeLessThan(sharedGap);
+  });
+
+  it('a rotate/shadow wrapper extra (Comic\'s own treatment) composes onto the wrapper without touching either text layer', () => {
+    const layers = nameplateNumberLayers(W, '7', '#fff', '#111', undefined, {
       transform: 'translate(-50%, -100%) rotate(-8deg)',
-      textShadow: '0 3px 0 #111',
+      filter: 'drop-shadow(0 3px 0 #111)',
     });
-    expect(style.transform).toBe('translate(-50%, -100%) rotate(-8deg)');
-    expect(style.textShadow).toBe('0 3px 0 #111');
+    expect(layers.wrapper.transform).toBe('translate(-50%, -100%) rotate(-8deg)');
+    expect(layers.wrapper.filter).toBe('drop-shadow(0 3px 0 #111)');
+    expect(layers.fill).not.toHaveProperty('filter');
   });
 });
 
@@ -209,14 +261,29 @@ describe('the shared nameplate is actually used by every card the generalisation
     expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#ff0000')");
   });
 
-  it('HollinwoodCardArt and EmjflCardArt also call nameplateNumberStyle for the kit number, each with its own outline colour', () => {
-    expect(bodyOf('HollinwoodCardArt')).toContain("nameplateNumberStyle(W, d.number || '10', '#fff', template.accent)");
-    expect(bodyOf('EmjflCardArt')).toContain("nameplateNumberStyle(W, d.number || '10', '#fff', '#FF4B1F')");
+  it('HollinwoodCardArt and EmjflCardArt also call nameplateNumberLayers for the kit number, each with its own outline colour', () => {
+    expect(bodyOf('HollinwoodCardArt')).toContain("nameplateNumberLayers(W, d.number || '10', '#fff', template.accent)");
+    expect(bodyOf('EmjflCardArt')).toContain("nameplateNumberLayers(W, d.number || '10', '#fff', '#FF4B1F')");
   });
 
-  it('CustomCollectionCardArt calls nameplateNumberStyle too, defaulting fill/stroke to white/positionColor', () => {
+  it('the kit number renders as two stacked layers (outline behind, fill on top), not a single stroked div', () => {
+    // CustomCollectionCardArt's own "Custom" watermark (Comic-only, unrelated
+    // decorative text) legitimately still uses WebkitTextStroke elsewhere in
+    // the same function body, so this only checks that the *number* itself
+    // (nameplateNumberLayers's own call + its two <span> layers) is present
+    // and doesn't reintroduce a stroke there specifically.
+    for (const fn of ['HollinwoodCardArt', 'EmjflCardArt', 'CustomCollectionCardArt']) {
+      const body = bodyOf(fn);
+      expect(body).toContain('numLayers.outline');
+      expect(body).toContain('numLayers.fill');
+      const numberSection = body.slice(body.indexOf('nameplateNumberLayers('), body.indexOf('numLayers.fill') + 'numLayers.fill'.length);
+      expect(numberSection).not.toContain('WebkitTextStroke');
+    }
+  });
+
+  it('CustomCollectionCardArt calls nameplateNumberLayers too, defaulting fill/outline to white/positionColor', () => {
     const body = bodyOf('CustomCollectionCardArt');
-    expect(body).toContain('nameplateNumberStyle(');
+    expect(body).toContain('nameplateNumberLayers(');
     expect(body).toContain("variant.numberBox?.fillColor || '#fff'");
     expect(body).toContain('variant.numberBox?.strokeColor || positionColor');
   });
@@ -224,7 +291,7 @@ describe('the shared nameplate is actually used by every card the generalisation
   it('RealCardArt (Futuristic/Vintage/Chrome/Champions/legacy-Galaxy) is untouched — horizontal, non-rotated text, a genuinely different structure, not on the shared nameplate', () => {
     const body = bodyOf('RealCardArt');
     expect(body).not.toContain('nameplateSlotStyle');
-    expect(body).not.toContain('nameplateNumberStyle');
+    expect(body).not.toContain('nameplateNumberLayers');
     expect(body).not.toContain(NAMEPLATE_FONT_FAMILY);
   });
 

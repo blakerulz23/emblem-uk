@@ -4,7 +4,7 @@
 import type { CSSProperties } from 'react';
 import { getCustomCollectionVariant } from '@/lib/custom-collection-manifest';
 import { getHollinwoodVariant } from '@/lib/hollinwood-manifest';
-import { nameFitScale, nameplateNumberStyle, nameplateSlotStyle, type NameplateNumberGeometry, type NameplateSlotGeometry } from '@/lib/nameplate-typography';
+import { nameFitScale, nameplateNumberLayers, nameplateSlotStyle, type NameplateNumberGeometry, type NameplateSlotGeometry } from '@/lib/nameplate-typography';
 import { computePhotoGeometry } from '@/lib/photo-geometry';
 import { positionCardLabel } from '@/lib/player-position';
 import { SPORT_STATS, type CardTemplate, type Details, type Family, type SportId } from './data';
@@ -1431,10 +1431,23 @@ function EmjflCardArt({
 
         {/* Kit number — shared geometry (nameplate-typography.ts), same as
             Hollinwood; EMJFL keeps its own outline colour (#FF4B1F, matching
-            its position label) instead of Hollinwood's template.accent. */}
-        <div style={{ ...nameplateNumberStyle(W, d.number || '10', '#fff', '#FF4B1F'), zIndex: 5 }}>
-          {d.number || '10'}
-        </div>
+            its position label) instead of Hollinwood's template.accent.
+            Layered (scaled outline copy behind, true-size white fill on
+            top) rather than a CSS stroke — a stroke thick enough to match
+            the reference's outer silhouette swallows curved digits like
+            "2"/"0"/"8"/"9" entirely; a proportional scaled-copy outline
+            can't, since the front layer is always drawn at full size. */}
+        {(() => {
+          const numLayers = nameplateNumberLayers(W, d.number || '10', '#fff', '#FF4B1F');
+          return (
+            <div style={{ ...numLayers.wrapper, zIndex: 5 }}>
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <span aria-hidden style={numLayers.outline}>{d.number || '10'}</span>
+                <span style={numLayers.fill}>{d.number || '10'}</span>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Bottom-right corner ribbon — real asset, transparent everywhere except the corner shape */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1578,10 +1591,19 @@ function HollinwoodCardArt({
             than the exact colour sampled from the reference: that sample
             doesn't match any of Hollinwood's own four variant accents, and
             the task explicitly warns against assuming one design's colour
-            belongs to every variation). */}
-        <div style={{ ...nameplateNumberStyle(W, d.number || '10', '#fff', template.accent), zIndex: 6 }}>
-          {d.number || '10'}
-        </div>
+            belongs to every variation). Layered, not stroked — see EMJFL's
+            own comment on why. */}
+        {(() => {
+          const numLayers = nameplateNumberLayers(W, d.number || '10', '#fff', template.accent);
+          return (
+            <div style={{ ...numLayers.wrapper, zIndex: 6 }}>
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <span aria-hidden style={numLayers.outline}>{d.number || '10'}</span>
+                <span style={numLayers.fill}>{d.number || '10'}</span>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={assets.cornerRibbon} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 7, pointerEvents: 'none' }} />
@@ -1660,7 +1682,7 @@ function CustomCollectionCardArt({
         ...(variant.numberBox.left ? { left: variant.numberBox.left } : {}),
         ...(variant.numberBox.top ? { top: variant.numberBox.top } : {}),
         ...(variant.numberBox.fontSize ? { fontSizeFactor: Number(variant.numberBox.fontSize) } : {}),
-        ...(variant.numberBox.strokeWidthFactor ? { strokeFactor: Number(variant.numberBox.strokeWidthFactor) } : {}),
+        ...(variant.numberBox.outlineScale ? { outlineScale: Number(variant.numberBox.outlineScale) } : {}),
       }
     : undefined;
   const nameColor = '#fff';
@@ -1786,27 +1808,33 @@ function CustomCollectionCardArt({
             (visual consistency between the two), matching every other
             unified card; Comic's numberBox overrides both plus a tilt and
             shadow for its own deliberate "comic panel" treatment (see the
-            manifest's own comment on why that one is kept). */}
-        <div
-          style={{
-            ...nameplateNumberStyle(
-              W,
-              d.number || '10',
-              variant.numberBox?.fillColor || '#fff',
-              variant.numberBox?.strokeColor || positionColor,
-              numberBoxOverride,
-              {
-                ...(variant.numberBox?.rotate
-                  ? { transform: `translate(-50%, -100%) rotate(${variant.numberBox.rotate})` }
-                  : {}),
-                ...(variant.numberBox?.shadow ? { textShadow: variant.numberBox.shadow } : {}),
-              }
-            ),
-            zIndex: 8,
-          }}
-        >
-          {d.number || '10'}
-        </div>
+            manifest's own comment on why that one is kept). Layered, not
+            stroked — see EMJFL's own comment on why; the shadow moves from
+            text-shadow to filter:drop-shadow so it shadows the composited
+            two-layer number once, not each layer separately. */}
+        {(() => {
+          const numLayers = nameplateNumberLayers(
+            W,
+            d.number || '10',
+            variant.numberBox?.fillColor || '#fff',
+            variant.numberBox?.strokeColor || positionColor,
+            numberBoxOverride,
+            {
+              ...(variant.numberBox?.rotate
+                ? { transform: `translate(-50%, -100%) rotate(${variant.numberBox.rotate})` }
+                : {}),
+              ...(variant.numberBox?.shadow ? { filter: `drop-shadow(${variant.numberBox.shadow})` } : {}),
+            }
+          );
+          return (
+            <div style={{ ...numLayers.wrapper, zIndex: 8 }}>
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <span aria-hidden style={numLayers.outline}>{d.number || '10'}</span>
+                <span style={numLayers.fill}>{d.number || '10'}</span>
+              </div>
+            </div>
+          );
+        })()}
 
         {assets.cornerOverlay ? (
           // eslint-disable-next-line @next/next/no-img-element
