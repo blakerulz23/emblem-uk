@@ -30,10 +30,10 @@ const PROTECTED_FILES: Record<string, string> = {
   // Updated for the player-position simplification, then for the
   // Hollinwood typography correction, its generalisation to a shared
   // nameplate module, that module's extension to the kit number, and a
-  // fix for a confirmed defect in that number treatment — see
-  // card-lifecycle-protected-areas.test.ts's own comment for the full
-  // reasoning.
-  'src/components/builder/emblem/CardArt.tsx': '2d68eef83a3a6da7ebb931e4d98a8672605fabd60aa41f241bcf271a7665bd39',
+  // fix for a confirmed defect in that number treatment, and a sixth for a
+  // separate confirmed position-anchoring defect — see card-lifecycle-
+  // protected-areas.test.ts's own comment for the full reasoning.
+  'src/components/builder/emblem/CardArt.tsx': '3b75cabf7d37fb70497c358872dfc0859280f495d7258d38e78c987fc0de1d77',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
