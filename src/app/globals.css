@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Barlow+Condensed:wght@700;800;900&family=Instrument+Sans:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Antonio:wght@700&family=Archivo:wght@600;700;800;900&family=Barlow+Condensed:wght@700;800;900&family=Instrument+Sans:wght@400;500;600;700&family=Rajdhani:wght@500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -20,6 +20,14 @@
   --font-jbmono: "Cascadia Mono", Consolas, monospace;
   --font-oswald: "Arial Narrow", Impact, sans-serif;
   --font-caveat: "Segoe Print", "Comic Sans MS", cursive;
+  /* Real Antonio Bold (700), loaded above — used only by the Hollinwood
+     card's name/position layers (see CardArt.tsx's HollinwoodCardArt),
+     matching the original Canva reference exactly. Deliberately a
+     separate variable from --font-oswald above: that one is already a
+     misleading name for a plain system-font fallback stack (no real
+     "Oswald" is loaded anywhere in this project), and widening its
+     meaning would silently change every other caller still using it. */
+  --font-antonio: "Antonio", "Arial Narrow", Impact, sans-serif;
 }
 
 /* emblem.cards typography, scoped to the public marketing shell only.

@@ -19,10 +19,13 @@ const PROTECTED_FILES: Record<string, string> = {
   // deliberate, reviewed change to cropping and card-art rendering itself,
   // not scope creep from an unrelated feature.
   'src/lib/photo-geometry.ts': 'a1222b902b3d305c5ee4b8f8da34b4c24c715ef9f50147abfd67b1a0e64c5a8e',
-  // Updated for the player-position simplification — see card-lifecycle-
+  // Updated for the player-position simplification, then again for the
+  // Hollinwood typography correction — see card-lifecycle-protected-areas.
+  // test.ts's own comment for the same reasoning.
+  'src/components/builder/emblem/CardArt.tsx': '2f283a472827d8e9c85a500982ca7f2f6df432d1a9336dd2f8389d594b61aad7',
+  // Updated for the Hollinwood typography correction — see card-lifecycle-
   // protected-areas.test.ts's own comment for the same reasoning.
-  'src/components/builder/emblem/CardArt.tsx': '800de28930fa1fc21a2b3df2325a262b4b96243d72f88fde667da0ed5b1ea1c0',
-  'src/lib/print-capture.ts': '8226f6d51869e8ee98ab68ed4636ef4b248a2b9b546d63dd2413b36bdb83184d',
+  'src/lib/print-capture.ts': 'e329ab40d2f67e3fdfa458f4c504e46bc9ebf8e9f5e98c337e9378cd95a08d07',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
 };

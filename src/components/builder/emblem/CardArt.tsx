@@ -1601,11 +1601,18 @@ function HollinwoodCardArt({
 
         <div
           style={{
-            position: 'absolute', left: '10.1%', top: '66.8%', width: H * 0.298, zIndex: 6,
+            position: 'absolute', left: '9.08%', top: '62.73%', width: H * 0.6, zIndex: 6,
             transform: 'rotate(-90deg)', transformOrigin: 'left top',
-            color: '#fff', fontFamily: 'var(--font-oswald), system-ui', fontWeight: 800,
-            fontSize: W * 0.057, lineHeight: 1, letterSpacing: '0.01em', textTransform: 'uppercase',
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            color: '#fff', fontFamily: 'var(--font-antonio), Impact, sans-serif', fontWeight: 700,
+            // 0.0838 and comfortableChars=14 are both measured directly off the
+            // Canva reference (Hollinwood (80).png) at "JACOB THOMPSON" (14
+            // chars incl. space) — alpha-bounds-matched against the reference
+            // PNG's own glyph ink to within ~2px on a 1050x1498 canvas.
+            // Longer names scale down (never up) just enough to keep the same
+            // fixed bottom anchor without growing past the card's safe area.
+            fontSize: W * 0.0838 * nameFitScale(d.name || '', 14, 0.6),
+            lineHeight: 1, letterSpacing: '0em', textTransform: 'uppercase',
+            whiteSpace: 'nowrap', overflow: 'visible',
             pointerEvents: 'none',
           }}
         >
@@ -1614,11 +1621,18 @@ function HollinwoodCardArt({
 
         <div
           style={{
-            position: 'absolute', left: '18.3%', top: '58.9%', width: H * 0.13, zIndex: 6,
+            position: 'absolute', left: '17.57%', top: '52.84%', width: H * 0.2, zIndex: 6,
             transform: 'rotate(-90deg)', transformOrigin: 'left top',
-            color: template.accent, fontFamily: 'var(--font-oswald), system-ui', fontWeight: 700,
-            fontSize: W * 0.028 * nameFitScale(positionLabel, 8), lineHeight: 1, letterSpacing: '0.1em', textTransform: 'uppercase',
-            whiteSpace: 'nowrap', pointerEvents: 'none',
+            color: '#ff0000', fontFamily: 'var(--font-antonio), Impact, sans-serif', fontWeight: 700,
+            // 0.0432 + comfortableChars=10 measured off Hollinwood (81).png at
+            // "MIDFIELDER" (10 chars, tied with GOALKEEPER for longest of the
+            // 5 canonical labels bar ALL-ROUNDER at 11) — minScale=0.85 covers
+            // ALL-ROUNDER's 10/11 ratio with margin, without imposing PR #85's
+            // tighter 0.68 floor (calibrated for a much smaller reference size)
+            // on Hollinwood's own, larger typography.
+            fontSize: W * 0.0432 * nameFitScale(positionLabel, 10, 0.85),
+            lineHeight: 1, letterSpacing: '0em', textTransform: 'uppercase',
+            whiteSpace: 'nowrap', overflow: 'visible', pointerEvents: 'none',
           }}
         >
           {positionLabel}
