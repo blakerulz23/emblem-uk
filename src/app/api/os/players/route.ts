@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { withUniqueCodeRetry } from '@/lib/claim-code';
+import { isCanonicalPosition } from '@/lib/player-position';
 
 export const runtime = 'nodejs';
 
@@ -45,6 +46,12 @@ export async function POST(request: NextRequest) {
 
   if (!teamId || !name?.trim()) {
     return NextResponse.json({ error: 'teamId and name are required' }, { status: 400 });
+  }
+  // Position is optional at roster-creation time, but if one is sent it
+  // must be one of the five simplified categories — never a raw legacy
+  // specific-position code reintroduced through this path.
+  if (position && !isCanonicalPosition(position)) {
+    return NextResponse.json({ error: 'Choose one of the five position categories.' }, { status: 400 });
   }
 
   const { data: player, error: playerError } = await supabase

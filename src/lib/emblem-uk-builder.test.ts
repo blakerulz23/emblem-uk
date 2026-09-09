@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createPlayer, defaultOrder, productionPayload, summarizeOrder, type OrderDraft, type PlayerDraft } from './emblem-uk-builder';
+import { createPlayer, defaultOrder, derivePlayerStatus, productionPayload, summarizeOrder, type OrderDraft, type PlayerDraft } from './emblem-uk-builder';
 import type { PricingQuoteResponse } from './pricing-quote';
 
 /**
@@ -276,5 +276,50 @@ describe('productionPayload — authoritative pricing amendment', () => {
     expect(withQuote.order).toEqual(withoutQuote.order);
     expect(withQuote.players).toEqual(withoutQuote.players);
     expect(withQuote.clubGroups).toEqual(withoutQuote.clubGroups);
+  });
+});
+
+/**
+ * Apps/Goals/Assists were removed from the card-order journey (see
+ * player-position.ts's sibling doc and PR history) — these guard against
+ * the specific way that removal could quietly regress: a stale seed
+ * somewhere still populating the old three-key shape, or a completion
+ * check that (re)introduces stats as a requirement. Confirmed by reading
+ * every card family CardArt.tsx renders that neither ever displayed
+ * these values nor requires them to reach 'ready'/'approved'.
+ */
+describe('the card-order journey never requires Apps/Goals/Assists to complete', () => {
+  it('a player with only the five kept fields (club/team, name, position, kit number, prints) reaches "ready"', () => {
+    const player = createPlayer({
+      club: 'Eastside Hawks',
+      name: 'Jordan Avery',
+      position: 'midfielder',
+      kitNo: '9',
+      prints: 1,
+      photo: { srcUrl: 'blob:photo', crop: { x: 0, y: 0, scale: 1 }, bgRemoved: false },
+    });
+    expect(derivePlayerStatus(player)).toBe('ready');
+  });
+
+  it("createPlayer's own default never seeds the old apps/goals/assists keys", () => {
+    const player = createPlayer();
+    expect(player.stats).toEqual({});
+    expect(Object.keys(player.stats)).toHaveLength(0);
+  });
+
+  it("defaultOrder's own initial player carries no leftover stats keys either — the exact regression a stale hardcoded seed would cause", () => {
+    const order = defaultOrder();
+    expect(order.players).toHaveLength(1);
+    expect(order.players[0].stats).toEqual({});
+  });
+
+  it('a completed order\'s production payload never carries non-empty apps/goals/assists values for a player who was never asked for them', () => {
+    const order = orderWith([approvedPlayer({ id: 'p1', prints: 1 })]);
+    const payload = productionPayload(order, null);
+    for (const player of payload.players) {
+      expect(player.stats.apps).toBeFalsy();
+      expect(player.stats.goals).toBeFalsy();
+      expect(player.stats.assists).toBeFalsy();
+    }
   });
 });

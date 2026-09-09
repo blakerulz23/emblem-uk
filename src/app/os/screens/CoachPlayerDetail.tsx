@@ -12,6 +12,7 @@ import GuardianInviteSheet from '../overlays/GuardianInviteSheet';
 import EmptyState from './EmptyState';
 import type { PreferredFoot } from '../coachFields';
 import { AGE_GROUP_OPTIONS, FOOT_OPTIONS, POSITION_OPTIONS, positionLabel, validateHeightCm } from '../coachFields';
+import { positionDisplayLabel } from '@/lib/player-position';
 
 /** "15 Aug 2026" — matches RealCollection/PlayerHome's date convention. */
 function formatDate(iso: string): string {
@@ -344,7 +345,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 18, color: 'var(--os-ink)' }}>{player.name}</div>
-            <div style={{ fontSize: 12.5, color: 'var(--os-muted)' }}>#{player.num} · {player.pos}</div>
+            <div style={{ fontSize: 12.5, color: 'var(--os-muted)' }}>#{player.num} · {positionDisplayLabel(player.pos)}</div>
             <GuardianStatusRow player={player} onAction={() => setSheetOpen(true)} />
           </div>
         </div>
@@ -487,7 +488,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
                 ))}
               </div>
               <p style={{ fontSize: 12, color: 'var(--os-muted)', margin: '6px 0 0' }}>
-                {player.pos} is already the primary position, so it isn&apos;t offered here.
+                {positionDisplayLabel(player.pos)} is already the primary position, so it isn&apos;t offered here.
               </p>
             </div>
 

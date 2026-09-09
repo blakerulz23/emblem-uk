@@ -2683,6 +2683,16 @@ a { text-decoration: none; color: inherit; }
   font-weight: 800;
 }
 
+/* Supporting copy under a field (currently: Position) — lighter weight and
+   a touch smaller than the bold field label above it, so it reads as
+   guidance rather than another label. */
+.uk-field-hint {
+  color: var(--wizard-soft, #8a8378);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
 .uk-football-only,
 .uk-logo-upload {
   border: 1px solid #d8cdbc;

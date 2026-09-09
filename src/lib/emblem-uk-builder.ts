@@ -154,13 +154,16 @@ export const DEFAULT_CUSTOM_TEMPLATE_ID: CustomCollectionTemplateId = CUSTOM_COL
 // defaults it to `{}`, and any already-persisted order/player row keeps
 // whatever historical values it has — this only stops new orders from
 // collecting more).
+// Position options moved to src/lib/player-position.ts's POSITION_OPTIONS —
+// the five simplified customer-facing categories, shared by the builder,
+// Player OS and Coach OS, rather than this football-only builder config
+// keeping its own (now-legacy) specific-position list.
 export const sportConfig = {
   football: {
     label: 'Football',
     disabled: false,
-    positions: ['GK', 'RB', 'CB', 'LB', 'CDM', 'CM', 'CAM', 'RW', 'LW', 'ST'],
   },
-} satisfies Record<Sport, { label: string; disabled: boolean; positions: string[] }>;
+} satisfies Record<Sport, { label: string; disabled: boolean }>;
 
 export const statusCopy: Record<PlayerStatus, string> = {
   approved: 'Ready for production',
@@ -221,7 +224,6 @@ export function defaultOrder(): OrderDraft {
         club: '',
         emjflClubId: undefined,
         clubEdited: false,
-        stats: { apps: '', goals: '', assists: '' },
       }),
     ],
   };

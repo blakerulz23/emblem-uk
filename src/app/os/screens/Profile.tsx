@@ -9,6 +9,7 @@ import type { SeasonTarget } from '../playerProfile';
 import { onActivateKey } from '../a11y';
 import { useOsPhotoUpload } from '../useOsPhotoUpload';
 import AccountSettings from '../overlays/AccountSettings';
+import { POSITION_OPTIONS, positionDisplayLabel, resolveCanonicalPosition } from '@/lib/player-position';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -62,7 +63,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
   const isReal = mode !== 'demo';
   const identityRows: PreferenceRow[] = isReal
     ? [
-        { label: 'Primary position', value: playerProfile.position || 'Not set' },
+        { label: 'Primary position', value: positionDisplayLabel(playerProfile.position) || 'Not set' },
         // Coach-managed — the badge, not an input, is what communicates
         // that (see Player Preferences' Edit form below, which never
         // includes this row). Matches the approved prototype's own
@@ -177,7 +178,12 @@ export default function Profile({ actions }: { actions: OsActions }) {
   const [showEdit, setShowEdit] = useState(false);
   const [favouritePlayer, setFavouritePlayer] = useState(playerProfile.favouritePlayer ?? '');
   const [footballAmbition, setFootballAmbition] = useState(playerProfile.footballAmbition ?? '');
-  const [position, setPosition] = useState(playerProfile.position ?? '');
+  // A historical position value from before the five-category simplification
+  // (an old specific code like "CB") is safely mapped to its category here so
+  // the dropdown shows it correctly selected rather than blank — see
+  // resolveCanonicalPosition's own doc. A genuinely unrecognised value
+  // resolves to null, i.e. "Select a position", never a guessed category.
+  const [position, setPosition] = useState(resolveCanonicalPosition(playerProfile.position) ?? '');
   const [editStatus, setEditStatus] = useState<'idle' | 'saving' | 'error'>('idle');
   const [positionNotice, setPositionNotice] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -285,7 +291,16 @@ export default function Profile({ actions }: { actions: OsActions }) {
     // real position. A collision with a coach-set secondary_position is
     // resolved atomically server-side (secondary_position cleared, never a
     // raw constraint error) — surfaced below, not silently dropped.
-    const positionRequest = trimmedPosition
+    //
+    // Only actually sent when the guardian genuinely changed it. The select
+    // shows a *resolved* value for a legacy player (e.g. stored "CB" reads
+    // as "Defender" — see the useState above), so comparing the current
+    // selection against that same resolution of the stored value is what
+    // "unchanged" means here — not a raw string comparison against the
+    // legacy code, which would look "changed" on every single save and
+    // silently rewrite the historical value the guardian never touched.
+    const positionUnchanged = trimmedPosition === (resolveCanonicalPosition(playerProfile.position) ?? '');
+    const positionRequest = trimmedPosition && !positionUnchanged
       ? fetch(`/api/os/players/${playerId}/position`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -503,13 +518,17 @@ export default function Profile({ actions }: { actions: OsActions }) {
         ))}
         {isReal && showEdit && (
           <form onSubmit={saveIdentity} style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <input
-              type="text"
+            <select
               value={position}
               onChange={(e) => setPosition(e.target.value)}
-              placeholder="Position"
-              style={{ width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 14 }}
-            />
+              style={{ width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 14, color: position ? 'var(--os-ink)' : 'var(--os-muted)' }}
+            >
+              <option value="">Select a position</option>
+              {POSITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            <span style={{ fontFamily: 'Roboto', fontSize: 12, color: 'var(--os-muted)' }}>
+              Choose the position that best describes them. Select All-rounder if they play in several roles.
+            </span>
             <input
               type="text"
               value={favouritePlayer}

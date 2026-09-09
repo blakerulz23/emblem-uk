@@ -13,6 +13,7 @@ import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
 import { captureElementToPng, renderPrintFile, BUILDER_CSRF_HEADER, readBuilderCsrfCookie } from '@/lib/print-capture';
 import { autoFitPatchForPhoto } from '@/lib/card-photo-auto-fit';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { POSITION_OPTIONS, positionCardLabel, resolveCanonicalPosition } from '@/lib/player-position';
 import {
   createPlayer,
   DEFAULT_CUSTOM_TEMPLATE_ID,
@@ -21,7 +22,6 @@ import {
   nowIso,
   productionPayload,
   selectedTemplate,
-  sportConfig,
   STEP_LABEL,
   statusCopy,
   stepsFor,
@@ -2800,9 +2800,12 @@ function SquadUploadQueue({
                 </label>
                 <label>
                   Position
-                  <select value={player.position} onChange={(event) => onPatch(player.id, { position: event.target.value })}>
-                    <option value="">Select</option>
-                    {sportConfig[order.sport].positions.map((position) => <option key={position}>{position}</option>)}
+                  <select
+                    value={resolveCanonicalPosition(player.position) ?? ''}
+                    onChange={(event) => onPatch(player.id, { position: event.target.value })}
+                  >
+                    <option value="">Select a position</option>
+                    {POSITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </label>
                 <label>
@@ -2952,10 +2955,14 @@ function PlayerEditor({
         </label>
         <label>
           Position
-          <select value={player.position} onChange={(event) => onPatch(player.id, { position: event.target.value })}>
-            <option value="">Select</option>
-            {sportConfig[order.sport].positions.map((position) => <option key={position}>{position}</option>)}
+          <select
+            value={resolveCanonicalPosition(player.position) ?? ''}
+            onChange={(event) => onPatch(player.id, { position: event.target.value })}
+          >
+            <option value="">Select a position</option>
+            {POSITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
+          <small className="uk-field-hint">Choose the position that best describes them. Select All-rounder if they play in several roles.</small>
         </label>
         <label>
           Kit number
@@ -3050,7 +3057,7 @@ function PlayerCard({
         <div className="uk-back-player">
           <span>#{player.kitNo || '00'}</span>
           <h3>{player.name || 'PLAYER 1'}</h3>
-          <p>{player.position || 'Position'} / {order.league || 'Grassroots football'}</p>
+          <p>{positionCardLabel(player.position)} / {order.league || 'Grassroots football'}</p>
         </div>
         <div className="uk-back-memory">
           <strong>Digital profile</strong>
@@ -3070,7 +3077,7 @@ function PlayerCard({
       <div className="uk-card-kit">{player.kitNo || '00'}</div>
       <div className="uk-card-band">
         <h3>{player.name || 'PLAYER 1'}</h3>
-        <p>{playerClubName(order, player) || 'Club name'} / {player.position || 'Position'}</p>
+        <p>{playerClubName(order, player) || 'Club name'} / {positionCardLabel(player.position)}</p>
       </div>
       <small>EMBLEM UK / {order.season}</small>
     </div>

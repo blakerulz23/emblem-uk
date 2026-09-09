@@ -7,6 +7,7 @@ import { onActivateKey } from '../a11y';
 import type { OsActions } from '../OsApp';
 import type { SquadPlayer } from '../types';
 import GuardianInviteSheet, { daysLeftLabel } from '../overlays/GuardianInviteSheet';
+import { POSITION_OPTIONS, positionDisplayLabel } from '@/lib/player-position';
 
 // Status and action are stacked, not sharing a row — a shared
 // space-between row crowds/wraps badly once the label text (e.g. "Invite
@@ -83,7 +84,7 @@ function renderPlayerRow(p: SquadPlayer, actions: OsActions, setSheetPlayer: (p:
       <div style={{ width: 46, height: 46, borderRadius: '50%', background: 'linear-gradient(150deg,#E9C46A,#C98B3A)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto', fontFamily: 'Roboto', fontWeight: 900, fontSize: 15, color: '#fff' }}>{initials}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>{p.name}</div>
-        <div style={{ fontSize: 12, color: 'var(--os-muted)' }}>#{p.num} · {p.pos}</div>
+        <div style={{ fontSize: 12, color: 'var(--os-muted)' }}>#{p.num} · {positionDisplayLabel(p.pos)}</div>
         <GuardianStatusRow player={p} onAction={() => setSheetPlayer(p)} />
       </div>
       <div
@@ -235,8 +236,11 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Player name" required
                 style={{ padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 14 }} />
               <div style={{ display: 'flex', gap: 10 }}>
-                <input value={position} onChange={(e) => setPosition(e.target.value)} placeholder="Position"
-                  style={{ flex: 1, padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 14 }} />
+                <select value={position} onChange={(e) => setPosition(e.target.value)}
+                  style={{ flex: 1, padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 14, color: position ? 'var(--os-ink)' : 'var(--os-muted)' }}>
+                  <option value="">Select a position</option>
+                  {POSITION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
                 <input value={squadNumber} onChange={(e) => setSquadNumber(e.target.value)} placeholder="Squad #" inputMode="numeric"
                   style={{ width: 90, padding: '11px 13px', borderRadius: 10, border: '1px solid var(--os-border)', fontFamily: 'Roboto', fontSize: 14 }} />
               </div>

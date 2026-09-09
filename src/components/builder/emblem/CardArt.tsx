@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react';
 import { getCustomCollectionVariant } from '@/lib/custom-collection-manifest';
 import { getHollinwoodVariant } from '@/lib/hollinwood-manifest';
 import { computePhotoGeometry } from '@/lib/photo-geometry';
+import { positionCardLabel } from '@/lib/player-position';
 import { SPORT_STATS, type CardTemplate, type Details, type Family, type SportId } from './data';
 import Icon from './Icon';
 
@@ -40,10 +41,16 @@ type Style = {
   mono?: boolean;
 };
 
-function nameFitScale(name: string | undefined, comfortableChars = 10) {
+// minScale defaults to 0.68 (established for player names — never shrink a
+// name below ~two-thirds size) but is an explicit parameter so a genuinely
+// tighter slot (Custom Collection Galaxy's position label — see its own
+// call site's doc comment) can ask for more headroom than that default
+// permits, rather than the floor silently overriding every long word to
+// the same size regardless of how much longer one is than another.
+function nameFitScale(name: string | undefined, comfortableChars = 10, minScale = 0.68) {
   const length = (name || '').trim().length;
   if (length <= comfortableChars) return 1;
-  return Math.max(0.68, comfortableChars / length);
+  return Math.max(minScale, comfortableChars / length);
 }
 
 function familyStyle(fam: Family, accent: string): Style {
@@ -1326,6 +1333,7 @@ function EmjflCardArt({
   const W = size;
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
+  const positionLabel = positionCardLabel(d.position, 'POSITION');
 
   return (
     <div
@@ -1421,17 +1429,29 @@ function EmjflCardArt({
             (not below it) per the reference poition.png layer. The word
             "MIDFIELDER" itself only occupies y 48.9–58.7%; a separate red
             accent tick trails below it from y 59.8–67.3%, lining its bottom
-            edge up with the name's baseline — reproduced as its own bar. */}
+            edge up with the name's baseline — reproduced as its own bar.
+            Full simplified-position wording (GOALKEEPER/DEFENDER/
+            MIDFIELDER/FORWARD/ALL-ROUNDER) can run longer than the
+            original abbreviations this box was sized for — nameFitScale's
+            same shrink-to-fit (already used for the player name above)
+            keeps every one of the five on one line without truncating.
+            comfortableChars=8 (not 10 — measured empirically, via a real
+            rendered-glyph-width check, not assumed: MIDFIELDER and
+            GOALKEEPER are both exactly 10 characters, but GOALKEEPER's
+            own letterforms render measurably wider at the same font size,
+            so a 10-char threshold left it overflowing by a few pixels
+            while MIDFIELDER alone fit). DEFENDER (8) and FORWARD (7) stay
+            at scale 1; the three longer words shrink modestly. */}
         <div
           style={{
             position: 'absolute', left: '18.3%', top: '58.9%', width: H * 0.13, zIndex: 5,
             transform: 'rotate(-90deg)', transformOrigin: 'left top',
             color: '#FF4B1F', fontFamily: 'var(--font-oswald), system-ui', fontWeight: 700,
-            fontSize: W * 0.028, lineHeight: 1, letterSpacing: '0.1em', textTransform: 'uppercase',
+            fontSize: W * 0.028 * nameFitScale(positionLabel, 8), lineHeight: 1, letterSpacing: '0.1em', textTransform: 'uppercase',
             whiteSpace: 'nowrap', pointerEvents: 'none',
           }}
         >
-          {d.position || 'Position'}
+          {positionLabel}
         </div>
 
         {/* Accent tick trailing below the position label */}
@@ -1515,6 +1535,7 @@ function HollinwoodCardArt({
   const W = size;
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
+  const positionLabel = positionCardLabel(d.position, 'POSITION');
   const variant = getHollinwoodVariant(template.id);
   const { assets } = variant;
 
@@ -1596,11 +1617,11 @@ function HollinwoodCardArt({
             position: 'absolute', left: '18.3%', top: '58.9%', width: H * 0.13, zIndex: 6,
             transform: 'rotate(-90deg)', transformOrigin: 'left top',
             color: template.accent, fontFamily: 'var(--font-oswald), system-ui', fontWeight: 700,
-            fontSize: W * 0.028, lineHeight: 1, letterSpacing: '0.1em', textTransform: 'uppercase',
+            fontSize: W * 0.028 * nameFitScale(positionLabel, 8), lineHeight: 1, letterSpacing: '0.1em', textTransform: 'uppercase',
             whiteSpace: 'nowrap', pointerEvents: 'none',
           }}
         >
-          {d.position || 'Position'}
+          {positionLabel}
         </div>
 
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1666,6 +1687,28 @@ function CustomCollectionCardArt({
   const positionWidth = variant.positionBox?.width
     ? H * (Number(variant.positionBox.width.replace('%', '')) / 100)
     : H * 0.13;
+  const positionLabel = positionCardLabel(d.position, 'POSITION');
+  // Each Custom Collection variant sets its own positionBox fontSize/width —
+  // comfortableChars is calibrated per variant from that ratio (relative to
+  // EMJFL/Hollinwood's own 0.028-fontSize/0.13-width reference, corrected to
+  // comfortableChars=8 — see EmjflCardArt's own doc comment for why 8, not
+  // the naive 10, is the real measured-safe threshold there) rather than a
+  // single constant, so a denser variant starts shrinking sooner.
+  const positionFontSizeFactor = variant.positionBox?.fontSize ? Number(variant.positionBox.fontSize) : 0.028;
+  const positionWidthFactor = variant.positionBox?.width ? Number(variant.positionBox.width.replace('%', '')) / 100 : 0.13;
+  // Galaxy is a measured special case, not an extrapolation of the formula
+  // below: its font-size/width ratio is so much higher than every other
+  // variant's that nameFitScale's default 0.68 floor (correct for every
+  // other slot, and for player names generally) clamps GOALKEEPER/
+  // MIDFIELDER/ALL-ROUNDER all to the *same* size regardless of their
+  // different lengths, rather than letting the longest shrink further —
+  // confirmed with a real rendered-glyph-width check across all five
+  // words. comfortableChars=6 with a lower 0.5 floor (passed at the call
+  // site below) is the empirically-verified safe combination.
+  const positionComfortableChars = variant.id === 'custom-galaxy'
+    ? 6
+    : Math.max(6, Math.round(8 * (0.028 / 0.13) / (positionFontSizeFactor / positionWidthFactor)));
+  const positionMinScale = variant.id === 'custom-galaxy' ? 0.5 : 0.68;
   const customLayerFit: CSSProperties = {
     position: 'absolute',
     inset: 0,
@@ -1787,14 +1830,14 @@ function CustomCollectionCardArt({
             color: variant.positionBox?.color || template.accent,
             fontFamily: variant.positionBox?.fontFamily || 'var(--font-oswald), system-ui',
             fontWeight: variant.positionBox?.fontWeight || 800,
-            fontSize: W * (variant.positionBox?.fontSize ? Number(variant.positionBox.fontSize) : 0.028),
+            fontSize: W * positionFontSizeFactor * nameFitScale(positionLabel, positionComfortableChars, positionMinScale),
             lineHeight: 1,
             letterSpacing: '0.1em',
             textTransform: 'uppercase',
             whiteSpace: 'nowrap', textShadow: '0 1px 2px rgba(0,0,0,.45)', pointerEvents: 'none',
           }}
         >
-          {d.position || 'Position'}
+          {positionLabel}
         </div>
 
         {assets.numberBurst ? (
