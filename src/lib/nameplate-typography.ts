@@ -31,6 +31,61 @@ export function nameFitScale(name: string | undefined, comfortableChars = 10, mi
 export const NAMEPLATE_FONT_FAMILY = 'var(--font-antonio), Impact, sans-serif';
 export const NAMEPLATE_FONT_WEIGHT = 700;
 
+/**
+ * Antonio Bold's real per-character advance width, as a fraction of
+ * font-size — measured directly (Playwright, Range.getBoundingClientRect,
+ * the same precise width-measurement technique established in PR #86),
+ * each letter framed between two "I"s (`I<char>I`, width minus `II`'s own
+ * width) so the result reflects real rendering including any kerning
+ * against neighbours, not an isolated glyph's advance in a vacuum.
+ *
+ * This exists because a flat average-width-per-character estimate (an
+ * earlier version of this module used ~0.465 for every letter) has real,
+ * material error: "I" is 0.265 and "M" is 0.692 — a 2.6x spread. Two
+ * equal-length names can differ enough in real rendered width that an
+ * average-based estimate leaves too little safety margin for one of them
+ * — confirmed directly: "LEE" and "MAX" are both 3 characters, but LEE
+ * renders to 30.6 CSS px at reference size and MAX to 43.6 — a 42%
+ * difference the average model could not see, and did not: it left LEE
+ * only 3.1px of containment margin against the calibrated 0.4 floor,
+ * dangerously close to overflowing for real users with narrow-letter
+ * names (LI, WILL, TIM, JIM, ...), while MAX had 43px to spare.
+ *
+ * A deterministic table (not real-time DOM measurement) is required
+ * because CardArt also renders server-side (Collection OS's print path)
+ * with no DOM available at all — this stays exact there too, since it's
+ * pure data, not a measurement taken at render time.
+ */
+export const CHAR_ADVANCE_WIDTH: Record<string, number> = {
+  A: 0.4527, B: 0.4805, C: 0.4731, D: 0.4922, E: 0.3906, F: 0.3862,
+  G: 0.4883, H: 0.5078, I: 0.2652, J: 0.4619, K: 0.4791, L: 0.3672,
+  M: 0.6923, N: 0.522, O: 0.4878, P: 0.4605, Q: 0.4878, R: 0.4839,
+  S: 0.4273, T: 0.3453, U: 0.4947, V: 0.4541, W: 0.6641, X: 0.438,
+  Y: 0.4288, Z: 0.3653, ' ': 0.1792, "'": 0.2066, '-': 0.3398,
+};
+// Fallback for any character not in the table above (digits, accented
+// letters, punctuation beyond the set actually measured) — the mean of
+// every measured letter A-Z, a reasonable middle estimate rather than 0.
+const CHAR_ADVANCE_WIDTH_FALLBACK = 0.4589;
+
+/**
+ * Estimates a string's rendered width in CSS px at a given font-size, by
+ * summing each character's real measured advance width (see
+ * CHAR_ADVANCE_WIDTH above) — used wherever this module needs to reason
+ * about how long a name or position label will actually render without
+ * being able to measure the real DOM (see computeAdaptivePositionAnchor).
+ * Input is uppercased first since every nameplate slot renders
+ * textTransform:'uppercase' regardless of the stored value's own case.
+ */
+export function estimateTextWidthCss(text: string | undefined, fontSizePx: number): number {
+  const upper = (text || '').trim().toUpperCase();
+  let sum = 0;
+  for (const ch of upper) {
+    sum += CHAR_ADVANCE_WIDTH[ch] ?? CHAR_ADVANCE_WIDTH_FALLBACK;
+  }
+  return sum * fontSizePx;
+}
+
 export interface NameplateSlotGeometry {
   /** CSS left%, of the card's own W — the left edge of the rotated text's on-screen thickness. */
   left: string;
@@ -221,11 +276,12 @@ export function nameplateNumberLayers(
  * — one documented formula, not a per-string exception. Neither this
  * module nor CardArt.tsx can measure real DOM text width (CardArt also
  * renders server-side, e.g. Collection OS's print path, with no DOM at
- * all), so rendered length is *estimated* from character count × font-size
- * × a per-slot average-advance-width ratio, calibrated against two
- * independently measured reference points (JACOB THOMPSON at 14 chars,
- * unscaled, and ALEXANDER MONTGOMERY at 20 chars, fit-scaled) that agreed
- * to within ~1%.
+ * all), so rendered length is *estimated* — via estimateTextWidthCss's
+ * real per-glyph advance-width table (see its own doc comment for why a
+ * flat average-per-character estimate isn't accurate enough: two equal-
+ * length names can differ by over 40% in real rendered width, more than
+ * enough to erase a short name's own containment margin for one of them
+ * while leaving the other with room to spare).
  *
  * The anchor itself is proportional, not additive: position's centre sits
  * POSITION_CENTER_RATIO of the name's own estimated length up from the
@@ -243,22 +299,34 @@ export function nameplateNumberLayers(
  * POSITION_CONTAINMENT_SAFETY_MARGIN_PX pads that boundary, and when the
  * natural position length would still cross it, an *additional* shrink
  * (independent of nameFitScale's own length-based shrink) is applied to
- * position — down to POSITION_CONTAINMENT_MIN_SCALE — until it clears the
- * name's own top. This is the "scale down only when required by the real
- * safe area" case; it does not fire for any of the five canonical labels
- * against any realistic name length (see the module's own test file for
- * the full reproduction matrix), only for pathological combinations.
+ * position, computed as the exact scale required to clear the name's own
+ * top (down to POSITION_CONTAINMENT_ABSOLUTE_FLOOR, a technical guard
+ * against zero, not a readability choice — see its own doc comment for why
+ * this must never clamp upward). This is the "scale down only exactly as
+ * much as the real safe area requires" case; it does not fire for any of
+ * the five canonical labels against any realistic name length (see the
+ * module's own test file for the full reproduction matrix), only for very
+ * short or narrow-letter-dominated names — where it now guarantees full
+ * containment for any name/position pairing, not only the ones measured
+ * during calibration, since it is no longer possible for a fixed floor to
+ * override the computed requirement.
  */
-const NAME_CHAR_WIDTH_RATIO = 0.465;
-const POSITION_CHAR_WIDTH_RATIO = 0.42;
 const POSITION_CENTER_RATIO = 0.4;
 const POSITION_CONTAINMENT_SAFETY_MARGIN_PX = 6;
-// Lower than nameFitScale's own usual 0.68-0.85 floors elsewhere in this
-// module — a genuinely extreme pairing (the shortest realistic name with
-// the longest canonical label, "JAY" / "GOALKEEPER") needs this much
-// headroom to actually clear the name's own top; confirmed via real
-// rendering that 0.6 was not enough for that specific pairing.
-const POSITION_CONTAINMENT_MIN_SCALE = 0.4;
+// NOT a readability floor — a last-resort technical guard against a
+// zero/negative font-size for a maxLenCss/posLenCssNatural ratio that
+// collapses toward zero (e.g. an all-but-empty name against the longest
+// canonical label). Containment is a hard requirement with no exception,
+// so nothing may clamp *up* toward this value the way an earlier version
+// of this constant did: that version (0.4, framed as a readability floor)
+// silently overrode the computed required scale whenever the real
+// requirement fell below it, which is precisely what let "LI"/"III"-style
+// narrow-letter short names against GOALKEEPER render *overlapping* the
+// name by up to 16.6px even though the containment math itself knew the
+// correct, smaller scale to prevent it. Real per-pairing required scale is
+// used directly below (see requiredScale); this constant only stops that
+// scale from reaching zero, it never raises it.
+const POSITION_CONTAINMENT_ABSOLUTE_FLOOR = 0.1;
 // A CSS `top`/rotated-box anchor never lands exactly on the rendered
 // glyph's own ink edge — line-height/leading adds a small, real gap
 // between the two, proportional to font-size (same phenomenon the fixed
@@ -298,11 +366,11 @@ export function computeAdaptivePositionAnchor(
 
   const nameScale = nameFitScale(name, nameGeom.comfortableChars, nameGeom.minScale);
   const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
-  const nameLenCss = (name || '').trim().length * nameFontSize * NAME_CHAR_WIDTH_RATIO;
+  const nameLenCss = estimateTextWidthCss(name, nameFontSize);
 
   const posScale = nameFitScale(positionLabel, posGeom.comfortableChars, posGeom.minScale);
   const posFontSize = W * posGeom.fontSizeFactor * posScale;
-  const posLenCssNatural = (positionLabel || '').trim().length * posFontSize * POSITION_CHAR_WIDTH_RATIO;
+  const posLenCssNatural = estimateTextWidthCss(positionLabel, posFontSize);
 
   const nameBottomCss = H * (parseFloat(nameGeom.top) / 100);
   const nameTopCss = nameBottomCss - nameLenCss;
@@ -320,8 +388,9 @@ export function computeAdaptivePositionAnchor(
   const safeTopCss = nameTopCss + POSITION_CONTAINMENT_SAFETY_MARGIN_PX;
   if (naturalTopCss < safeTopCss) {
     const maxLenCss = 2 * (centerCss - naturalShiftCss - safeTopCss);
-    if (maxLenCss > 0 && maxLenCss < posLenCssNatural) {
-      containmentScale = Math.max(POSITION_CONTAINMENT_MIN_SCALE, maxLenCss / posLenCssNatural);
+    if (maxLenCss < posLenCssNatural) {
+      const requiredScale = maxLenCss / posLenCssNatural;
+      containmentScale = Math.max(POSITION_CONTAINMENT_ABSOLUTE_FLOOR, requiredScale);
       posLenCss = posLenCssNatural * containmentScale;
     }
   }

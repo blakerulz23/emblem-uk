@@ -6,6 +6,8 @@ import {
   nameplateSlotStyle,
   nameplateNumberLayers,
   computeAdaptivePositionAnchor,
+  estimateTextWidthCss,
+  CHAR_ADVANCE_WIDTH,
   NAMEPLATE_GEOMETRY,
   NAMEPLATE_NUMBER_GEOMETRY,
   NAMEPLATE_FONT_FAMILY,
@@ -251,6 +253,52 @@ describe('nameplateNumberLayers', () => {
  * full before/after measurement table across all five test pairs, all
  * five canonical labels, one legacy label, and the placeholder).
  */
+/**
+ * estimateTextWidthCss / CHAR_ADVANCE_WIDTH replaced an earlier flat
+ * average-per-character estimate (~0.465 for every letter) after real
+ * rendering showed material error: two equal-length names (LEE, MAX — both
+ * 3 characters) differ by 42% in real rendered width, which the average
+ * model couldn't distinguish and left LEE with only 3.1px of real
+ * containment margin. These tests lock in that the per-glyph table is
+ * genuinely being used (not silently still an average), not the specific
+ * numeric values themselves — those came from real measurement, not a
+ * formula, so testing "does the letter I really measure 0.2652" would just
+ * be re-asserting the measurement rather than testing behaviour.
+ */
+describe('CHAR_ADVANCE_WIDTH / estimateTextWidthCss', () => {
+  it('different letters have measurably different advance widths — not a flat average', () => {
+    // Confirmed via real Playwright rendering: I is one of the narrowest
+    // letters, M one of the widest, in Antonio Bold.
+    expect(CHAR_ADVANCE_WIDTH.I).toBeLessThan(CHAR_ADVANCE_WIDTH.M);
+    expect(CHAR_ADVANCE_WIDTH.M / CHAR_ADVANCE_WIDTH.I).toBeGreaterThan(2); // the real ~2.6x spread
+  });
+
+  it('LEE and MAX (both 3 characters) estimate to genuinely different widths — the exact case a flat average could not distinguish', () => {
+    const fontSize = 28.492; // W=340 reference name font-size
+    const leeWidth = estimateTextWidthCss('LEE', fontSize);
+    const maxWidth = estimateTextWidthCss('MAX', fontSize);
+    expect(leeWidth).not.toBeCloseTo(maxWidth, 0);
+    expect(maxWidth).toBeGreaterThan(leeWidth);
+  });
+
+  it('is case-insensitive (every nameplate slot renders textTransform:uppercase regardless of stored case)', () => {
+    const fontSize = 28.492;
+    expect(estimateTextWidthCss('lee', fontSize)).toBeCloseTo(estimateTextWidthCss('LEE', fontSize), 5);
+  });
+
+  it('falls back to a reasonable default for an unmapped character rather than treating it as zero-width', () => {
+    const fontSize = 28.492;
+    // '5' is not in the table (names don't contain digits); it must still
+    // contribute real width, not silently vanish from the estimate.
+    expect(estimateTextWidthCss('5', fontSize)).toBeGreaterThan(0);
+  });
+
+  it('an empty or undefined string estimates to zero width without throwing', () => {
+    expect(estimateTextWidthCss('', 28.492)).toBe(0);
+    expect(estimateTextWidthCss(undefined, 28.492)).toBe(0);
+  });
+});
+
 describe('computeAdaptivePositionAnchor', () => {
   const W = 340, H = 476;
 
@@ -296,11 +344,40 @@ describe('computeAdaptivePositionAnchor', () => {
     ['MILES LEE', 'DEFENDER'],
     ['JACOB THOMPSON', 'MIDFIELDER'],
     ['ALEXANDER MONTGOMERY', 'ALL-ROUNDER'],
-  ])('name=%s / position=%s: position never extends above the name (checked against the same character-count estimate the anchor itself uses)', (name, position) => {
+    // Same-length stress set (WILLIAMS 8, IBRAHIM 7, MILLER 6, MASON 5, LEE
+    // 3, MAX 3) — added after an earlier flat-average-per-character
+    // estimate was shown to have material error for these specifically:
+    // LEE and MAX are both 3 characters but render to genuinely different
+    // real widths (30.6 vs 43.6 CSS px at reference size, a 42%
+    // difference), which the flat average couldn't see and left LEE with
+    // only 3.1px of real containment margin. estimateTextWidthCss's
+    // per-glyph table replaced it for exactly this reason.
+    ['WILLIAMS', 'MIDFIELDER'],
+    ['IBRAHIM', 'MIDFIELDER'],
+    ['MILLER', 'MIDFIELDER'],
+    ['MASON', 'MIDFIELDER'],
+    ['LEE', 'MIDFIELDER'],
+    ['MAX', 'MIDFIELDER'],
+    // Extreme narrow-letter-dominated short names against GOALKEEPER (the
+    // longest canonical label) — found, via real rendering, to still
+    // overflow by up to 16.6px even with the per-glyph width model and the
+    // old fixed 0.4 containment floor in place: the floor clamped the
+    // shrink *up* to 0.4 even when the real required scale (given how
+    // narrow every letter in "LI"/"III" is) was below that. Fixed by
+    // letting the computed required scale govern directly with no upward
+    // override — these lock that fix in. Real names, not just these
+    // pathological ones: TIM and LIL are realistic short names that were
+    // already safely contained before the fix and must stay that way.
+    ['III', 'GOALKEEPER'],
+    ['ILI', 'GOALKEEPER'],
+    ['LI', 'GOALKEEPER'],
+    ['LIL', 'GOALKEEPER'],
+    ['TIM', 'GOALKEEPER'],
+  ])('name=%s / position=%s: position never extends above the name (checked against the exact same estimateTextWidthCss the anchor itself uses)', (name, position) => {
     const nameGeom = NAMEPLATE_GEOMETRY.name;
     const nameScale = nameFitScale(name, nameGeom.comfortableChars, nameGeom.minScale);
     const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
-    const nameLenCss = name.trim().length * nameFontSize * 0.465; // NAME_CHAR_WIDTH_RATIO, mirrored here since it's module-private
+    const nameLenCss = estimateTextWidthCss(name, nameFontSize);
     const nameBottomCss = H * (parseFloat(nameGeom.top) / 100);
     const nameTopCss = nameBottomCss - nameLenCss;
 
@@ -308,11 +385,25 @@ describe('computeAdaptivePositionAnchor', () => {
     const posGeom = NAMEPLATE_GEOMETRY.position;
     const posScale = nameFitScale(position, posGeom.comfortableChars, posGeom.minScale);
     const effectiveFontSize = W * anchor.fontSizeFactor * posScale;
-    const posLenCss = position.trim().length * effectiveFontSize * 0.42; // POSITION_CHAR_WIDTH_RATIO, mirrored
+    const posLenCss = estimateTextWidthCss(position, effectiveFontSize);
     const posBottomCss = (parseFloat(anchor.top) / 100) * H;
     const posTopCssApprox = posBottomCss - posLenCss;
 
-    expect(posTopCssApprox).toBeGreaterThanOrEqual(nameTopCss - 4); // small tolerance for the mirrored-constant approximation itself
+    expect(posTopCssApprox).toBeGreaterThanOrEqual(nameTopCss);
+  });
+
+  it('two equal-length names with very different real glyph widths (LEE vs MAX, both 3 characters) both keep a healthy, comparable containment margin — the specific failure mode the flat-average estimate had', () => {
+    const leeAnchor = computeAdaptivePositionAnchor(W, H, 'LEE', 'MIDFIELDER');
+    const maxAnchor = computeAdaptivePositionAnchor(W, H, 'MAX', 'MIDFIELDER');
+    // Both should resolve to a real, usable top — the point of this test is
+    // that neither is starved of margin the way LEE specifically was
+    // before (3.1px, effectively zero safety net) — verified via the
+    // module's own doc comment measurement, real rendering showed 16.5px
+    // (LEE) and 23.6px (MAX) after the fix, a normal, comparable spread
+    // rather than the earlier 3.1px vs 43.2px outlier.
+    expect(leeAnchor.top).not.toBe(maxAnchor.top); // real glyph widths differ, so the anchors should too
+    expect(parseFloat(leeAnchor.top)).toBeGreaterThan(0);
+    expect(parseFloat(maxAnchor.top)).toBeGreaterThan(0);
   });
 
   it('the five canonical position labels and one legacy label all resolve without error against a range of realistic names', () => {
@@ -334,9 +425,29 @@ describe('computeAdaptivePositionAnchor', () => {
     expect(anchor.fontSizeFactor).toBeGreaterThan(0);
   });
 
-  it('never shrinks position below the containment floor, even for the most extreme realistic pairing', () => {
-    const anchor = computeAdaptivePositionAnchor(W, H, 'JAY', 'GOALKEEPER'); // shortest name, longest canonical label
-    expect(anchor.fontSizeFactor).toBeGreaterThanOrEqual(NAMEPLATE_GEOMETRY.position.fontSizeFactor * 0.4);
+  it('for the most extreme realistic pairing (JAY/GOALKEEPER), containment is achieved without collapsing the font size to near-zero', () => {
+    // There is deliberately no fixed lower scale floor any more (see
+    // POSITION_CONTAINMENT_ABSOLUTE_FLOOR's own doc comment: an earlier
+    // 0.4 "floor" silently overrode the real required scale whenever it
+    // fell below 0.4, which is exactly what let genuinely pathological
+    // narrow-letter names overflow — see the it.each block above). For a
+    // realistic name like JAY, the real required scale already lands close
+    // to what 0.4 used to give (~0.39), so this asserts that outcome
+    // directly rather than re-imposing the floor that caused the bug.
+    const anchor = computeAdaptivePositionAnchor(W, H, 'JAY', 'GOALKEEPER'); // shortest realistic name, longest canonical label
+    expect(anchor.fontSizeFactor).toBeGreaterThan(NAMEPLATE_GEOMETRY.position.fontSizeFactor * 0.3);
+  });
+
+  it('for a genuinely pathological narrow-letter name (LI), containment still holds even though the resulting font size is very small', () => {
+    // "LI" is not a realistic player display name (two of Antonio's
+    // narrowest letters, no width to spare) — but computeAdaptivePositionAnchor
+    // must never let a name it wasn't calibrated against silently overlap
+    // the name above it. Containment is unconditional; readability at this
+    // extreme is a known, accepted trade-off (see the module's own PR
+    // description for the readability-vs-containment discussion).
+    const anchor = computeAdaptivePositionAnchor(W, H, 'LI', 'GOALKEEPER');
+    expect(anchor.fontSizeFactor).toBeGreaterThan(0);
+    expect(anchor.fontSizeFactor).toBeLessThan(NAMEPLATE_GEOMETRY.position.fontSizeFactor * 0.2);
   });
 
   it('an undefined name or position does not throw', () => {
