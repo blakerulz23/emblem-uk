@@ -4,7 +4,7 @@
 import type { CSSProperties } from 'react';
 import { getCustomCollectionVariant } from '@/lib/custom-collection-manifest';
 import { getHollinwoodVariant } from '@/lib/hollinwood-manifest';
-import { nameFitScale, nameplateNumberLayers, nameplateSlotStyle, type NameplateNumberGeometry, type NameplateSlotGeometry } from '@/lib/nameplate-typography';
+import { computeAdaptivePositionAnchor, nameFitScale, nameplateNumberLayers, nameplateSlotStyle, type NameplateNumberGeometry, type NameplateSlotGeometry } from '@/lib/nameplate-typography';
 import { computePhotoGeometry } from '@/lib/photo-geometry';
 import { positionCardLabel } from '@/lib/player-position';
 import { SPORT_STATS, type CardTemplate, type Details, type Family, type SportId } from './data';
@@ -1323,6 +1323,7 @@ function EmjflCardArt({
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
   const positionLabel = positionCardLabel(d.position, 'POSITION');
+  const positionAnchor = computeAdaptivePositionAnchor(W, H, d.name, positionLabel);
 
   return (
     <div
@@ -1406,24 +1407,29 @@ function EmjflCardArt({
             never-actually-measured starting point, not two independently
             measured, genuinely different designs (see the PR description's
             per-card measurement table). EMJFL keeps its own colour (white
-            name, #FF4B1F position — distinct from Hollinwood's #ff0000). */}
+            name, #FF4B1F position — distinct from Hollinwood's #ff0000).
+            Position's vertical anchor is adaptive (computeAdaptivePosition-
+            Anchor) — a fixed anchor only ever matched the reference name's
+            own length; for a short name (e.g. TINUBU) it left position
+            floating above the name entirely. */}
         <div style={{ ...nameplateSlotStyle('name', W, H, d.name || '', '#fff'), zIndex: 5 }}>
           {d.name || 'Player Name'}
         </div>
 
-        <div style={{ ...nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F'), zIndex: 5 }}>
+        <div style={{ ...nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F', positionAnchor), zIndex: 5 }}>
           {positionLabel}
         </div>
 
         {/* Accent tick trailing below the position label — a real, EMJFL-only
             decorative effect (not present on Hollinwood, which uses a real
-            PNG asset for the same role), preserved and re-anchored by the
-            same left/top delta the position label itself moved by, so it
-            keeps lining its top edge up with the label the way it always
-            did. */}
+            PNG asset for the same role). Re-anchored by the same +0.9%
+            top delta the position label itself always carried (originally
+            fixed at 53.74% vs. position's old fixed 52.84%), now applied to
+            position's own adaptive top so the tick keeps lining up with the
+            label regardless of name length. */}
         <div
           style={{
-            position: 'absolute', left: '17.87%', top: '53.74%', width: Math.max(2, W * 0.005),
+            position: 'absolute', left: '17.87%', top: `${(parseFloat(positionAnchor.top) + 0.9).toFixed(3)}%`, width: Math.max(2, W * 0.005),
             height: H * 0.0748, zIndex: 5, pointerEvents: 'none', borderRadius: 2,
             background: 'linear-gradient(180deg, #FF4B1F 0%, rgba(255,75,31,0.1) 100%)',
           }}
@@ -1508,6 +1514,7 @@ function HollinwoodCardArt({
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
   const positionLabel = positionCardLabel(d.position, 'POSITION');
+  const positionAnchor = computeAdaptivePositionAnchor(W, H, d.name, positionLabel);
   const variant = getHollinwoodVariant(template.id);
   const { assets } = variant;
 
@@ -1572,13 +1579,16 @@ function HollinwoodCardArt({
         />
 
         {/* Hollinwood is the measured origin of the shared nameplate geometry
-            (see nameplate-typography.ts) — white name, fixed red position,
-            no per-card override needed. */}
+            (see nameplate-typography.ts) — white name, fixed red position.
+            Position's vertical anchor is adaptive (computeAdaptivePosition-
+            Anchor), so it moves with the actual rendered name length —
+            the geometry constants stay fixed, only the resolved top%/
+            fontSizeFactor for this specific pairing changes. */}
         <div style={{ ...nameplateSlotStyle('name', W, H, d.name || '', '#fff'), zIndex: 6 }}>
           {d.name || 'Player Name'}
         </div>
 
-        <div style={{ ...nameplateSlotStyle('position', W, H, positionLabel, '#ff0000'), zIndex: 6 }}>
+        <div style={{ ...nameplateSlotStyle('position', W, H, positionLabel, '#ff0000', positionAnchor), zIndex: 6 }}>
           {positionLabel}
         </div>
 
@@ -1649,6 +1659,7 @@ function CustomCollectionCardArt({
   const isComic = variant.id === 'custom-comic';
   const playerName = d.name || 'Player Name';
   const positionLabel = positionCardLabel(d.position, 'POSITION');
+  const positionAnchor = computeAdaptivePositionAnchor(W, H, playerName, positionLabel);
   // All three Custom Collection variants (Solar, Galaxy, Comic) measured to
   // the same shared vertical nameplate geometry Hollinwood and EMJFL use —
   // see the PR description's per-card measurement table. None of their
@@ -1669,14 +1680,18 @@ function CustomCollectionCardArt({
         ...(variant.nameBox.fontSize ? { fontSizeFactor: Number(variant.nameBox.fontSize) } : {}),
       }
     : undefined;
-  const positionBoxOverride: Partial<NameplateSlotGeometry> | undefined = variant.positionBox
-    ? {
-        ...(variant.positionBox.left ? { left: variant.positionBox.left } : {}),
-        ...(variant.positionBox.top ? { top: variant.positionBox.top } : {}),
-        ...(variant.positionBox.width ? { widthFactor: Number(variant.positionBox.width.replace('%', '')) / 100 } : {}),
-        ...(variant.positionBox.fontSize ? { fontSizeFactor: Number(variant.positionBox.fontSize) } : {}),
-      }
-    : undefined;
+  // Adaptive anchor first (moves position's top/fontSizeFactor with the
+  // actual rendered name length — see computeAdaptivePositionAnchor's own
+  // doc comment), then any explicit per-variant positionBox.top/fontSize
+  // on top of it — a real measured exception for one variant should still
+  // win over the general adaptive rule, though none currently sets either.
+  const positionBoxOverride: Partial<NameplateSlotGeometry> | undefined = {
+    ...positionAnchor,
+    ...(variant.positionBox?.left ? { left: variant.positionBox.left } : {}),
+    ...(variant.positionBox?.top ? { top: variant.positionBox.top } : {}),
+    ...(variant.positionBox?.width ? { widthFactor: Number(variant.positionBox.width.replace('%', '')) / 100 } : {}),
+    ...(variant.positionBox?.fontSize ? { fontSizeFactor: Number(variant.positionBox.fontSize) } : {}),
+  };
   const numberBoxOverride: Partial<NameplateNumberGeometry> | undefined = variant.numberBox
     ? {
         ...(variant.numberBox.left ? { left: variant.numberBox.left } : {}),

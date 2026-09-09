@@ -204,12 +204,145 @@ export function nameplateNumberLayers(
 }
 
 /**
+ * Position's own `top` in NAMEPLATE_GEOMETRY is a fixed anchor, entirely
+ * independent of the player name — correct for the exact reference pair
+ * it was calibrated against (JACOB THOMPSON / MIDFIELDER, both ≥
+ * comfortableChars long), but wrong for any shorter name: the name is
+ * bottom-anchored and grows *upward* as it gets longer, so a short name's
+ * own top edge sits much lower on the card than a long name's — while
+ * position, anchored to a card-relative constant, doesn't move with it and
+ * ends up floating above the now-much-shorter name (confirmed by real
+ * measurement: TINUBU/MIDFIELDER — name spans native y 711–939, position
+ * 598–788, extending 113px above the name's own top).
+ *
+ * computeAdaptivePositionAnchor derives position's vertical anchor from the
+ * *name's own estimated rendered length* instead of a fixed constant, so it
+ * moves down toward a short name and up alongside a long one automatically
+ * — one documented formula, not a per-string exception. Neither this
+ * module nor CardArt.tsx can measure real DOM text width (CardArt also
+ * renders server-side, e.g. Collection OS's print path, with no DOM at
+ * all), so rendered length is *estimated* from character count × font-size
+ * × a per-slot average-advance-width ratio, calibrated against two
+ * independently measured reference points (JACOB THOMPSON at 14 chars,
+ * unscaled, and ALEXANDER MONTGOMERY at 20 chars, fit-scaled) that agreed
+ * to within ~1%.
+ *
+ * The anchor itself is proportional, not additive: position's centre sits
+ * POSITION_CENTER_RATIO of the name's own estimated length up from the
+ * name's fixed bottom edge — calibrated from the same reference pair.
+ * Proportional (a fraction of the name's own length) rather than additive
+ * (a fixed pixel offset from the name's centre) matters for short names:
+ * an additive offset stays constant regardless of how short the name gets
+ * and can still push position past the name's own bottom edge, while a
+ * proportional one shrinks together with the name automatically.
+ *
+ * Even proportional, an extreme pairing (a very short name with the
+ * longest position label) can still push position's own top above the
+ * name's — algebraically, containment only holds once
+ * `nameLength >= positionLength / (2 * (1 - POSITION_CENTER_RATIO))`.
+ * POSITION_CONTAINMENT_SAFETY_MARGIN_PX pads that boundary, and when the
+ * natural position length would still cross it, an *additional* shrink
+ * (independent of nameFitScale's own length-based shrink) is applied to
+ * position — down to POSITION_CONTAINMENT_MIN_SCALE — until it clears the
+ * name's own top. This is the "scale down only when required by the real
+ * safe area" case; it does not fire for any of the five canonical labels
+ * against any realistic name length (see the module's own test file for
+ * the full reproduction matrix), only for pathological combinations.
+ */
+const NAME_CHAR_WIDTH_RATIO = 0.465;
+const POSITION_CHAR_WIDTH_RATIO = 0.42;
+const POSITION_CENTER_RATIO = 0.4;
+const POSITION_CONTAINMENT_SAFETY_MARGIN_PX = 6;
+// Lower than nameFitScale's own usual 0.68-0.85 floors elsewhere in this
+// module — a genuinely extreme pairing (the shortest realistic name with
+// the longest canonical label, "JAY" / "GOALKEEPER") needs this much
+// headroom to actually clear the name's own top; confirmed via real
+// rendering that 0.6 was not enough for that specific pairing.
+const POSITION_CONTAINMENT_MIN_SCALE = 0.4;
+// A CSS `top`/rotated-box anchor never lands exactly on the rendered
+// glyph's own ink edge — line-height/leading adds a small, real gap
+// between the two, proportional to font-size (same phenomenon the fixed
+// anchor's own original calibration absorbed silently by iterating
+// against a real render — see PR #86). This formula computes the target
+// edge directly rather than iterating, so that gap has to be corrected
+// explicitly: calibrated at the reference pair (JACOB THOMPSON /
+// MIDFIELDER) by rendering the formula's own computed anchor and
+// measuring the residual offset against the reference's measured 786–938
+// bounds (~13.75 native px at MIDFIELDER's reference font-size, expressed
+// here as a fraction of position's own effective font-size so it scales
+// correctly when fit-scale or containment shrink that font-size).
+const POSITION_RENDER_LEADING_RATIO = 0.303;
+
+export interface AdaptivePositionAnchor {
+  /** CSS top% for the position slot — pass as `{ top }` in nameplateSlotStyle's overrides. */
+  top: string;
+  /** Effective fontSizeFactor for the position slot (the shared default, further reduced only if containment against this specific name required it) — pass as `{ fontSizeFactor }` alongside `top`. */
+  fontSizeFactor: number;
+}
+
+/**
+ * Computes position's adaptive vertical anchor for one name/position pair.
+ * See the doc comment above this for the full reasoning; call this once
+ * per render and pass both fields of the result as position's
+ * `nameplateSlotStyle` overrides (`{ top: result.top, fontSizeFactor:
+ * result.fontSizeFactor }`) — name's own geometry is untouched by this.
+ */
+export function computeAdaptivePositionAnchor(
+  W: number,
+  H: number,
+  name: string | undefined,
+  positionLabel: string | undefined
+): AdaptivePositionAnchor {
+  const nameGeom = NAMEPLATE_GEOMETRY.name;
+  const posGeom = NAMEPLATE_GEOMETRY.position;
+
+  const nameScale = nameFitScale(name, nameGeom.comfortableChars, nameGeom.minScale);
+  const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
+  const nameLenCss = (name || '').trim().length * nameFontSize * NAME_CHAR_WIDTH_RATIO;
+
+  const posScale = nameFitScale(positionLabel, posGeom.comfortableChars, posGeom.minScale);
+  const posFontSize = W * posGeom.fontSizeFactor * posScale;
+  const posLenCssNatural = (positionLabel || '').trim().length * posFontSize * POSITION_CHAR_WIDTH_RATIO;
+
+  const nameBottomCss = H * (parseFloat(nameGeom.top) / 100);
+  const nameTopCss = nameBottomCss - nameLenCss;
+  const centerCss = nameBottomCss - nameLenCss * POSITION_CENTER_RATIO;
+
+  // The leading-gap shift moves the whole rendered box down by a constant
+  // (font-size-proportional) amount without changing its own height, so it
+  // must apply to the containment check too — checking the pre-shift box
+  // would let a case through that renders overlapping the name's own top
+  // by roughly `shift` once actually painted.
+  const naturalShiftCss = posFontSize * POSITION_RENDER_LEADING_RATIO;
+  let posLenCss = posLenCssNatural;
+  let containmentScale = 1;
+  const naturalTopCss = centerCss - posLenCssNatural / 2 - naturalShiftCss;
+  const safeTopCss = nameTopCss + POSITION_CONTAINMENT_SAFETY_MARGIN_PX;
+  if (naturalTopCss < safeTopCss) {
+    const maxLenCss = 2 * (centerCss - naturalShiftCss - safeTopCss);
+    if (maxLenCss > 0 && maxLenCss < posLenCssNatural) {
+      containmentScale = Math.max(POSITION_CONTAINMENT_MIN_SCALE, maxLenCss / posLenCssNatural);
+      posLenCss = posLenCssNatural * containmentScale;
+    }
+  }
+
+  const effectivePosFontSize = posFontSize * containmentScale;
+  const positionBottomCss = centerCss + posLenCss / 2 - effectivePosFontSize * POSITION_RENDER_LEADING_RATIO;
+  return {
+    top: `${((positionBottomCss / H) * 100).toFixed(3)}%`,
+    fontSizeFactor: posGeom.fontSizeFactor * containmentScale,
+  };
+}
+
+/**
  * Builds the ready-to-spread style object for one nameplate slot ('name' or
  * 'position'). `geometry` defaults to the shared measured geometry above;
  * pass a partial override only when measurement has proven a genuinely
  * different structure for that one card (see custom-galaxy's own call site
  * for the one currently-justified case, and the PR description for why
- * every other card needed none).
+ * every other card needed none) — or, for position specifically, when
+ * computeAdaptivePositionAnchor's own `{ top, fontSizeFactor }` result
+ * says the anchor needs to move for this particular name.
  */
 export function nameplateSlotStyle(
   slot: 'name' | 'position',

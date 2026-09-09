@@ -5,6 +5,7 @@ import {
   nameFitScale,
   nameplateSlotStyle,
   nameplateNumberLayers,
+  computeAdaptivePositionAnchor,
   NAMEPLATE_GEOMETRY,
   NAMEPLATE_NUMBER_GEOMETRY,
   NAMEPLATE_FONT_FAMILY,
@@ -230,6 +231,121 @@ describe('nameplateNumberLayers', () => {
   });
 });
 
+/**
+ * Regression coverage for the position-overflow defect: position's `top`
+ * was a fixed, card-relative constant, entirely independent of the player
+ * name. That's correct only for a name at least as long as the reference
+ * pair (JACOB THOMPSON, 14 chars, unscaled) — for anything shorter, the
+ * name (bottom-anchored, grows upward as it lengthens) has a much smaller
+ * rendered span than position's fixed anchor assumed, and position ends up
+ * floating above the name's own top edge. Confirmed by real rendering
+ * before this fix: TINUBU (6 chars) / MIDFIELDER — name native y
+ * 711.2–938.6, position 597.9–788.3, extending 113.3px above the name.
+ *
+ * These are pure-function tests (computeAdaptivePositionAnchor takes no
+ * DOM/React input), so they can assert the actual formula's numeric
+ * output directly — real-browser topology (open counters, readability)
+ * doesn't apply here since this is a geometry/layout fix, not a fill-vs-
+ * stroke one; the reproduction matrix below was independently re-verified
+ * against real rendering during this fix (see the PR description for the
+ * full before/after measurement table across all five test pairs, all
+ * five canonical labels, one legacy label, and the placeholder).
+ */
+describe('computeAdaptivePositionAnchor', () => {
+  const W = 340, H = 476;
+
+  it('reproduces the calibrated JACOB THOMPSON / MIDFIELDER anchor within ~2 native px', () => {
+    const anchor = computeAdaptivePositionAnchor(W, H, 'JACOB THOMPSON', 'MIDFIELDER');
+    // 594.8-785.2 native was the real measured render at this anchor;
+    // reference target was 597-786 (PR #86's own measurement).
+    const topPct = parseFloat(anchor.top);
+    const nativeTop = (topPct / 100) * 1498;
+    expect(nativeTop).toBeGreaterThan(775);
+    expect(nativeTop).toBeLessThan(795);
+    expect(anchor.fontSizeFactor).toBeCloseTo(NAMEPLATE_GEOMETRY.position.fontSizeFactor, 5); // unscaled — no containment shrink needed for the reference pair
+  });
+
+  it('changing only the position label does not move the name (position has no way to write back into name geometry)', () => {
+    // computeAdaptivePositionAnchor only ever returns position's own
+    // anchor — it cannot and does not mutate NAMEPLATE_GEOMETRY.name, so
+    // this is really a type-level guarantee; asserted here as a
+    // regression trip-wire in case that ever changes.
+    const before = { ...NAMEPLATE_GEOMETRY.name };
+    computeAdaptivePositionAnchor(W, H, 'JACOB THOMPSON', 'GOALKEEPER');
+    computeAdaptivePositionAnchor(W, H, 'JACOB THOMPSON', 'CB');
+    expect(NAMEPLATE_GEOMETRY.name).toEqual(before);
+  });
+
+  it('changing only the player name moves position in the documented, formula-driven direction — not arbitrarily', () => {
+    const shortAnchor = computeAdaptivePositionAnchor(W, H, 'JAY', 'MIDFIELDER');
+    const longAnchor = computeAdaptivePositionAnchor(W, H, 'ALEXANDER MONTGOMERY', 'MIDFIELDER');
+    const shortTop = parseFloat(shortAnchor.top);
+    const longTop = parseFloat(longAnchor.top);
+    // top% is measured from the card's own top, so a *larger* value means
+    // *lower* on the card, closer to the shared bottom anchor. A shorter
+    // name has less of its own length above that bottom anchor, so
+    // position must move down (larger top%) to stay within it — confirmed
+    // against real rendering (JAY/MIDFIELDER: top% ≈61.5–61.8; ALEXANDER
+    // MONTGOMERY/MIDFIELDER: ≈52.4–52.8).
+    expect(shortTop).toBeGreaterThan(longTop);
+  });
+
+  it.each([
+    ['JAY', 'GOALKEEPER'],
+    ['TINUBU', 'MIDFIELDER'],
+    ['MILES LEE', 'DEFENDER'],
+    ['JACOB THOMPSON', 'MIDFIELDER'],
+    ['ALEXANDER MONTGOMERY', 'ALL-ROUNDER'],
+  ])('name=%s / position=%s: position never extends above the name (checked against the same character-count estimate the anchor itself uses)', (name, position) => {
+    const nameGeom = NAMEPLATE_GEOMETRY.name;
+    const nameScale = nameFitScale(name, nameGeom.comfortableChars, nameGeom.minScale);
+    const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
+    const nameLenCss = name.trim().length * nameFontSize * 0.465; // NAME_CHAR_WIDTH_RATIO, mirrored here since it's module-private
+    const nameBottomCss = H * (parseFloat(nameGeom.top) / 100);
+    const nameTopCss = nameBottomCss - nameLenCss;
+
+    const anchor = computeAdaptivePositionAnchor(W, H, name, position);
+    const posGeom = NAMEPLATE_GEOMETRY.position;
+    const posScale = nameFitScale(position, posGeom.comfortableChars, posGeom.minScale);
+    const effectiveFontSize = W * anchor.fontSizeFactor * posScale;
+    const posLenCss = position.trim().length * effectiveFontSize * 0.42; // POSITION_CHAR_WIDTH_RATIO, mirrored
+    const posBottomCss = (parseFloat(anchor.top) / 100) * H;
+    const posTopCssApprox = posBottomCss - posLenCss;
+
+    expect(posTopCssApprox).toBeGreaterThanOrEqual(nameTopCss - 4); // small tolerance for the mirrored-constant approximation itself
+  });
+
+  it('the five canonical position labels and one legacy label all resolve without error against a range of realistic names', () => {
+    const names = ['JAY', 'TINUBU', 'MILES LEE', 'JACOB THOMPSON', 'ALEXANDER MONTGOMERY'];
+    const positions = ['GOALKEEPER', 'DEFENDER', 'MIDFIELDER', 'FORWARD', 'ALL-ROUNDER', 'CB'];
+    for (const name of names) {
+      for (const position of positions) {
+        const anchor = computeAdaptivePositionAnchor(W, H, name, position);
+        expect(anchor.top).toMatch(/^\d+\.\d{3}%$/);
+        expect(anchor.fontSizeFactor).toBeGreaterThan(0);
+        expect(anchor.fontSizeFactor).toBeLessThanOrEqual(NAMEPLATE_GEOMETRY.position.fontSizeFactor);
+      }
+    }
+  });
+
+  it('the placeholder "POSITION" label (no value set) also resolves without overflowing a short name', () => {
+    const anchor = computeAdaptivePositionAnchor(W, H, 'TINUBU', 'POSITION');
+    expect(parseFloat(anchor.top)).toBeGreaterThan(0);
+    expect(anchor.fontSizeFactor).toBeGreaterThan(0);
+  });
+
+  it('never shrinks position below the containment floor, even for the most extreme realistic pairing', () => {
+    const anchor = computeAdaptivePositionAnchor(W, H, 'JAY', 'GOALKEEPER'); // shortest name, longest canonical label
+    expect(anchor.fontSizeFactor).toBeGreaterThanOrEqual(NAMEPLATE_GEOMETRY.position.fontSizeFactor * 0.4);
+  });
+
+  it('an undefined name or position does not throw', () => {
+    expect(() => computeAdaptivePositionAnchor(W, H, undefined, 'MIDFIELDER')).not.toThrow();
+    expect(() => computeAdaptivePositionAnchor(W, H, 'JACOB THOMPSON', undefined)).not.toThrow();
+    expect(() => computeAdaptivePositionAnchor(W, H, undefined, undefined)).not.toThrow();
+  });
+});
+
 describe('the shared nameplate is actually used by every card the generalisation covers, and only those', () => {
   const cardArtSource = readFileSync(
     resolve(process.cwd(), 'src/components/builder/emblem/CardArt.tsx'),
@@ -253,12 +369,31 @@ describe('the shared nameplate is actually used by every card the generalisation
   it('EMJFL keeps its own colour (white name, #FF4B1F position) — colour stays per-card, not shared', () => {
     const body = bodyOf('EmjflCardArt');
     expect(body).toContain("nameplateSlotStyle('name', W, H, d.name || '', '#fff')");
-    expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F')");
+    expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F', positionAnchor)");
   });
 
   it('Hollinwood keeps its own fixed red position colour, not template.accent', () => {
     const body = bodyOf('HollinwoodCardArt');
-    expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#ff0000')");
+    expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#ff0000', positionAnchor)");
+  });
+
+  it('Hollinwood and EMJFL compute and pass the adaptive position anchor directly (the fix for position floating above a short name)', () => {
+    for (const fn of ['HollinwoodCardArt', 'EmjflCardArt']) {
+      const body = bodyOf(fn);
+      expect(body).toContain('computeAdaptivePositionAnchor(');
+      expect(body).toMatch(/nameplateSlotStyle\('position',[^)]*positionAnchor/);
+    }
+  });
+
+  it('CustomCollectionCardArt computes the adaptive anchor and folds it into positionBoxOverride (so a genuine per-variant override, if one ever exists, still wins over it)', () => {
+    const body = bodyOf('CustomCollectionCardArt');
+    expect(body).toContain('computeAdaptivePositionAnchor(');
+    expect(body).toContain('...positionAnchor');
+    expect(body).toMatch(/nameplateSlotStyle\('position',[^)]*positionBoxOverride/);
+  });
+
+  it('RealCardArt is untouched by the adaptive-anchor fix too — it never had position tied to nameplateSlotStyle in the first place', () => {
+    expect(bodyOf('RealCardArt')).not.toContain('computeAdaptivePositionAnchor');
   });
 
   it('HollinwoodCardArt and EmjflCardArt also call nameplateNumberLayers for the kit number, each with its own outline colour', () => {

@@ -52,10 +52,24 @@ const PROTECTED_FILES: Record<string, string> = {
   // nameplate-typography.ts's own doc comment and this PR's description
   // for the full topology measurements). Geometry/font/fit-scale rules
   // stay unified, colour and any card-specific effect (Comic's tilted,
-  // thin-outlined number) stay local to each card's own render function
-  // (verified via diff before this hash was touched: RealCardArt/
-  // RealCardBack and every back-face renderer are untouched).
-  'src/components/builder/emblem/CardArt.tsx': '2d68eef83a3a6da7ebb931e4d98a8672605fabd60aa41f241bcf271a7665bd39',
+  // thin-outlined number) stay local to each card's own render function.
+  //
+  // Updated a sixth time to fix a separate, confirmed position-anchoring
+  // defect: position's own vertical anchor was a fixed, card-relative
+  // constant, correct only for a name at least as long as the reference
+  // pair (JACOB THOMPSON) — for anything shorter (e.g. TINUBU), the name's
+  // own bottom-anchored, grows-upward span shrank well below position's
+  // fixed anchor, leaving position floating above the name entirely.
+  // Replaced with computeAdaptivePositionAnchor: position's anchor now
+  // derives from the name's own estimated rendered length (one documented
+  // proportional formula, not a per-string exception) — verified via real
+  // rendering across the required name/position reproduction matrix, all
+  // five canonical labels, one legacy label and the placeholder (see
+  // nameplate-typography.ts's own doc comment and this PR's description
+  // for the full before/after measurement table). RealCardArt/RealCardBack
+  // and every back-face renderer remain untouched by any of these six
+  // changes (verified via diff before this hash was touched each time).
+  'src/components/builder/emblem/CardArt.tsx': '3b75cabf7d37fb70497c358872dfc0859280f495d7258d38e78c987fc0de1d77',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
