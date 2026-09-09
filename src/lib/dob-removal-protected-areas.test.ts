@@ -20,11 +20,12 @@ const PROTECTED_FILES: Record<string, string> = {
   // not scope creep from an unrelated feature.
   'src/lib/photo-geometry.ts': 'a1222b902b3d305c5ee4b8f8da34b4c24c715ef9f50147abfd67b1a0e64c5a8e',
   // Updated for the player-position simplification, then for the
-  // Hollinwood typography correction and its generalisation to a shared
-  // nameplate module, then again to extend that module to the kit number —
-  // see card-lifecycle-protected-areas.test.ts's own comment for the full
+  // Hollinwood typography correction, its generalisation to a shared
+  // nameplate module, that module's extension to the kit number, and a
+  // fix for a confirmed defect in that number treatment — see
+  // card-lifecycle-protected-areas.test.ts's own comment for the full
   // reasoning.
-  'src/components/builder/emblem/CardArt.tsx': '462458d722ddbe5cc6fdbd2cab5e696c0542b54540ef08747a603640ccf01889',
+  'src/components/builder/emblem/CardArt.tsx': '2d68eef83a3a6da7ebb931e4d98a8672605fabd60aa41f241bcf271a7665bd39',
   // Updated for the Hollinwood typography correction — see card-lifecycle-
   // protected-areas.test.ts's own comment for the same reasoning.
   'src/lib/print-capture.ts': 'e329ab40d2f67e3fdfa458f4c504e46bc9ebf8e9f5e98c337e9378cd95a08d07',

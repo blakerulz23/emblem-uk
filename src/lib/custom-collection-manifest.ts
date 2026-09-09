@@ -20,7 +20,7 @@ export type CustomCollectionVariant = {
   numberBox?: {
     fillColor?: string;
     strokeColor?: string;
-    strokeWidthFactor?: string;
+    outlineScale?: string;
     rotate?: string;
     shadow?: string;
     left?: string;
@@ -199,7 +199,7 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
     numberBox: {
       fillColor: '#fff',
       strokeColor: '#111',
-      strokeWidthFactor: '0.004',
+      outlineScale: '1.035',
       rotate: '-8deg',
       shadow: '0 3px 0 #111',
     },

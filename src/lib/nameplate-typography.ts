@@ -76,21 +76,44 @@ export const NAMEPLATE_GEOMETRY: { name: NameplateSlotGeometry; position: Namepl
  * unlike name/position, one and two-digit values must land visually
  * centred on the same point rather than growing rightward from a fixed
  * left edge, so its geometry shape is genuinely different from
- * NameplateSlotGeometry above (centre-x/bottom-y anchor + a stroke, not a
- * rotation box). Kept in the same module because it's still one shared
- * measured geometry across every compatible card, with only fill/stroke
- * colour (and stroke thickness, where a design's own treatment differs)
- * left per-card — see nameplateNumberStyle below.
+ * NameplateSlotGeometry above (centre-x/bottom-y anchor + a scaled-copy
+ * outline, not a rotation box). Kept in the same module because it's still
+ * one shared measured geometry across every compatible card, with only
+ * fill/outline colour (and outline scale, where a design's own treatment
+ * differs) left per-card — see nameplateNumberLayers below.
+ *
+ * The outline is NOT `-webkit-text-stroke`. An earlier version used it,
+ * calibrated purely by matching the reference PNG's outer alpha bounds —
+ * that produced a stroke width around 60% of the font's own em-size,
+ * which is fine for an open digit like "7" but completely swallows the
+ * thin curves and enclosed counters of "2", "0", "6", "8", "9": a stroke
+ * is centred on the glyph's outline path, so a thick one eats inward by
+ * half its width on both sides of every stroke, and once that exceeds the
+ * glyph's own line thickness the white fill disappears entirely — exactly
+ * the "solid coloured block" defect this was rewritten to fix. Outer-
+ * bounds matching alone can't catch this: it only ever checks the
+ * silhouette, never whether the interior is still open.
+ *
+ * The fix is the layered-text technique this module's own callers now use
+ * (see nameplateNumberLayers): a slightly larger copy of the same glyph in
+ * the outline colour sits behind an unscaled white copy on top. Outline
+ * thickness is controlled by outlineScale (how much bigger the back copy
+ * is), which scales every part of the glyph — including its counters —
+ * proportionally, so it can never fully close a counter the way a stroke
+ * can. It also composes correctly under the card's own W-proportional
+ * sizing (the whole two-layer stack scales together with fontSize), so
+ * the outline stays visually consistent whether the card renders at
+ * builder-preview size or full print resolution.
  */
 export interface NameplateNumberGeometry {
   /** CSS left%, of the card's own W — horizontal centre of the number, any digit count. */
   left: string;
-  /** CSS top%, of the card's own H — bottom edge of the number; taller digits (e.g. "1") grow upward from here, not downward, so nothing below is ever at risk. */
+  /** CSS top%, of the card's own H — bottom edge of the number; taller digits grow upward from here, not downward, so nothing below is ever at risk. */
   top: string;
   /** Reference font-size, as a fraction of W, for a value at/under comfortableChars digits. */
   fontSizeFactor: number;
-  /** -webkit-text-stroke width, as a fraction of W. */
-  strokeFactor: number;
+  /** How much larger the back (outline) copy is than the front (fill) copy — 1.12 means a 12%-larger back copy, giving a restrained, proportional outline that can't swallow the glyph's own counters. */
+  outlineScale: number;
   /** Digit count at/under which the reference size renders unscaled (2 — realistic kit numbers are 1 or 2 digits). */
   comfortableChars: number;
   minScale: number;
@@ -99,47 +122,84 @@ export interface NameplateNumberGeometry {
 
 export const NAMEPLATE_NUMBER_GEOMETRY: NameplateNumberGeometry = {
   left: '14.67%',
-  top: '76.36%',
-  fontSizeFactor: 0.0793,
-  strokeFactor: 0.05,
+  top: '77.35%',
+  fontSizeFactor: 0.19,
+  outlineScale: 1.12,
   comfortableChars: 2,
   minScale: 0.8,
   fontWeight: NAMEPLATE_FONT_WEIGHT,
 };
 
+/** The three ready-to-spread style objects nameplateNumberLayers returns. */
+export interface NameplateNumberLayerStyles {
+  /** The positioned, centred/bottom-anchored wrapper — apply zIndex and any card-specific rotate/shadow `extra` here. */
+  wrapper: CSSProperties;
+  /** The back copy — outline colour, scaled up slightly. Render first (behind), with aria-hidden. */
+  outline: CSSProperties;
+  /** The front copy — fill colour, true size. Render second (on top); this is the one screen readers/selection should see. */
+  fill: CSSProperties;
+}
+
 /**
- * Builds the ready-to-spread style object for the kit number. `fillColor`
- * and `strokeColor` are the one thing every compatible card sets for
- * itself (see the PR description's per-card fill/stroke table) — geometry,
- * font and the digit-count fit-scale rule are shared. Centred horizontally
- * and bottom-anchored vertically via `transform`, so callers must NOT also
- * wrap this in their own translate/rotate.
+ * Builds the three style objects for the kit number's layered-text
+ * rendering (see the module doc comment above for why it's layered rather
+ * than a single stroked div). `fillColor` and `outlineColor` are the one
+ * thing every compatible card sets for itself — geometry, font and the
+ * digit-count fit-scale rule are shared.
+ *
+ * Expected markup:
+ * ```tsx
+ * const layers = nameplateNumberLayers(W, number, fill, outline);
+ * <div style={{ ...layers.wrapper, zIndex }}>
+ *   <div style={{ position: 'relative', display: 'inline-block' }}>
+ *     <span aria-hidden style={layers.outline}>{number}</span>
+ *     <span style={layers.fill}>{number}</span>
+ *   </div>
+ * </div>
+ * ```
  */
-export function nameplateNumberStyle(
+export function nameplateNumberLayers(
   W: number,
   number: string,
   fillColor: string,
-  strokeColor: string,
+  outlineColor: string,
   overrides?: Partial<NameplateNumberGeometry>,
-  extra?: CSSProperties
-): CSSProperties {
+  wrapperExtra?: CSSProperties
+): NameplateNumberLayerStyles {
   const cleanOverrides = overrides
     ? (Object.fromEntries(Object.entries(overrides).filter(([, v]) => v !== undefined)) as Partial<NameplateNumberGeometry>)
     : undefined;
   const g: NameplateNumberGeometry = { ...NAMEPLATE_NUMBER_GEOMETRY, ...cleanOverrides };
-  return {
-    position: 'absolute',
-    left: g.left,
-    top: g.top,
-    transform: 'translate(-50%, -100%)',
-    color: fillColor,
-    WebkitTextStroke: `${W * g.strokeFactor}px ${strokeColor}`,
+  const fontSize = W * g.fontSizeFactor * nameFitScale(number, g.comfortableChars, g.minScale);
+  const sharedFont: CSSProperties = {
     fontFamily: NAMEPLATE_FONT_FAMILY,
     fontWeight: g.fontWeight,
-    fontSize: W * g.fontSizeFactor * nameFitScale(number, g.comfortableChars, g.minScale),
+    fontSize,
     lineHeight: 1,
+    whiteSpace: 'nowrap',
     pointerEvents: 'none',
-    ...extra,
+  };
+  return {
+    wrapper: {
+      position: 'absolute',
+      left: g.left,
+      top: g.top,
+      transform: 'translate(-50%, -100%)',
+      ...wrapperExtra,
+    },
+    outline: {
+      position: 'absolute',
+      inset: 0,
+      ...sharedFont,
+      color: outlineColor,
+      transform: `scale(${g.outlineScale})`,
+      transformOrigin: 'center',
+    },
+    fill: {
+      position: 'relative',
+      ...sharedFont,
+      color: fillColor,
+    },
   };
 }
 
