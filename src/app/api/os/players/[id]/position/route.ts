@@ -35,12 +35,18 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (!trimmed) {
     return NextResponse.json({ error: 'A position is required' }, { status: 400 });
   }
-  // Enforces the five simplified categories for every *new* write going
-  // forward — a historical row can still hold an old specific-position
-  // value (nothing here rewrites those; see player-position.ts's own
-  // doc), this just stops a fresh edit from reintroducing one.
+  // Enforces the five simplified categories for every genuinely *new*
+  // position value — but a legacy player's own existing value (e.g. "CB")
+  // is exempt when it's being resubmitted unchanged, e.g. as a side effect
+  // of some other field's own edit going through this same route. Without
+  // this, a legacy player could never save anything through this endpoint
+  // again — a strictly worse outcome than the un-migrated data itself.
+  // Costs one extra read only on the path that would otherwise 400.
   if (!isCanonicalPosition(trimmed)) {
-    return NextResponse.json({ error: 'Choose one of the five position categories.' }, { status: 400 });
+    const { data: current } = await supabase.from('players').select('position').eq('id', params.id).maybeSingle();
+    if (current?.position?.trim() !== trimmed) {
+      return NextResponse.json({ error: 'Choose one of the five position categories.' }, { status: 400 });
+    }
   }
 
   const { data: secondaryPositionCleared, error } = await supabase.rpc('update_primary_position', {

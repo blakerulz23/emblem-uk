@@ -291,7 +291,16 @@ export default function Profile({ actions }: { actions: OsActions }) {
     // real position. A collision with a coach-set secondary_position is
     // resolved atomically server-side (secondary_position cleared, never a
     // raw constraint error) — surfaced below, not silently dropped.
-    const positionRequest = trimmedPosition
+    //
+    // Only actually sent when the guardian genuinely changed it. The select
+    // shows a *resolved* value for a legacy player (e.g. stored "CB" reads
+    // as "Defender" — see the useState above), so comparing the current
+    // selection against that same resolution of the stored value is what
+    // "unchanged" means here — not a raw string comparison against the
+    // legacy code, which would look "changed" on every single save and
+    // silently rewrite the historical value the guardian never touched.
+    const positionUnchanged = trimmedPosition === (resolveCanonicalPosition(playerProfile.position) ?? '');
+    const positionRequest = trimmedPosition && !positionUnchanged
       ? fetch(`/api/os/players/${playerId}/position`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },

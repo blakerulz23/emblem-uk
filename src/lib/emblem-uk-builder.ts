@@ -224,7 +224,6 @@ export function defaultOrder(): OrderDraft {
         club: '',
         emjflClubId: undefined,
         clubEdited: false,
-        stats: { apps: '', goals: '', assists: '' },
       }),
     ],
   };
