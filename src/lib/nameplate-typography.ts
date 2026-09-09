@@ -72,6 +72,78 @@ export const NAMEPLATE_GEOMETRY: { name: NameplateSlotGeometry; position: Namepl
 };
 
 /**
+ * The kit number is upright (no rotation) and centred, not left-anchored —
+ * unlike name/position, one and two-digit values must land visually
+ * centred on the same point rather than growing rightward from a fixed
+ * left edge, so its geometry shape is genuinely different from
+ * NameplateSlotGeometry above (centre-x/bottom-y anchor + a stroke, not a
+ * rotation box). Kept in the same module because it's still one shared
+ * measured geometry across every compatible card, with only fill/stroke
+ * colour (and stroke thickness, where a design's own treatment differs)
+ * left per-card — see nameplateNumberStyle below.
+ */
+export interface NameplateNumberGeometry {
+  /** CSS left%, of the card's own W — horizontal centre of the number, any digit count. */
+  left: string;
+  /** CSS top%, of the card's own H — bottom edge of the number; taller digits (e.g. "1") grow upward from here, not downward, so nothing below is ever at risk. */
+  top: string;
+  /** Reference font-size, as a fraction of W, for a value at/under comfortableChars digits. */
+  fontSizeFactor: number;
+  /** -webkit-text-stroke width, as a fraction of W. */
+  strokeFactor: number;
+  /** Digit count at/under which the reference size renders unscaled (2 — realistic kit numbers are 1 or 2 digits). */
+  comfortableChars: number;
+  minScale: number;
+  fontWeight: number;
+}
+
+export const NAMEPLATE_NUMBER_GEOMETRY: NameplateNumberGeometry = {
+  left: '14.67%',
+  top: '76.36%',
+  fontSizeFactor: 0.0793,
+  strokeFactor: 0.05,
+  comfortableChars: 2,
+  minScale: 0.8,
+  fontWeight: NAMEPLATE_FONT_WEIGHT,
+};
+
+/**
+ * Builds the ready-to-spread style object for the kit number. `fillColor`
+ * and `strokeColor` are the one thing every compatible card sets for
+ * itself (see the PR description's per-card fill/stroke table) — geometry,
+ * font and the digit-count fit-scale rule are shared. Centred horizontally
+ * and bottom-anchored vertically via `transform`, so callers must NOT also
+ * wrap this in their own translate/rotate.
+ */
+export function nameplateNumberStyle(
+  W: number,
+  number: string,
+  fillColor: string,
+  strokeColor: string,
+  overrides?: Partial<NameplateNumberGeometry>,
+  extra?: CSSProperties
+): CSSProperties {
+  const cleanOverrides = overrides
+    ? (Object.fromEntries(Object.entries(overrides).filter(([, v]) => v !== undefined)) as Partial<NameplateNumberGeometry>)
+    : undefined;
+  const g: NameplateNumberGeometry = { ...NAMEPLATE_NUMBER_GEOMETRY, ...cleanOverrides };
+  return {
+    position: 'absolute',
+    left: g.left,
+    top: g.top,
+    transform: 'translate(-50%, -100%)',
+    color: fillColor,
+    WebkitTextStroke: `${W * g.strokeFactor}px ${strokeColor}`,
+    fontFamily: NAMEPLATE_FONT_FAMILY,
+    fontWeight: g.fontWeight,
+    fontSize: W * g.fontSizeFactor * nameFitScale(number, g.comfortableChars, g.minScale),
+    lineHeight: 1,
+    pointerEvents: 'none',
+    ...extra,
+  };
+}
+
+/**
  * Builds the ready-to-spread style object for one nameplate slot ('name' or
  * 'position'). `geometry` defaults to the shared measured geometry above;
  * pass a partial override only when measurement has proven a genuinely

@@ -11,17 +11,21 @@ export type CustomCollectionVariant = {
     width: string;
     height: string;
   };
+  // Geometry (centre-x/bottom-y anchor, reference size, digit fit-scale) and
+  // font are shared via the vertical nameplate system too — only fill,
+  // outline colour/thickness, rotation and a shadow are ever per-variant
+  // (see Comic's own numberBox for the one currently-justified case: a
+  // deliberate tilted, thin-outlined "comic panel" treatment, not simply
+  // unmeasured).
   numberBox?: {
-    left: string;
-    top: string;
-    fontSize?: string;
-    fontFamily?: string;
+    fillColor?: string;
+    strokeColor?: string;
+    strokeWidthFactor?: string;
     rotate?: string;
-    color?: string;
-    stroke?: string;
     shadow?: string;
-    fontStyle?: string;
-    fontWeight?: string;
+    left?: string;
+    top?: string;
+    fontSize?: string;
   };
   // Geometry (left/top/width/fontSize) is shared across every card via the
   // vertical nameplate system (nameplate-typography.ts) — font family,
@@ -98,12 +102,8 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
     positionBox: {
       color: '#ef2222',
     },
-    numberBox: {
-      left: '10.3%',
-      top: '69.3%',
-      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
-      fontWeight: '400',
-    },
+    // numberBox intentionally omitted — geometry shared, fill/stroke default
+    // to white/positionColor (see CustomCollectionCardArt's own call site).
     back: {
       base: '/templates/custom-collection/solar/back-base.png',
       logoBox: {
@@ -144,13 +144,8 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       width: '21.5%',
       height: '15.1%',
     },
-    numberBox: {
-      left: '6.2%',
-      top: '69.3%',
-      fontSize: '0.11244',
-      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
-      fontWeight: '400',
-    },
+    // numberBox intentionally omitted — geometry shared, fill/stroke default
+    // to white/positionColor.
     // nameBox/positionBox intentionally omitted — Galaxy measured to the
     // same shared vertical nameplate geometry every other card here uses
     // (nameplate-typography.ts); its position colour falls through to its
@@ -195,17 +190,18 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       width: '21.5%',
       height: '15.1%',
     },
+    // Deliberate "comic panel" treatment (solid white fill, thin dark
+    // outline, slight tilt, hard drop shadow) — not simply an unmeasured
+    // placeholder like every other numberBox that's now been removed: this
+    // reads as a coherent, intentional style consistent with Comic's own
+    // tilted corner watermark elsewhere on the same card. Geometry (centre-
+    // x/bottom-y anchor, reference size, digit fit-scale) stays shared.
     numberBox: {
-      left: '14%',
-      top: '75.77%',
-      fontSize: '0.1295',
-      fontFamily: 'var(--font-barlow-condensed), "Arial Narrow", sans-serif',
-      rotate: '0deg',
-      color: '#fff',
-      stroke: '#111',
+      fillColor: '#fff',
+      strokeColor: '#111',
+      strokeWidthFactor: '0.004',
+      rotate: '-8deg',
       shadow: '0 3px 0 #111',
-      fontStyle: 'normal',
-      fontWeight: '400',
     },
     // nameBox intentionally omitted — Comic measured to the same shared
     // vertical nameplate geometry every other card here uses

@@ -27,11 +27,12 @@ const PROTECTED_FILES: Record<string, string> = {
   // not scope creep from an unrelated feature (same precedent as the
   // Shopify hash update noted below).
   'src/lib/photo-geometry.ts': 'a1222b902b3d305c5ee4b8f8da34b4c24c715ef9f50147abfd67b1a0e64c5a8e',
-  // Updated for the player-position simplification, then again for the
+  // Updated for the player-position simplification, then for the
   // Hollinwood typography correction and its generalisation to a shared
-  // nameplate module — see card-lifecycle-protected-areas.test.ts's own
-  // comment for the full reasoning.
-  'src/components/builder/emblem/CardArt.tsx': 'ca7392d563cda1635d448002a76f436f5a23d6e65c89cd3e21fee3aa11e27dcf',
+  // nameplate module, then again to extend that module to the kit number —
+  // see card-lifecycle-protected-areas.test.ts's own comment for the full
+  // reasoning.
+  'src/components/builder/emblem/CardArt.tsx': '462458d722ddbe5cc6fdbd2cab5e696c0542b54540ef08747a603640ccf01889',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',

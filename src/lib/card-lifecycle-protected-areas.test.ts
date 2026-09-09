@@ -36,14 +36,16 @@ const PROTECTED_FILES: Record<string, string> = {
   // feature (same precedent as the Auto-fit Player hash update).
   //
   // Updated again for the Hollinwood name/position typography correction,
-  // then a third time to generalise that same measured geometry into a
-  // shared module (src/lib/nameplate-typography.ts) used by Hollinwood,
-  // EMJFL and all three Custom Collection variants — geometry/font/fit-
-  // scale rules unified, colour and any card-specific effect stay local to
-  // each card's own render function (verified via diff before this hash
-  // was touched: RealCardArt/RealCardBack and every back-face renderer are
-  // untouched).
-  'src/components/builder/emblem/CardArt.tsx': 'ca7392d563cda1635d448002a76f436f5a23d6e65c89cd3e21fee3aa11e27dcf',
+  // a third time to generalise that same measured geometry into a shared
+  // module (src/lib/nameplate-typography.ts) used by Hollinwood, EMJFL and
+  // all three Custom Collection variants, and a fourth time to extend that
+  // same shared module to cover the kit number too (centre-x/bottom-y
+  // anchored, real Antonio Bold, digit-count fit-scale) — geometry/font/
+  // fit-scale rules unified, colour and any card-specific effect (Comic's
+  // tilted, thin-outlined number) stay local to each card's own render
+  // function (verified via diff before this hash was touched: RealCardArt/
+  // RealCardBack and every back-face renderer are untouched).
+  'src/components/builder/emblem/CardArt.tsx': '462458d722ddbe5cc6fdbd2cab5e696c0542b54540ef08747a603640ccf01889',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',

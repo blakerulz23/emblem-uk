@@ -4,7 +4,7 @@
 import type { CSSProperties } from 'react';
 import { getCustomCollectionVariant } from '@/lib/custom-collection-manifest';
 import { getHollinwoodVariant } from '@/lib/hollinwood-manifest';
-import { nameFitScale, nameplateSlotStyle, type NameplateSlotGeometry } from '@/lib/nameplate-typography';
+import { nameFitScale, nameplateNumberStyle, nameplateSlotStyle, type NameplateNumberGeometry, type NameplateSlotGeometry } from '@/lib/nameplate-typography';
 import { computePhotoGeometry } from '@/lib/photo-geometry';
 import { positionCardLabel } from '@/lib/player-position';
 import { SPORT_STATS, type CardTemplate, type Details, type Family, type SportId } from './data';
@@ -1429,17 +1429,10 @@ function EmjflCardArt({
           }}
         />
 
-        {/* Jersey number — position/size measured from the reference kit
-            number.png layer (bbox 8.8–20.0% x, 69.3–77.8% y, on the 1050×1498
-            canonical canvas → left 8.8%, top 69.3%, cap-height ~12.2% of W). */}
-        <div
-          style={{
-            position: 'absolute', left: '8.8%', top: '69.3%', zIndex: 5,
-            color: 'transparent', WebkitTextStroke: `${Math.max(1, W * 0.006)}px #fff`,
-            fontFamily: 'var(--font-oswald), system-ui', fontWeight: 800, fontStyle: 'italic',
-            fontSize: W * 0.122, lineHeight: 1, pointerEvents: 'none',
-          }}
-        >
+        {/* Kit number — shared geometry (nameplate-typography.ts), same as
+            Hollinwood; EMJFL keeps its own outline colour (#FF4B1F, matching
+            its position label) instead of Hollinwood's template.accent. */}
+        <div style={{ ...nameplateNumberStyle(W, d.number || '10', '#fff', '#FF4B1F'), zIndex: 5 }}>
           {d.number || '10'}
         </div>
 
@@ -1579,14 +1572,14 @@ function HollinwoodCardArt({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={assets.positionTick} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 5, pointerEvents: 'none' }} />
 
-        <div
-          style={{
-            position: 'absolute', left: '8.8%', top: '69.3%', zIndex: 6,
-            color: 'transparent', WebkitTextStroke: `${Math.max(1, W * 0.006)}px #fff`,
-            fontFamily: 'var(--font-oswald), system-ui', fontWeight: 800, fontStyle: 'italic',
-            fontSize: W * 0.122, lineHeight: 1, pointerEvents: 'none',
-          }}
-        >
+        {/* Kit number — white fill, coloured outline (see nameplate-
+            typography.ts for the shared geometry/measurement, and the PR
+            description for why the outline is template.accent here rather
+            than the exact colour sampled from the reference: that sample
+            doesn't match any of Hollinwood's own four variant accents, and
+            the task explicitly warns against assuming one design's colour
+            belongs to every variation). */}
+        <div style={{ ...nameplateNumberStyle(W, d.number || '10', '#fff', template.accent), zIndex: 6 }}>
           {d.number || '10'}
         </div>
 
@@ -1660,6 +1653,14 @@ function CustomCollectionCardArt({
         ...(variant.positionBox.top ? { top: variant.positionBox.top } : {}),
         ...(variant.positionBox.width ? { widthFactor: Number(variant.positionBox.width.replace('%', '')) / 100 } : {}),
         ...(variant.positionBox.fontSize ? { fontSizeFactor: Number(variant.positionBox.fontSize) } : {}),
+      }
+    : undefined;
+  const numberBoxOverride: Partial<NameplateNumberGeometry> | undefined = variant.numberBox
+    ? {
+        ...(variant.numberBox.left ? { left: variant.numberBox.left } : {}),
+        ...(variant.numberBox.top ? { top: variant.numberBox.top } : {}),
+        ...(variant.numberBox.fontSize ? { fontSizeFactor: Number(variant.numberBox.fontSize) } : {}),
+        ...(variant.numberBox.strokeWidthFactor ? { strokeFactor: Number(variant.numberBox.strokeWidthFactor) } : {}),
       }
     : undefined;
   const nameColor = '#fff';
@@ -1780,21 +1781,28 @@ function CustomCollectionCardArt({
           <img src={assets.numberBurst} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 7, pointerEvents: 'none' }} />
         ) : null}
 
+        {/* Kit number — shared geometry (nameplate-typography.ts). Fill
+            defaults to white, outline to this card's own position colour
+            (visual consistency between the two), matching every other
+            unified card; Comic's numberBox overrides both plus a tilt and
+            shadow for its own deliberate "comic panel" treatment (see the
+            manifest's own comment on why that one is kept). */}
         <div
           style={{
-            position: 'absolute', left: variant.numberBox?.left || (isComic ? '11.1%' : '8.8%'), top: variant.numberBox?.top || (isComic ? '84.5%' : '69.3%'), zIndex: 8,
-            color: variant.numberBox?.color || (isComic ? '#fff' : 'transparent'),
-            WebkitTextStroke: variant.numberBox?.stroke
-              ? `${Math.max(1, W * 0.004)}px ${variant.numberBox.stroke}`
-              : isComic ? `${Math.max(1, W * 0.004)}px #111` : `${Math.max(1, W * 0.006)}px #fff`,
-            fontFamily: variant.numberBox?.fontFamily || 'var(--font-oswald), system-ui',
-            fontWeight: variant.numberBox?.fontWeight || 900,
-            fontStyle: variant.numberBox?.fontStyle || 'italic',
-            fontSize: W * (variant.numberBox?.fontSize ? Number(variant.numberBox.fontSize) : isComic ? 0.145 : 0.122), lineHeight: 1, pointerEvents: 'none',
-            transform: variant.numberBox?.rotate
-              ? `translate(-50%, -50%) rotate(${variant.numberBox.rotate})`
-              : isComic ? 'translate(-50%, -50%) rotate(-8deg)' : undefined,
-            textShadow: variant.numberBox?.shadow || (isComic ? '0 3px 0 #111' : undefined),
+            ...nameplateNumberStyle(
+              W,
+              d.number || '10',
+              variant.numberBox?.fillColor || '#fff',
+              variant.numberBox?.strokeColor || positionColor,
+              numberBoxOverride,
+              {
+                ...(variant.numberBox?.rotate
+                  ? { transform: `translate(-50%, -100%) rotate(${variant.numberBox.rotate})` }
+                  : {}),
+                ...(variant.numberBox?.shadow ? { textShadow: variant.numberBox.shadow } : {}),
+              }
+            ),
+            zIndex: 8,
           }}
         >
           {d.number || '10'}
