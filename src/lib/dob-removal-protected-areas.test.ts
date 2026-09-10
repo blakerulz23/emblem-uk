@@ -13,7 +13,18 @@ import { describe, expect, it } from 'vitest';
  * should fail here and be treated as scope creep, not a silent pass.
  */
 const PROTECTED_FILES: Record<string, string> = {
-  'src/components/builder/emblem/bgRemoval.ts': '3ce8418bb63b8215fde4a9f33dfd84761e477ee19161fbdd349ccf2fc9a23d2a',
+  // Updated for the background-removal white-halo fix: alphaKeyWhite's RGB
+  // was never corrected, only alpha — leaving semi-transparent hair-edge
+  // pixels pinned near white (Gemini's cutout matte colour), visible as a
+  // pale fringe on dark card templates. Added keyAndDecontaminateWhite,
+  // exported as a pure function, doing an alpha-aware (not spatial-
+  // adjacency-based — that approach was already tried and reverted here
+  // for breaking a hard-edged photo) known-background colour recovery for
+  // any pixel it makes non-opaque; the alpha ramp itself is unchanged.
+  // Confirmed via real pixel measurement, a hard-edge simulation (0.0055%
+  // of pixels touched, not a ~9px whole-silhouette band), and the real
+  // CardArt/print-capture pipeline. No other file's protected scope touched.
+  'src/components/builder/emblem/bgRemoval.ts': '637cb5e1f4c866e84b0edfa0bebf89daf183fecf448fea4b20d8d2ca8f77301c',
   'src/app/api/ai-mockup/route.ts': '1796ddc2c19f032c444bc41c464d07ad0173cd0d55894db5c8714d85e11468be',
   // Updated for the Auto-fit Player / zoom-out photo-framing fix — a
   // deliberate, reviewed change to cropping and card-art rendering itself,
