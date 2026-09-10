@@ -103,10 +103,70 @@ export interface NameplateSlotGeometry {
   letterSpacing: string;
 }
 
+// GROUP_LEFT_SHIFT / GROUP_TOP_SHIFT — a single, shared, explicitly-named
+// correction applied identically to name and position's own fixed anchors,
+// not two separate unexplained per-slot offsets.
+//
+// GROUP_LEFT_SHIFT_PCT: measured directly against the newest supplied
+// native Canva reference (OLLIE HARRISON, isolated transparent layer,
+// alpha bounds via sharp on a 1050x1498 canvas) compared against a real
+// browser render of the same name at the same native resolution — its
+// width/height matched the reference to within ~2-4 native px (i.e. no
+// scale difference, only a translation), off by x0 +27.0px/x1 +29.2px,
+// averaging 28.1px too far right.
+//
+// GROUP_TOP_SHIFT_PCT: NOT derived from name's own isolated-layer match
+// alone (that in isolation suggested a much smaller, ~4.9px correction).
+// Re-diagnosed after direct review of the rendered result: the group's
+// vertical placement has to be judged against the kit number below it,
+// which this change must never move (NAMEPLATE_NUMBER_GEOMETRY is
+// untouched). A first attempt measured clearance between position's own
+// bottom edge and the number's own top edge via isolated native alpha
+// bounds (position layer, native y1=778; a separately-supplied number
+// layer, native y0=1039 → 261px reference clearance) against the ~133.6px
+// the render showed — but that number layer's own embedded metadata
+// showed it came from a DIFFERENT, earlier Canva page (page 55, 2026-09-09)
+// than the name/position layers used for every other measurement here
+// (pages 58/59, 2026-09-10) — not a same-revision, trustworthy comparison,
+// so the resulting ~127px shift was not applied as computed: it visibly
+// collided the top of the name text into the club badge above it on a
+// real render (Hollinwood, both badge layers) — confirmed directly, not
+// inferred from bounding boxes alone (the badge is circular; a naive bbox
+// check both over- and under-states the real overlap depending on exactly
+// which x-column of the badge a given letter falls under).
+//
+// Final value found by iterating against real renders (Hollinwood, EMJFL,
+// both Custom Collection badge variants) between the two extremes above:
+// -1.5 clears every current badge/crest with a comfortable, visually
+// confirmed margin, while still measurably increasing position-to-number
+// clearance (native ~138px pre-change -> ~158px, a real ~20px/~14%
+// increase, verified via the same isolated alpha-bounds measurement) —
+// smaller than the (unreliable) cross-page target, but a genuine,
+// non-arbitrary improvement bounded by an actual collision constraint
+// rather than a magic number. If a future, same-revision native number
+// layer becomes available, this value should be re-derived from it rather
+// than assumed correct indefinitely.
+//
+// POSITION's own isolated-layer measurement additionally showed a
+// materially different, visually-confirmed *size* delta beyond translation
+// (not just a shifted anchor) — but position's rendered size today exactly
+// reproduces PR #86's own original calibration (JACOB THOMPSON/MIDFIELDER,
+// already verified against Canva then), so this is very unlikely to be a
+// regression in the shared geometry itself; flagged as a separate,
+// unresolved, NOT-acted-upon finding rather than folded into this shift
+// (see the PR description for the full measurement table).
+//
+// Position's own "left" still receives the same shared horizontal shift —
+// it preserves the existing, already-correct 8.49-percentage-point inset
+// between name's and position's left edges (17.57% - 9.08%), not a new,
+// independently-tuned value.
+const GROUP_LEFT_SHIFT_PCT = -2.68; // -28.1 native px / 1050
+const GROUP_TOP_SHIFT_PCT = -1.5; // -22.5 native px / 1498, badge-clearance-bounded (see above)
+
 export const NAMEPLATE_GEOMETRY: { name: NameplateSlotGeometry; position: NameplateSlotGeometry } = {
   name: {
-    left: '9.08%',
-    top: '62.73%',
+    left: `${(9.08 + GROUP_LEFT_SHIFT_PCT).toFixed(2)}%`,
+    top: `${(62.73 + GROUP_TOP_SHIFT_PCT).toFixed(2)}%`,
     widthFactor: 0.6,
     fontSizeFactor: 0.0838,
     comfortableChars: 14,
@@ -115,7 +175,7 @@ export const NAMEPLATE_GEOMETRY: { name: NameplateSlotGeometry; position: Namepl
     letterSpacing: '0em',
   },
   position: {
-    left: '17.57%',
+    left: `${(17.57 + GROUP_LEFT_SHIFT_PCT).toFixed(2)}%`,
     top: '52.84%',
     widthFactor: 0.2,
     fontSizeFactor: 0.0432,
