@@ -406,6 +406,16 @@ export interface AdaptivePositionAnchor {
   top: string;
   /** Effective fontSizeFactor for the position slot (the shared default, further reduced only if containment against this specific name required it) — pass as `{ fontSizeFactor }` alongside `top`. */
   fontSizeFactor: number;
+  /**
+   * CSS top% of position's own topmost rendered edge — the highest point of
+   * the combined name+position group (position always sits above name; see
+   * this module's own doc comment above). Exposed so a caller that needs
+   * the group's actual combined bounds (not just each slot's own anchor) —
+   * e.g. a template family's group-centering override — doesn't have to
+   * re-derive this formula's internals; ignored by callers that only need
+   * `top`/`fontSizeFactor`.
+   */
+  topEdgePct: number;
 }
 
 /**
@@ -414,15 +424,24 @@ export interface AdaptivePositionAnchor {
  * per render and pass both fields of the result as position's
  * `nameplateSlotStyle` overrides (`{ top: result.top, fontSizeFactor:
  * result.fontSizeFactor }`) — name's own geometry is untouched by this.
+ *
+ * `nameBottomOverridePct` lets a caller compute position's anchor relative
+ * to a name bottom edge other than the shared NAMEPLATE_GEOMETRY.name.top
+ * default — e.g. EMJFL's own reverted baseline, or Custom Collection's
+ * computed group-centering anchor — without duplicating this formula.
+ * Name's own rendered geometry (font, fit-scale) never changes; only the
+ * fixed point position's anchor is measured relative to does.
  */
 export function computeAdaptivePositionAnchor(
   W: number,
   H: number,
   name: string | undefined,
-  positionLabel: string | undefined
+  positionLabel: string | undefined,
+  nameBottomOverridePct?: number
 ): AdaptivePositionAnchor {
   const nameGeom = NAMEPLATE_GEOMETRY.name;
   const posGeom = NAMEPLATE_GEOMETRY.position;
+  const nameBottomPct = nameBottomOverridePct ?? parseFloat(nameGeom.top);
 
   const nameScale = nameFitScale(name, nameGeom.comfortableChars, nameGeom.minScale);
   const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
@@ -432,7 +451,7 @@ export function computeAdaptivePositionAnchor(
   const posFontSize = W * posGeom.fontSizeFactor * posScale;
   const posLenCssNatural = estimateTextWidthCss(positionLabel, posFontSize);
 
-  const nameBottomCss = H * (parseFloat(nameGeom.top) / 100);
+  const nameBottomCss = H * (nameBottomPct / 100);
   const nameTopCss = nameBottomCss - nameLenCss;
   const centerCss = nameBottomCss - nameLenCss * POSITION_CENTER_RATIO;
 
@@ -457,9 +476,141 @@ export function computeAdaptivePositionAnchor(
 
   const effectivePosFontSize = posFontSize * containmentScale;
   const positionBottomCss = centerCss + posLenCss / 2 - effectivePosFontSize * POSITION_RENDER_LEADING_RATIO;
+  const positionTopCss = centerCss - posLenCss / 2 - effectivePosFontSize * POSITION_RENDER_LEADING_RATIO;
   return {
     top: `${((positionBottomCss / H) * 100).toFixed(3)}%`,
     fontSizeFactor: posGeom.fontSizeFactor * containmentScale,
+    topEdgePct: (positionTopCss / H) * 100,
+  };
+}
+
+/**
+ * EMJFL's own vertical anchor — reverted to the ORIGINAL baseline (pre-
+ * dating the "Hollinwood group correction" folded into NAMEPLATE_GEOMETRY
+ * above). That correction (both its horizontal shift, still shared, and
+ * its -1.5% vertical shift) was measured directly against Hollinwood's own
+ * Canva reference layers and, once landed in the shared geometry object,
+ * applied to EMJFL too only because EMJFL happens to call the same
+ * typography functions — never independently validated against EMJFL's
+ * own artwork. EMJFL places two badges (club + league) on the same side of
+ * the card (see EmjflCardArt's own badge rendering in CardArt.tsx), a
+ * measurably smaller/different safe area at the top of the nameplate
+ * channel than Hollinwood's single badge — applying a correction
+ * calibrated for a different safe area risked a real collision that was
+ * never checked for. Reverting EMJFL's own vertical anchor removes an
+ * unvalidated borrowed correction; it is not a claim that EMJFL's own
+ * placement is newly wrong. Horizontal (left) is NOT reverted here — the
+ * shared shift's own derivation (see NAMEPLATE_GEOMETRY's doc comment) is
+ * rooted in this module's rotation/anchor math (a generic ~28px rendering
+ * offset), not Hollinwood's specific artwork, and no EMJFL-specific
+ * horizontal issue has ever been reported or measured.
+ */
+export const EMJFL_NAME_TOP_PCT = 62.73;
+
+// --- Custom Collection (Solar/Galaxy/Comic) group centering ---
+//
+// These three variants share one artwork geometry — an identical badgeBox
+// (custom-collection-manifest.ts: top 4.8%, height 15.1%, the same for all
+// three) placing a round club-badge slot near the top of the card, and the
+// same shared NAMEPLATE_NUMBER_GEOMETRY kit number below the nameplate.
+// Neither boundary is Hollinwood's own (Hollinwood's -1.5% vertical
+// correction was calibrated against ITS OWN single badge and must not be
+// assumed to generalise here — see EMJFL_NAME_TOP_PCT's doc comment for
+// the same reasoning applied the other way). Rather than borrow a static
+// offset from a different card family, this computes where the
+// name+position group's ACTUAL RENDERED bounds must sit to be centred
+// between these two real, per-render boundaries — re-derived every call
+// from the real name/position pair, not a single fixed constant, so a
+// short name (which naturally renders lower, closer to the number) and a
+// long name (which naturally renders taller, reaching closer to the
+// badge) both land centred in the same physical channel.
+//
+// Position's own rendered bounds are NOT a separate input to the centring
+// target: computeAdaptivePositionAnchor's own containment logic guarantees
+// position's top edge never rises above name's own top edge (within a
+// small safety margin) and its centre always sits strictly above name's
+// own bottom edge — i.e. position always nests INSIDE name's own vertical
+// span, confirmed directly for every case in this module's own test file
+// (search "nests inside"). The combined group's true outer bounds are
+// therefore always exactly name's own [top, bottom] — centring name's own
+// span centres the whole group, and cascading the shifted anchor back
+// through computeAdaptivePositionAnchor (see below) carries position along
+// with its existing relationship to name fully intact, since it is the
+// same formula, just evaluated against a different fixed point.
+const CUSTOM_COLLECTION_BADGE_BOTTOM_PCT = 19.9; // badgeBox top 4.8% + height 15.1%, shared solar/galaxy/comic (custom-collection-manifest.ts)
+
+// The kit number's own rendered top edge, derived from its fixed
+// NAMEPLATE_NUMBER_GEOMETRY anchor (bottom-anchored via translate(-50%,
+// -100%), so nothing here can ever move the number itself — only this
+// module's own estimate of where its top edge lands). comfortableChars is
+// 2, so any realistic 1-2 digit kit number renders unscaled (scale 1) —
+// the leading ratio below was calibrated once, at that unscaled size,
+// against a real render (Playwright getBoundingClientRect on both the
+// fill and outline spans, "7", Solar/Galaxy's default numberBox — no
+// outlineScale/rotate override): rendered height 263.3 native px (1050
+// scale) against the anchor-to-measured-top distance of 81.02 css px at a
+// 64.6 css px reference fontSize (340-wide render) => ratio 1.254. Comic's
+// own numberBox override (outlineScale 1.035, rotate -8deg) shifts its
+// real top edge by a few native px from this shared estimate — small
+// enough to be absorbed by CUSTOM_COLLECTION_GROUP_MIN_CLEARANCE_PCT below
+// rather than modelled per-variant.
+const CUSTOM_COLLECTION_NUMBER_TOP_LEADING_RATIO = 1.254;
+
+// Minimum breathing room preserved between the centred group and each of
+// the two channel boundaries — a deliberate, named floor (not a byproduct
+// of the centring math) so the group can never land flush against the
+// badge or the number even for the longest realistic name/position
+// pairing. 3% of the card's own height reads as a genuine, visible gap at
+// both builder-preview and print size without making the centring feel
+// arbitrarily loose.
+const CUSTOM_COLLECTION_GROUP_MIN_CLEARANCE_PCT = 3;
+
+export interface CustomCollectionGroupAnchor {
+  /** CSS top% for the name slot — pass as `{ top }` in nameplateSlotStyle's overrides. */
+  nameTopPct: string;
+  /** Position's own anchor, cascaded from the same shifted name anchor — pass `{ top: result.position.top, fontSizeFactor: result.position.fontSizeFactor }` as position's overrides. */
+  position: AdaptivePositionAnchor;
+}
+
+/**
+ * Computes the Custom Collection (Solar/Galaxy/Comic) group's centred
+ * anchor for one name/position pair. See the module-level comment above
+ * for the full reasoning. Call once per render; EMJFL and Hollinwood do
+ * NOT use this — see EMJFL_NAME_TOP_PCT and computeAdaptivePositionAnchor
+ * respectively for their own, separate vertical placement.
+ */
+export function computeCustomCollectionGroupAnchor(
+  W: number,
+  H: number,
+  name: string | undefined,
+  positionLabel: string | undefined
+): CustomCollectionGroupAnchor {
+  const nameGeom = NAMEPLATE_GEOMETRY.name;
+  const baselineNameBottomPct = parseFloat(nameGeom.top);
+
+  const nameScale = nameFitScale(name, nameGeom.comfortableChars, nameGeom.minScale);
+  const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
+  const nameLenCss = estimateTextWidthCss(name, nameFontSize);
+  const naturalNameBottomCss = H * (baselineNameBottomPct / 100);
+  const naturalNameTopCss = naturalNameBottomCss - nameLenCss;
+  const naturalGroupCenterCss = (naturalNameTopCss + naturalNameBottomCss) / 2;
+
+  const numFontSizeUnscaled = W * NAMEPLATE_NUMBER_GEOMETRY.fontSizeFactor;
+  const numberBottomAnchorCss = H * (parseFloat(NAMEPLATE_NUMBER_GEOMETRY.top) / 100);
+  const numberTopCss = numberBottomAnchorCss - numFontSizeUnscaled * CUSTOM_COLLECTION_NUMBER_TOP_LEADING_RATIO;
+
+  const badgeBottomCss = H * (CUSTOM_COLLECTION_BADGE_BOTTOM_PCT / 100);
+  const clearanceCss = H * (CUSTOM_COLLECTION_GROUP_MIN_CLEARANCE_PCT / 100);
+  const channelTopCss = badgeBottomCss + clearanceCss;
+  const channelBottomCss = numberTopCss - clearanceCss;
+  const targetCenterCss = (channelTopCss + channelBottomCss) / 2;
+
+  const shiftCss = targetCenterCss - naturalGroupCenterCss;
+  const nameTopPct = ((naturalNameBottomCss + shiftCss) / H) * 100;
+
+  return {
+    nameTopPct: `${nameTopPct.toFixed(3)}%`,
+    position: computeAdaptivePositionAnchor(W, H, name, positionLabel, nameTopPct),
   };
 }
 

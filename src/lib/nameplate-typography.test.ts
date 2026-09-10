@@ -6,6 +6,8 @@ import {
   nameplateSlotStyle,
   nameplateNumberLayers,
   computeAdaptivePositionAnchor,
+  computeCustomCollectionGroupAnchor,
+  EMJFL_NAME_TOP_PCT,
   estimateTextWidthCss,
   CHAR_ADVANCE_WIDTH,
   NAMEPLATE_GEOMETRY,
@@ -502,6 +504,114 @@ describe('computeAdaptivePositionAnchor', () => {
   });
 });
 
+/**
+ * EMJFL_NAME_TOP_PCT reverts EMJFL's own vertical anchor to the baseline
+ * that predates the Hollinwood group correction folded into
+ * NAMEPLATE_GEOMETRY — see its own doc comment in nameplate-typography.ts
+ * for why (that correction was calibrated against Hollinwood's own single
+ * badge, never validated against EMJFL's two-badge safe area).
+ */
+describe('EMJFL_NAME_TOP_PCT', () => {
+  it('is the original, pre-group-correction baseline — genuinely different from the shared (Hollinwood-calibrated) NAMEPLATE_GEOMETRY.name.top', () => {
+    expect(EMJFL_NAME_TOP_PCT).toBe(62.73);
+    expect(EMJFL_NAME_TOP_PCT).not.toBe(parseFloat(NAMEPLATE_GEOMETRY.name.top));
+  });
+
+  it('computeAdaptivePositionAnchor, given EMJFL_NAME_TOP_PCT as an override, resolves a lower (larger top%, further from the badge) anchor than the shared Hollinwood-shifted default', () => {
+    const W = 340, H = 476;
+    const withOverride = computeAdaptivePositionAnchor(W, H, 'JACOB THOMPSON', 'MIDFIELDER', EMJFL_NAME_TOP_PCT);
+    const withoutOverride = computeAdaptivePositionAnchor(W, H, 'JACOB THOMPSON', 'MIDFIELDER');
+    expect(parseFloat(withOverride.top)).toBeGreaterThan(parseFloat(withoutOverride.top));
+  });
+});
+
+/**
+ * computeCustomCollectionGroupAnchor replaces a static, borrowed offset
+ * with a per-render optical-centring calculation: the combined name+
+ * position group's actual rendered bounds (not the CSS anchor, not the
+ * card's overall midpoint) are centred between Custom Collection's own
+ * badge-bottom edge and the fixed kit number's own top edge, re-derived
+ * for every name/position pair so short and long names both land centred
+ * in the same physical channel rather than at a single fixed offset.
+ */
+describe('computeCustomCollectionGroupAnchor', () => {
+  const W = 340, H = 476;
+
+  // Re-derives the channel's two boundaries independently (same constants
+  // documented in nameplate-typography.ts: shared badgeBox bottom 19.9%,
+  // the number's own calibrated top-edge ratio 1.254, 3% clearance) rather
+  // than reaching into the function's own internals, so this test checks
+  // real centring behaviour, not just that the implementation agrees with
+  // itself.
+  function expectedChannel() {
+    const badgeBottomCss = H * (19.9 / 100);
+    const numFontSizeUnscaled = W * NAMEPLATE_NUMBER_GEOMETRY.fontSizeFactor;
+    const numberBottomAnchorCss = H * (parseFloat(NAMEPLATE_NUMBER_GEOMETRY.top) / 100);
+    const numberTopCss = numberBottomAnchorCss - numFontSizeUnscaled * 1.254;
+    const clearanceCss = H * (3 / 100);
+    return { channelTopCss: badgeBottomCss + clearanceCss, channelBottomCss: numberTopCss - clearanceCss };
+  }
+
+  it.each([
+    ['Jacob Thompson', 'MIDFIELDER'],
+    ['Kai', 'GK'],
+    ['Jim Ash', 'FW'],
+    ['Mohammed', 'GOALKEEPER'],
+  ])('centres the combined name+position group\'s actual rendered bounds at the channel midpoint for name=%s / position=%s', (name, position) => {
+    const result = computeCustomCollectionGroupAnchor(W, H, name, position);
+    const nameGeom = NAMEPLATE_GEOMETRY.name;
+    const nameScale = nameFitScale(name, nameGeom.comfortableChars, nameGeom.minScale);
+    const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
+    const nameLenCss = estimateTextWidthCss(name, nameFontSize);
+    const nameBottomCss = H * (parseFloat(result.nameTopPct) / 100);
+    const nameTopCss = nameBottomCss - nameLenCss;
+    const groupCenterCss = (nameTopCss + nameBottomCss) / 2;
+
+    const { channelTopCss, channelBottomCss } = expectedChannel();
+    const targetCenterCss = (channelTopCss + channelBottomCss) / 2;
+    expect(groupCenterCss).toBeCloseTo(targetCenterCss, 0);
+  });
+
+  it('position always nests inside name\'s own [top, bottom] span after the shift — the group\'s true outer bounds are name\'s own bounds, so centring name alone centres the whole group', () => {
+    const pairs: Array<[string, string]> = [['Jacob Thompson', 'MIDFIELDER'], ['Kai', 'GK'], ['Mohammed', 'GOALKEEPER']];
+    for (const [name, position] of pairs) {
+      const result = computeCustomCollectionGroupAnchor(W, H, name, position);
+      const nameGeom = NAMEPLATE_GEOMETRY.name;
+      const nameScale = nameFitScale(name, nameGeom.comfortableChars, nameGeom.minScale);
+      const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
+      const nameLenCss = estimateTextWidthCss(name, nameFontSize);
+      const nameBottomCss = H * (parseFloat(result.nameTopPct) / 100);
+      const nameTopCss = nameBottomCss - nameLenCss;
+
+      const posTopCss = H * (result.position.topEdgePct / 100);
+      const posBottomCss = H * (parseFloat(result.position.top) / 100);
+      expect(posTopCss).toBeGreaterThanOrEqual(nameTopCss - 0.01);
+      expect(posBottomCss).toBeLessThanOrEqual(nameBottomCss + 0.01);
+    }
+  });
+
+  it('a short name and a long name resolve to different anchors — the shift is recomputed per pair, not a fixed constant borrowed from one reference render', () => {
+    const long = computeCustomCollectionGroupAnchor(W, H, 'Jacob Thompson', 'MIDFIELDER');
+    const short = computeCustomCollectionGroupAnchor(W, H, 'Kai', 'GK');
+    expect(long.nameTopPct).not.toBe(short.nameTopPct);
+  });
+
+  it('never mutates NAMEPLATE_NUMBER_GEOMETRY or NAMEPLATE_GEOMETRY — the kit number and the shared defaults stay fixed', () => {
+    const beforeNumber = { ...NAMEPLATE_NUMBER_GEOMETRY };
+    const beforeName = { ...NAMEPLATE_GEOMETRY.name };
+    const beforePosition = { ...NAMEPLATE_GEOMETRY.position };
+    computeCustomCollectionGroupAnchor(W, H, 'Jacob Thompson', 'MIDFIELDER');
+    expect(NAMEPLATE_NUMBER_GEOMETRY).toEqual(beforeNumber);
+    expect(NAMEPLATE_GEOMETRY.name).toEqual(beforeName);
+    expect(NAMEPLATE_GEOMETRY.position).toEqual(beforePosition);
+  });
+
+  it('an undefined name or position does not throw', () => {
+    expect(() => computeCustomCollectionGroupAnchor(W, H, undefined, 'MIDFIELDER')).not.toThrow();
+    expect(() => computeCustomCollectionGroupAnchor(W, H, 'Jacob Thompson', undefined)).not.toThrow();
+  });
+});
+
 describe('the shared nameplate is actually used by every card the generalisation covers, and only those', () => {
   const cardArtSource = readFileSync(
     resolve(process.cwd(), 'src/components/builder/emblem/CardArt.tsx'),
@@ -524,13 +634,24 @@ describe('the shared nameplate is actually used by every card the generalisation
 
   it('EMJFL keeps its own colour (white name, #FF4B1F position) — colour stays per-card, not shared', () => {
     const body = bodyOf('EmjflCardArt');
-    expect(body).toContain("nameplateSlotStyle('name', W, H, d.name || '', '#fff')");
-    expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F', positionAnchor)");
+    expect(body).toContain("nameplateSlotStyle('name', W, H, d.name || '', '#fff', { top: `${EMJFL_NAME_TOP_PCT}%` })");
+    expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F', { top: positionAnchor.top, fontSizeFactor: positionAnchor.fontSizeFactor })");
+  });
+
+  it('EMJFL passes its own reverted vertical anchor into computeAdaptivePositionAnchor, not the shared NAMEPLATE_GEOMETRY.name.top default', () => {
+    const body = bodyOf('EmjflCardArt');
+    expect(body).toContain('computeAdaptivePositionAnchor(W, H, d.name, positionLabel, EMJFL_NAME_TOP_PCT)');
   });
 
   it('Hollinwood keeps its own fixed red position colour, not template.accent', () => {
     const body = bodyOf('HollinwoodCardArt');
-    expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#ff0000', positionAnchor)");
+    expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#ff0000', { top: positionAnchor.top, fontSizeFactor: positionAnchor.fontSizeFactor })");
+  });
+
+  it('Hollinwood does NOT pass any vertical-anchor override into computeAdaptivePositionAnchor — it uses the shared NAMEPLATE_GEOMETRY.name.top default directly, since that default IS Hollinwood\'s own calibration', () => {
+    const body = bodyOf('HollinwoodCardArt');
+    expect(body).toContain('computeAdaptivePositionAnchor(W, H, d.name, positionLabel)');
+    expect(body).not.toContain('computeAdaptivePositionAnchor(W, H, d.name, positionLabel, EMJFL_NAME_TOP_PCT)');
   });
 
   it('Hollinwood and EMJFL compute and pass the adaptive position anchor directly (the fix for position floating above a short name)', () => {
@@ -541,11 +662,21 @@ describe('the shared nameplate is actually used by every card the generalisation
     }
   });
 
-  it('CustomCollectionCardArt computes the adaptive anchor and folds it into positionBoxOverride (so a genuine per-variant override, if one ever exists, still wins over it)', () => {
+  it('CustomCollectionCardArt uses its own group-centering anchor, not the plain adaptive anchor every other template uses unmodified', () => {
     const body = bodyOf('CustomCollectionCardArt');
-    expect(body).toContain('computeAdaptivePositionAnchor(');
-    expect(body).toContain('...positionAnchor');
+    expect(body).toContain('computeCustomCollectionGroupAnchor(');
+    expect(body).not.toContain('computeAdaptivePositionAnchor(');
+    expect(body).toContain('groupAnchor.nameTopPct');
+    expect(body).toContain('groupAnchor.position.top');
+    expect(body).toContain('groupAnchor.position.fontSizeFactor');
+    expect(body).toMatch(/nameplateSlotStyle\('name',[^)]*nameBoxOverride/);
     expect(body).toMatch(/nameplateSlotStyle\('position',[^)]*positionBoxOverride/);
+  });
+
+  it('CustomCollectionCardArt\'s nameBoxOverride is never conditionally undefined — the computed group top must always apply, not only when a variant also sets its own nameBox', () => {
+    const body = bodyOf('CustomCollectionCardArt');
+    expect(body).toMatch(/const nameBoxOverride: Partial<NameplateSlotGeometry> = \{/);
+    expect(body).not.toMatch(/const nameBoxOverride: Partial<NameplateSlotGeometry> \| undefined/);
   });
 
   it('RealCardArt is untouched by the adaptive-anchor fix too — it never had position tied to nameplateSlotStyle in the first place', () => {
