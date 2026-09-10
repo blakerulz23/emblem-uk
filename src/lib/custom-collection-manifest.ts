@@ -96,11 +96,26 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       width: '21.5%',
       height: '15.1%',
     },
-    // nameBox/positionBox intentionally omitted — Solar measured to the
-    // same shared vertical nameplate geometry every other card here uses
-    // (nameplate-typography.ts); only its position colour differs.
+    // nameBox intentionally omitted — measured to the same shared vertical
+    // nameplate geometry every other card here uses (nameplate-typography.ts).
+    //
+    // positionBox.color: purple, not red. IMPORTANT — this `id: 'custom-solar'`
+    // entry is the template whose real assets/accent are a purple, starry,
+    // cosmic frame (background.png, accent #8f5cff, both confirmed by direct
+    // pixel sampling) — i.e. the card the founder and the supplied Canva
+    // reference (native "MIDFIELDER" layer, purple fill/outline) both call
+    // "Galaxy". The `id: 'custom-galaxy'` entry is a visually unrelated warm
+    // orange/red frame. The `name`/`description`/`theme` string fields on
+    // this entry (and on custom-galaxy's) are swapped relative to their own
+    // assets — a pre-existing mismatch, confirmed but deliberately NOT fixed
+    // here (out of scope for a colour-only change; the `id` is a stored
+    // identifier other records may reference). This colour correction is
+    // scoped to exactly this entry's positionBox — custom-galaxy and
+    // custom-comic are untouched. #8f5cff is this entry's own pre-existing
+    // `accent` token, already used elsewhere on this same card (not a new
+    // colour) — no longer overridden to red.
     positionBox: {
-      color: '#ef2222',
+      color: '#8f5cff',
     },
     // numberBox intentionally omitted — geometry shared, fill/stroke default
     // to white/positionColor (see CustomCollectionCardArt's own call site).

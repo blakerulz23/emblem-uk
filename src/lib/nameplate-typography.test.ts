@@ -46,11 +46,22 @@ describe('nameFitScale', () => {
   });
 });
 
-describe('NAMEPLATE_GEOMETRY — Hollinwood-measured shared defaults', () => {
-  it('name slot matches the measured Hollinwood calibration', () => {
+describe('NAMEPLATE_GEOMETRY — shared defaults, including the group-placement correction', () => {
+  // Values below reflect the group-level left/top correction (see
+  // nameplate-typography.ts's own GROUP_LEFT_SHIFT_PCT/GROUP_TOP_SHIFT_PCT
+  // doc comment): left is measured against the newest native Canva
+  // reference (OLLIE HARRISON, alpha bounds on a 1050x1498 canvas); top is
+  // bounded by a real-render collision check against the club/league badge
+  // artwork (see the doc comment for why the initial reference-derived
+  // value could not be used as computed). Name's own left/top shifted by
+  // the same explicit, named amount position's left also received,
+  // preserving their existing relative left-edge gap (8.49 percentage
+  // points) exactly. Nothing else (widthFactor, fontSizeFactor,
+  // comfortableChars, minScale — i.e. font size, fit-scale rules) changed.
+  it('name slot matches the corrected group placement', () => {
     expect(NAMEPLATE_GEOMETRY.name).toMatchObject({
-      left: '9.08%',
-      top: '62.73%',
+      left: '6.40%',
+      top: '61.23%',
       widthFactor: 0.6,
       fontSizeFactor: 0.0838,
       comfortableChars: 14,
@@ -58,15 +69,21 @@ describe('NAMEPLATE_GEOMETRY — Hollinwood-measured shared defaults', () => {
     });
   });
 
-  it('position slot matches the measured Hollinwood calibration', () => {
+  it('position slot matches the corrected group placement', () => {
     expect(NAMEPLATE_GEOMETRY.position).toMatchObject({
-      left: '17.57%',
-      top: '52.84%',
+      left: '14.89%',
+      top: '52.84%', // inert for every real consumer — always overridden by computeAdaptivePositionAnchor's own computed top
       widthFactor: 0.2,
       fontSizeFactor: 0.0432,
       comfortableChars: 10,
       minScale: 0.85,
     });
+  });
+
+  it('preserves the exact pre-existing relative left-edge gap between name and position (8.49 percentage points) — the shift is shared, not independently re-tuned per slot', () => {
+    const nameLeft = parseFloat(NAMEPLATE_GEOMETRY.name.left);
+    const posLeft = parseFloat(NAMEPLATE_GEOMETRY.position.left);
+    expect(posLeft - nameLeft).toBeCloseTo(8.49, 1);
   });
 });
 
@@ -75,8 +92,8 @@ describe('nameplateSlotStyle', () => {
 
   it('builds the reference-size name style unscaled for the calibration name', () => {
     const style = nameplateSlotStyle('name', W, H, 'JACOB THOMPSON', '#fff');
-    expect(style.left).toBe('9.08%');
-    expect(style.top).toBe('62.73%');
+    expect(style.left).toBe('6.40%');
+    expect(style.top).toBe('61.23%');
     expect(style.fontSize).toBeCloseTo(W * 0.0838, 5);
     expect(style.fontFamily).toBe(NAMEPLATE_FONT_FAMILY);
     expect(style.color).toBe('#fff');
@@ -96,7 +113,7 @@ describe('nameplateSlotStyle', () => {
       left: undefined,
       top: undefined,
     });
-    expect(style.left).toBe('17.57%');
+    expect(style.left).toBe('14.89%');
     expect(style.top).toBe('52.84%');
     expect(style.color).toBe('#ef2222');
   });
@@ -117,7 +134,7 @@ describe('nameplateSlotStyle', () => {
       textShadow: '0 2px 4px rgba(0,0,0,.45)',
     });
     expect(style.textShadow).toBe('0 2px 4px rgba(0,0,0,.45)');
-    expect(style.left).toBe('9.08%');
+    expect(style.left).toBe('6.40%');
   });
 });
 
@@ -302,15 +319,43 @@ describe('CHAR_ADVANCE_WIDTH / estimateTextWidthCss', () => {
 describe('computeAdaptivePositionAnchor', () => {
   const W = 340, H = 476;
 
-  it('reproduces the calibrated JACOB THOMPSON / MIDFIELDER anchor within ~2 native px', () => {
+  it('reproduces the calibrated JACOB THOMPSON / MIDFIELDER anchor, shifted by exactly the group placement correction', () => {
+    // Pre-correction, 594.8-785.2 native was the real measured render at
+    // this anchor (PR #86's own measurement, target 597-786). The group
+    // placement correction (GROUP_TOP_SHIFT_PCT = -1.5, see
+    // NAMEPLATE_GEOMETRY's own doc comment for the full derivation —
+    // badge-collision-bounded, not the larger reference-derived value that
+    // turned out to rest on a cross-page/cross-revision measurement)
+    // shifts name.top by -1.5 percentage points — and because
+    // computeAdaptivePositionAnchor derives position's own anchor as a
+    // pure linear function of name.top (nameBottomCss -> centerCss ->
+    // positionBottomCss, with no other term depending on name.top), that
+    // exact same -1.5-point shift (1498 * -1.5 / 100 ≈ -22.5 native px)
+    // passes straight through to position's own computed top — this is
+    // the whole point of correcting the group via name.top alone rather
+    // than separately re-tuning position. Expected native top is therefore
+    // the old ~785.2 minus that ~22.5px shift, ≈ 762.7.
     const anchor = computeAdaptivePositionAnchor(W, H, 'JACOB THOMPSON', 'MIDFIELDER');
-    // 594.8-785.2 native was the real measured render at this anchor;
-    // reference target was 597-786 (PR #86's own measurement).
     const topPct = parseFloat(anchor.top);
     const nativeTop = (topPct / 100) * 1498;
-    expect(nativeTop).toBeGreaterThan(775);
-    expect(nativeTop).toBeLessThan(795);
+    expect(nativeTop).toBeGreaterThan(755);
+    expect(nativeTop).toBeLessThan(770);
     expect(anchor.fontSizeFactor).toBeCloseTo(NAMEPLATE_GEOMETRY.position.fontSizeFactor, 5); // unscaled — no containment shrink needed for the reference pair
+  });
+
+  it('the group placement correction moves position strictly upward (toward the name, away from the kit number below) — a directional regression guard against a future sign flip', () => {
+    // NAMEPLATE_NUMBER_GEOMETRY.top ('77.35%') is fixed and untouched by
+    // this correction — confirmed by its own describe block above. This
+    // test locks in that computeAdaptivePositionAnchor's own output for the
+    // calibration pair sits meaningfully further from that fixed number
+    // anchor (a smaller top%, i.e. higher on the card) than the pre-
+    // correction geometry would have produced, which is the entire point
+    // of GROUP_TOP_SHIFT_PCT being negative.
+    const anchor = computeAdaptivePositionAnchor(340, 476, 'JACOB THOMPSON', 'MIDFIELDER');
+    const positionTopPct = parseFloat(anchor.top);
+    const numberTopPct = parseFloat(NAMEPLATE_NUMBER_GEOMETRY.top);
+    expect(positionTopPct).toBeLessThan(numberTopPct); // position sits above the number, with real margin
+    expect(numberTopPct - positionTopPct).toBeGreaterThan(20); // comfortably more than a token amount of clearance
   });
 
   it('changing only the position label does not move the name (position has no way to write back into name geometry)', () => {
