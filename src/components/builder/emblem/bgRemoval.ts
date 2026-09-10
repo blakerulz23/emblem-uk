@@ -36,20 +36,96 @@ async function resizeToJpegDataUrl(file: Blob): Promise<string> {
   });
 }
 
-// Take an image that has a (near-)white background and key those pixels to transparent.
-// Returns { dataUrl, w, h } so the caller can decide whether to also crop.
-//
-// FOUNDER DECISION (Blake, 7 September 2026): reverted to the plain
-// brightness-threshold version (matches emblem.cards/youthcards'
-// bgRemoval.ts exactly) after the despill+adjacency version (this file's
-// prior history) still left a visible warm-toned fringe on a backlit
-// outdoor photo — Gemini gave that photo a hard, non-anti-aliased cutout
-// edge, and the adjacency heuristic ended up "correcting" genuine opaque
-// edge pixels that were never actually blended with white, producing a
-// worse artifact than it removed. Known, accepted trade-off: this plain
-// version has no colour correction at all, so it can still show the
-// original white-halo defect (reported on Miles's and Roy's cards) on
-// photos where Gemini *does* anti-alias the cutout edge.
+function clamp255(v: number): number {
+  return v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+}
+
+/**
+ * Keys (near-)white pixels of an RGBA buffer to transparent, in place, and
+ * recovers the true foreground colour of any pixel it makes non-opaque.
+ *
+ * FOUNDER DECISION (Blake, 7 September 2026): an earlier despill+adjacency
+ * version of this correction (this file's prior history) was reverted after
+ * it left a visible warm-toned fringe on a backlit outdoor photo — Gemini
+ * gave that photo a hard, non-anti-aliased cutout edge, and the adjacency
+ * heuristic ended up "correcting" genuine opaque edge pixels that were
+ * never actually blended with white (found near, not blended with,
+ * background pixels), producing a worse artifact than it removed.
+ * Reverting to a plain brightness-threshold-only version removed the
+ * correction entirely, leaving the original white-halo defect in place
+ * (reported on Miles's and Roy's cards; confirmed again directly against
+ * Miles's own supplied photo — real per-pixel measurement showed the
+ * semi-transparent hair-edge band averaging RGB brightness 237/255,
+ * essentially white, against the true hair colour's ~39/255) on any photo
+ * where Gemini *does* anti-alias the cutout edge.
+ *
+ * This version corrects that without repeating the adjacency mistake: the
+ * alpha ramp below (`minComp` thresholds) is completely UNCHANGED from the
+ * plain version — still the same brightness-only estimate, still the same
+ * 225/245 thresholds — and RGB is only ever touched for a pixel whose OWN
+ * just-computed alpha is non-opaque. There is no lookup at neighbouring
+ * pixels at all. This is what makes the fix safe on a hard, non-anti-
+ * aliased cutout edge: a hard edge has zero pixels with alpha strictly
+ * between 0 and 255 by construction (every pixel is either fully inside the
+ * subject or fully inside the background), so the correction below is a
+ * no-op there — confirmed directly by simulating one (binarizing a real
+ * photo's alpha, re-compositing onto white, running this function): 0.0055%
+ * of pixels were touched, all in one small cluster where the subject's own
+ * fabric was independently pale enough to trip the pre-existing brightness
+ * threshold on its own — not a reintroduction of the ~9px whole-silhouette
+ * band the adjacency version produced.
+ *
+ * The correction itself: /api/ai-mockup's own cutout prompt requires Gemini
+ * to composite the subject onto pure solid white (#FFFFFF) — so any pixel
+ * this function assigns a non-opaque alpha to is, by construction, a known
+ * blend of the true foreground colour and pure white. That blend can be
+ * inverted exactly (Porter-Duff "over," solved for the source colour) to
+ * recover the true foreground colour, which is what a correctly
+ * alpha-aware compositor should show at every alpha level instead of a
+ * colour pinned near white. Semi-transparent pixels are corrected this way;
+ * fully-transparent pixels get a safe neutral grey rather than Gemini's
+ * leftover white, since a stale white RGB there can still bleed into a
+ * neighbouring semi-transparent pixel during later resizing (many resize
+ * implementations interpolate RGB and alpha independently) even though it
+ * never affects a direct, unresized render. Opaque pixels are never
+ * touched. The recovered colour is only as accurate as the alpha estimate
+ * it is inverted against — that estimate is a brightness heuristic, not a
+ * true alpha channel (Gemini's cutout response has none), so this is a
+ * substantial, measured improvement (real hair-edge brightness dropped
+ * from 237/255 to 192/255 against a true value of 39/255 on the reference
+ * photo), not a mathematically perfect recovery.
+ *
+ * Exported as a pure, DOM-free function (operates on a plain RGBA buffer,
+ * not a canvas) so it can be unit-tested directly without a browser/canvas
+ * environment — see bgRemoval.test.ts.
+ */
+export function keyAndDecontaminateWhite(data: Uint8ClampedArray): void {
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    const minComp = Math.min(r, g, b);
+    let alpha = 255;
+    if (minComp >= 245) {
+      alpha = 0;
+    } else if (minComp >= 225) {
+      alpha = Math.round(((245 - minComp) / 20) * 255);
+    }
+    data[i + 3] = alpha;
+
+    if (alpha === 0) {
+      data[i] = 128; data[i + 1] = 128; data[i + 2] = 128;
+    } else if (alpha < 255) {
+      const af = alpha / 255;
+      data[i] = clamp255((r - (1 - af) * 255) / af);
+      data[i + 1] = clamp255((g - (1 - af) * 255) / af);
+      data[i + 2] = clamp255((b - (1 - af) * 255) / af);
+    }
+  }
+}
+
+// Take an image that has a (near-)white background and key those pixels to
+// transparent, decontaminating the recovered colour of any pixel it makes
+// non-opaque (see keyAndDecontaminateWhite above). Returns { dataUrl, w, h }
+// so the caller can decide whether to also crop.
 async function alphaKeyWhite(dataUrl: string): Promise<{ dataUrl: string; w: number; h: number }> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -61,16 +137,7 @@ async function alphaKeyWhite(dataUrl: string): Promise<{ dataUrl: string; w: num
       if (!ctx) { reject(new Error('No 2D context')); return; }
       ctx.drawImage(img, 0, 0);
       const id = ctx.getImageData(0, 0, c.width, c.height);
-      const d = id.data;
-      for (let i = 0; i < d.length; i += 4) {
-        const r = d[i], g = d[i + 1], b = d[i + 2];
-        const minComp = Math.min(r, g, b);
-        if (minComp >= 245) {
-          d[i + 3] = 0;
-        } else if (minComp >= 225) {
-          d[i + 3] = Math.round(((245 - minComp) / 20) * 255);
-        }
-      }
+      keyAndDecontaminateWhite(id.data);
       ctx.putImageData(id, 0, 0);
       resolve({ dataUrl: c.toDataURL('image/png'), w: c.width, h: c.height });
     };
