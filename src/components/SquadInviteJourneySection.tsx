@@ -70,7 +70,7 @@ const SQUAD_INVITE_JOURNEY_DEMO = {
       number: '2',
       heading: 'FAMILIES BUILD THEIR OWN',
       description: 'Each family creates and confirms their own player’s card, at their own pace.',
-      supporting: 'Families complete their own player’s card using the invite link.',
+      supporting: 'Three families. One growing squad.',
     },
     {
       id: 'delivered',
@@ -108,7 +108,7 @@ function FamilyPhoto({ variant, photo }: { variant: 'confirmed' | 'ready' | 'in-
       <img className="sqi-family-photo" src={photo} alt="" loading="lazy" decoding="async" />
       {variant === 'confirmed' && (
         <span className="sqi-family-badge">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <path d="M5 12.5l4.5 4.5L19 7" />
           </svg>
         </span>
@@ -117,12 +117,25 @@ function FamilyPhoto({ variant, photo }: { variant: 'confirmed' | 'ready' | 'in-
   );
 }
 
+/**
+ * A layered, three-card composition (not three separate boxed thumbnails):
+ * the "ready" card (Custom Collection Solar — the real purple "Galaxy"
+ * design) sits largest, upright and in front; "confirmed" (EMJFL red) and
+ * "in-progress" (Custom Collection Galaxy id — orange) sit behind it,
+ * rotated away from centre and partially overlapped, each still showing
+ * enough of its own frame/photo/number to read as a distinct real Emblem
+ * card. All three use the exact same real card-preview assets the old
+ * boxed-thumbnail row already used — no new artwork, no renderer
+ * duplication. Sizing is percentage/aspect-ratio based (of this
+ * composition's own flex container), so it scales with the panel at every
+ * breakpoint rather than via fixed device-width coordinates.
+ */
 function FamilyTiles() {
   return (
-    <div className="sqi-family-tiles">
+    <div className="sqi-family-stack">
       <span className="sqi-sr-only">Example family progress — three sample cards illustrating how each family’s own card moves through the journey; not real Squad Invite participants —</span>
       {SQUAD_INVITE_JOURNEY_DEMO.familyTiles.map((tile) => (
-        <div key={tile.id} className="sqi-family-tile">
+        <div key={tile.id} className={`sqi-family-card sqi-family-card--${tile.variant}`}>
           <FamilyPhoto variant={tile.variant} photo={tile.photo} />
           <span className={`sqi-family-status sqi-family-status--${tile.variant}`}>{tile.status}</span>
         </div>
@@ -173,7 +186,12 @@ export default function SquadInviteJourneySection({
         .sqi-cta { min-height: 44px; }
         .sqi-offer { display: inline-flex; align-items: center; max-width: 460px; margin: 0; padding: 8px 16px; border: 1px solid rgba(241,96,29,.4); border-radius: 999px; background: transparent; color: #b3480f; font-family: var(--font-jbmono), monospace; font-size: 11.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; line-height: 1.4; }
 
-        .sqi-stages { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 20px; margin: 0; padding: 0; list-style: none; counter-reset: none; }
+        /* align-items:start — Step 2's larger card composition makes its
+           own panel taller than Steps 1/3; without this, CSS Grid's default
+           row-stretch would force Steps 1/3 to match that height, leaving
+           a large dead gap under their own (unchanged) content. Each panel
+           now sizes to its own content instead. */
+        .sqi-stages { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); align-items: start; gap: 20px; margin: 0; padding: 0; list-style: none; counter-reset: none; }
         .sqi-stage { position: relative; display: flex; flex-direction: column; padding: 22px 22px 24px; border: 1px solid rgba(20,17,15,.1); border-radius: 20px; background: #fefaf5; box-shadow: 0 20px 46px -34px rgba(20,17,15,.3); }
         .sqi-stage:not(:last-child)::after { content: ''; position: absolute; top: 22px; right: -14px; width: 24px; height: 24px; background: var(--accent, #ff5a1f); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5l7 7-7 7'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5l7 7-7 7'/%3E%3C/svg%3E") center / contain no-repeat; z-index: 2; }
         .sqi-stage-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
@@ -195,14 +213,34 @@ export default function SquadInviteJourneySection({
         .sqi-copy-btn:focus-visible { outline: 2px solid var(--accent, #ff5a1f); outline-offset: 2px; }
         .sqi-organiser-reassurance { margin: 10px 0 0; color: #8b8478; font-size: 11px; line-height: 1.45; }
 
-        .sqi-family-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-        .sqi-family-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 6px; border-radius: 12px; background: #fff; border: 1px solid rgba(20,17,15,.08); }
-        .sqi-family-photo-wrap { position: relative; display: block; width: 54px; height: 76px; border-radius: 7px; overflow: visible; }
-        .sqi-family-photo { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 7px; box-shadow: 0 10px 20px -12px rgba(20,17,15,.5); }
-        .sqi-family-photo-wrap--ready .sqi-family-photo { outline: 2px solid rgba(241,96,29,.55); outline-offset: 1px; }
-        .sqi-family-photo-wrap--in-progress .sqi-family-photo { opacity: .45; filter: grayscale(.3); }
-        .sqi-family-badge { position: absolute; right: -5px; bottom: -5px; display: grid; place-items: center; width: 19px; height: 19px; border-radius: 999px; background: #17a968; border: 2px solid #fff; }
-        .sqi-family-status { font-family: var(--font-jbmono), monospace; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-align: center; color: #5f574f; }
+        /* Layered three-card composition — replaces the old three-boxed-
+           thumbnail row. All widths are percentages of this flex
+           container's own width (itself already responsive inside
+           .sqi-stage-visual), so the whole thing scales with the panel
+           rather than via fixed device-width coordinates. The centre
+           ("ready") card is ~18% wider than the side cards (15-20% target)
+           and z-indexed in front; side cards use a negative percentage
+           margin to overlap toward centre without ever risking horizontal
+           overflow, since the margin is a fraction of the same container
+           the widths are a fraction of. */
+        .sqi-family-stack { position: relative; display: flex; align-items: flex-end; justify-content: center; padding-top: clamp(10px, 3vw, 20px); }
+        .sqi-family-card { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 10px; flex: 0 0 30%; max-width: 132px; }
+        .sqi-family-card--ready { z-index: 3; flex-basis: 35.5%; max-width: 156px; }
+        .sqi-family-card--confirmed { margin-right: -9%; }
+        .sqi-family-card--in-progress { margin-left: -9%; }
+        .sqi-family-photo-wrap { position: relative; display: block; width: 100%; aspect-ratio: 153 / 216; border-radius: 10px; overflow: visible; }
+        .sqi-family-card--confirmed .sqi-family-photo-wrap { transform: rotate(-7deg); }
+        .sqi-family-card--in-progress .sqi-family-photo-wrap { transform: rotate(7deg); }
+        .sqi-family-photo { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 10px; box-shadow: 0 16px 32px -16px rgba(20,17,15,.5); }
+        .sqi-family-photo-wrap--ready .sqi-family-photo { outline: 2.5px solid rgba(241,96,29,.6); outline-offset: 2px; box-shadow: 0 20px 40px -14px rgba(20,17,15,.55); }
+        .sqi-family-photo-wrap--in-progress .sqi-family-photo { opacity: .6; filter: grayscale(.15); }
+        /* left, not right: the confirmed card is the one positioned behind
+           and to the left of centre, overlapped on its own right-hand side
+           by the ready card in front — a right-corner badge would render
+           underneath that overlap and be invisible. Left keeps it in the
+           card's own always-visible portion. */
+        .sqi-family-badge { position: absolute; left: -6px; bottom: -6px; display: grid; place-items: center; width: clamp(22px, 6vw, 28px); height: clamp(22px, 6vw, 28px); border-radius: 999px; background: #17a968; border: 2px solid #fff; box-shadow: 0 3px 8px rgba(20,17,15,.3); }
+        .sqi-family-status { font-family: var(--font-jbmono), monospace; font-size: clamp(10px, 2.6vw, 11.5px); font-weight: 700; letter-spacing: .04em; text-align: center; color: #5f574f; }
         .sqi-family-status--confirmed { color: #147a4c; }
         .sqi-family-status--ready { color: #b3480f; }
         .sqi-family-status--in-progress { color: #8b8478; font-style: italic; }
