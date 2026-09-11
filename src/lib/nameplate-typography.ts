@@ -179,7 +179,17 @@ export const NAMEPLATE_GEOMETRY: { name: NameplateSlotGeometry; position: Namepl
     top: '52.84%',
     widthFactor: 0.2,
     fontSizeFactor: 0.0432,
-    comfortableChars: 10,
+    // 11, not 10: the five canonical position labels are GOALKEEPER (10),
+    // DEFENDER (8), MIDFIELDER (10), FORWARD (7) and ALL-ROUNDER (11) — at
+    // 11, every one of them renders at full, unshrunk reference size.
+    // widthFactor's own 0.2*H "lane" comfortably fits ALL-ROUNDER at full
+    // size with real margin to spare (measured: ~72 of ~95 CSS px at a
+    // 340-wide reference render, i.e. ~25% headroom), so there was no
+    // actual space constraint forcing 10 — only an unnecessarily tight
+    // threshold that shrank the longest canonical label by ~9% for no
+    // reason ("largest position size that safely supports the canonical
+    // labels", not the smallest one that merely accommodates the longest).
+    comfortableChars: 11,
     minScale: 0.85,
     fontWeight: NAMEPLATE_FONT_WEIGHT,
     letterSpacing: '0em',
@@ -330,18 +340,14 @@ export function nameplateNumberLayers(
  * measurement: TINUBU/MIDFIELDER — name spans native y 711–939, position
  * 598–788, extending 113px above the name's own top).
  *
- * computeAdaptivePositionAnchor derives position's vertical anchor from the
- * *name's own estimated rendered length* instead of a fixed constant, so it
- * moves down toward a short name and up alongside a long one automatically
- * — one documented formula, not a per-string exception. Neither this
- * module nor CardArt.tsx can measure real DOM text width (CardArt also
- * renders server-side, e.g. Collection OS's print path, with no DOM at
- * all), so rendered length is *estimated* — via estimateTextWidthCss's
- * real per-glyph advance-width table (see its own doc comment for why a
- * flat average-per-character estimate isn't accurate enough: two equal-
- * length names can differ by over 40% in real rendered width, more than
- * enough to erase a short name's own containment margin for one of them
- * while leaving the other with room to spare).
+ * computeAdaptivePositionAnchor derives position's vertical *placement*
+ * from the name's own estimated rendered length instead of a fixed
+ * constant, so it moves down toward a short name and up alongside a long
+ * one automatically — one documented formula, not a per-string exception.
+ * Neither this module nor CardArt.tsx can measure real DOM text width
+ * (CardArt also renders server-side, e.g. Collection OS's print path, with
+ * no DOM at all), so rendered length is *estimated* — via
+ * estimateTextWidthCss's real per-glyph advance-width table.
  *
  * The anchor itself is proportional, not additive: position's centre sits
  * POSITION_CENTER_RATIO of the name's own estimated length up from the
@@ -352,41 +358,38 @@ export function nameplateNumberLayers(
  * and can still push position past the name's own bottom edge, while a
  * proportional one shrinks together with the name automatically.
  *
- * Even proportional, an extreme pairing (a very short name with the
- * longest position label) can still push position's own top above the
- * name's — algebraically, containment only holds once
- * `nameLength >= positionLength / (2 * (1 - POSITION_CENTER_RATIO))`.
- * POSITION_CONTAINMENT_SAFETY_MARGIN_PX pads that boundary, and when the
- * natural position length would still cross it, an *additional* shrink
- * (independent of nameFitScale's own length-based shrink) is applied to
- * position, computed as the exact scale required to clear the name's own
- * top (down to POSITION_CONTAINMENT_ABSOLUTE_FLOOR, a technical guard
- * against zero, not a readability choice — see its own doc comment for why
- * this must never clamp upward). This is the "scale down only exactly as
- * much as the real safe area requires" case; it does not fire for any of
- * the five canonical labels against any realistic name length (see the
- * module's own test file for the full reproduction matrix), only for very
- * short or narrow-letter-dominated names — where it now guarantees full
- * containment for any name/position pairing, not only the ones measured
- * during calibration, since it is no longer possible for a fixed floor to
- * override the computed requirement.
+ * IMPORTANT — position's own FONT SIZE is never adjusted by this
+ * placement formula, only where it sits. An earlier version of this
+ * function also shrank position's font size whenever the proportional
+ * placement above would have put position's natural (own-length-based)
+ * top edge above name's own top edge — i.e. it treated "position would
+ * extend above a SHORT name's small span" as an overflow to fix by making
+ * position smaller. That silently made position's *size* a function of
+ * name's length: confirmed directly (XAVI / ALL-ROUNDER rendered at
+ * roughly half the font size of JACOB THOMPSON / ALL-ROUNDER, the exact
+ * same position label, purely because XAVI is short) — a real, reported
+ * regression, and the opposite of what a reader expects ("the position"
+ * should read as consistently sized regardless of whose card it's on).
+ * Position's font size now depends ONLY on its own text (see
+ * NAMEPLATE_GEOMETRY.position's own comfortableChars/minScale, and
+ * nameplateSlotStyle's downstream nameFitScale(text, ...) call — the same
+ * single formula this function itself uses below to size position, so
+ * there is one source of truth for "how big does this position label
+ * render", not two that could disagree).
+ *
+ * Letting position extend above a short name's own top edge for an
+ * extreme pairing (a very short name with the longest canonical label) is
+ * therefore an accepted, expected outcome now, not a defect to shrink
+ * away — the two labels sit in separate horizontal lanes (position's own
+ * `left` is offset from name's), so this is a vertical stagger, not a
+ * pixel-level text collision. What actually must never happen — the
+ * combined group drifting into the badge above or the kit number below —
+ * is handled at the group level (see computeCustomCollectionGroupAnchor),
+ * which measures the TRUE combined bounds of name and position together
+ * (whichever of the two extends further at each end) rather than assuming
+ * position always nests inside name's own span.
  */
 const POSITION_CENTER_RATIO = 0.4;
-const POSITION_CONTAINMENT_SAFETY_MARGIN_PX = 6;
-// NOT a readability floor — a last-resort technical guard against a
-// zero/negative font-size for a maxLenCss/posLenCssNatural ratio that
-// collapses toward zero (e.g. an all-but-empty name against the longest
-// canonical label). Containment is a hard requirement with no exception,
-// so nothing may clamp *up* toward this value the way an earlier version
-// of this constant did: that version (0.4, framed as a readability floor)
-// silently overrode the computed required scale whenever the real
-// requirement fell below it, which is precisely what let "LI"/"III"-style
-// narrow-letter short names against GOALKEEPER render *overlapping* the
-// name by up to 16.6px even though the containment math itself knew the
-// correct, smaller scale to prevent it. Real per-pairing required scale is
-// used directly below (see requiredScale); this constant only stops that
-// scale from reaching zero, it never raises it.
-const POSITION_CONTAINMENT_ABSOLUTE_FLOOR = 0.1;
 // A CSS `top`/rotated-box anchor never lands exactly on the rendered
 // glyph's own ink edge — line-height/leading adds a small, real gap
 // between the two, proportional to font-size (same phenomenon the fixed
@@ -397,23 +400,32 @@ const POSITION_CONTAINMENT_ABSOLUTE_FLOOR = 0.1;
 // MIDFIELDER) by rendering the formula's own computed anchor and
 // measuring the residual offset against the reference's measured 786–938
 // bounds (~13.75 native px at MIDFIELDER's reference font-size, expressed
-// here as a fraction of position's own effective font-size so it scales
-// correctly when fit-scale or containment shrink that font-size).
+// here as a fraction of position's own font-size so it scales correctly
+// when position's own length-based fit-scale shrinks that font-size).
 const POSITION_RENDER_LEADING_RATIO = 0.303;
 
 export interface AdaptivePositionAnchor {
   /** CSS top% for the position slot — pass as `{ top }` in nameplateSlotStyle's overrides. */
   top: string;
-  /** Effective fontSizeFactor for the position slot (the shared default, further reduced only if containment against this specific name required it) — pass as `{ fontSizeFactor }` alongside `top`. */
+  /**
+   * fontSizeFactor for the position slot — always NAMEPLATE_GEOMETRY.position's
+   * own base value, unconditionally (position's font size depends only on
+   * its own text; see this module's doc comment above). Still returned and
+   * still meant to be passed through as `{ fontSizeFactor }` alongside
+   * `top`, both so existing call sites don't need their own shape, and so a
+   * genuinely measured per-variant override (none exists today) has
+   * somewhere to plug in later without changing the calling convention.
+   */
   fontSizeFactor: number;
   /**
-   * CSS top% of position's own topmost rendered edge — the highest point of
-   * the combined name+position group (position always sits above name; see
-   * this module's own doc comment above). Exposed so a caller that needs
-   * the group's actual combined bounds (not just each slot's own anchor) —
-   * e.g. a template family's group-centering override — doesn't have to
-   * re-derive this formula's internals; ignored by callers that only need
-   * `top`/`fontSizeFactor`.
+   * CSS top% of position's own topmost rendered edge. NOT guaranteed to sit
+   * below name's own top edge — for a short name paired with a long
+   * position label, position can now extend above it (see this module's
+   * own doc comment above for why that's expected, not a defect). Exposed
+   * so a caller that needs the group's actual combined bounds (e.g. a
+   * template family's group-centering override) can take the union of
+   * name's and position's own real bounds, not assume one nests inside the
+   * other.
    */
   topEdgePct: number;
 }
@@ -447,39 +459,30 @@ export function computeAdaptivePositionAnchor(
   const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
   const nameLenCss = estimateTextWidthCss(name, nameFontSize);
 
+  // Position's own font size and rendered length depend ONLY on its own
+  // text (posScale) — this is the exact same nameFitScale(positionLabel,
+  // posGeom.comfortableChars, posGeom.minScale) call nameplateSlotStyle
+  // itself makes downstream when it renders the position slot, so this
+  // placement math and the actually-painted font size can never disagree
+  // (one formula, evaluated twice on identical inputs, not two formulas
+  // that could drift apart).
   const posScale = nameFitScale(positionLabel, posGeom.comfortableChars, posGeom.minScale);
   const posFontSize = W * posGeom.fontSizeFactor * posScale;
-  const posLenCssNatural = estimateTextWidthCss(positionLabel, posFontSize);
+  const posLenCss = estimateTextWidthCss(positionLabel, posFontSize);
 
   const nameBottomCss = H * (nameBottomPct / 100);
-  const nameTopCss = nameBottomCss - nameLenCss;
   const centerCss = nameBottomCss - nameLenCss * POSITION_CENTER_RATIO;
 
-  // The leading-gap shift moves the whole rendered box down by a constant
-  // (font-size-proportional) amount without changing its own height, so it
-  // must apply to the containment check too — checking the pre-shift box
-  // would let a case through that renders overlapping the name's own top
-  // by roughly `shift` once actually painted.
-  const naturalShiftCss = posFontSize * POSITION_RENDER_LEADING_RATIO;
-  let posLenCss = posLenCssNatural;
-  let containmentScale = 1;
-  const naturalTopCss = centerCss - posLenCssNatural / 2 - naturalShiftCss;
-  const safeTopCss = nameTopCss + POSITION_CONTAINMENT_SAFETY_MARGIN_PX;
-  if (naturalTopCss < safeTopCss) {
-    const maxLenCss = 2 * (centerCss - naturalShiftCss - safeTopCss);
-    if (maxLenCss < posLenCssNatural) {
-      const requiredScale = maxLenCss / posLenCssNatural;
-      containmentScale = Math.max(POSITION_CONTAINMENT_ABSOLUTE_FLOOR, requiredScale);
-      posLenCss = posLenCssNatural * containmentScale;
-    }
-  }
-
-  const effectivePosFontSize = posFontSize * containmentScale;
-  const positionBottomCss = centerCss + posLenCss / 2 - effectivePosFontSize * POSITION_RENDER_LEADING_RATIO;
-  const positionTopCss = centerCss - posLenCss / 2 - effectivePosFontSize * POSITION_RENDER_LEADING_RATIO;
+  // Leading-gap shift moves the whole rendered box down by a constant
+  // (font-size-proportional) amount without changing its own height —
+  // calibrated once against the reference pair (see this constant's own
+  // doc comment); applied here with no further size adjustment.
+  const shiftCss = posFontSize * POSITION_RENDER_LEADING_RATIO;
+  const positionBottomCss = centerCss + posLenCss / 2 - shiftCss;
+  const positionTopCss = centerCss - posLenCss / 2 - shiftCss;
   return {
     top: `${((positionBottomCss / H) * 100).toFixed(3)}%`,
-    fontSizeFactor: posGeom.fontSizeFactor * containmentScale,
+    fontSizeFactor: posGeom.fontSizeFactor,
     topEdgePct: (positionTopCss / H) * 100,
   };
 }
@@ -525,18 +528,22 @@ export const EMJFL_NAME_TOP_PCT = 62.73;
 // long name (which naturally renders taller, reaching closer to the
 // badge) both land centred in the same physical channel.
 //
-// Position's own rendered bounds are NOT a separate input to the centring
-// target: computeAdaptivePositionAnchor's own containment logic guarantees
-// position's top edge never rises above name's own top edge (within a
-// small safety margin) and its centre always sits strictly above name's
-// own bottom edge — i.e. position always nests INSIDE name's own vertical
-// span, confirmed directly for every case in this module's own test file
-// (search "nests inside"). The combined group's true outer bounds are
-// therefore always exactly name's own [top, bottom] — centring name's own
-// span centres the whole group, and cascading the shifted anchor back
-// through computeAdaptivePositionAnchor (see below) carries position along
-// with its existing relationship to name fully intact, since it is the
-// same formula, just evaluated against a different fixed point.
+// Position's own rendered bounds ARE a real input to the centring target:
+// position's font size depends only on its own text (see
+// computeAdaptivePositionAnchor's own doc comment), not on name's length,
+// so it is NOT guaranteed to nest inside name's own vertical span — a
+// short name paired with a long position label can leave position
+// extending above name's own top edge. The group's true outer bounds are
+// therefore the union of name's own [top, bottom] and position's own
+// [top, bottom] — measured below using the exact same
+// computeAdaptivePositionAnchor call the actual render uses (one source
+// of truth for "how big does position render and where does it land",
+// not a separate reimplementation of that formula's math). Once the
+// group's real bounds are known, the shift computed to centre them is
+// cascaded back through computeAdaptivePositionAnchor (see below), which
+// carries position along with its existing relationship to name fully
+// intact, since it is the same formula, just evaluated against a
+// different fixed point.
 const CUSTOM_COLLECTION_BADGE_BOTTOM_PCT = 19.9; // badgeBox top 4.8% + height 15.1%, shared solar/galaxy/comic (custom-collection-manifest.ts)
 
 // The kit number's own rendered top edge, derived from its fixed
@@ -593,7 +600,19 @@ export function computeCustomCollectionGroupAnchor(
   const nameLenCss = estimateTextWidthCss(name, nameFontSize);
   const naturalNameBottomCss = H * (baselineNameBottomPct / 100);
   const naturalNameTopCss = naturalNameBottomCss - nameLenCss;
-  const naturalGroupCenterCss = (naturalNameTopCss + naturalNameBottomCss) / 2;
+
+  // Position's own natural bounds, probed at the same baseline anchor —
+  // may extend above name's own top for a short name + long position
+  // pairing (see computeAdaptivePositionAnchor's own doc comment), so the
+  // group's real top is whichever of the two actually reaches highest,
+  // not name's top assumed unconditionally.
+  const naturalPosition = computeAdaptivePositionAnchor(W, H, name, positionLabel, baselineNameBottomPct);
+  const naturalPositionTopCss = H * (naturalPosition.topEdgePct / 100);
+  const naturalPositionBottomCss = H * (parseFloat(naturalPosition.top) / 100);
+
+  const naturalGroupTopCss = Math.min(naturalNameTopCss, naturalPositionTopCss);
+  const naturalGroupBottomCss = Math.max(naturalNameBottomCss, naturalPositionBottomCss);
+  const naturalGroupCenterCss = (naturalGroupTopCss + naturalGroupBottomCss) / 2;
 
   const numFontSizeUnscaled = W * NAMEPLATE_NUMBER_GEOMETRY.fontSizeFactor;
   const numberBottomAnchorCss = H * (parseFloat(NAMEPLATE_NUMBER_GEOMETRY.top) / 100);
