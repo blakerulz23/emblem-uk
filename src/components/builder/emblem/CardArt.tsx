@@ -4,7 +4,7 @@
 import type { CSSProperties } from 'react';
 import { getCustomCollectionVariant } from '@/lib/custom-collection-manifest';
 import { getHollinwoodVariant } from '@/lib/hollinwood-manifest';
-import { computeAdaptivePositionAnchor, nameFitScale, nameplateNumberLayers, nameplateSlotStyle, type NameplateNumberGeometry, type NameplateSlotGeometry } from '@/lib/nameplate-typography';
+import { computeAdaptivePositionAnchor, computeCustomCollectionGroupAnchor, EMJFL_NAME_TOP_PCT, nameFitScale, nameplateNumberLayers, nameplateSlotStyle, type NameplateNumberGeometry, type NameplateSlotGeometry } from '@/lib/nameplate-typography';
 import { computePhotoGeometry } from '@/lib/photo-geometry';
 import { positionCardLabel } from '@/lib/player-position';
 import { SPORT_STATS, type CardTemplate, type Details, type Family, type SportId } from './data';
@@ -1323,7 +1323,12 @@ function EmjflCardArt({
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
   const positionLabel = positionCardLabel(d.position, 'POSITION');
-  const positionAnchor = computeAdaptivePositionAnchor(W, H, d.name, positionLabel);
+  // EMJFL keeps its own, separately-reverted vertical anchor — see
+  // EMJFL_NAME_TOP_PCT's own doc comment for why it does not use the
+  // shared NAMEPLATE_GEOMETRY.name.top default (that default carries a
+  // vertical correction calibrated for Hollinwood's own single badge,
+  // never validated against EMJFL's two-badge safe area).
+  const positionAnchor = computeAdaptivePositionAnchor(W, H, d.name, positionLabel, EMJFL_NAME_TOP_PCT);
 
   return (
     <div
@@ -1412,11 +1417,11 @@ function EmjflCardArt({
             Anchor) — a fixed anchor only ever matched the reference name's
             own length; for a short name (e.g. TINUBU) it left position
             floating above the name entirely. */}
-        <div style={{ ...nameplateSlotStyle('name', W, H, d.name || '', '#fff'), zIndex: 5 }}>
+        <div style={{ ...nameplateSlotStyle('name', W, H, d.name || '', '#fff', { top: `${EMJFL_NAME_TOP_PCT}%` }), zIndex: 5 }}>
           {d.name || 'Player Name'}
         </div>
 
-        <div style={{ ...nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F', positionAnchor), zIndex: 5 }}>
+        <div style={{ ...nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F', { top: positionAnchor.top, fontSizeFactor: positionAnchor.fontSizeFactor }), zIndex: 5 }}>
           {positionLabel}
         </div>
 
@@ -1588,7 +1593,7 @@ function HollinwoodCardArt({
           {d.name || 'Player Name'}
         </div>
 
-        <div style={{ ...nameplateSlotStyle('position', W, H, positionLabel, '#ff0000', positionAnchor), zIndex: 6 }}>
+        <div style={{ ...nameplateSlotStyle('position', W, H, positionLabel, '#ff0000', { top: positionAnchor.top, fontSizeFactor: positionAnchor.fontSizeFactor }), zIndex: 6 }}>
           {positionLabel}
         </div>
 
@@ -1659,34 +1664,49 @@ function CustomCollectionCardArt({
   const isComic = variant.id === 'custom-comic';
   const playerName = d.name || 'Player Name';
   const positionLabel = positionCardLabel(d.position, 'POSITION');
-  const positionAnchor = computeAdaptivePositionAnchor(W, H, playerName, positionLabel);
-  // All three Custom Collection variants (Solar, Galaxy, Comic) measured to
-  // the same shared vertical nameplate geometry Hollinwood and EMJFL use —
-  // see the PR description's per-card measurement table. None of their
-  // manifest entries set nameBox/positionBox geometry fields any more; only
-  // genuinely different colour stays there. nameBoxOverride/positionBox-
-  // Override exist so a future variant CAN still override geometry, but
-  // only once a real measurement proves it needs to (per variant.nameBox/
-  // positionBox's own left/top/width/fontSize fields, still supported).
-  // Only include a key when the manifest actually set it — spreading an
-  // explicit `left: undefined` over the shared default would still assign
-  // the key (React then drops the CSS property entirely, leaving the div
-  // unpositioned), silently breaking a colour-only override like Solar's.
-  const nameBoxOverride: Partial<NameplateSlotGeometry> | undefined = variant.nameBox
-    ? {
-        ...(variant.nameBox.left ? { left: variant.nameBox.left } : {}),
-        ...(variant.nameBox.top ? { top: variant.nameBox.top } : {}),
-        ...(variant.nameBox.width ? { widthFactor: Number(variant.nameBox.width.replace('%', '')) / 100 } : {}),
-        ...(variant.nameBox.fontSize ? { fontSizeFactor: Number(variant.nameBox.fontSize) } : {}),
-      }
-    : undefined;
-  // Adaptive anchor first (moves position's top/fontSizeFactor with the
-  // actual rendered name length — see computeAdaptivePositionAnchor's own
-  // doc comment), then any explicit per-variant positionBox.top/fontSize
-  // on top of it — a real measured exception for one variant should still
-  // win over the general adaptive rule, though none currently sets either.
-  const positionBoxOverride: Partial<NameplateSlotGeometry> | undefined = {
-    ...positionAnchor,
+  // Solar/Galaxy/Comic share one artwork geometry (identical badgeBox,
+  // same kit-number geometry) that differs from Hollinwood's own and from
+  // EMJFL's — see computeCustomCollectionGroupAnchor's own doc comment.
+  // This computes where the name+position group must sit to be optically
+  // centred between this family's own badge and its own kit number, for
+  // THIS specific name/position pair (short and long names land at
+  // different anchors, by design) — replacing the plain adaptive-anchor
+  // call (same one Hollinwood and EMJFL still use unmodified below) with
+  // one that also shifts name's own anchor.
+  const groupAnchor = computeCustomCollectionGroupAnchor(W, H, playerName, positionLabel);
+  // All three Custom Collection variants (Solar, Galaxy, Comic) share this
+  // computed group placement; only genuinely different colour (and, for
+  // Comic's number, a deliberate stylised treatment) stays in the
+  // manifest. nameBoxOverride always carries the computed `top` — never
+  // conditionally undefined the way it was before this group-centring
+  // override existed — layered under any variant.nameBox left/width/
+  // fontSize a future measurement might still add. An explicit
+  // variant.nameBox.top (a real measured exception for one variant, none
+  // currently sets it) still wins over the computed group anchor, same as
+  // positionBoxOverride's own top below. Only include a key when the
+  // manifest actually set it — spreading an explicit `left: undefined`
+  // over the shared default would still assign the key (React then drops
+  // the CSS property entirely, leaving the div unpositioned), silently
+  // breaking a colour-only override like Solar's.
+  const nameBoxOverride: Partial<NameplateSlotGeometry> = {
+    top: groupAnchor.nameTopPct,
+    ...(variant.nameBox?.left ? { left: variant.nameBox.left } : {}),
+    ...(variant.nameBox?.top ? { top: variant.nameBox.top } : {}),
+    ...(variant.nameBox?.width ? { widthFactor: Number(variant.nameBox.width.replace('%', '')) / 100 } : {}),
+    ...(variant.nameBox?.fontSize ? { fontSizeFactor: Number(variant.nameBox.fontSize) } : {}),
+  };
+  // Position's anchor is cascaded from the same shifted name anchor
+  // (groupAnchor.position, computed inside computeCustomCollectionGroup-
+  // Anchor via the exact same adaptive formula every other template uses)
+  // — explicitly destructured to only its two real NameplateSlotGeometry
+  // fields, not spread whole, so an unrelated diagnostic field on the
+  // anchor's own return type can never leak into the merged geometry.
+  // Any explicit per-variant positionBox.top/fontSize still wins over it —
+  // a real measured exception for one variant should override the general
+  // rule — though none currently sets either.
+  const positionBoxOverride: Partial<NameplateSlotGeometry> = {
+    top: groupAnchor.position.top,
+    fontSizeFactor: groupAnchor.position.fontSizeFactor,
     ...(variant.positionBox?.left ? { left: variant.positionBox.left } : {}),
     ...(variant.positionBox?.top ? { top: variant.positionBox.top } : {}),
     ...(variant.positionBox?.width ? { widthFactor: Number(variant.positionBox.width.replace('%', '')) / 100 } : {}),

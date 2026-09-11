@@ -4,21 +4,21 @@ import { resolve } from 'path';
 import { CUSTOM_COLLECTION_VARIANTS } from './custom-collection-manifest';
 
 /**
- * Locks in the Galaxy position-colour correction (purple, not red) and its
+ * Locks in the Galaxy position-colour correction (white, not purple — this
+ * reverses an earlier purple correction from a previous pass) and its
  * scope. IMPORTANT naming note, confirmed by direct pixel sampling of both
- * variants' own background art before making this change: the `id:
- * 'custom-solar'` entry is the template whose real assets (a purple, starry,
- * cosmic frame) and whose own `accent` token (#8f5cff) match what the
- * founder and the supplied Canva reference call "Galaxy" — not the `id:
- * 'custom-galaxy'` entry, which is a visually unrelated warm orange/red
- * frame. The `name`/`description`/`theme` string fields on both entries are
- * swapped relative to their own assets (a pre-existing mismatch, out of
- * scope here — see custom-collection-manifest.ts's own comment on why it
- * isn't fixed in this pass). These tests are therefore keyed by `id` (the
- * stable identifier CardArt.tsx and stored orders actually use), with an
- * explicit comment at each assertion saying which real-world card that id
- * corresponds to, so a future reader can't repeat the mix-up this pass
- * uncovered.
+ * variants' own background art: the `id: 'custom-solar'` entry is the
+ * template whose real assets (a purple, starry, cosmic frame) and whose own
+ * `accent` token (#8f5cff) match what the founder and the supplied Canva
+ * reference call "Galaxy" — not the `id: 'custom-galaxy'` entry, which is a
+ * visually unrelated warm orange/red frame. The `name`/`description`/
+ * `theme` string fields on both entries are swapped relative to their own
+ * assets (a pre-existing mismatch, out of scope here — see
+ * custom-collection-manifest.ts's own comment on why it isn't fixed in this
+ * pass). These tests are therefore keyed by `id` (the stable identifier
+ * CardArt.tsx and stored orders actually use), with an explicit comment at
+ * each assertion saying which real-world card that id corresponds to, so a
+ * future reader can't repeat the mix-up this pass uncovered.
  */
 function variant(id: string) {
   const v = CUSTOM_COLLECTION_VARIANTS.find((c) => c.id === id);
@@ -27,15 +27,16 @@ function variant(id: string) {
 }
 
 describe('Custom Collection position colours', () => {
-  it('the real "Galaxy" card (purple cosmic frame, id: custom-solar) uses purple for position, not red', () => {
+  it('the real "Galaxy" card (purple cosmic frame, id: custom-solar) uses white for position, not purple or red', () => {
     const galaxy = variant('custom-solar');
-    expect(galaxy.positionBox?.color).toBe('#8f5cff');
-    expect(galaxy.positionBox?.color).not.toBe('#ef2222'); // the red it used to be
+    expect(galaxy.positionBox?.color).toBe('#fff');
+    expect(galaxy.positionBox?.color).not.toBe('#8f5cff'); // the purple it used to be (an earlier, now-reversed correction)
+    expect(galaxy.positionBox?.color).not.toBe('#ef2222'); // the red it was before that
   });
 
-  it("the purple is the variant's own existing accent token, not an invented colour", () => {
+  it('white matches name\'s own colour on the same card, not an arbitrary new value', () => {
     const galaxy = variant('custom-solar');
-    expect(galaxy.positionBox?.color).toBe(galaxy.accent);
+    expect(galaxy.positionBox?.color).toBe('#fff');
   });
 
   it('the id: custom-galaxy entry (a visually unrelated orange/red frame — NOT the purple cosmic "Galaxy" card) is untouched by this change', () => {
@@ -51,17 +52,22 @@ describe('Custom Collection position colours', () => {
   });
 
   it('the colour override is scoped to Galaxy (custom-solar) alone — no other entry\'s positionBox.color changed value in this pass', () => {
-    // custom-solar: purple (this change). custom-comic: red, its own
+    // custom-solar: white (this change). custom-comic: red, its own
     // pre-existing explicit override (unchanged). custom-galaxy: no
     // override at all, falls through to its own orange accent (unchanged).
     const colours = Object.fromEntries(
       CUSTOM_COLLECTION_VARIANTS.map((v) => [v.id, v.positionBox?.color ?? null])
     );
     expect(colours).toEqual({
-      'custom-solar': '#8f5cff',
+      'custom-solar': '#fff',
       'custom-comic': '#ef2222',
       'custom-galaxy': null,
     });
+  });
+
+  it('custom-solar\'s own accent token (#8f5cff, purple) is unchanged even though position no longer uses it — accent still describes the card\'s frame/theme colour', () => {
+    const galaxy = variant('custom-solar');
+    expect(galaxy.accent).toBe('#8f5cff');
   });
 });
 
@@ -71,12 +77,12 @@ describe('Hollinwood, EMJFL and the legacy basketball Galaxy family are untouche
     'utf8'
   );
 
-  it('Hollinwood keeps its own hardcoded red position colour (unrelated file, not touched this pass)', () => {
-    expect(cardArtSource).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#ff0000', positionAnchor)");
+  it('Hollinwood keeps its own hardcoded red position colour (unrelated file, not touched by this colour pass — its call shape changed only in a later, separate placement pass)', () => {
+    expect(cardArtSource).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#ff0000', { top: positionAnchor.top, fontSizeFactor: positionAnchor.fontSizeFactor })");
   });
 
-  it('EMJFL keeps its own hardcoded orange-red position colour (unrelated file, not touched this pass)', () => {
-    expect(cardArtSource).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F', positionAnchor)");
+  it('EMJFL keeps its own hardcoded orange-red position colour (unrelated file, not touched by this colour pass — its call shape changed only in a later, separate placement pass)', () => {
+    expect(cardArtSource).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F', { top: positionAnchor.top, fontSizeFactor: positionAnchor.fontSizeFactor })");
   });
 
   it('the legacy basketball/Youthcards Galaxy family (data.ts, family: "Galaxy", horizontal-name cards) is untouched — this correction only ever changed src/lib/custom-collection-manifest.ts and src/lib/nameplate-typography.ts', () => {

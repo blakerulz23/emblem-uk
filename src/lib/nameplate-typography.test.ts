@@ -6,6 +6,8 @@ import {
   nameplateSlotStyle,
   nameplateNumberLayers,
   computeAdaptivePositionAnchor,
+  computeCustomCollectionGroupAnchor,
+  EMJFL_NAME_TOP_PCT,
   estimateTextWidthCss,
   CHAR_ADVANCE_WIDTH,
   NAMEPLATE_GEOMETRY,
@@ -75,7 +77,10 @@ describe('NAMEPLATE_GEOMETRY — shared defaults, including the group-placement 
       top: '52.84%', // inert for every real consumer — always overridden by computeAdaptivePositionAnchor's own computed top
       widthFactor: 0.2,
       fontSizeFactor: 0.0432,
-      comfortableChars: 10,
+      // 11, not 10 — covers all five canonical labels (ALL-ROUNDER, the
+      // longest, is 11 chars) at full, unshrunk reference size; see
+      // NAMEPLATE_GEOMETRY's own doc comment on this field for why.
+      comfortableChars: 11,
       minScale: 0.85,
     });
   });
@@ -103,9 +108,15 @@ describe('nameplateSlotStyle', () => {
     expect(style.overflow).toBe('visible');
   });
 
-  it('scales the position font-size down for a longer-than-reference label', () => {
+  it('ALL-ROUNDER (11 chars, comfortableChars=11) renders at full, unshrunk reference size — the longest canonical label, not scaled down', () => {
     const style = nameplateSlotStyle('position', W, H, 'ALL-ROUNDER', '#ff0000');
-    expect(style.fontSize).toBeCloseTo(W * 0.0432 * (10 / 11), 5);
+    expect(style.fontSize).toBeCloseTo(W * 0.0432, 5);
+  });
+
+  it('scales the position font-size down only once a label genuinely exceeds comfortableChars (12+ chars)', () => {
+    const style = nameplateSlotStyle('position', W, H, 'GOALKEEPER-ISH', '#ff0000'); // 14 chars, not a real label, exercises the shrink path
+    // 11/14 = 0.786, below minScale (0.85), so the floor governs.
+    expect(style.fontSize).toBeCloseTo(W * 0.0432 * 0.85, 5);
   });
 
   it('a colour-only override does not blank out the shared left/top anchor (regression: spreading an explicit `undefined` used to silently unposition the div)', () => {
@@ -383,58 +394,41 @@ describe('computeAdaptivePositionAnchor', () => {
     expect(shortTop).toBeGreaterThan(longTop);
   });
 
+  /**
+   * Regression coverage for the confirmed "position shrinks with a short
+   * name" defect: an earlier version of computeAdaptivePositionAnchor
+   * additionally shrank position's own FONT SIZE whenever its natural
+   * (own-length) placement would extend above a short name's own (small)
+   * span — e.g. XAVI / ALL-ROUNDER rendered at roughly half the size of
+   * JACOB THOMPSON / ALL-ROUNDER, the identical position label, purely
+   * because XAVI is short. Position's font size must depend ONLY on its
+   * own text now — never on which name it's paired with. Placement (top%)
+   * is still name-length-dependent by design (that's the adaptive-anchor
+   * feature itself, unrelated to this bug) and is not asserted here.
+   */
   it.each([
     ['JAY', 'GOALKEEPER'],
+    ['XAVI', 'ALL-ROUNDER'],
     ['TINUBU', 'MIDFIELDER'],
     ['MILES LEE', 'DEFENDER'],
     ['JACOB THOMPSON', 'MIDFIELDER'],
+    ['JACOB THOMPSON', 'ALL-ROUNDER'],
     ['ALEXANDER MONTGOMERY', 'ALL-ROUNDER'],
-    // Same-length stress set (WILLIAMS 8, IBRAHIM 7, MILLER 6, MASON 5, LEE
-    // 3, MAX 3) — added after an earlier flat-average-per-character
-    // estimate was shown to have material error for these specifically:
-    // LEE and MAX are both 3 characters but render to genuinely different
-    // real widths (30.6 vs 43.6 CSS px at reference size, a 42%
-    // difference), which the flat average couldn't see and left LEE with
-    // only 3.1px of real containment margin. estimateTextWidthCss's
-    // per-glyph table replaced it for exactly this reason.
-    ['WILLIAMS', 'MIDFIELDER'],
-    ['IBRAHIM', 'MIDFIELDER'],
-    ['MILLER', 'MIDFIELDER'],
-    ['MASON', 'MIDFIELDER'],
-    ['LEE', 'MIDFIELDER'],
-    ['MAX', 'MIDFIELDER'],
-    // Extreme narrow-letter-dominated short names against GOALKEEPER (the
-    // longest canonical label) — found, via real rendering, to still
-    // overflow by up to 16.6px even with the per-glyph width model and the
-    // old fixed 0.4 containment floor in place: the floor clamped the
-    // shrink *up* to 0.4 even when the real required scale (given how
-    // narrow every letter in "LI"/"III" is) was below that. Fixed by
-    // letting the computed required scale govern directly with no upward
-    // override — these lock that fix in. Real names, not just these
-    // pathological ones: TIM and LIL are realistic short names that were
-    // already safely contained before the fix and must stay that way.
-    ['III', 'GOALKEEPER'],
-    ['ILI', 'GOALKEEPER'],
     ['LI', 'GOALKEEPER'],
-    ['LIL', 'GOALKEEPER'],
-    ['TIM', 'GOALKEEPER'],
-  ])('name=%s / position=%s: position never extends above the name (checked against the exact same estimateTextWidthCss the anchor itself uses)', (name, position) => {
-    const nameGeom = NAMEPLATE_GEOMETRY.name;
-    const nameScale = nameFitScale(name, nameGeom.comfortableChars, nameGeom.minScale);
-    const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
-    const nameLenCss = estimateTextWidthCss(name, nameFontSize);
-    const nameBottomCss = H * (parseFloat(nameGeom.top) / 100);
-    const nameTopCss = nameBottomCss - nameLenCss;
-
+    ['III', 'GOALKEEPER'],
+  ])('name=%s / position=%s: position\'s fontSizeFactor is always the shared base value, regardless of name', (name, position) => {
     const anchor = computeAdaptivePositionAnchor(W, H, name, position);
-    const posGeom = NAMEPLATE_GEOMETRY.position;
-    const posScale = nameFitScale(position, posGeom.comfortableChars, posGeom.minScale);
-    const effectiveFontSize = W * anchor.fontSizeFactor * posScale;
-    const posLenCss = estimateTextWidthCss(position, effectiveFontSize);
-    const posBottomCss = (parseFloat(anchor.top) / 100) * H;
-    const posTopCssApprox = posBottomCss - posLenCss;
+    expect(anchor.fontSizeFactor).toBe(NAMEPLATE_GEOMETRY.position.fontSizeFactor);
+  });
 
-    expect(posTopCssApprox).toBeGreaterThanOrEqual(nameTopCss);
+  it.each([
+    ['XAVI', 'ALL-ROUNDER'],
+    ['JAY', 'GOALKEEPER'],
+    ['TINUBU', 'MIDFIELDER'],
+  ])('name=%s / position=%s: the SAME position label renders at the SAME font size regardless of which name it is paired with (the exact regression: a short name must not shrink the position label)', (shortName, position) => {
+    const withShortName = computeAdaptivePositionAnchor(W, H, shortName, position);
+    const withLongName = computeAdaptivePositionAnchor(W, H, 'JACOB THOMPSON', position);
+    expect(withShortName.fontSizeFactor).toBe(withLongName.fontSizeFactor);
   });
 
   it('two equal-length names with very different real glyph widths (LEE vs MAX, both 3 characters) both keep a healthy, comparable containment margin — the specific failure mode the flat-average estimate had', () => {
@@ -458,47 +452,277 @@ describe('computeAdaptivePositionAnchor', () => {
       for (const position of positions) {
         const anchor = computeAdaptivePositionAnchor(W, H, name, position);
         expect(anchor.top).toMatch(/^\d+\.\d{3}%$/);
-        expect(anchor.fontSizeFactor).toBeGreaterThan(0);
-        expect(anchor.fontSizeFactor).toBeLessThanOrEqual(NAMEPLATE_GEOMETRY.position.fontSizeFactor);
+        // Always exactly the shared base value now — position's font size
+        // never varies with name (see the regression-coverage block above).
+        expect(anchor.fontSizeFactor).toBe(NAMEPLATE_GEOMETRY.position.fontSizeFactor);
       }
     }
   });
 
-  it('the placeholder "POSITION" label (no value set) also resolves without overflowing a short name', () => {
+  it('the placeholder "POSITION" label (no value set) also resolves for a short name', () => {
     const anchor = computeAdaptivePositionAnchor(W, H, 'TINUBU', 'POSITION');
     expect(parseFloat(anchor.top)).toBeGreaterThan(0);
-    expect(anchor.fontSizeFactor).toBeGreaterThan(0);
+    expect(anchor.fontSizeFactor).toBe(NAMEPLATE_GEOMETRY.position.fontSizeFactor);
   });
 
-  it('for the most extreme realistic pairing (JAY/GOALKEEPER), containment is achieved without collapsing the font size to near-zero', () => {
-    // There is deliberately no fixed lower scale floor any more (see
-    // POSITION_CONTAINMENT_ABSOLUTE_FLOOR's own doc comment: an earlier
-    // 0.4 "floor" silently overrode the real required scale whenever it
-    // fell below 0.4, which is exactly what let genuinely pathological
-    // narrow-letter names overflow — see the it.each block above). For a
-    // realistic name like JAY, the real required scale already lands close
-    // to what 0.4 used to give (~0.39), so this asserts that outcome
-    // directly rather than re-imposing the floor that caused the bug.
+  it('for the most extreme realistic pairing (JAY/GOALKEEPER), the rendered font size is the full shared base — no shrink', () => {
+    // Historically this pairing was the trigger for a containment-driven
+    // font-size shrink (see this describe block's own regression coverage
+    // above for why that shrink was removed entirely) — asserted directly
+    // here since this specific pairing was the one originally used to
+    // justify that now-removed mechanism.
     const anchor = computeAdaptivePositionAnchor(W, H, 'JAY', 'GOALKEEPER'); // shortest realistic name, longest canonical label
-    expect(anchor.fontSizeFactor).toBeGreaterThan(NAMEPLATE_GEOMETRY.position.fontSizeFactor * 0.3);
+    expect(anchor.fontSizeFactor).toBe(NAMEPLATE_GEOMETRY.position.fontSizeFactor);
   });
 
-  it('for a genuinely pathological narrow-letter name (LI), containment still holds even though the resulting font size is very small', () => {
+  it('for a genuinely pathological narrow-letter name (LI), position\'s font size still is NOT shrunk — placement, not size, is the only thing that can move for an extreme pairing', () => {
     // "LI" is not a realistic player display name (two of Antonio's
-    // narrowest letters, no width to spare) — but computeAdaptivePositionAnchor
-    // must never let a name it wasn't calibrated against silently overlap
-    // the name above it. Containment is unconditional; readability at this
-    // extreme is a known, accepted trade-off (see the module's own PR
-    // description for the readability-vs-containment discussion).
+    // narrowest letters, no width to spare) — previously this drove
+    // position's font size down to under 20% of base; that coupling
+    // between name and position size is exactly the confirmed regression
+    // this file now guards against.
     const anchor = computeAdaptivePositionAnchor(W, H, 'LI', 'GOALKEEPER');
-    expect(anchor.fontSizeFactor).toBeGreaterThan(0);
-    expect(anchor.fontSizeFactor).toBeLessThan(NAMEPLATE_GEOMETRY.position.fontSizeFactor * 0.2);
+    expect(anchor.fontSizeFactor).toBe(NAMEPLATE_GEOMETRY.position.fontSizeFactor);
+  });
+
+  it('position CAN extend above a short name\'s own top edge for a short-name + long-position pairing — no longer treated as an overflow to fix by shrinking', () => {
+    const nameGeom = NAMEPLATE_GEOMETRY.name;
+    const name = 'XAVI';
+    const position = 'ALL-ROUNDER';
+    const nameScale = nameFitScale(name, nameGeom.comfortableChars, nameGeom.minScale);
+    const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
+    const nameLenCss = estimateTextWidthCss(name, nameFontSize);
+    const nameBottomCss = H * (parseFloat(nameGeom.top) / 100);
+    const nameTopCss = nameBottomCss - nameLenCss;
+
+    const anchor = computeAdaptivePositionAnchor(W, H, name, position);
+    const posTopCss = H * (anchor.topEdgePct / 100);
+    expect(posTopCss).toBeLessThan(nameTopCss); // extends above name's own top — expected, not a bug
+    expect(anchor.fontSizeFactor).toBe(NAMEPLATE_GEOMETRY.position.fontSizeFactor); // and still at full size
   });
 
   it('an undefined name or position does not throw', () => {
     expect(() => computeAdaptivePositionAnchor(W, H, undefined, 'MIDFIELDER')).not.toThrow();
     expect(() => computeAdaptivePositionAnchor(W, H, 'JACOB THOMPSON', undefined)).not.toThrow();
     expect(() => computeAdaptivePositionAnchor(W, H, undefined, undefined)).not.toThrow();
+  });
+});
+
+/**
+ * EMJFL_NAME_TOP_PCT reverts EMJFL's own vertical anchor to the baseline
+ * that predates the Hollinwood group correction folded into
+ * NAMEPLATE_GEOMETRY — see its own doc comment in nameplate-typography.ts
+ * for why (that correction was calibrated against Hollinwood's own single
+ * badge, never validated against EMJFL's two-badge safe area).
+ */
+describe('EMJFL_NAME_TOP_PCT', () => {
+  it('is the original, pre-group-correction baseline — genuinely different from the shared (Hollinwood-calibrated) NAMEPLATE_GEOMETRY.name.top', () => {
+    expect(EMJFL_NAME_TOP_PCT).toBe(62.73);
+    expect(EMJFL_NAME_TOP_PCT).not.toBe(parseFloat(NAMEPLATE_GEOMETRY.name.top));
+  });
+
+  it('computeAdaptivePositionAnchor, given EMJFL_NAME_TOP_PCT as an override, resolves a lower (larger top%, further from the badge) anchor than the shared Hollinwood-shifted default', () => {
+    const W = 340, H = 476;
+    const withOverride = computeAdaptivePositionAnchor(W, H, 'JACOB THOMPSON', 'MIDFIELDER', EMJFL_NAME_TOP_PCT);
+    const withoutOverride = computeAdaptivePositionAnchor(W, H, 'JACOB THOMPSON', 'MIDFIELDER');
+    expect(parseFloat(withOverride.top)).toBeGreaterThan(parseFloat(withoutOverride.top));
+  });
+});
+
+/**
+ * Full regression matrix required for the "position shrinks with a short
+ * name" fix: every listed name against every listed position (and every
+ * listed kit number, checked separately below since the number has its
+ * own, wholly independent geometry). Every cell must resolve without
+ * throwing and — the actual regression — must render position at the
+ * SAME font size no matter which name it is paired with.
+ */
+describe('full regression matrix — names x positions x numbers', () => {
+  const W = 340, H = 476;
+  const NAMES = ['JAY', 'XAVI', 'TINUBU', 'MILES LEE', 'OLLIE HARRISON', 'JACOB THOMPSON', 'CHRISTOPHER ALEXANDER-WOJCIECHOWSKI'];
+  const POSITIONS = ['GOALKEEPER', 'DEFENDER', 'MIDFIELDER', 'FORWARD', 'ALL-ROUNDER', 'CB']; // CB: one legacy (pre-five-category) value, shown as-is per positionCardLabel
+  const NUMBERS = ['1', '6', '7', '10', '88'];
+
+  it.each(POSITIONS)('position=%s renders at the identical font size for every name in the matrix', (position) => {
+    const fontSizes = NAMES.map((name) => computeAdaptivePositionAnchor(W, H, name, position).fontSizeFactor);
+    expect(new Set(fontSizes).size).toBe(1); // every name maps to the exact same value
+  });
+
+  it.each(NAMES.flatMap((name) => POSITIONS.map((position) => [name, position] as const)))(
+    'name=%s / position=%s: computeAdaptivePositionAnchor and computeCustomCollectionGroupAnchor both resolve without throwing, to a valid top%% and a positive font size',
+    (name, position) => {
+      const direct = computeAdaptivePositionAnchor(W, H, name, position);
+      expect(direct.top).toMatch(/^-?\d+\.\d{3}%$/);
+      expect(direct.fontSizeFactor).toBeGreaterThan(0);
+
+      const group = computeCustomCollectionGroupAnchor(W, H, name, position);
+      expect(group.nameTopPct).toMatch(/^-?\d+\.\d{3}%$/);
+      expect(group.position.fontSizeFactor).toBeGreaterThan(0);
+    }
+  );
+
+  it.each(NUMBERS)('number=%s: nameplateNumberLayers resolves at the shared unscaled reference size (1-2 digits, comfortableChars=2)', (number) => {
+    const layers = nameplateNumberLayers(W, number, '#fff', '#111');
+    expect(layers.fill.fontSize).toBeCloseTo(W * NAMEPLATE_NUMBER_GEOMETRY.fontSizeFactor, 5);
+    expect(layers.outline.fontSize).toBe(layers.fill.fontSize);
+  });
+
+  describe('four required focused comparisons', () => {
+    it('XAVI / ALL-ROUNDER / 6: position renders at full base size, not shrunk', () => {
+      const group = computeCustomCollectionGroupAnchor(W, H, 'XAVI', 'ALL-ROUNDER');
+      expect(group.position.fontSizeFactor).toBe(NAMEPLATE_GEOMETRY.position.fontSizeFactor);
+      expect(() => nameplateNumberLayers(W, '6', '#fff', '#8f5cff')).not.toThrow();
+    });
+
+    it('OLLIE HARRISON / MIDFIELDER / 7: unaffected by the fix (this pairing never triggered the old containment shrink)', () => {
+      const group = computeCustomCollectionGroupAnchor(W, H, 'OLLIE HARRISON', 'MIDFIELDER');
+      expect(group.position.fontSizeFactor).toBe(NAMEPLATE_GEOMETRY.position.fontSizeFactor);
+    });
+
+    it('shortest name (JAY) with longest position (ALL-ROUNDER): full size, same as any other name', () => {
+      const short = computeAdaptivePositionAnchor(W, H, 'JAY', 'ALL-ROUNDER');
+      const long = computeAdaptivePositionAnchor(W, H, 'CHRISTOPHER ALEXANDER-WOJCIECHOWSKI', 'ALL-ROUNDER');
+      expect(short.fontSizeFactor).toBe(NAMEPLATE_GEOMETRY.position.fontSizeFactor);
+      expect(short.fontSizeFactor).toBe(long.fontSizeFactor);
+    });
+
+    it('longest supported name with longest position: resolves without throwing and without shrinking position', () => {
+      const anchor = computeAdaptivePositionAnchor(W, H, 'CHRISTOPHER ALEXANDER-WOJCIECHOWSKI', 'ALL-ROUNDER');
+      expect(anchor.fontSizeFactor).toBe(NAMEPLATE_GEOMETRY.position.fontSizeFactor);
+    });
+  });
+});
+
+/**
+ * computeCustomCollectionGroupAnchor replaces a static, borrowed offset
+ * with a per-render optical-centring calculation: the combined name+
+ * position group's actual rendered bounds (not the CSS anchor, not the
+ * card's overall midpoint) are centred between Custom Collection's own
+ * badge-bottom edge and the fixed kit number's own top edge, re-derived
+ * for every name/position pair so short and long names both land centred
+ * in the same physical channel rather than at a single fixed offset.
+ */
+describe('computeCustomCollectionGroupAnchor', () => {
+  const W = 340, H = 476;
+
+  // Re-derives the channel's two boundaries independently (same constants
+  // documented in nameplate-typography.ts: shared badgeBox bottom 19.9%,
+  // the number's own calibrated top-edge ratio 1.254, 3% clearance) rather
+  // than reaching into the function's own internals, so this test checks
+  // real centring behaviour, not just that the implementation agrees with
+  // itself.
+  function expectedChannel() {
+    const badgeBottomCss = H * (19.9 / 100);
+    const numFontSizeUnscaled = W * NAMEPLATE_NUMBER_GEOMETRY.fontSizeFactor;
+    const numberBottomAnchorCss = H * (parseFloat(NAMEPLATE_NUMBER_GEOMETRY.top) / 100);
+    const numberTopCss = numberBottomAnchorCss - numFontSizeUnscaled * 1.254;
+    const clearanceCss = H * (3 / 100);
+    return { channelTopCss: badgeBottomCss + clearanceCss, channelBottomCss: numberTopCss - clearanceCss };
+  }
+
+  // Computes the group's true outer bounds as the union of name's own
+  // [top, bottom] and position's own [top, bottom] — mirroring
+  // computeCustomCollectionGroupAnchor's own internal math exactly (see
+  // its doc comment for why: position's font size no longer depends on
+  // name, so it is no longer guaranteed to nest inside name's own span).
+  function groupBoundsCss(result: ReturnType<typeof computeCustomCollectionGroupAnchor>, name: string) {
+    const nameGeom = NAMEPLATE_GEOMETRY.name;
+    const nameScale = nameFitScale(name, nameGeom.comfortableChars, nameGeom.minScale);
+    const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
+    const nameLenCss = estimateTextWidthCss(name, nameFontSize);
+    const nameBottomCss = H * (parseFloat(result.nameTopPct) / 100);
+    const nameTopCss = nameBottomCss - nameLenCss;
+    const posTopCss = H * (result.position.topEdgePct / 100);
+    const posBottomCss = H * (parseFloat(result.position.top) / 100);
+    return {
+      top: Math.min(nameTopCss, posTopCss),
+      bottom: Math.max(nameBottomCss, posBottomCss),
+    };
+  }
+
+  it.each([
+    ['Jacob Thompson', 'MIDFIELDER'],
+    ['Kai', 'GK'],
+    ['Jim Ash', 'FW'],
+    ['Mohammed', 'GOALKEEPER'],
+    // Short name + longest canonical label — the exact shape of the
+    // confirmed regression (see computeAdaptivePositionAnchor's own test
+    // block): position's own bounds now genuinely extend beyond name's,
+    // so this case only passes if the centring math uses the union of
+    // both, not name's bounds alone.
+    ['Xavi', 'ALL-ROUNDER'],
+  ])('centres the combined name+position group\'s TRUE (union) rendered bounds at the channel midpoint for name=%s / position=%s', (name, position) => {
+    const result = computeCustomCollectionGroupAnchor(W, H, name, position);
+    const { top, bottom } = groupBoundsCss(result, name);
+    const groupCenterCss = (top + bottom) / 2;
+
+    const { channelTopCss, channelBottomCss } = expectedChannel();
+    const targetCenterCss = (channelTopCss + channelBottomCss) / 2;
+    expect(groupCenterCss).toBeCloseTo(targetCenterCss, 0);
+  });
+
+  it('for a short name + long position pairing, position\'s own bounds genuinely extend beyond name\'s — confirming this test matrix actually exercises the union-bounds path, not just name\'s bounds coincidentally', () => {
+    const result = computeCustomCollectionGroupAnchor(W, H, 'Xavi', 'ALL-ROUNDER');
+    const nameGeom = NAMEPLATE_GEOMETRY.name;
+    const nameScale = nameFitScale('Xavi', nameGeom.comfortableChars, nameGeom.minScale);
+    const nameFontSize = W * nameGeom.fontSizeFactor * nameScale;
+    const nameLenCss = estimateTextWidthCss('Xavi', nameFontSize);
+    const nameBottomCss = H * (parseFloat(result.nameTopPct) / 100);
+    const nameTopCss = nameBottomCss - nameLenCss;
+    const posTopCss = H * (result.position.topEdgePct / 100);
+    expect(posTopCss).toBeLessThan(nameTopCss);
+  });
+
+  it('the group\'s minimum clearance from the badge is preserved even when position (not name) is the higher of the two', () => {
+    const result = computeCustomCollectionGroupAnchor(W, H, 'Xavi', 'ALL-ROUNDER');
+    const { top } = groupBoundsCss(result, 'Xavi');
+    const badgeBottomCss = H * (19.9 / 100);
+    const clearanceCss = H * (3 / 100);
+    expect(top).toBeGreaterThanOrEqual(badgeBottomCss + clearanceCss - 0.5);
+  });
+
+  it('a short name and a long name resolve to different anchors — the shift is recomputed per pair, not a fixed constant borrowed from one reference render', () => {
+    const long = computeCustomCollectionGroupAnchor(W, H, 'Jacob Thompson', 'MIDFIELDER');
+    const short = computeCustomCollectionGroupAnchor(W, H, 'Kai', 'GK');
+    expect(long.nameTopPct).not.toBe(short.nameTopPct);
+  });
+
+  it('never mutates NAMEPLATE_NUMBER_GEOMETRY or NAMEPLATE_GEOMETRY — the kit number and the shared defaults stay fixed', () => {
+    const beforeNumber = { ...NAMEPLATE_NUMBER_GEOMETRY };
+    const beforeName = { ...NAMEPLATE_GEOMETRY.name };
+    const beforePosition = { ...NAMEPLATE_GEOMETRY.position };
+    computeCustomCollectionGroupAnchor(W, H, 'Jacob Thompson', 'MIDFIELDER');
+    expect(NAMEPLATE_NUMBER_GEOMETRY).toEqual(beforeNumber);
+    expect(NAMEPLATE_GEOMETRY.name).toEqual(beforeName);
+    expect(NAMEPLATE_GEOMETRY.position).toEqual(beforePosition);
+  });
+
+  it('an undefined name or position does not throw', () => {
+    expect(() => computeCustomCollectionGroupAnchor(W, H, undefined, 'MIDFIELDER')).not.toThrow();
+    expect(() => computeCustomCollectionGroupAnchor(W, H, 'Jacob Thompson', undefined)).not.toThrow();
+  });
+
+  /**
+   * "One source of truth" regression: the centring calculation and
+   * nameplateSlotStyle (the function CardArt.tsx actually renders through)
+   * must resolve position to the identical final font size — never a
+   * formula computing against one size while the DOM paints another. This
+   * pins that down end-to-end (group anchor -> nameplateSlotStyle's own
+   * fontSize) rather than only asserting the intermediate fontSizeFactor.
+   */
+  it.each([
+    ['Xavi', 'ALL-ROUNDER'],
+    ['Jacob Thompson', 'ALL-ROUNDER'],
+    ['Ollie Harrison', 'MIDFIELDER'],
+    ['Jay', 'GOALKEEPER'],
+  ])('the centring calculation\'s fontSizeFactor, run back through nameplateSlotStyle, renders the SAME position font size regardless of name (name=%s, position=%s)', (name, position) => {
+    const result = computeCustomCollectionGroupAnchor(W, H, name, position);
+    const style = nameplateSlotStyle('position', W, H, position, '#fff', {
+      top: result.position.top,
+      fontSizeFactor: result.position.fontSizeFactor,
+    });
+    const expectedFontSize = W * NAMEPLATE_GEOMETRY.position.fontSizeFactor * nameFitScale(position, NAMEPLATE_GEOMETRY.position.comfortableChars, NAMEPLATE_GEOMETRY.position.minScale);
+    expect(style.fontSize).toBeCloseTo(expectedFontSize, 5);
   });
 });
 
@@ -524,13 +748,24 @@ describe('the shared nameplate is actually used by every card the generalisation
 
   it('EMJFL keeps its own colour (white name, #FF4B1F position) — colour stays per-card, not shared', () => {
     const body = bodyOf('EmjflCardArt');
-    expect(body).toContain("nameplateSlotStyle('name', W, H, d.name || '', '#fff')");
-    expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F', positionAnchor)");
+    expect(body).toContain("nameplateSlotStyle('name', W, H, d.name || '', '#fff', { top: `${EMJFL_NAME_TOP_PCT}%` })");
+    expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#FF4B1F', { top: positionAnchor.top, fontSizeFactor: positionAnchor.fontSizeFactor })");
+  });
+
+  it('EMJFL passes its own reverted vertical anchor into computeAdaptivePositionAnchor, not the shared NAMEPLATE_GEOMETRY.name.top default', () => {
+    const body = bodyOf('EmjflCardArt');
+    expect(body).toContain('computeAdaptivePositionAnchor(W, H, d.name, positionLabel, EMJFL_NAME_TOP_PCT)');
   });
 
   it('Hollinwood keeps its own fixed red position colour, not template.accent', () => {
     const body = bodyOf('HollinwoodCardArt');
-    expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#ff0000', positionAnchor)");
+    expect(body).toContain("nameplateSlotStyle('position', W, H, positionLabel, '#ff0000', { top: positionAnchor.top, fontSizeFactor: positionAnchor.fontSizeFactor })");
+  });
+
+  it('Hollinwood does NOT pass any vertical-anchor override into computeAdaptivePositionAnchor — it uses the shared NAMEPLATE_GEOMETRY.name.top default directly, since that default IS Hollinwood\'s own calibration', () => {
+    const body = bodyOf('HollinwoodCardArt');
+    expect(body).toContain('computeAdaptivePositionAnchor(W, H, d.name, positionLabel)');
+    expect(body).not.toContain('computeAdaptivePositionAnchor(W, H, d.name, positionLabel, EMJFL_NAME_TOP_PCT)');
   });
 
   it('Hollinwood and EMJFL compute and pass the adaptive position anchor directly (the fix for position floating above a short name)', () => {
@@ -541,11 +776,21 @@ describe('the shared nameplate is actually used by every card the generalisation
     }
   });
 
-  it('CustomCollectionCardArt computes the adaptive anchor and folds it into positionBoxOverride (so a genuine per-variant override, if one ever exists, still wins over it)', () => {
+  it('CustomCollectionCardArt uses its own group-centering anchor, not the plain adaptive anchor every other template uses unmodified', () => {
     const body = bodyOf('CustomCollectionCardArt');
-    expect(body).toContain('computeAdaptivePositionAnchor(');
-    expect(body).toContain('...positionAnchor');
+    expect(body).toContain('computeCustomCollectionGroupAnchor(');
+    expect(body).not.toContain('computeAdaptivePositionAnchor(');
+    expect(body).toContain('groupAnchor.nameTopPct');
+    expect(body).toContain('groupAnchor.position.top');
+    expect(body).toContain('groupAnchor.position.fontSizeFactor');
+    expect(body).toMatch(/nameplateSlotStyle\('name',[^)]*nameBoxOverride/);
     expect(body).toMatch(/nameplateSlotStyle\('position',[^)]*positionBoxOverride/);
+  });
+
+  it('CustomCollectionCardArt\'s nameBoxOverride is never conditionally undefined — the computed group top must always apply, not only when a variant also sets its own nameBox', () => {
+    const body = bodyOf('CustomCollectionCardArt');
+    expect(body).toMatch(/const nameBoxOverride: Partial<NameplateSlotGeometry> = \{/);
+    expect(body).not.toMatch(/const nameBoxOverride: Partial<NameplateSlotGeometry> \| undefined/);
   });
 
   it('RealCardArt is untouched by the adaptive-anchor fix too — it never had position tied to nameplateSlotStyle in the first place', () => {

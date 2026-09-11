@@ -74,7 +74,20 @@ const PROTECTED_FILES: Record<string, string> = {
   // for the full before/after measurement table). RealCardArt/RealCardBack
   // and every back-face renderer remain untouched by any of these six
   // changes (verified via diff before this hash was touched each time).
-  'src/components/builder/emblem/CardArt.tsx': '3b75cabf7d37fb70497c358872dfc0859280f495d7258d38e78c987fc0de1d77',
+  //
+  // Updated a seventh time for the Custom Collection group-centring
+  // amendment: EMJFL/Hollinwood's `positionAnchor` spread into
+  // nameplateSlotStyle's overrides is now an explicit `{ top,
+  // fontSizeFactor }` (avoids leaking computeAdaptivePositionAnchor's new
+  // diagnostic `topEdgePct` field into merged geometry); EMJFL now passes
+  // its own reverted vertical anchor (EMJFL_NAME_TOP_PCT) instead of the
+  // shared, Hollinwood-calibrated default; CustomCollectionCardArt now
+  // calls computeCustomCollectionGroupAnchor instead of
+  // computeAdaptivePositionAnchor directly, with nameBoxOverride always
+  // carrying the computed group top. Hollinwood's own resolved geometry is
+  // unchanged (same shared default it always used); RealCardArt/RealCardBack
+  // and every back-face renderer remain untouched (verified via diff).
+  'src/components/builder/emblem/CardArt.tsx': 'a75fe36bed71b02a3e73022253a9e3e9f4f679d55d26d2390124b5f3b15dd4c7',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
