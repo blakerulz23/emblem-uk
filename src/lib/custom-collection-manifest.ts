@@ -80,7 +80,7 @@ export type CustomCollectionVariant = {
   };
 };
 
-export type CustomCollectionTemplateId = 'custom-solar' | 'custom-galaxy' | 'custom-comic';
+export type CustomCollectionTemplateId = 'custom-solar' | 'custom-galaxy' | 'custom-comic' | 'custom-crimson';
 
 export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
   {
@@ -251,6 +251,64 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       emblemLogoPosition: '/templates/custom-collection/comic/emblem-logo-position.png',
       cornerOverlay: '/templates/custom-collection/comic/corner-overlay.png',
       backBase: '/templates/custom-collection/comic/back-background.png',
+    },
+  },
+  // Crimson's own artwork is a horizontal, centred name/position/number
+  // layout (not the shared rotated-nameplate structure every other Custom
+  // Collection card uses) — measured directly from the supplied reference
+  // layers (alpha bounds on the shared 1050x1498 canvas): name and position
+  // both centre at x≈50%, the kit number sits upper-left. Because its
+  // geometry genuinely differs from NAMEPLATE_GEOMETRY/NAMEPLATE_NUMBER_
+  // GEOMETRY, Crimson renders through its own dedicated CrimsonCardArt
+  // component (see CardArt.tsx's `template.id === 'custom-crimson'` front
+  // dispatch) rather than the shared CustomCollectionCardArt renderer — so
+  // badgeBox/numberBox/positionBox/nameBox below are intentionally omitted;
+  // CrimsonCardArt owns its own measured geometry constants instead.
+  //
+  // The supplied back artwork ("EVERY SEASON TELLS A STORY" / NFC tap-to-
+  // open-Player-OS panel) has every word of its own text baked directly into
+  // the flat image — no dynamic name/logo slot, the same shape as the
+  // Champions family's own fully-static back (CardArt.tsx:
+  // `side === 'back' && template.family === 'Champions'`, a flat
+  // `/templates/champions/back.png` with zero dynamic overlays). `back` (the
+  // logoBox/nameBox config) is therefore deliberately omitted here too —
+  // inventing a logoBox/nameBox this art was never measured for would risk
+  // covering part of its own baked artwork with a guessed overlay. Setting
+  // only `assets.backBase` is enough: CustomCollectionCardBack's own fallback
+  // (`back?.base || variant.assets.backBase || variant.assets.preview`)
+  // resolves to this real back art directly, with no dynamic overlay drawn.
+  //
+  // KNOWN ISSUE, not fixed here (out of scope — this is baked-in raster
+  // text in a supplied asset, not something this PR's code can safely edit):
+  // this back art reads "EMBLEM.CARDS" — that's emblem.cards, the older,
+  // separate product this codebase's own README/CLAUDE docs distinguish
+  // from Emblem UK. Every other Custom Collection back (Solar/Galaxy/Comic's
+  // own back-base.png, confirmed by direct inspection) instead reads "AN
+  // EMBLEM COLLECTION". Flagged for the designer to correct at the source
+  // art level; shipping as supplied rather than silently editing baked text.
+  //
+  // `preview` (the Custom Collection selector's own thumbnail, data.ts:
+  // `bgPath: variant.assets.preview`) intentionally points at the plain
+  // `base.png` frame art, NOT a composited reference/demo-card image. The
+  // originally supplied `1.png`/`reference.png` composited a real-looking
+  // stock player photo into the circular window — removed as a runtime
+  // asset (never shipped through the public app) once identified as
+  // containing what reads as an identifiable person; `base.png` has no
+  // photo, no baked text, and was already a genuine runtime asset (the
+  // `background` layer) — no new file was added to avoid shipping it.
+  {
+    id: 'custom-crimson',
+    name: 'Crimson',
+    theme: 'Crimson Custom Collection',
+    description: 'Crimson and rose-gold football shield with a centred circular player portrait',
+    accent: '#df3829',
+    background: '#160301',
+    assets: {
+      preview: '/templates/custom-collection/crimson/base.png',
+      background: '/templates/custom-collection/crimson/base.png',
+      frameOverlay: '/templates/custom-collection/crimson/frame-overlay.png',
+      emblemLogoPosition: '/templates/custom-collection/crimson/emblem-logo-position.png',
+      backBase: '/templates/custom-collection/crimson/back-base.png',
     },
   },
 ] as const;

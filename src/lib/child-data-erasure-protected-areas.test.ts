@@ -39,7 +39,10 @@ const PROTECTED_FILES: Record<string, string> = {
   // separate confirmed position-anchoring defect, and a seventh for the
   // Custom Collection group-centring amendment — see card-lifecycle-
   // protected-areas.test.ts's own comment for the full reasoning.
-  'src/components/builder/emblem/CardArt.tsx': 'a75fe36bed71b02a3e73022253a9e3e9f4f679d55d26d2390124b5f3b15dd4c7',
+  // Updated for the new Crimson Custom Collection template (one new import,
+  // one new front-dispatch branch) — see card-lifecycle-protected-areas.
+  // test.ts's own comment for the full reasoning.
+  'src/components/builder/emblem/CardArt.tsx': '00dd6cd46fa0a0269844358bf5bb7ea2f0e5db99da7c3a4ce6b629dbc1405f5a',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
