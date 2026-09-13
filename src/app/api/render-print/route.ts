@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { randomUUID } from 'crypto';
-import { buildPdf, DesignPayload } from '@/lib/pdf-generator';
+import { buildPdf, buildCanonicalCardPdf, DesignPayload } from '@/lib/pdf-generator';
 import { uploadPdf, getSignedDownloadUrl } from '@/lib/s3-client';
 import { PRINT_SPECS } from '@/lib/print-specs';
 import { consumeAnonymousRequestRateLimit } from '@/lib/anonymous-request-rate-limit';
@@ -97,7 +97,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'too many requests' }, { status: 429 });
     }
 
-    const pdf = await buildPdf(body);
+    // Product decision: the "card" product's PDF faces come directly from
+    // the canonical screen/share renderer — no bleed, no crop marks, no
+    // independent print-only re-render (see pdf-generator.ts's own
+    // buildCanonicalCardPdf doc comment). Every other product still needs
+    // a real bleed/crop-mark vendor file, unchanged.
+    const pdf = body.product === 'card' ? await buildCanonicalCardPdf(body) : await buildPdf(body);
 
     // Server-derived key only, from the verified capability's own id —
     // never from any client-supplied value.

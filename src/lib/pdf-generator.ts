@@ -320,3 +320,117 @@ export async function buildPdf(payload: DesignPayload): Promise<Buffer> {
   const bytes = await pdf.save();
   return Buffer.from(bytes);
 }
+
+/**
+ * Product decision: Emblem does not need a separate visual print renderer.
+ * The accurate on-screen/share-rendered card produces the better physical
+ * result — the existing forPrint-specific rendering (square corners, its
+ * own capture rig) changed borders/typography/scale unnecessarily and has
+ * been removed at the capture layer (see ProductionBuilder.tsx's
+ * captureCardFace). This is the PDF-side half of that same decision: the
+ * Print S3 PDF for the "card" product now embeds the canonical capture
+ * directly — no buildFullBleedRaster, no mirrored bleed margin, no crop
+ * marks, no independent re-render or restyling of either face. Each page
+ * is sized to match ITS OWN capture's exact aspect ratio (never forced to
+ * a fixed trim ratio), so a face whose canonical aspect happens to differ
+ * slightly from another (front vs. back can legitimately differ — see
+ * CardArt.tsx's own per-family H formulas) is never stretched to fit a
+ * mismatched page.
+ *
+ * Deliberately separate from buildPdf/buildFullBleedRaster above, which
+ * are unchanged and still used for every other print product (sticker/
+ * keychain/poster/puzzle) — those are single-page, vendor-facing files
+ * that still need a real bleed/crop-mark trim spec; nothing about this
+ * task asked for that to change, and this function never touches them.
+ */
+export interface CanonicalCardPdfPayload {
+  frontImageDataUrl: string;
+  backImageDataUrl?: string;
+  meta?: DesignPayload['meta'];
+}
+
+/** The physical anchor for the "ordinary" case (every template whose
+ *  canonical on-screen aspect already matches 2.5:3.5 — see CardArt.tsx's
+ *  shared H = size*1.4 formula) — height is held at the card's established
+ *  physical size; width always follows the actual captured aspect ratio,
+ *  per addCanonicalFacePage below, so this is an anchor, not an assumption. */
+const CANONICAL_CARD_HEIGHT_IN = PRINT_SPECS.card.finalHeightIn;
+
+/** pdf-lib only embeds PNG/JPEG directly. captureElementToPng (despite its
+ *  name) already returns a JPEG data URL, and that is what every real
+ *  capture produces — this only re-encodes via sharp for some other,
+ *  currently-unused source format, so it never touches what a real
+ *  capture actually produces. */
+async function embedCanonicalImage(pdf: PDFDocument, bytes: Uint8Array, mime: string) {
+  if (mime === 'image/png') return pdf.embedPng(bytes);
+  if (mime === 'image/jpeg' || mime === 'image/jpg') return pdf.embedJpg(bytes);
+  const png = await sharp(bytes).png().toBuffer();
+  return pdf.embedPng(png);
+}
+
+async function addCanonicalFacePage(pdf: PDFDocument, imageDataUrl: string) {
+  const { bytes, mime } = await loadImageBytes(imageDataUrl);
+  const sourceMeta = await sharp(bytes).metadata();
+  if (!sourceMeta.width || !sourceMeta.height) {
+    throw new Error('Could not read the canonical card image dimensions.');
+  }
+  const aspect = sourceMeta.width / sourceMeta.height;
+  const heightIn = CANONICAL_CARD_HEIGHT_IN;
+  const widthIn = heightIn * aspect;
+  const width = widthIn * 72;
+  const height = heightIn * 72;
+
+  const image = await embedCanonicalImage(pdf, bytes, mime);
+  const page = pdf.addPage([width, height]);
+  // The one and only draw operation: the canonical capture, at full page
+  // size, 1:1. No crop, no bleed, no crop marks — the page IS the capture.
+  page.drawImage(image, { x: 0, y: 0, width, height });
+
+  return { widthIn, heightIn, aspect, pixelWidth: sourceMeta.width, pixelHeight: sourceMeta.height };
+}
+
+/** Builds the customer-facing/owner-print two-page card PDF directly from
+ *  the canonical screen/share renderer's own captures. See this section's
+ *  top comment for why this is deliberately separate from buildPdf. */
+export async function buildCanonicalCardPdf(payload: CanonicalCardPdfPayload): Promise<Buffer> {
+  const pdf = await PDFDocument.create();
+  pdf.setTitle('Print: Trading Card');
+  pdf.setAuthor('Emblem / Last Shot Cards');
+  if (payload.meta?.orderRef) pdf.setSubject(`Order ${payload.meta.orderRef}`);
+  if (payload.meta) {
+    const kw = Object.entries(payload.meta)
+      .filter((entry): entry is [string, string] => entry[1] !== undefined)
+      .map(([k, v]) => `${k}:${v}`);
+    if (kw.length) pdf.setKeywords(kw);
+  }
+
+  const front = await addCanonicalFacePage(pdf, payload.frontImageDataUrl);
+
+  if (payload.backImageDataUrl) {
+    await addCanonicalFacePage(pdf, payload.backImageDataUrl);
+  } else {
+    // Defensive fallback only — every real approved card should have its
+    // own corresponding approved back captured (see "Back rules": no
+    // template's back is ever swapped for a generic one). Sized to the
+    // front's own page dimensions since there is no captured back to
+    // measure.
+    const width = front.widthIn * 72;
+    const height = front.heightIn * 72;
+    const page = pdf.addPage([width, height]);
+    page.drawRectangle({ x: 0, y: 0, width, height, color: rgb(0, 0, 0) });
+    const font = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const text = 'LAST SHOT';
+    const textSize = Math.min(width, height) * 0.12;
+    const tw = font.widthOfTextAtSize(text, textSize);
+    page.drawText(text, {
+      x: (width - tw) / 2,
+      y: height / 2 - textSize / 2,
+      size: textSize,
+      font,
+      color: rgb(0.066, 0.427, 1), // #116DFF
+    });
+  }
+
+  const bytes = await pdf.save();
+  return Buffer.from(bytes);
+}
