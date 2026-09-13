@@ -80,7 +80,7 @@ export type CustomCollectionVariant = {
   };
 };
 
-export type CustomCollectionTemplateId = 'custom-solar' | 'custom-galaxy' | 'custom-comic' | 'custom-crimson';
+export type CustomCollectionTemplateId = 'custom-solar' | 'custom-galaxy' | 'custom-comic' | 'custom-crimson' | 'custom-royal';
 
 export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
   {
@@ -308,6 +308,48 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       frameOverlay: '/templates/custom-collection/crimson/frame-overlay.png',
       emblemLogoPosition: '/templates/custom-collection/crimson/emblem-logo-position.png',
       backBase: '/templates/custom-collection/crimson/back-base.png',
+    },
+  },
+  // Royal Edition shares Crimson's exact structural family (same 1050x1498
+  // Canva canvas, same circular photo window, same horizontal centred
+  // name/position/number layout, same z-order) — a different colour theme
+  // (purple/silver "Royal" vs crimson/rose-gold), not a different geometry.
+  // Renders through its own dedicated RoyalCardArt component for the same
+  // reason Crimson does: this horizontal, centred layout doesn't match the
+  // shared rotated NAMEPLATE_GEOMETRY/NAMEPLATE_NUMBER_GEOMETRY every other
+  // (non-Crimson) Custom Collection card uses — so badgeBox/numberBox/
+  // positionBox/nameBox below are intentionally omitted, same as Crimson.
+  //
+  // No badgeBox (customer club-logo slot) is configured — same reasoning as
+  // Crimson: the reference art shows no separate badge slot distinct from
+  // the fixed Emblem mark and the bottom crest.
+  //
+  // The originally supplied complete-reference composite (10.png) and
+  // example-player photo (13.png) are deliberately NOT shipped as runtime
+  // assets — 10.png composited what reads as an identifiable real child
+  // into the circular window, calibration-only, applying the same standard
+  // established for Crimson's own reference.png. `preview` points at the
+  // plain `base.png` frame art instead.
+  //
+  // Back: the supplied back art (18.png) reads "EMBLEM.CARDS" / "ROYAL
+  // EDITION", flattened raster, no dynamic slot — founder-confirmed final
+  // wording for this template family (same standing decision already made
+  // for Crimson's own back). `back` (logoBox/nameBox) is omitted; `back-
+  // base.png` renders static via CustomCollectionCardBack's existing
+  // fallback, exactly like Crimson's back.
+  {
+    id: 'custom-royal',
+    name: 'Royal Edition',
+    theme: 'Royal Edition Custom Collection',
+    description: 'Deep purple and silver football shield with a centred circular player portrait',
+    accent: '#7c5cff',
+    background: '#0a0a1f',
+    assets: {
+      preview: '/templates/custom-collection/royal/base.png',
+      background: '/templates/custom-collection/royal/base.png',
+      frameOverlay: '/templates/custom-collection/royal/frame-overlay.png',
+      emblemLogoPosition: '/templates/custom-collection/royal/emblem-logo-position.png',
+      backBase: '/templates/custom-collection/royal/back-base.png',
     },
   },
 ] as const;

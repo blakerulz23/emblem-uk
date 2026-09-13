@@ -9,6 +9,7 @@ import { computePhotoGeometry } from '@/lib/photo-geometry';
 import { positionCardLabel } from '@/lib/player-position';
 import { SPORT_STATS, type CardTemplate, type Details, type Family, type SportId } from './data';
 import CrimsonCardArt from './CrimsonCardArt';
+import RoyalCardArt from './RoyalCardArt';
 import Icon from './Icon';
 
 /**
@@ -2147,6 +2148,9 @@ export default function CardArt({
   }
   if (template.family === 'Custom' && template.id === 'custom-crimson') {
     return <CrimsonCardArt template={template} photo={photo} details={details} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} photoNaturalWidth={photoNaturalWidth} photoNaturalHeight={photoNaturalHeight} />;
+  }
+  if (template.family === 'Custom' && template.id === 'custom-royal') {
+    return <RoyalCardArt template={template} photo={photo} details={details} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} photoNaturalWidth={photoNaturalWidth} photoNaturalHeight={photoNaturalHeight} />;
   }
   if (template.family === 'Custom') {
     return <CustomCollectionCardArt template={template} photo={photo} details={details} logo={logo} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} photoNaturalWidth={photoNaturalWidth} photoNaturalHeight={photoNaturalHeight} />;

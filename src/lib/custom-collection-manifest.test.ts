@@ -55,18 +55,20 @@ describe('Custom Collection position colours', () => {
     // custom-solar: white (this change). custom-comic: red, its own
     // pre-existing explicit override (unchanged). custom-galaxy: no
     // override at all, falls through to its own orange accent (unchanged).
-    // custom-crimson: no positionBox at all — it renders through its own
-    // dedicated CrimsonCardArt component (a horizontal, centred layout, not
-    // the shared rotated nameplate structure this positionBox field
-    // configures), so positionBox is meaningless for it and correctly absent.
+    // Any later template (custom-crimson, custom-royal, ...) that renders
+    // through its own dedicated component — not the shared
+    // CustomCollectionCardArt renderer this positionBox field configures —
+    // correctly has no positionBox at all, so this only asserts the three
+    // entries this original colour-correction pass actually touched,
+    // rather than the full map (which would need editing every time an
+    // unrelated later template is added).
     const colours = Object.fromEntries(
       CUSTOM_COLLECTION_VARIANTS.map((v) => [v.id, v.positionBox?.color ?? null])
     );
-    expect(colours).toEqual({
+    expect(colours).toMatchObject({
       'custom-solar': '#fff',
       'custom-comic': '#ef2222',
       'custom-galaxy': null,
-      'custom-crimson': null,
     });
   });
 
@@ -141,10 +143,14 @@ describe('Crimson (custom-crimson) manifest registration', () => {
   });
 
   it('does not reuse or rename any existing template id', () => {
+    // arrayContaining, not an exact-length equality — this only needs to
+    // prove custom-crimson's own id is present and every id that existed
+    // before it is still there unrenamed; it must not need editing every
+    // time a later, unrelated template (e.g. custom-royal) is added.
     expect(CUSTOM_COLLECTION_TEMPLATE_IDS).toEqual(
       expect.arrayContaining(['custom-solar', 'custom-galaxy', 'custom-comic', 'custom-crimson'])
     );
-    expect(CUSTOM_COLLECTION_TEMPLATE_IDS.length).toBe(4);
+    expect(new Set(CUSTOM_COLLECTION_TEMPLATE_IDS).size).toBe(CUSTOM_COLLECTION_TEMPLATE_IDS.length);
   });
 });
 
@@ -213,6 +219,129 @@ describe('Crimson ships no reference/calibration-only imagery at runtime', () =>
     for (const source of [manifestSource, crimsonArtSource, cardArtSource]) {
       expect(source).not.toContain('/templates/custom-collection/crimson/reference.png');
       expect(source).not.toMatch(/crimson\/[1358]\.png|crimson\/7\.png/);
+    }
+  });
+});
+
+describe('Royal Edition (custom-royal) manifest registration', () => {
+  it('is registered with a unique, stable id distinct from every existing template', () => {
+    expect(CUSTOM_COLLECTION_TEMPLATE_IDS).toContain('custom-royal');
+    expect(isCustomCollectionTemplateId('custom-royal')).toBe(true);
+    const ids = CUSTOM_COLLECTION_VARIANTS.map((v) => v.id);
+    expect(new Set(ids).size).toBe(ids.length); // no duplicate ids across any entry
+  });
+
+  it('has the expected display name and correct runtime assets', () => {
+    const royal = getCustomCollectionVariant('custom-royal');
+    expect(royal.id).toBe('custom-royal');
+    expect(royal.name).toBe('Royal Edition');
+    // preview points at the plain base.png frame art, not a composited
+    // reference/demo-card image — applying the same standard established
+    // for Crimson: the originally supplied 10.png/reference composite
+    // contains what reads as an identifiable real child and was never
+    // shipped as a runtime asset in the first place.
+    expect(royal.assets.preview).toBe('/templates/custom-collection/royal/base.png');
+    expect(royal.assets.preview).not.toMatch(/reference\.png$/);
+    expect(royal.assets.background).toBe('/templates/custom-collection/royal/base.png');
+    expect(royal.assets.frameOverlay).toBe('/templates/custom-collection/royal/frame-overlay.png');
+    expect(royal.assets.emblemLogoPosition).toBe('/templates/custom-collection/royal/emblem-logo-position.png');
+  });
+
+  it('has a static back (assets.backBase) with no dynamic logoBox/nameBox overlay — same fully-static shape as Crimson\'s own back', () => {
+    const royal = getCustomCollectionVariant('custom-royal');
+    expect(royal.assets.backBase).toBe('/templates/custom-collection/royal/back-base.png');
+    expect(royal.back).toBeUndefined();
+  });
+
+  it('omits badgeBox/numberBox/positionBox/nameBox — same reasoning as Crimson: its geometry doesn\'t match the shared rotated nameplate system these configure, so it renders through its own dedicated RoyalCardArt component instead', () => {
+    const royal = getCustomCollectionVariant('custom-royal');
+    expect(royal.badgeBox).toBeUndefined();
+    expect(royal.numberBox).toBeUndefined();
+    expect(royal.positionBox).toBeUndefined();
+    expect(royal.nameBox).toBeUndefined();
+  });
+
+  it('does not reuse or rename any existing template id', () => {
+    // arrayContaining, not an exact-length equality — same reasoning as
+    // Crimson's own equivalent test above: must not need editing every
+    // time a later, unrelated template is added.
+    expect(CUSTOM_COLLECTION_TEMPLATE_IDS).toEqual(
+      expect.arrayContaining(['custom-solar', 'custom-galaxy', 'custom-comic', 'custom-crimson', 'custom-royal'])
+    );
+    expect(new Set(CUSTOM_COLLECTION_TEMPLATE_IDS).size).toBe(CUSTOM_COLLECTION_TEMPLATE_IDS.length);
+  });
+});
+
+describe('CardArt.tsx dispatches custom-royal to its own component, not the shared CustomCollectionCardArt renderer', () => {
+  const cardArtSource = readFileSync(
+    resolve(process.cwd(), 'src/components/builder/emblem/CardArt.tsx'),
+    'utf8'
+  );
+
+  it('imports RoyalCardArt and dispatches custom-royal to it before the generic Custom-family branch', () => {
+    expect(cardArtSource).toContain("import RoyalCardArt from './RoyalCardArt'");
+    expect(cardArtSource).toContain("template.family === 'Custom' && template.id === 'custom-royal'");
+    const royalBranchIndex = cardArtSource.indexOf("template.id === 'custom-royal'");
+    const genericCustomBranchIndex = cardArtSource.indexOf("if (template.family === 'Custom') {");
+    expect(royalBranchIndex).toBeGreaterThan(-1);
+    expect(genericCustomBranchIndex).toBeGreaterThan(-1);
+    expect(royalBranchIndex).toBeLessThan(genericCustomBranchIndex);
+  });
+
+  it('the back-side dispatch is untouched — custom-royal still falls through to the shared CustomCollectionCardBack (which resolves assets.backBase since no dynamic back.logoBox/nameBox is configured)', () => {
+    expect(cardArtSource).toContain("side === 'back' && template.family === 'Custom'");
+  });
+});
+
+describe('RoyalCardArt renders dynamic customer data, not a fixture', () => {
+  const royalSource = readFileSync(
+    resolve(process.cwd(), 'src/components/builder/emblem/RoyalCardArt.tsx'),
+    'utf8'
+  );
+
+  it('reads name/position/number/photo from the details/photo props every render, never a hardcoded fixture value', () => {
+    expect(royalSource).toContain('d.name');
+    expect(royalSource).toContain('d.number');
+    expect(royalSource).toContain("positionCardLabel(d.position");
+    expect(royalSource).toContain('{photo ?');
+  });
+
+  it('reuses the shared, already-tested nameFitScale helper for long-name/long-number shrinking rather than a new reimplementation', () => {
+    expect(royalSource).toContain("from '@/lib/nameplate-typography'");
+    expect(royalSource).toMatch(/nameFitScale\(/);
+  });
+
+  it('never introduces Apps, Goals or Assists', () => {
+    expect(royalSource).not.toMatch(/\bApps\b/);
+    expect(royalSource).not.toMatch(/\bGoals\b/);
+    expect(royalSource).not.toMatch(/\bAssists\b/);
+  });
+});
+
+describe('Royal Edition ships no reference/calibration-only imagery at runtime', () => {
+  const royalAssetDir = resolve(process.cwd(), 'public/templates/custom-collection/royal');
+  const manifestSource = readFileSync(resolve(process.cwd(), 'src/lib/custom-collection-manifest.ts'), 'utf8');
+  const royalArtSource = readFileSync(resolve(process.cwd(), 'src/components/builder/emblem/RoyalCardArt.tsx'), 'utf8');
+  const cardArtSource = readFileSync(resolve(process.cwd(), 'src/components/builder/emblem/CardArt.tsx'), 'utf8');
+
+  it('reference.png / the complete visual-reference composite (10.png) is not present in the shipped asset directory', () => {
+    expect(existsSync(`${royalAssetDir}/reference.png`)).toBe(false);
+  });
+
+  it('the example-player calibration photo is not present in the shipped asset directory', () => {
+    expect(existsSync(`${royalAssetDir}/13.png`)).toBe(false);
+    expect(existsSync(`${royalAssetDir}/image.png`)).toBe(false);
+  });
+
+  it('the runtime asset directory contains only the four genuine reusable layers', () => {
+    const files = readdirSync(royalAssetDir).sort();
+    expect(files).toEqual(['back-base.png', 'base.png', 'emblem-logo-position.png', 'frame-overlay.png']);
+  });
+
+  it('no source file references a reference/preview composite, or the original numbered source filenames, as a runtime asset path — prose explaining the design may still name the file', () => {
+    for (const source of [manifestSource, royalArtSource, cardArtSource]) {
+      expect(source).not.toContain('/templates/custom-collection/royal/reference.png');
+      expect(source).not.toMatch(/royal\/(10|13|15|16|17)\.png/);
     }
   });
 });

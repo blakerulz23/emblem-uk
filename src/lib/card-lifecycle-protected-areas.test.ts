@@ -101,7 +101,17 @@ const PROTECTED_FILES: Record<string, string> = {
   // file. Solar/Galaxy/Comic's own generic-dispatch branch, and every other
   // family's dispatch, is unchanged (verified via diff, and empirically via a
   // real render of all three before/after this change).
-  'src/components/builder/emblem/CardArt.tsx': '00dd6cd46fa0a0269844358bf5bb7ea2f0e5db99da7c3a4ce6b629dbc1405f5a',
+  //
+  // Updated a ninth time to add the new Royal Edition Custom Collection
+  // template: one new import (RoyalCardArt) and one new front-dispatch
+  // branch (`template.family === 'Custom' && template.id === 'custom-royal'`)
+  // inserted before the existing generic Custom-family branch, same shape
+  // as Crimson's own — same underlying template family (near-identical
+  // photo-window geometry, confirmed by direct measurement), different
+  // colour theme. Every other dispatch branch is unchanged (verified via
+  // diff, and empirically via a real render of Crimson/Solar/Comic
+  // before/after this change).
+  'src/components/builder/emblem/CardArt.tsx': 'a5a90088b72cb2898ebe7ed80f032c6cc5ba60fa53a7338958fd3e0ce57f6138',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
