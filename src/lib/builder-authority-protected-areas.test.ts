@@ -37,7 +37,11 @@ const PROTECTED_FILES: Record<string, string> = {
   'src/components/builder/emblem/aiMockup.ts': 'f48196a262d75042dba471e60b4ac419c8617c9a3d48940ad9799d7c1dd825e1',
   'src/lib/pdf-generator.ts': '94e796512bd29560755659bc25513820cc142fc8a755f353705539f750f49c26',
   'src/lib/card-definition.tsx': '1c6e548d2dd64f5a4c6dc4a80f3414648119b935d12306786dc7a3e2908b26b5',
-  'src/lib/print-capture.ts': 'e329ab40d2f67e3fdfa458f4c504e46bc9ebf8e9f5e98c337e9378cd95a08d07',
+  // Updated for the html2canvas clip-path capture fix (a real, previously-
+  // undetected bug: html2canvas silently ignored every clip-path photo
+  // window in this codebase) — see card-lifecycle-protected-areas.test.ts's
+  // own comment for the full reasoning.
+  'src/lib/print-capture.ts': '40fc3cf51819cd6333ba75d8bc774e0bf60992c8ee3b15c512c181c9477ab095',
 };
 
 describe('protected areas remain byte-identical after the Adult Permission work package (migration 0071)', () => {

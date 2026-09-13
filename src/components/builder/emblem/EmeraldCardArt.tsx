@@ -42,8 +42,20 @@ import type { CardTemplate, Details } from './data';
  * native canvas: centre (50%, 48%), radius (39% of W, 20% of H) — visibly
  * rounder than Crimson/Royal's own flatter ellipse, so measured fresh
  * rather than reused.
+ *
+ * Layer-group audit (player-occlusion review): same finding as Crimson/
+ * Royal — rendered at default, extreme-zoom-in/out and extreme-pan; the
+ * clip-path is a hard geometric constraint independent of the photo's own
+ * transform, so the player never bleeds past the ring or reaches the outer
+ * border at any setting. The ring is a closed loop, not a crossing
+ * decorative element, so no rearDecoration split of base.png is needed.
+ * Layers map: background — base.png (z0) · player — clipped photo (z2)
+ * · foregroundFrame — frame-overlay.png + emblem-logo-position.png (z3)
+ * · textAndBranding — number/name/position (z4). Player positioning
+ * applies only to the player <img>.
  */
 
+const LAYER_Z = { background: 0, player: 2, foregroundFrame: 3, textAndBranding: 4 } as const;
 const PHOTO_CLIP = 'ellipse(39% 20% at 50% 48%)';
 const FILL_COLOR = '#f8e9b1';
 const OUTLINE_COLOR = '#806600';
@@ -144,7 +156,7 @@ export default function EmeraldCardArt({
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
   const root = '/templates/custom-collection/emerald';
-  const layerFit: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' };
+  const layerFit: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' };
 
   const playerName = d.name || 'Player Name';
   const positionLabel = positionCardLabel(d.position, 'POSITION');
@@ -172,11 +184,13 @@ export default function EmeraldCardArt({
         ...style,
       }}
     >
+      {/* — background — */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/base.png`} alt="" style={{ ...layerFit, zIndex: 0 }} />
+      <img src={`${root}/base.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.background }} />
 
+      {/* — player (positioning controls apply only to this layer) — */}
       {photo ? (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 1, clipPath: PHOTO_CLIP }}>
+        <div data-capture-clip-wrapper style={{ position: 'absolute', inset: 0, zIndex: LAYER_Z.player, clipPath: PHOTO_CLIP }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={photo}
@@ -193,22 +207,24 @@ export default function EmeraldCardArt({
         </div>
       ) : null}
 
+      {/* — foregroundFrame — */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/frame-overlay.png`} alt="" style={{ ...layerFit, zIndex: 2 }} />
+      <img src={`${root}/frame-overlay.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.foregroundFrame }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/emblem-logo-position.png`} alt="" style={{ ...layerFit, zIndex: 3 }} />
+      <img src={`${root}/emblem-logo-position.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.foregroundFrame }} />
 
-      <div style={{ ...numberLayers.wrapper, zIndex: 4 }}>
+      {/* — textAndBranding — */}
+      <div style={{ ...numberLayers.wrapper, zIndex: LAYER_Z.textAndBranding }}>
         <span aria-hidden style={numberLayers.outline}>{number}</span>
         <span style={numberLayers.fill}>{number}</span>
       </div>
 
-      <div style={{ ...nameLayers.wrapper, zIndex: 4 }}>
+      <div style={{ ...nameLayers.wrapper, zIndex: LAYER_Z.textAndBranding }}>
         <span aria-hidden style={nameLayers.outline}>{playerName}</span>
         <span style={nameLayers.fill}>{playerName}</span>
       </div>
 
-      <div style={{ ...positionLayers.wrapper, zIndex: 4 }}>
+      <div style={{ ...positionLayers.wrapper, zIndex: LAYER_Z.textAndBranding }}>
         <span aria-hidden style={positionLayers.outline}>{positionLabel}</span>
         <span style={positionLayers.fill}>{positionLabel}</span>
       </div>

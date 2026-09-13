@@ -39,8 +39,22 @@ import type { CardTemplate, Details } from './data';
  *
  * Font: Barlow Condensed Bold — same evidence-based match as the rest of
  * this template family (same underlying letterforms), already loaded.
+ *
+ * Layer-group audit (player-occlusion review): rendered at default,
+ * extreme-zoom-in/out and extreme-pan — the SVG-path clip is a hard
+ * geometric constraint independent of the photo's own transform, so the
+ * player never bleeds past the arch or reaches the outer border at any
+ * setting (confirmed with the arch shape specifically, since it's the one
+ * template in this family using a `path()` clip rather than `ellipse()`).
+ * The arch/ring art is a single boundary fully surrounding the window, not
+ * a crossing decorative element, so no rearDecoration split of base.png is
+ * needed. Layers map: background — base.png (z0) · player — clipped photo
+ * (z2) · foregroundFrame — frame-overlay.png + emblem-logo-position.png
+ * (z3) · textAndBranding — number/name/position (z4). Player positioning
+ * applies only to the player <img>.
  */
 
+const LAYER_Z = { background: 0, player: 2, foregroundFrame: 3, textAndBranding: 4 } as const;
 const FILL_COLOR = '#c0e8ff';
 const TEXT_SHADOW = '0.05em 0.06em 0.04em rgba(0,0,0,0.4)';
 const FONT_FAMILY = 'var(--font-barlow-condensed), "Arial Narrow", sans-serif';
@@ -101,7 +115,7 @@ export default function GlacierCardArt({
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
   const root = '/templates/custom-collection/glacier';
-  const layerFit: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' };
+  const layerFit: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' };
 
   const playerName = d.name || 'Player Name';
   const positionLabel = positionCardLabel(d.position, 'POSITION');
@@ -136,11 +150,13 @@ export default function GlacierCardArt({
         ...style,
       }}
     >
+      {/* — background — */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/base.png`} alt="" style={{ ...layerFit, zIndex: 0 }} />
+      <img src={`${root}/base.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.background }} />
 
+      {/* — player (positioning controls apply only to this layer) — */}
       {photo ? (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 1, clipPath: buildArchClipPath(W, H) }}>
+        <div data-capture-clip-wrapper style={{ position: 'absolute', inset: 0, zIndex: LAYER_Z.player, clipPath: buildArchClipPath(W, H) }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={photo}
@@ -157,10 +173,11 @@ export default function GlacierCardArt({
         </div>
       ) : null}
 
+      {/* — foregroundFrame — */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/frame-overlay.png`} alt="" style={{ ...layerFit, zIndex: 2 }} />
+      <img src={`${root}/frame-overlay.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.foregroundFrame }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/emblem-logo-position.png`} alt="" style={{ ...layerFit, zIndex: 3 }} />
+      <img src={`${root}/emblem-logo-position.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.foregroundFrame }} />
 
       <div
         style={{
@@ -169,7 +186,7 @@ export default function GlacierCardArt({
           top: NUMBER_GEOMETRY.bottom,
           transform: 'translate(-50%, -100%)',
           fontSize: W * NUMBER_GEOMETRY.fontSizeFactor * nameFitScale(number, NUMBER_GEOMETRY.comfortableChars, NUMBER_GEOMETRY.minScale),
-          zIndex: 4,
+          zIndex: LAYER_Z.textAndBranding,
         }}
       >
         {number}
@@ -183,7 +200,7 @@ export default function GlacierCardArt({
           width: '86%',
           transform: 'translate(-50%, -100%)',
           fontSize: W * NAME_GEOMETRY.fontSizeFactor * nameFitScale(playerName, NAME_GEOMETRY.comfortableChars, NAME_GEOMETRY.minScale),
-          zIndex: 4,
+          zIndex: LAYER_Z.textAndBranding,
         }}
       >
         {playerName}
@@ -198,7 +215,7 @@ export default function GlacierCardArt({
           letterSpacing: '0.1em',
           transform: 'translate(-50%, -100%)',
           fontSize: W * POSITION_GEOMETRY.fontSizeFactor * nameFitScale(positionLabel, POSITION_GEOMETRY.comfortableChars, POSITION_GEOMETRY.minScale),
-          zIndex: 4,
+          zIndex: LAYER_Z.textAndBranding,
         }}
       >
         {positionLabel}

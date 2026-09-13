@@ -40,8 +40,27 @@ import type { CardTemplate, Details } from './data';
  * the photo to the window's own inner edge, not by any alpha cutout in the
  * base art itself). Measured against the same native canvas: centre (50%,
  * 47.5%), radius (38% of W, 16.5% of H).
+ *
+ * Layer-group audit (player-occlusion review): rendered at default,
+ * extreme-zoom-in (scale 2.2), extreme-zoom-out (scale 0.4) and extreme-pan
+ * (±45%) — the clip-path is a hard geometric constraint independent of the
+ * photo's own scale/offset transform, so the player can never bleed past
+ * the ring or reach the outer shield border at any setting; confirmed
+ * visually at all four. The ring is a single closed loop fully surrounding
+ * the window, not a decorative element that crosses the player — so no
+ * rearDecoration/foregroundFrame split of base.png was needed here (unlike
+ * a design where an inner ring's own artwork crosses in front of the
+ * face). Layers map onto the five standard groups as:
+ *   background      — base.png (z0, fully behind the player)
+ *   rearDecoration   — none for this template (see above)
+ *   player           — the customer's photo, clipped to PHOTO_CLIP (z2)
+ *   foregroundFrame  — frame-overlay.png + emblem-logo-position.png (z3)
+ *   textAndBranding  — number/name/position (z4)
+ * Player positioning (photoScale/photoOffsetX/photoOffsetY) is applied only
+ * to the player <img> itself, never to any other layer.
  */
 
+const LAYER_Z = { background: 0, player: 2, foregroundFrame: 3, textAndBranding: 4 } as const;
 const PHOTO_CLIP = 'ellipse(38% 16.5% at 50% 47.5%)';
 const TEXT_COLOR = '#f8dcbf';
 const FONT_FAMILY = 'var(--font-barlow-condensed), "Arial Narrow", sans-serif';
@@ -86,7 +105,7 @@ export default function CrimsonCardArt({
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
   const root = '/templates/custom-collection/crimson';
-  const layerFit: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' };
+  const layerFit: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' };
 
   const playerName = d.name || 'Player Name';
   const positionLabel = positionCardLabel(d.position, 'POSITION');
@@ -120,11 +139,13 @@ export default function CrimsonCardArt({
         ...style,
       }}
     >
+      {/* — background — */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/base.png`} alt="" style={{ ...layerFit, zIndex: 0 }} />
+      <img src={`${root}/base.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.background }} />
 
+      {/* — player (positioning controls apply only to this layer) — */}
       {photo ? (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 1, clipPath: PHOTO_CLIP }}>
+        <div data-capture-clip-wrapper style={{ position: 'absolute', inset: 0, zIndex: LAYER_Z.player, clipPath: PHOTO_CLIP }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={photo}
@@ -141,10 +162,11 @@ export default function CrimsonCardArt({
         </div>
       ) : null}
 
+      {/* — foregroundFrame — */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/frame-overlay.png`} alt="" style={{ ...layerFit, zIndex: 2 }} />
+      <img src={`${root}/frame-overlay.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.foregroundFrame }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/emblem-logo-position.png`} alt="" style={{ ...layerFit, zIndex: 3 }} />
+      <img src={`${root}/emblem-logo-position.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.foregroundFrame }} />
 
       <div
         style={{
@@ -153,7 +175,7 @@ export default function CrimsonCardArt({
           top: NUMBER_GEOMETRY.bottom,
           transform: 'translate(-50%, -100%)',
           fontSize: W * NUMBER_GEOMETRY.fontSizeFactor * nameFitScale(number, NUMBER_GEOMETRY.comfortableChars, NUMBER_GEOMETRY.minScale),
-          zIndex: 4,
+          zIndex: LAYER_Z.textAndBranding,
         }}
       >
         {number}
@@ -167,7 +189,7 @@ export default function CrimsonCardArt({
           width: '86%',
           transform: 'translate(-50%, -100%)',
           fontSize: W * NAME_GEOMETRY.fontSizeFactor * nameFitScale(playerName, NAME_GEOMETRY.comfortableChars, NAME_GEOMETRY.minScale),
-          zIndex: 4,
+          zIndex: LAYER_Z.textAndBranding,
         }}
       >
         {playerName}
@@ -182,7 +204,7 @@ export default function CrimsonCardArt({
           letterSpacing: '0.1em',
           transform: 'translate(-50%, -100%)',
           fontSize: W * POSITION_GEOMETRY.fontSizeFactor * nameFitScale(positionLabel, POSITION_GEOMETRY.comfortableChars, POSITION_GEOMETRY.minScale),
-          zIndex: 4,
+          zIndex: LAYER_Z.textAndBranding,
         }}
       >
         {positionLabel}

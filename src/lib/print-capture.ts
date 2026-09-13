@@ -61,6 +61,13 @@ export interface CaptureOptions {
 async function neutralizeObjectFitCoverForCapture(el: HTMLElement): Promise<() => void> {
   const imgs = Array.from(el.querySelectorAll('img')).filter((img) => {
     const style = getComputedStyle(img);
+    // Images inside a clip-path wrapper are handled by
+    // neutralizeClipPathForCapture instead (below) — that function bakes
+    // object-fit AND the clip shape together in one pass, since baking
+    // object-fit alone here first would leave this function's own swapped-
+    // in (already-cropped) bitmap as the "natural" image the clip pass
+    // then reads, silently double-cropping it.
+    if (img.closest('[data-capture-clip-wrapper]')) return false;
     return style.objectFit === 'cover' && img.naturalWidth > 0 && img.naturalHeight > 0 && img.offsetWidth > 0 && img.offsetHeight > 0;
   });
 
@@ -112,6 +119,233 @@ async function neutralizeObjectFitCoverForCapture(el: HTMLElement): Promise<() =
   return () => restores.forEach((restore) => restore());
 }
 
+/**
+ * html2canvas also does not implement CSS `clip-path` at all — verified by
+ * reading its bundled source (no clip-path handling anywhere in
+ * CanvasRenderer) and confirmed live: every `ellipse()`/`polygon()`/`path()`
+ * clip in this codebase's own card templates (Solar/Galaxy/Comic via the
+ * shared EMJFL_PHOTO_CLIP, Hollinwood, EMJFL, Galaxy/Vintage's own
+ * `inset()` clips in RealCardArt, and Crimson/Royal/Emerald/Glacier's own
+ * circular/arch photo windows) is silently ignored — the captured/shared/
+ * printed image shows the photo's full, unclipped rectangular box instead
+ * of the shaped window the builder preview shows, a real divergence
+ * between preview and the file a guardian actually receives (confirmed by
+ * a live capture-vs-preview comparison; every one of those templates was
+ * affected, not just the newest four).
+ *
+ * Fixed the same way as the object-fit bug above: each `[data-capture-
+ * clip-wrapper]` element's own single <img> is pre-baked onto an offscreen
+ * canvas sized to the wrapper's own box, with the shape applied via
+ * Canvas2D `ctx.clip()` (which supports arbitrary paths, unlike
+ * html2canvas) — reproducing the exact on-screen appearance, including
+ * whatever CSS `transform` the customer's own saved pan/zoom already
+ * applied, by replaying the BROWSER's own resolved transform matrix
+ * (`getComputedStyle(img).transform`, already correct for translate-
+ * percentage/scale/order-of-operations) around the box's own centre,
+ * rather than re-deriving CSS transform semantics by hand. The object-fit:
+ * fill branch (computePhotoGeometry's own "reveal more"/zoom-out case,
+ * explicit left/top/width/height, transform:none) needs no matrix replay —
+ * just a direct draw into that already-resolved rect. Every wrapper this
+ * function targets is explicitly marked with the `data-capture-clip-
+ * wrapper` attribute in its own CardArt.tsx/*CardArt.tsx source (not a
+ * generic "any element with a clip-path" scan) so this only ever touches
+ * the specific photo-clip pattern it was built for.
+ *
+ * Images already processed by neutralizeObjectFitCoverForCapture are
+ * explicitly excluded there (see that function's own filter) — running
+ * both on the same <img> would have this function's own crop math read
+ * the OTHER function's already-cropped, swapped-in bitmap as if it were
+ * the original upload, silently double-cropping it.
+ */
+/**
+ * The parsed, framework-agnostic description of one clip-path shape, in
+ * absolute pixel coordinates already resolved against a given box size —
+ * deliberately returned as plain data rather than a `Path2D` directly, so
+ * the regex-and-percentage-resolution logic (where a real, shipped bug —
+ * an off-by-one in a destructuring pattern — lived) can be unit-tested
+ * without a DOM/Canvas environment. `clipShapeToPath2D` below does the
+ * DOM-dependent conversion at actual capture time.
+ */
+export type ClipShapeDescriptor =
+  | { type: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
+  | { type: 'polygon'; points: Array<[number, number]> }
+  | { type: 'path'; d: string }
+  | { type: 'inset'; x: number; y: number; width: number; height: number };
+
+export function parseClipPathShape(clipPath: string, boxWidth: number, boxHeight: number): ClipShapeDescriptor | null {
+  const ellipseMatch = clipPath.match(/^ellipse\(\s*([\d.]+)%\s+([\d.]+)%\s+at\s+([\d.]+)%\s+([\d.]+)%\s*\)$/);
+  if (ellipseMatch) {
+    const [rx, ry, cx, cy] = ellipseMatch.slice(1).map(Number);
+    return {
+      type: 'ellipse',
+      cx: (cx / 100) * boxWidth,
+      cy: (cy / 100) * boxHeight,
+      rx: (rx / 100) * boxWidth,
+      ry: (ry / 100) * boxHeight,
+    };
+  }
+
+  const polygonMatch = clipPath.match(/^polygon\((.+)\)$/);
+  if (polygonMatch) {
+    const points = polygonMatch[1].split(',').map((pair): [number, number] => {
+      const [xRaw, yRaw] = pair.trim().split(/\s+/);
+      return [(parseFloat(xRaw) / 100) * boxWidth, (parseFloat(yRaw) / 100) * boxHeight];
+    });
+    return { type: 'polygon', points };
+  }
+
+  // path('M ...') — Glacier's own arch clip supplies literal SVG path data
+  // already in absolute pixel coordinates (computed from the card's real
+  // W/H at render time — see GlacierCardArt.tsx's buildArchClipPath), so
+  // the string content is valid input to the Path2D constructor directly.
+  const pathMatch = clipPath.match(/^path\(\s*(?:'([^']*)'|"([^"]*)")\s*\)$/);
+  if (pathMatch) {
+    const d = pathMatch[1] ?? pathMatch[2];
+    return { type: 'path', d };
+  }
+
+  // inset(top right bottom left) — Galaxy/Vintage's own RealCardArt clips.
+  // Any trailing `round <radius>` is intentionally ignored (sharp corners
+  // instead of a ~2% radius) rather than guessed at with an unverified
+  // roundRect implementation — a negligible difference next to the bug
+  // being fixed (no clip applied at all).
+  const insetMatch = clipPath.match(/^inset\(\s*([\d.]+)%\s+([\d.]+)%\s+([\d.]+)%\s+([\d.]+)%/);
+  if (insetMatch) {
+    const [top, right, bottom, left] = insetMatch.slice(1).map(Number);
+    return {
+      type: 'inset',
+      x: (left / 100) * boxWidth,
+      y: (top / 100) * boxHeight,
+      width: boxWidth - (left / 100) * boxWidth - (right / 100) * boxWidth,
+      height: boxHeight - (top / 100) * boxHeight - (bottom / 100) * boxHeight,
+    };
+  }
+
+  return null;
+}
+
+function clipShapeToPath2D(shape: ClipShapeDescriptor): Path2D {
+  const path = new Path2D();
+  switch (shape.type) {
+    case 'ellipse':
+      path.ellipse(shape.cx, shape.cy, shape.rx, shape.ry, 0, 0, Math.PI * 2);
+      return path;
+    case 'polygon':
+      shape.points.forEach(([x, y], i) => (i === 0 ? path.moveTo(x, y) : path.lineTo(x, y)));
+      path.closePath();
+      return path;
+    case 'path':
+      return new Path2D(shape.d);
+    case 'inset':
+      path.rect(shape.x, shape.y, shape.width, shape.height);
+      return path;
+  }
+}
+
+async function neutralizeClipPathForCapture(el: HTMLElement): Promise<() => void> {
+  const wrappers = Array.from(el.querySelectorAll<HTMLElement>('[data-capture-clip-wrapper]'));
+  const restores: Array<() => void> = [];
+
+  for (const wrapper of wrappers) {
+    const img = wrapper.querySelector('img');
+    if (!img || img.naturalWidth <= 0 || img.naturalHeight <= 0) continue;
+    const boxWidth = wrapper.offsetWidth;
+    const boxHeight = wrapper.offsetHeight;
+    if (boxWidth <= 0 || boxHeight <= 0) continue;
+
+    const clipPathValue = getComputedStyle(wrapper).clipPath;
+    if (!clipPathValue || clipPathValue === 'none') continue;
+    const clipShape = parseClipPathShape(clipPathValue, boxWidth, boxHeight);
+    if (!clipShape) continue; // unrecognised shape syntax — leave untouched rather than guess
+
+    const imgStyle = getComputedStyle(img);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(boxWidth));
+    canvas.height = Math.max(1, Math.round(boxHeight));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) continue;
+
+    ctx.save();
+    ctx.clip(clipShapeToPath2D(clipShape));
+
+    const transformValue = imgStyle.transform;
+    if (transformValue && transformValue !== 'none') {
+      // object-fit:cover branch (computePhotoGeometry's default case) — the
+      // image visually fills the box (inset:0/100%/100%/cover) before the
+      // transform is applied, so the cover-crop window in natural pixels
+      // maps onto the full box; the browser's own resolved matrix (already
+      // correct for translate-percentage/scale/order-of-operations) is
+      // then replayed around the box's own centre, matching
+      // computePhotoGeometry's fixed transformOrigin:'center center'.
+      const [posXRaw, posYRaw] = imgStyle.objectPosition.split(' ');
+      const positionXPercent = parseFloat(posXRaw) || 50;
+      const positionYPercent = parseFloat(posYRaw) || 50;
+      const crop = computeObjectFitCoverCropWindow({
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight,
+        boxWidth,
+        boxHeight,
+        positionXPercent,
+        positionYPercent,
+      });
+      const matrix = new DOMMatrix(transformValue);
+      ctx.translate(boxWidth / 2, boxHeight / 2);
+      ctx.transform(matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f);
+      ctx.translate(-boxWidth / 2, -boxHeight / 2);
+      ctx.drawImage(img, crop.x, crop.y, crop.width, crop.height, 0, 0, boxWidth, boxHeight);
+    } else {
+      // object-fit:fill branch (explicit left/top/width/height, transform:
+      // none) — draw the whole natural image straight into that already-
+      // resolved rect, no crop/matrix math needed.
+      const left = parseFloat(imgStyle.left) || 0;
+      const top = parseFloat(imgStyle.top) || 0;
+      const w = parseFloat(imgStyle.width) || boxWidth;
+      const h = parseFloat(imgStyle.height) || boxHeight;
+      ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, left, top, w, h);
+    }
+    ctx.restore();
+
+    const originalSrc = img.src;
+    const original = {
+      objectFit: img.style.objectFit,
+      objectPosition: img.style.objectPosition,
+      transform: img.style.transform,
+      left: img.style.left,
+      top: img.style.top,
+      width: img.style.width,
+      height: img.style.height,
+    };
+    restores.push(() => {
+      img.src = originalSrc;
+      img.style.objectFit = original.objectFit;
+      img.style.objectPosition = original.objectPosition;
+      img.style.transform = original.transform;
+      img.style.left = original.left;
+      img.style.top = original.top;
+      img.style.width = original.width;
+      img.style.height = original.height;
+    });
+
+    img.src = canvas.toDataURL('image/png');
+    img.style.objectFit = 'fill';
+    img.style.objectPosition = '50% 50%';
+    img.style.transform = 'none';
+    img.style.left = '0px';
+    img.style.top = '0px';
+    img.style.width = '100%';
+    img.style.height = '100%';
+  }
+
+  await Promise.all(
+    wrappers
+      .map((w) => w.querySelector('img'))
+      .filter((img): img is HTMLImageElement => !!img)
+      .map((img) => img.decode().catch(() => undefined))
+  );
+
+  return () => restores.forEach((restore) => restore());
+}
+
 export async function captureElementToPng(
   el: HTMLElement,
   opts: CaptureOptions = {}
@@ -127,7 +361,8 @@ export async function captureElementToPng(
   if (typeof document !== 'undefined' && document.fonts) {
     await document.fonts.ready;
   }
-  const restore = await neutralizeObjectFitCoverForCapture(el);
+  const restoreObjectFit = await neutralizeObjectFitCoverForCapture(el);
+  const restoreClipPath = await neutralizeClipPathForCapture(el);
   try {
     const canvas = await html2canvas(el, {
       scale: opts.pixelRatio ?? 1.5,
@@ -138,7 +373,8 @@ export async function captureElementToPng(
     });
     return canvas.toDataURL('image/jpeg', opts.quality ?? 0.88);
   } finally {
-    restore();
+    restoreClipPath();
+    restoreObjectFit();
   }
 }
 
