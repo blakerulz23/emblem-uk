@@ -278,14 +278,13 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
   // (`back?.base || variant.assets.backBase || variant.assets.preview`)
   // resolves to this real back art directly, with no dynamic overlay drawn.
   //
-  // KNOWN ISSUE, not fixed here (out of scope — this is baked-in raster
-  // text in a supplied asset, not something this PR's code can safely edit):
-  // this back art reads "EMBLEM.CARDS" — that's emblem.cards, the older,
-  // separate product this codebase's own README/CLAUDE docs distinguish
-  // from Emblem UK. Every other Custom Collection back (Solar/Galaxy/Comic's
-  // own back-base.png, confirmed by direct inspection) instead reads "AN
-  // EMBLEM COLLECTION". Flagged for the designer to correct at the source
-  // art level; shipping as supplied rather than silently editing baked text.
+  // This back art reads "EMBLEM.CARDS" — different wording from every other
+  // Custom Collection back (Solar/Galaxy/Comic's own back-base.png reads "AN
+  // EMBLEM COLLECTION"). Founder-confirmed as approved, final wording for
+  // this template specifically — not an error, not pending a fix. Crimson's
+  // back stays a single flattened, static, non-editable back-base.png, with
+  // no dynamic text, editable fields, overlays or customer controls, exactly
+  // as supplied.
   //
   // `preview` (the Custom Collection selector's own thumbnail, data.ts:
   // `bgPath: variant.assets.preview`) intentionally points at the plain
