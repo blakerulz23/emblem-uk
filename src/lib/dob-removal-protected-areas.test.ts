@@ -40,10 +40,10 @@ const PROTECTED_FILES: Record<string, string> = {
   // Updated for the new Crimson Custom Collection template (one new import,
   // one new front-dispatch branch each) — see card-lifecycle-protected-
   // areas.test.ts's own comment for the full reasoning.
-  'src/components/builder/emblem/CardArt.tsx': '513477fd2fbdab31c5dba1352ea82cc47e93787694d210cf0fbffd406e0f3ba9',
+  'src/components/builder/emblem/CardArt.tsx': '9f734e5386cfa33d74face50016a9155962e8cb7bedec8eaa5aa538f8e310aa7',
   // Updated for the Hollinwood typography correction — see card-lifecycle-
   // protected-areas.test.ts's own comment for the same reasoning.
-  'src/lib/print-capture.ts': 'e329ab40d2f67e3fdfa458f4c504e46bc9ebf8e9f5e98c337e9378cd95a08d07',
+  'src/lib/print-capture.ts': '886899e190f4ad724872ec51cf569abb0d4c83f899ab4e17d9cf70be12dc1512',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
 };
