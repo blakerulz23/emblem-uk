@@ -10,6 +10,7 @@ import { positionCardLabel } from '@/lib/player-position';
 import { SPORT_STATS, type CardTemplate, type Details, type Family, type SportId } from './data';
 import CrimsonCardArt from './CrimsonCardArt';
 import RoyalCardArt from './RoyalCardArt';
+import EmeraldCardArt from './EmeraldCardArt';
 import GlacierCardArt from './GlacierCardArt';
 import Icon from './Icon';
 
@@ -2152,6 +2153,9 @@ export default function CardArt({
   }
   if (template.family === 'Custom' && template.id === 'custom-royal') {
     return <RoyalCardArt template={template} photo={photo} details={details} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} photoNaturalWidth={photoNaturalWidth} photoNaturalHeight={photoNaturalHeight} />;
+  }
+  if (template.family === 'Custom' && template.id === 'custom-emerald') {
+    return <EmeraldCardArt template={template} photo={photo} details={details} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} photoNaturalWidth={photoNaturalWidth} photoNaturalHeight={photoNaturalHeight} />;
   }
   if (template.family === 'Custom' && template.id === 'custom-glacier') {
     return <GlacierCardArt template={template} photo={photo} details={details} size={size} selected={selected} dim={dim} style={style} photoScale={photoScale} photoOffsetX={photoOffsetX} photoOffsetY={photoOffsetY} photoNaturalWidth={photoNaturalWidth} photoNaturalHeight={photoNaturalHeight} />;

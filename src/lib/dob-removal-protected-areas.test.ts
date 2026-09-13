@@ -40,7 +40,7 @@ const PROTECTED_FILES: Record<string, string> = {
   // Updated for the new Crimson Custom Collection template (one new import,
   // one new front-dispatch branch each) — see card-lifecycle-protected-
   // areas.test.ts's own comment for the full reasoning.
-  'src/components/builder/emblem/CardArt.tsx': 'd9de30533ec58c9ece87f1ad66eadfe13e6dfc1c31f77e01c3b515035fe8cd0c',
+  'src/components/builder/emblem/CardArt.tsx': '513477fd2fbdab31c5dba1352ea82cc47e93787694d210cf0fbffd406e0f3ba9',
   // Updated for the Hollinwood typography correction — see card-lifecycle-
   // protected-areas.test.ts's own comment for the same reasoning.
   'src/lib/print-capture.ts': 'e329ab40d2f67e3fdfa458f4c504e46bc9ebf8e9f5e98c337e9378cd95a08d07',
