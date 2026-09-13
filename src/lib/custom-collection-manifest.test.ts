@@ -471,3 +471,132 @@ describe('Emerald Edition ships no reference/calibration-only imagery at runtime
     }
   });
 });
+
+describe('Glacier Edition (custom-glacier) manifest registration', () => {
+  it('is registered with a unique, stable id distinct from every existing template', () => {
+    expect(CUSTOM_COLLECTION_TEMPLATE_IDS).toContain('custom-glacier');
+    expect(isCustomCollectionTemplateId('custom-glacier')).toBe(true);
+    const ids = CUSTOM_COLLECTION_VARIANTS.map((v) => v.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('has the expected display name and correct runtime assets', () => {
+    const glacier = getCustomCollectionVariant('custom-glacier');
+    expect(glacier.id).toBe('custom-glacier');
+    expect(glacier.name).toBe('Glacier Edition');
+    // preview points at the plain base.png frame art — same standard as
+    // Crimson/Royal/Emerald: the supplied reference composite (21.png)
+    // contains what reads as an identifiable real child and was never shipped.
+    expect(glacier.assets.preview).toBe('/templates/custom-collection/glacier/base.png');
+    expect(glacier.assets.preview).not.toMatch(/reference\.png$/);
+    expect(glacier.assets.background).toBe('/templates/custom-collection/glacier/base.png');
+    expect(glacier.assets.frameOverlay).toBe('/templates/custom-collection/glacier/frame-overlay.png');
+    expect(glacier.assets.emblemLogoPosition).toBe('/templates/custom-collection/glacier/emblem-logo-position.png');
+  });
+
+  it('has a static back (assets.backBase) with no dynamic logoBox/nameBox overlay — same fully-static shape as the rest of this template family', () => {
+    const glacier = getCustomCollectionVariant('custom-glacier');
+    expect(glacier.assets.backBase).toBe('/templates/custom-collection/glacier/back-base.png');
+    expect(glacier.back).toBeUndefined();
+  });
+
+  it('omits badgeBox/numberBox/positionBox/nameBox — renders through its own dedicated GlacierCardArt component instead', () => {
+    const glacier = getCustomCollectionVariant('custom-glacier');
+    expect(glacier.badgeBox).toBeUndefined();
+    expect(glacier.numberBox).toBeUndefined();
+    expect(glacier.positionBox).toBeUndefined();
+    expect(glacier.nameBox).toBeUndefined();
+  });
+
+  it('does not reuse or rename any existing template id', () => {
+    expect(CUSTOM_COLLECTION_TEMPLATE_IDS).toEqual(
+      expect.arrayContaining(['custom-solar', 'custom-galaxy', 'custom-comic', 'custom-crimson', 'custom-royal', 'custom-emerald', 'custom-glacier'])
+    );
+    expect(new Set(CUSTOM_COLLECTION_TEMPLATE_IDS).size).toBe(CUSTOM_COLLECTION_TEMPLATE_IDS.length);
+  });
+});
+
+describe('CardArt.tsx dispatches custom-glacier to its own component, not the shared CustomCollectionCardArt renderer', () => {
+  const cardArtSource = readFileSync(
+    resolve(process.cwd(), 'src/components/builder/emblem/CardArt.tsx'),
+    'utf8'
+  );
+
+  it('imports GlacierCardArt and dispatches custom-glacier to it before the generic Custom-family branch', () => {
+    expect(cardArtSource).toContain("import GlacierCardArt from './GlacierCardArt'");
+    expect(cardArtSource).toContain("template.family === 'Custom' && template.id === 'custom-glacier'");
+    const glacierBranchIndex = cardArtSource.indexOf("template.id === 'custom-glacier'");
+    const genericCustomBranchIndex = cardArtSource.indexOf("if (template.family === 'Custom') {");
+    expect(glacierBranchIndex).toBeGreaterThan(-1);
+    expect(genericCustomBranchIndex).toBeGreaterThan(-1);
+    expect(glacierBranchIndex).toBeLessThan(genericCustomBranchIndex);
+  });
+
+  it('the back-side dispatch is untouched — custom-glacier still falls through to the shared CustomCollectionCardBack', () => {
+    expect(cardArtSource).toContain("side === 'back' && template.family === 'Custom'");
+  });
+});
+
+describe('GlacierCardArt renders dynamic customer data, not a fixture', () => {
+  const glacierSource = readFileSync(
+    resolve(process.cwd(), 'src/components/builder/emblem/GlacierCardArt.tsx'),
+    'utf8'
+  );
+
+  it('reads name/position/number/photo from the details/photo props every render, never a hardcoded fixture value', () => {
+    expect(glacierSource).toContain('d.name');
+    expect(glacierSource).toContain('d.number');
+    expect(glacierSource).toContain("positionCardLabel(d.position");
+    expect(glacierSource).toContain('{photo ?');
+  });
+
+  it('reuses the shared, already-tested nameFitScale helper for long-name/long-number shrinking rather than a new reimplementation', () => {
+    expect(glacierSource).toContain("from '@/lib/nameplate-typography'");
+    expect(glacierSource).toMatch(/nameFitScale\(/);
+  });
+
+  it('never introduces Apps, Goals or Assists', () => {
+    expect(glacierSource).not.toMatch(/\bApps\b/);
+    expect(glacierSource).not.toMatch(/\bGoals\b/);
+    expect(glacierSource).not.toMatch(/\bAssists\b/);
+  });
+
+  it('uses a plain text-shadow drop shadow, not a layered outline — genuinely different typography from Emerald\'s two-tone treatment, measured from the supplied reference', () => {
+    expect(glacierSource).toContain('textShadow');
+    expect(glacierSource).toContain('#c0e8ff');
+    expect(glacierSource).not.toContain('aria-hidden'); // no separate outline layer needed
+  });
+
+  it('builds the arch photo-clip from the card\'s own real W/H via an SVG path, not a fixed-percentage basic-shape ellipse', () => {
+    expect(glacierSource).toContain('buildArchClipPath');
+    expect(glacierSource).toContain("path('M");
+  });
+});
+
+describe('Glacier Edition ships no reference/calibration-only imagery at runtime', () => {
+  const glacierAssetDir = resolve(process.cwd(), 'public/templates/custom-collection/glacier');
+  const manifestSource = readFileSync(resolve(process.cwd(), 'src/lib/custom-collection-manifest.ts'), 'utf8');
+  const glacierArtSource = readFileSync(resolve(process.cwd(), 'src/components/builder/emblem/GlacierCardArt.tsx'), 'utf8');
+  const cardArtSource = readFileSync(resolve(process.cwd(), 'src/components/builder/emblem/CardArt.tsx'), 'utf8');
+
+  it('reference.png / the complete visual-reference composite (21.png) is not present in the shipped asset directory', () => {
+    expect(existsSync(`${glacierAssetDir}/reference.png`)).toBe(false);
+  });
+
+  it('the example-player calibration photo is not present in the shipped asset directory', () => {
+    expect(existsSync(`${glacierAssetDir}/28.png`)).toBe(false);
+    expect(existsSync(`${glacierAssetDir}/image.png`)).toBe(false);
+  });
+
+  it('the runtime asset directory contains only the four genuine reusable layers', () => {
+    const files = readdirSync(glacierAssetDir).sort();
+    expect(files).toEqual(['back-base.png', 'base.png', 'emblem-logo-position.png', 'frame-overlay.png']);
+  });
+
+  it('no source file references a reference/preview composite, or the original numbered source filenames, as a runtime asset path — prose explaining the design may still name the file', () => {
+    for (const source of [manifestSource, glacierArtSource, cardArtSource]) {
+      expect(source).not.toContain('/templates/custom-collection/glacier/reference.png');
+      expect(source).not.toMatch(/glacier\/(21|28|25|26|27)\.png/);
+    }
+  });
+});

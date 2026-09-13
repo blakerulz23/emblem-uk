@@ -80,7 +80,7 @@ export type CustomCollectionVariant = {
   };
 };
 
-export type CustomCollectionTemplateId = 'custom-solar' | 'custom-galaxy' | 'custom-comic' | 'custom-crimson' | 'custom-royal' | 'custom-emerald';
+export type CustomCollectionTemplateId = 'custom-solar' | 'custom-galaxy' | 'custom-comic' | 'custom-crimson' | 'custom-royal' | 'custom-emerald' | 'custom-glacier';
 
 export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
   {
@@ -395,6 +395,61 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       frameOverlay: '/templates/custom-collection/emerald/frame-overlay.png',
       emblemLogoPosition: '/templates/custom-collection/emerald/emblem-logo-position.png',
       backBase: '/templates/custom-collection/emerald/back-base.png',
+    },
+  },
+  // Glacier Edition shares the same structural family as Crimson/Royal
+  // (same 1050x1498 Canva canvas, same horizontal centred name/position/
+  // number layout) — ice-blue/silver theme. Renders through its own
+  // dedicated GlacierCardArt component, same reason as Crimson/Royal, so
+  // badgeBox/numberBox/positionBox/nameBox are omitted here too.
+  //
+  // Two genuine differences from Crimson/Royal, both confirmed by direct
+  // measurement, not assumed:
+  //
+  // 1. Typography treatment: a single solid fill (#c0e8ff) with a soft
+  // drop shadow (pure black, ~40% opacity, offset down-right, confirmed
+  // by sampling the reference PNGs' actual alpha/colour data) — not
+  // Crimson/Royal's plain solid fill (no shadow) or Emerald's two-tone
+  // fill+outline. Implemented with a plain CSS text-shadow (a real
+  // drop-shadow, unrelated to the outline-vs-stroke concern that governs
+  // the kit-number/Emerald treatments — text-shadow paints a soft offset
+  // copy, it doesn't touch the glyph's own fill path, so there's no
+  // counter-closing risk to guard against here).
+  //
+  // 2. Photo window shape: an open-bottomed arch (semicircular top,
+  // straight vertical sides, no visible closing curve within base.png —
+  // confirmed via a percent-gridded visual measurement, distinct from
+  // Crimson/Royal/Emerald's fully closed ellipse) rather than an ellipse.
+  // clip-path's basic-shape functions have no native stadium/arch shape,
+  // so GlacierCardArt builds an explicit SVG `path()` clip from the
+  // card's own real W/H at render time (an elliptical arc for the top,
+  // straight lines for the sides, a flat closing bottom edge — the exact
+  // bottom shape doesn't matter since frameOverlay covers it either way,
+  // same as every other variant in this family).
+  //
+  // No badgeBox — same reasoning as Crimson/Royal/Emerald.
+  //
+  // The supplied complete-reference composite (21.png) and example-player
+  // photo (28.png) were never shipped as runtime assets, same standard as
+  // Royal/Emerald — 21.png composited what reads as an identifiable real
+  // child into the photo window, calibration-only.
+  //
+  // Back: the supplied back art (29.png) reads "EMBLEM.CARDS" / "GLACIER
+  // EDITION", flattened raster, no dynamic slot — same founder-approved
+  // standing decision already made for Crimson/Royal/Emerald's own backs.
+  {
+    id: 'custom-glacier',
+    name: 'Glacier Edition',
+    theme: 'Glacier Edition Custom Collection',
+    description: 'Ice blue and silver football shield with an arched player portrait window',
+    accent: '#4fc3f7',
+    background: '#04101f',
+    assets: {
+      preview: '/templates/custom-collection/glacier/base.png',
+      background: '/templates/custom-collection/glacier/base.png',
+      frameOverlay: '/templates/custom-collection/glacier/frame-overlay.png',
+      emblemLogoPosition: '/templates/custom-collection/glacier/emblem-logo-position.png',
+      backBase: '/templates/custom-collection/glacier/back-base.png',
     },
   },
 ] as const;

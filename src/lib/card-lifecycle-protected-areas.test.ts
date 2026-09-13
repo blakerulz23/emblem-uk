@@ -118,7 +118,15 @@ const PROTECTED_FILES: Record<string, string> = {
   // same shape as Crimson/Royal's own. Every other dispatch branch is
   // unchanged (verified via diff, and empirically via a real render of
   // Crimson/Royal/Solar before/after this change).
-  'src/components/builder/emblem/CardArt.tsx': '16e774e74a7df5e71df3b57158701ac9c5b0dd74e25a3c880e0e1a345af0cc92',
+  //
+  // Updated an eleventh time to add the new Glacier Edition Custom
+  // Collection template: one new import (GlacierCardArt) and one new
+  // front-dispatch branch (`template.family === 'Custom' && template.id
+  // === 'custom-glacier'`), same shape as Crimson/Royal/Emerald's own.
+  // Every other dispatch branch is unchanged (verified via diff, and
+  // empirically via a real render of Crimson/Royal/Emerald/Solar
+  // before/after this change).
+  'src/components/builder/emblem/CardArt.tsx': '513477fd2fbdab31c5dba1352ea82cc47e93787694d210cf0fbffd406e0f3ba9',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
