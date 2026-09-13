@@ -188,6 +188,7 @@ function RealCardArt({
       {/* Layer 2: player photo — scale + offset via transform */}
       {photo && (
         <div
+          data-capture-clip-wrapper={isGalaxy || isVintage ? true : undefined}
           style={{
             ...layer,
             zIndex: 2,
@@ -1359,7 +1360,7 @@ function EmjflCardArt({
 
         {/* Photo — clipped to the photo-well cut into the real frame asset, drawn on top */}
         {photo ? (
-          <div style={{ position: 'absolute', inset: 0, zIndex: 2, clipPath: EMJFL_PHOTO_CLIP }}>
+          <div data-capture-clip-wrapper style={{ position: 'absolute', inset: 0, zIndex: 2, clipPath: EMJFL_PHOTO_CLIP }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={photo}
@@ -1550,7 +1551,7 @@ function HollinwoodCardArt({
         <img src={assets.frontBase} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', zIndex: 1, pointerEvents: 'none' }} />
 
         {photo ? (
-          <div style={{ position: 'absolute', inset: 0, zIndex: 2, clipPath: EMJFL_PHOTO_CLIP }}>
+          <div data-capture-clip-wrapper style={{ position: 'absolute', inset: 0, zIndex: 2, clipPath: EMJFL_PHOTO_CLIP }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={photo}
@@ -1763,7 +1764,7 @@ function CustomCollectionCardArt({
         <img src={assets.background} alt="" style={{ ...customLayerFit, zIndex: 1 }} />
 
         {photo ? (
-          <div style={{ position: 'absolute', inset: 0, zIndex: 2, clipPath: EMJFL_PHOTO_CLIP }}>
+          <div data-capture-clip-wrapper style={{ position: 'absolute', inset: 0, zIndex: 2, clipPath: EMJFL_PHOTO_CLIP }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={photo}

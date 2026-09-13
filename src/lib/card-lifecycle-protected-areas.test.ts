@@ -29,7 +29,26 @@ const PROTECTED_FILES: Record<string, string> = {
   // Bold font-load-readiness added to captureElementToPng, purely additive
   // and independent of PR #78's object-fit neutralisation below it (see
   // print-capture.ts's own doc comment on that function for the boundary).
-  'src/lib/print-capture.ts': 'e329ab40d2f67e3fdfa458f4c504e46bc9ebf8e9f5e98c337e9378cd95a08d07',
+  //
+  // Updated again for a real, previously-undetected bug found during the
+  // Crimson/Royal/Emerald/Glacier player-layering audit: html2canvas does
+  // not implement CSS clip-path at all (confirmed live — every ellipse()/
+  // polygon()/path()/inset() photo clip in this codebase silently painted
+  // the photo's full, unclipped rectangle instead of the shaped window the
+  // builder preview shows). Added neutralizeClipPathForCapture, the same
+  // shape as the existing object-fit fix immediately above: each
+  // `[data-capture-clip-wrapper]` photo is pre-baked onto an offscreen
+  // canvas with the clip applied via Canvas2D `ctx.clip()` (which supports
+  // arbitrary paths, unlike html2canvas), replaying the photo's own live
+  // CSS transform (pan/zoom) via the browser's already-resolved matrix
+  // rather than re-deriving CSS transform-order semantics by hand. Verified
+  // against a live native-vs-exported comparison for all three existing
+  // clip syntaxes already in this codebase (Solar's polygon, Galaxy/
+  // Vintage's inset, Crimson/Royal/Emerald's ellipse) and Glacier's new
+  // path() arch clip — all five previously silently broken, all five now
+  // matching the builder preview. See print-capture.ts's own doc comment
+  // on neutralizeClipPathForCapture for the full reasoning.
+  'src/lib/print-capture.ts': '886899e190f4ad724872ec51cf569abb0d4c83f899ab4e17d9cf70be12dc1512',
   // Updated for the Auto-fit Player / zoom-out photo-framing fix — a
   // deliberate, reviewed change to cropping and card-art rendering itself,
   // not scope creep from an unrelated feature (same precedent as the
@@ -126,7 +145,16 @@ const PROTECTED_FILES: Record<string, string> = {
   // Every other dispatch branch is unchanged (verified via diff, and
   // empirically via a real render of Crimson/Royal/Emerald/Solar
   // before/after this change).
-  'src/components/builder/emblem/CardArt.tsx': '513477fd2fbdab31c5dba1352ea82cc47e93787694d210cf0fbffd406e0f3ba9',
+  //
+  // Updated a twelfth time for the html2canvas clip-path capture fix (see
+  // this file's own print-capture.ts comment above for the full finding):
+  // added a `data-capture-clip-wrapper` marker attribute to every existing
+  // photo-clip wrapper div (EMJFL_PHOTO_CLIP's three usages, Galaxy/
+  // Vintage's own inset() clips in RealCardArt) so
+  // neutralizeClipPathForCapture can find them — a plain attribute add,
+  // zero change to any rendering logic, z-index, or layer order (verified
+  // via diff).
+  'src/components/builder/emblem/CardArt.tsx': '9f734e5386cfa33d74face50016a9155962e8cb7bedec8eaa5aa538f8e310aa7',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
