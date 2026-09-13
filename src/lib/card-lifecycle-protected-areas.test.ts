@@ -87,7 +87,21 @@ const PROTECTED_FILES: Record<string, string> = {
   // carrying the computed group top. Hollinwood's own resolved geometry is
   // unchanged (same shared default it always used); RealCardArt/RealCardBack
   // and every back-face renderer remain untouched (verified via diff).
-  'src/components/builder/emblem/CardArt.tsx': 'a75fe36bed71b02a3e73022253a9e3e9f4f679d55d26d2390124b5f3b15dd4c7',
+  //
+  // Updated an eighth time to add the new Crimson Custom Collection
+  // template: one new import (CrimsonCardArt) and one new front-dispatch
+  // branch (`template.family === 'Custom' && template.id === 'custom-crimson'`)
+  // inserted before the existing generic Custom-family branch. Crimson's own
+  // artwork is a horizontal, centred name/position/number layout — measured
+  // as genuinely different from the shared rotated NAMEPLATE_GEOMETRY/
+  // NAMEPLATE_NUMBER_GEOMETRY every other Custom Collection card uses — so it
+  // renders through its own dedicated component rather than
+  // CustomCollectionCardArt, the same way Hollinwood/EMJFL/Futuristic/Chrome/
+  // Champions each already have their own dedicated render function in this
+  // file. Solar/Galaxy/Comic's own generic-dispatch branch, and every other
+  // family's dispatch, is unchanged (verified via diff, and empirically via a
+  // real render of all three before/after this change).
+  'src/components/builder/emblem/CardArt.tsx': '00dd6cd46fa0a0269844358bf5bb7ea2f0e5db99da7c3a4ce6b629dbc1405f5a',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
