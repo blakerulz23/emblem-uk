@@ -244,6 +244,25 @@ describe('createCardSharePublicPage', () => {
     expect(result).toEqual({ ok: true, token: 'x'.repeat(64) });
   });
 
+  it('sends backImageDataUrl (0087) too when provided — a template with an approved back', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true, token: 'x'.repeat(64) }) });
+    global.fetch = fetchMock;
+    await createCardSharePublicPage('order-1', 'data:image/jpeg;base64,AAA', 'data:image/jpeg;base64,BBB');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/card-share/public-page',
+      expect.objectContaining({ body: JSON.stringify({ orderId: 'order-1', imageDataUrl: 'data:image/jpeg;base64,AAA', backImageDataUrl: 'data:image/jpeg;base64,BBB' }) })
+    );
+  });
+
+  it('omits backImageDataUrl entirely (not sent as null/empty) when the template has no approved back', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ ok: true, token: 'x'.repeat(64) }) });
+    global.fetch = fetchMock;
+    await createCardSharePublicPage('order-1', 'data:image/jpeg;base64,AAA');
+    const [, init] = fetchMock.mock.calls[0];
+    const sentBody = JSON.parse((init as { body: string }).body);
+    expect('backImageDataUrl' in sentBody).toBe(false);
+  });
+
   it('fails closed with ok:false when the server rejects (e.g. ineligible), never fabricating a token', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, json: () => Promise.resolve({ error: 'Sharing is not available for this card' }) });
     global.fetch = fetchMock;

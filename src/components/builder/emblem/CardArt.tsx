@@ -4,6 +4,7 @@
 import type { CSSProperties } from 'react';
 import { getCustomCollectionVariant } from '@/lib/custom-collection-manifest';
 import { getHollinwoodVariant } from '@/lib/hollinwood-manifest';
+import { templateHasApprovedBack } from '@/lib/card-face-registry';
 import { computeAdaptivePositionAnchor, computeCustomCollectionGroupAnchor, EMJFL_NAME_TOP_PCT, nameFitScale, nameplateNumberLayers, nameplateSlotStyle, type NameplateNumberGeometry, type NameplateSlotGeometry } from '@/lib/nameplate-typography';
 import { computePhotoGeometry } from '@/lib/photo-geometry';
 import { positionCardLabel } from '@/lib/player-position';
@@ -2116,6 +2117,19 @@ export default function CardArt({
   photoOffsetY?: number;
 } & PhotoNaturalSizeProp) {
   // Back of card
+  // Fails safe against silently re-rendering the FRONT for any template
+  // with no real back branch below (confirmed by direct audit: Vintage and
+  // every procedural family — Prism/Carbon/Aurora/Clean/Spectrum/Mono —
+  // have no side==='back' branch at all, so a request for their back used
+  // to fall all the way through to the front-rendering logic further down
+  // this function, unnoticed). card-face-registry.ts is the single place
+  // that knows which templates have a real, approved back; every branch
+  // beneath this guard is still what actually renders one, not duplicated
+  // here — this is a genuinely-missing-artwork case, not a rendering
+  // bug to route around some other way.
+  if (side === 'back' && !templateHasApprovedBack(template.id)) {
+    return null;
+  }
   if (side === 'back' && template.family === 'Futuristic') {
     return <RealCardBack details={details} logo={logo} stats={stats} backText={backText} physical={physical} accent={template.accent} size={size} selected={selected} dim={dim} style={style} />;
   }

@@ -1,6 +1,7 @@
 import { headers } from 'next/headers';
 import { resolveCardSharePublicPage } from '@/lib/card-share-public-page';
 import { consumeAnonymousRequestRateLimit } from '@/lib/anonymous-request-rate-limit';
+import CardShareFaceToggle from './CardShareFaceToggle';
 
 // Technically public, never search-indexed — same convention as the public
 // player profile (src/app/player/[publicPlayerId]/page.tsx). Reduces
@@ -55,28 +56,20 @@ export default async function CardSharePublicPage({ params }: { params: { token:
             <p className="emh-eyebrow" style={{ margin: '0 0 14px', fontSize: 13 }}>
               Shared with Emblem
             </p>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={result.imageUrl}
-              alt="A football card made with Emblem"
-              style={{
-                display: 'block',
-                // Centred with margin, not a fixed offset, so this holds at
-                // every viewport: the panel is only ever as wide as its
-                // content up to 440px, but the image caps at 320px well
-                // before that on wider screens — without an auto margin a
-                // plain block-level <img> narrower than its container sits
-                // flush at the start edge instead (confirmed live: an 84px
-                // gap on the right only, at a 1280px viewport, not baked
-                // into the image itself — the shared image is always a
-                // tight 340:476 capture with no padding of its own).
-                width: '100%',
-                maxWidth: 320,
-                margin: '0 auto',
-                borderRadius: 16,
-                boxShadow: '0 14px 30px -18px rgba(0,0,0,.35)',
-              }}
-            />
+            {/* Centred with margin, not a fixed offset, so this holds at
+                every viewport: the panel is only ever as wide as its
+                content up to 440px, but the image caps at 320px well
+                before that on wider screens — without an auto margin a
+                plain block-level <img> narrower than its container sits
+                flush at the start edge instead (confirmed live: an 84px
+                gap on the right only, at a 1280px viewport, not baked
+                into the image itself — the shared image is always a
+                tight 340:476 capture with no padding of its own). Front/
+                Back toggle (0087) only renders when result.backImageUrl
+                is present — a template with no approved back shows just
+                the front image, identical to this page's pre-0087
+                behaviour. */}
+            <CardShareFaceToggle frontImageUrl={result.imageUrl} backImageUrl={result.backImageUrl} />
           </div>
         ) : (
           <div style={{ background: COLORS.card, borderRadius: 20, padding: '32px 20px', textAlign: 'center', boxShadow: '0 10px 26px -16px rgba(0,0,0,.22)', marginBottom: 20 }}>

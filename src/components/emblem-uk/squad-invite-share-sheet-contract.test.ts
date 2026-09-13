@@ -126,7 +126,7 @@ describe('SquadInviteShareSheet — consent before image, and every mandatory ca
   });
 
   it('the ACTUAL sent message is built server-side via createCardSharePublicPage + cardSharePublicPageUrl (migration 0085) — a genuine per-share token the client never invents, still never containing a participation id, order id, or child/team name', () => {
-    expect(sheet).toContain('const publicPage = await createCardSharePublicPage(orderId, dataUrl);');
+    expect(sheet).toContain('const publicPage = await createCardSharePublicPage(orderId, dataUrl, backDataUrl ?? undefined);');
     expect(sheet).toContain('const messageText = buildCardShareMessageText(cardSharePublicPageUrl(publicPage.token));');
     expect(sheet).not.toMatch(/buildCardShareMessageText\([^)]*participationId/);
   });

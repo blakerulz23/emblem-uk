@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 
 const page = readFileSync('src/app/card-share/[token]/page.tsx', 'utf8');
+const faceToggle = readFileSync('src/app/card-share/[token]/CardShareFaceToggle.tsx', 'utf8');
 
 describe('CardSharePublicPage (migration 0085) — noindex, safe degraded state, no new data reads', () => {
   it('is marked noindex/nofollow — technically public, never search-indexed, same convention as the public player profile', () => {
@@ -60,15 +61,19 @@ describe('CardSharePublicPage — presentation, made consistent with the rest of
     expect(page).not.toContain('football cards, made by you');
   });
 
-  it('the shared card image is centred with a proportional auto margin, never a fixed pixel offset that only holds at one viewport', () => {
-    const idx = page.indexOf('alt="A football card made with Emblem"');
-    const styleSection = page.slice(idx, page.indexOf('/>', idx));
+  it('the shared card image is rendered via CardShareFaceToggle (0087), fed result.imageUrl/result.backImageUrl straight through — no cropping/stretching/re-derivation added at the page level', () => {
+    expect(page).toContain('<CardShareFaceToggle frontImageUrl={result.imageUrl} backImageUrl={result.backImageUrl} />');
+  });
+
+  it('CardShareFaceToggle centres the image with a proportional auto margin, never a fixed pixel offset that only holds at one viewport', () => {
+    const idx = faceToggle.indexOf('alt={side ===');
+    const styleSection = faceToggle.slice(idx, faceToggle.indexOf('/>', idx));
     expect(styleSection).toContain("margin: '0 auto'");
   });
 
-  it('the shared card image is never cropped, stretched, or re-derived — same imageUrl straight from resolveCardSharePublicPage, only the surrounding CSS box changed', () => {
-    expect(page).toContain('src={result.imageUrl}');
-    expect(page).not.toMatch(/objectFit|object-fit/);
+  it('CardShareFaceToggle never crops, stretches, or re-derives either image — both come straight from its own frontImageUrl/backImageUrl props, no objectFit', () => {
+    expect(faceToggle).toContain("side === 'back' && backImageUrl ? backImageUrl : frontImageUrl");
+    expect(faceToggle).not.toMatch(/objectFit|object-fit/);
   });
 
   it('no unloaded font-family is referenced anywhere on this page (the live-reported cause of the serif fallback)', () => {

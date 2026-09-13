@@ -154,7 +154,7 @@ const PROTECTED_FILES: Record<string, string> = {
   // neutralizeClipPathForCapture can find them — a plain attribute add,
   // zero change to any rendering logic, z-index, or layer order (verified
   // via diff).
-  'src/components/builder/emblem/CardArt.tsx': '9f734e5386cfa33d74face50016a9155962e8cb7bedec8eaa5aa538f8e310aa7',
+  'src/components/builder/emblem/CardArt.tsx': '95924d8d7a4b7497431b53efa57a735d8023f598f21d5c095d6f68f04ef64b38', // 2026-09-13: added card-face-registry.ts-backed guard against side='back' silently re-rendering the front for any template with no approved back (Vintage, procedural families) — see card-face-registry.ts's own doc comment
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',

@@ -130,11 +130,17 @@ function CloseIcon() {
 export default function ShareCardSheet({
   orderId,
   getShareImage,
+  getShareBackImage,
   preview,
   summary,
 }: {
   orderId: string;
   getShareImage: () => Promise<string>;
+  /** Optional — omitted entirely for a template with no approved back
+   *  (card-face-registry.ts). Resolving to null means the same thing:
+   *  this design has no back to include, not a capture failure. Never
+   *  awaited before getShareImage/consent — see ensurePrepared below. */
+  getShareBackImage?: () => Promise<string | null>;
   preview: ReactNode;
   summary: { collectionName: string; playerCount: number; printCount: number };
 }) {
@@ -292,11 +298,19 @@ export default function ShareCardSheet({
           return null;
         }
 
-        // Founder-approved public share page (migration 0085) — creates
-        // the real per-share link. Re-verifies eligibility itself
-        // server-side; a card that became ineligible between the consent
-        // step above and this call is rejected here.
-        const publicPage = await createCardSharePublicPage(orderId, dataUrl);
+        // Back image is best-effort and never blocks sharing: a template
+        // with no approved back resolves to null (getShareBackImage's own
+        // contract), and any unexpected capture failure here is treated
+        // the same way — the front-only share this app has always
+        // offered is still better than failing the whole action over a
+        // back image the guardian never asked to see fail.
+        const backDataUrl = getShareBackImage ? await getShareBackImage().catch(() => null) : null;
+
+        // Founder-approved public share page (migration 0085, back image
+        // added 0087) — creates the real per-share link. Re-verifies
+        // eligibility itself server-side; a card that became ineligible
+        // between the consent step above and this call is rejected here.
+        const publicPage = await createCardSharePublicPage(orderId, dataUrl, backDataUrl ?? undefined);
         if (!publicPage.ok || !publicPage.token) {
           setErrorMessage(publicPage.error || CARD_SHARE_LINK_FAILURE);
           return null;

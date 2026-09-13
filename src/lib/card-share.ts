@@ -70,14 +70,17 @@ export function buildCardShareMessageText(shareUrl: string): string {
 }
 
 /**
- * Uploads the already-generated share image and creates the public page
- * (migration 0085) — re-verifies eligibility itself server-side, never
- * trusting this call's own prior eligibility check. Must be called AFTER
- * recordCardShareConsent('confirmed') has already succeeded for this
- * attempt, same ordering discipline as image generation itself.
+ * Uploads the already-generated share image(s) and creates the public
+ * page (migration 0085, back image added 0087) — re-verifies eligibility
+ * itself server-side, never trusting this call's own prior eligibility
+ * check. Must be called AFTER recordCardShareConsent('confirmed') has
+ * already succeeded for this attempt, same ordering discipline as image
+ * generation itself. backImageDataUrl is optional — omit it for a
+ * template with no approved back (card-face-registry.ts); the public
+ * page then simply has no back to show, not an error.
  */
-export async function createCardSharePublicPage(orderId: string, imageDataUrl: string): Promise<{ ok: boolean; token?: string; error?: string }> {
-  const result = await postJson('/api/card-share/public-page', { orderId, imageDataUrl });
+export async function createCardSharePublicPage(orderId: string, imageDataUrl: string, backImageDataUrl?: string): Promise<{ ok: boolean; token?: string; error?: string }> {
+  const result = await postJson('/api/card-share/public-page', { orderId, imageDataUrl, backImageDataUrl });
   if (result.ok && typeof result.token === 'string') {
     return { ok: true, token: result.token };
   }

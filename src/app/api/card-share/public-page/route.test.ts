@@ -103,7 +103,31 @@ describe('POST /api/card-share/public-page — eligibility is re-verified server
     expect(res.status).toBe(200);
     expect(mockUploadObject).toHaveBeenCalledTimes(1);
     const [key] = mockUploadObject.mock.calls[0];
-    expect(mockRpc).toHaveBeenCalledWith('create_card_share_public_page', { p_order_id: VALID_ORDER_ID, p_front_image_key: key });
+    expect(mockRpc).toHaveBeenCalledWith('create_card_share_public_page', { p_order_id: VALID_ORDER_ID, p_front_image_key: key, p_back_image_key: null });
+  });
+
+  it('0087: uploads a second object for backImageDataUrl when provided, and passes its resolved key as p_back_image_key — never a client-supplied key', async () => {
+    const res = await post({ orderId: VALID_ORDER_ID, imageDataUrl: VALID_IMAGE, backImageDataUrl: VALID_IMAGE });
+    expect(res.status).toBe(200);
+    expect(mockUploadObject).toHaveBeenCalledTimes(2);
+    const [frontKey] = mockUploadObject.mock.calls[0];
+    const [backKey] = mockUploadObject.mock.calls[1];
+    expect(backKey).toMatch(/^card-share-public\//);
+    expect(backKey).not.toBe(frontKey);
+    expect(mockRpc).toHaveBeenCalledWith('create_card_share_public_page', { p_order_id: VALID_ORDER_ID, p_front_image_key: frontKey, p_back_image_key: backKey });
+  });
+
+  it('0087: rejects a malformed backImageDataUrl before uploading anything', async () => {
+    const res = await post({ orderId: VALID_ORDER_ID, imageDataUrl: VALID_IMAGE, backImageDataUrl: 'not-a-data-url' });
+    expect(res.status).toBe(400);
+    expect(mockUploadObject).not.toHaveBeenCalled();
+  });
+
+  it('0087: cleans up BOTH uploaded objects if create_card_share_public_page rejects', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: 'ineligible' } });
+    const res = await post({ orderId: VALID_ORDER_ID, imageDataUrl: VALID_IMAGE, backImageDataUrl: VALID_IMAGE });
+    expect(res.status).toBe(400);
+    expect(mockDeleteObject).toHaveBeenCalledTimes(2);
   });
 
   it('uploads under the card-share-public/ namespace with a fresh, unpredictable key — never derived from orderId', async () => {
