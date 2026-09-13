@@ -80,7 +80,7 @@ export type CustomCollectionVariant = {
   };
 };
 
-export type CustomCollectionTemplateId = 'custom-solar' | 'custom-galaxy' | 'custom-comic' | 'custom-crimson' | 'custom-royal';
+export type CustomCollectionTemplateId = 'custom-solar' | 'custom-galaxy' | 'custom-comic' | 'custom-crimson' | 'custom-royal' | 'custom-emerald';
 
 export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
   {
@@ -350,6 +350,51 @@ export const CUSTOM_COLLECTION_VARIANTS: readonly CustomCollectionVariant[] = [
       frameOverlay: '/templates/custom-collection/royal/frame-overlay.png',
       emblemLogoPosition: '/templates/custom-collection/royal/emblem-logo-position.png',
       backBase: '/templates/custom-collection/royal/back-base.png',
+    },
+  },
+  // Emerald Edition shares the same structural family as Crimson/Royal
+  // (same 1050x1498 Canva canvas, same circular photo window, same
+  // horizontal centred name/position/number layout) — emerald green/gold
+  // theme. Renders through its own dedicated EmeraldCardArt component, same
+  // reason as Crimson/Royal (doesn't match the shared rotated nameplate
+  // system), so badgeBox/numberBox/positionBox/nameBox are omitted here too.
+  //
+  // Genuine difference from Crimson/Royal, confirmed by direct colour
+  // sampling: Emerald's number/name/position glyphs are two-tone — a pale
+  // gold fill (#f8e9b1) over a darker olive-gold outline (#806600) — not a
+  // single solid fill. EmeraldCardArt therefore uses a layered fill+outline
+  // text technique (a larger outline-coloured copy behind the fill copy),
+  // the same non-destructive approach nameplateNumberLayers already uses
+  // for the shared rotated system's own kit number and for the same reason
+  // (a CSS text-stroke would close narrow letterforms/digit counters) —
+  // just applied locally here since Emerald's horizontal, centred layout
+  // doesn't fit that module's rotated-plate/number-only shape.
+  //
+  // No badgeBox — same reasoning as Crimson/Royal: no separate club-logo
+  // slot in the reference distinct from the fixed Emblem mark and crest.
+  //
+  // The supplied complete-reference composite (33.png) and example-player
+  // photo (38.png) were never shipped as runtime assets, applying the same
+  // standard as Royal Edition — 33.png composited what reads as an
+  // identifiable real child into the circular window, calibration-only.
+  // `preview` points at the plain `base.png` frame art instead.
+  //
+  // Back: the supplied back art (41.png) reads "EMBLEM.CARDS" / "EMERALD
+  // EDITION", flattened raster, no dynamic slot — same founder-approved
+  // standing decision already made for Crimson/Royal's own backs.
+  {
+    id: 'custom-emerald',
+    name: 'Emerald Edition',
+    theme: 'Emerald Edition Custom Collection',
+    description: 'Emerald green and gold football shield with a centred circular player portrait',
+    accent: '#1f8a52',
+    background: '#04160d',
+    assets: {
+      preview: '/templates/custom-collection/emerald/base.png',
+      background: '/templates/custom-collection/emerald/base.png',
+      frameOverlay: '/templates/custom-collection/emerald/frame-overlay.png',
+      emblemLogoPosition: '/templates/custom-collection/emerald/emblem-logo-position.png',
+      backBase: '/templates/custom-collection/emerald/back-base.png',
     },
   },
 ] as const;
