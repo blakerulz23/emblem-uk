@@ -111,7 +111,14 @@ const PROTECTED_FILES: Record<string, string> = {
   // colour theme. Every other dispatch branch is unchanged (verified via
   // diff, and empirically via a real render of Crimson/Solar/Comic
   // before/after this change).
-  'src/components/builder/emblem/CardArt.tsx': 'a5a90088b72cb2898ebe7ed80f032c6cc5ba60fa53a7338958fd3e0ce57f6138',
+  //
+  // Updated a tenth time to add the new Glacier Edition Custom Collection
+  // template: one new import (GlacierCardArt) and one new front-dispatch
+  // branch (`template.family === 'Custom' && template.id === 'custom-glacier'`),
+  // same shape as Crimson/Royal's own. Every other dispatch branch is
+  // unchanged (verified via diff, and empirically via a real render of
+  // Crimson/Royal/Solar before/after this change).
+  'src/components/builder/emblem/CardArt.tsx': 'd9de30533ec58c9ece87f1ad66eadfe13e6dfc1c31f77e01c3b515035fe8cd0c',
   'src/lib/pricing-quote.ts': 'e1797bcc528074c53f6adb44b017b8e5b9b23a2154957faa999adac38fe815ee',
   'src/lib/pricing-engine.ts': 'e2f40e6defa8b779456ddd4b8ac4fc0578d650b4d96c7102bc05097c1a6ce454',
   'src/lib/squad-invite-mvp.ts': 'aaa13d3bd1a05ccbe79c88112beed05ae2b2411f35b353acccfeb4025ce88ab3',
