@@ -71,19 +71,46 @@ function PhotoCropTestInner() {
   const fixturePhoto = params.get('photo') || '/last-shot/caden-isaacs.png';
   const nativeFrontRef = useRef<HTMLDivElement>(null);
   const nativeBackRef = useRef<HTMLDivElement>(null);
-  const [capturedFront, setCapturedFront] = useState<string | null>(null);
-  const [capturedBack, setCapturedBack] = useState<string | null>(null);
+  // Separate refs for the print-style (forPrint, borderRadius:0) render —
+  // ProductionBuilder.tsx's own print-capture rig renders a SEPARATE
+  // off-screen tree with forPrint set, not the same element share capture
+  // reads, so this harness reproduces that distinction rather than
+  // capturing one shared element two different ways.
+  const printFrontRef = useRef<HTMLDivElement>(null);
+  const printBackRef = useRef<HTMLDivElement>(null);
+  const [capturedShareFront, setCapturedShareFront] = useState<string | null>(null);
+  const [capturedShareBack, setCapturedShareBack] = useState<string | null>(null);
+  const [capturedPrintFront, setCapturedPrintFront] = useState<string | null>(null);
+  const [capturedPrintBack, setCapturedPrintBack] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const runCapture = async () => {
+  /** Exact params captureShareImageFor (ProductionBuilder.tsx) uses. */
+  const runShareCapture = async () => {
     if (!nativeFrontRef.current) return;
     setBusy(true);
     try {
-      const front = await captureElementToPng(nativeFrontRef.current, { pixelRatio: 3, backgroundColor: '#ffffff' });
-      setCapturedFront(front);
+      const front = await captureElementToPng(nativeFrontRef.current, { pixelRatio: 2, backgroundColor: '#ffffff' });
+      setCapturedShareFront(front);
       if (nativeBackRef.current) {
-        const back = await captureElementToPng(nativeBackRef.current, { pixelRatio: 3, backgroundColor: '#ffffff' });
-        setCapturedBack(back);
+        const back = await captureElementToPng(nativeBackRef.current, { pixelRatio: 2, backgroundColor: '#ffffff' });
+        setCapturedShareBack(back);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Exact params ProductionBuilder.tsx's print-capture rig uses:
+   *  pixelRatio 3 on a forPrint (borderRadius:0) element. */
+  const runPrintCapture = async () => {
+    if (!printFrontRef.current) return;
+    setBusy(true);
+    try {
+      const front = await captureElementToPng(printFrontRef.current, { pixelRatio: 3, backgroundColor: '#ffffff' });
+      setCapturedPrintFront(front);
+      if (printBackRef.current) {
+        const back = await captureElementToPng(printBackRef.current, { pixelRatio: 3, backgroundColor: '#ffffff' });
+        setCapturedPrintBack(back);
       }
     } finally {
       setBusy(false);
@@ -113,21 +140,21 @@ function PhotoCropTestInner() {
         </div>
 
         <div>
-          <h2 style={{ fontSize: 13, textTransform: 'uppercase', opacity: 0.6 }}>html2canvas capture (production params)</h2>
+          <h2 style={{ fontSize: 13, textTransform: 'uppercase', opacity: 0.6 }}>Share capture (pixelRatio 2, rounded — captureShareImageFor&apos;s own params)</h2>
           <button
             type="button"
-            data-testid="capture-btn"
-            onClick={runCapture}
+            data-testid="share-capture-btn"
+            onClick={runShareCapture}
             disabled={busy}
             style={{ padding: '10px 16px', marginBottom: 12, background: '#e97435', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}
           >
-            {busy ? 'Capturing…' : 'Run captureElementToPng (front + back)'}
+            {busy ? 'Capturing…' : 'Run share-style captureElementToPng'}
           </button>
           <div style={{ display: 'flex', gap: 16 }}>
             <div style={{ width: CARD_SIZE }}>
-              {capturedFront ? (
+              {capturedShareFront ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img data-testid="html2canvas-result-front" src={capturedFront} alt="html2canvas front result" style={{ width: '100%', display: 'block' }} />
+                <img data-testid="share-result-front" src={capturedShareFront} alt="share capture front result" style={{ width: '100%', display: 'block' }} />
               ) : (
                 <div style={{ width: CARD_SIZE, height: Math.round(CARD_SIZE * 1.4), background: '#222', display: 'grid', placeItems: 'center', fontSize: 12, opacity: 0.5 }}>
                   Not captured yet
@@ -135,9 +162,52 @@ function PhotoCropTestInner() {
               )}
             </div>
             <div style={{ width: CARD_SIZE }}>
-              {capturedBack ? (
+              {capturedShareBack ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img data-testid="html2canvas-result-back" src={capturedBack} alt="html2canvas back result" style={{ width: '100%', display: 'block' }} />
+                <img data-testid="share-result-back" src={capturedShareBack} alt="share capture back result" style={{ width: '100%', display: 'block' }} />
+              ) : (
+                <div style={{ width: CARD_SIZE, height: Math.round(CARD_SIZE * 1.4), background: '#222', display: 'grid', placeItems: 'center', fontSize: 12, opacity: 0.5 }}>
+                  Not captured yet
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h2 style={{ fontSize: 13, textTransform: 'uppercase', opacity: 0.6 }}>Print-style render (forPrint, square corners) — same tree ProductionBuilder&apos;s print-capture rig renders off-screen</h2>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
+            <div ref={printFrontRef} data-testid="print-native-front" style={{ width: CARD_SIZE }}>
+              <CardFace data={fixture} side="front" size={CARD_SIZE} photoUrl={fixturePhoto} style={{ borderRadius: 0 }} />
+            </div>
+            <div ref={printBackRef} data-testid="print-native-back" style={{ width: CARD_SIZE }}>
+              <CardFace data={fixture} side="back" size={CARD_SIZE} photoUrl={fixturePhoto} style={{ borderRadius: 0 }} />
+            </div>
+          </div>
+          <button
+            type="button"
+            data-testid="print-capture-btn"
+            onClick={runPrintCapture}
+            disabled={busy}
+            style={{ padding: '10px 16px', marginBottom: 12, background: '#116DFF', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}
+          >
+            {busy ? 'Capturing…' : 'Run print-style captureElementToPng (pixelRatio 3, forPrint)'}
+          </button>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <div style={{ width: CARD_SIZE }}>
+              {capturedPrintFront ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img data-testid="print-result-front" src={capturedPrintFront} alt="print capture front result" style={{ width: '100%', display: 'block' }} />
+              ) : (
+                <div style={{ width: CARD_SIZE, height: Math.round(CARD_SIZE * 1.4), background: '#222', display: 'grid', placeItems: 'center', fontSize: 12, opacity: 0.5 }}>
+                  Not captured yet
+                </div>
+              )}
+            </div>
+            <div style={{ width: CARD_SIZE }}>
+              {capturedPrintBack ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img data-testid="print-result-back" src={capturedPrintBack} alt="print capture back result" style={{ width: '100%', display: 'block' }} />
               ) : (
                 <div style={{ width: CARD_SIZE, height: Math.round(CARD_SIZE * 1.4), background: '#222', display: 'grid', placeItems: 'center', fontSize: 12, opacity: 0.5 }}>
                   Not captured yet
