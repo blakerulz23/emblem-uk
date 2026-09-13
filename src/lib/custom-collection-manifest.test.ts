@@ -345,3 +345,129 @@ describe('Royal Edition ships no reference/calibration-only imagery at runtime',
     }
   });
 });
+
+describe('Emerald Edition (custom-emerald) manifest registration', () => {
+  it('is registered with a unique, stable id distinct from every existing template', () => {
+    expect(CUSTOM_COLLECTION_TEMPLATE_IDS).toContain('custom-emerald');
+    expect(isCustomCollectionTemplateId('custom-emerald')).toBe(true);
+    const ids = CUSTOM_COLLECTION_VARIANTS.map((v) => v.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('has the expected display name and correct runtime assets', () => {
+    const emerald = getCustomCollectionVariant('custom-emerald');
+    expect(emerald.id).toBe('custom-emerald');
+    expect(emerald.name).toBe('Emerald Edition');
+    // preview points at the plain base.png frame art — same standard as
+    // Crimson/Royal: the supplied reference composite (33.png) contains
+    // what reads as an identifiable real child and was never shipped.
+    expect(emerald.assets.preview).toBe('/templates/custom-collection/emerald/base.png');
+    expect(emerald.assets.preview).not.toMatch(/reference\.png$/);
+    expect(emerald.assets.background).toBe('/templates/custom-collection/emerald/base.png');
+    expect(emerald.assets.frameOverlay).toBe('/templates/custom-collection/emerald/frame-overlay.png');
+    expect(emerald.assets.emblemLogoPosition).toBe('/templates/custom-collection/emerald/emblem-logo-position.png');
+  });
+
+  it('has a static back (assets.backBase) with no dynamic logoBox/nameBox overlay — same fully-static shape as Crimson/Royal\'s own backs', () => {
+    const emerald = getCustomCollectionVariant('custom-emerald');
+    expect(emerald.assets.backBase).toBe('/templates/custom-collection/emerald/back-base.png');
+    expect(emerald.back).toBeUndefined();
+  });
+
+  it('omits badgeBox/numberBox/positionBox/nameBox — same reasoning as Crimson/Royal: renders through its own dedicated EmeraldCardArt component instead', () => {
+    const emerald = getCustomCollectionVariant('custom-emerald');
+    expect(emerald.badgeBox).toBeUndefined();
+    expect(emerald.numberBox).toBeUndefined();
+    expect(emerald.positionBox).toBeUndefined();
+    expect(emerald.nameBox).toBeUndefined();
+  });
+
+  it('does not reuse or rename any existing template id', () => {
+    expect(CUSTOM_COLLECTION_TEMPLATE_IDS).toEqual(
+      expect.arrayContaining(['custom-solar', 'custom-galaxy', 'custom-comic', 'custom-crimson', 'custom-royal', 'custom-emerald'])
+    );
+    expect(new Set(CUSTOM_COLLECTION_TEMPLATE_IDS).size).toBe(CUSTOM_COLLECTION_TEMPLATE_IDS.length);
+  });
+});
+
+describe('CardArt.tsx dispatches custom-emerald to its own component, not the shared CustomCollectionCardArt renderer', () => {
+  const cardArtSource = readFileSync(
+    resolve(process.cwd(), 'src/components/builder/emblem/CardArt.tsx'),
+    'utf8'
+  );
+
+  it('imports EmeraldCardArt and dispatches custom-emerald to it before the generic Custom-family branch', () => {
+    expect(cardArtSource).toContain("import EmeraldCardArt from './EmeraldCardArt'");
+    expect(cardArtSource).toContain("template.family === 'Custom' && template.id === 'custom-emerald'");
+    const emeraldBranchIndex = cardArtSource.indexOf("template.id === 'custom-emerald'");
+    const genericCustomBranchIndex = cardArtSource.indexOf("if (template.family === 'Custom') {");
+    expect(emeraldBranchIndex).toBeGreaterThan(-1);
+    expect(genericCustomBranchIndex).toBeGreaterThan(-1);
+    expect(emeraldBranchIndex).toBeLessThan(genericCustomBranchIndex);
+  });
+
+  it('the back-side dispatch is untouched — custom-emerald still falls through to the shared CustomCollectionCardBack', () => {
+    expect(cardArtSource).toContain("side === 'back' && template.family === 'Custom'");
+  });
+});
+
+describe('EmeraldCardArt renders dynamic customer data, not a fixture', () => {
+  const emeraldSource = readFileSync(
+    resolve(process.cwd(), 'src/components/builder/emblem/EmeraldCardArt.tsx'),
+    'utf8'
+  );
+
+  it('reads name/position/number/photo from the details/photo props every render, never a hardcoded fixture value', () => {
+    expect(emeraldSource).toContain('d.name');
+    expect(emeraldSource).toContain('d.number');
+    expect(emeraldSource).toContain("positionCardLabel(d.position");
+    expect(emeraldSource).toContain('{photo ?');
+  });
+
+  it('reuses the shared, already-tested nameFitScale helper for long-name/long-number shrinking rather than a new reimplementation', () => {
+    expect(emeraldSource).toContain("from '@/lib/nameplate-typography'");
+    expect(emeraldSource).toMatch(/nameFitScale\(/);
+  });
+
+  it('never introduces Apps, Goals or Assists', () => {
+    expect(emeraldSource).not.toMatch(/\bApps\b/);
+    expect(emeraldSource).not.toMatch(/\bGoals\b/);
+    expect(emeraldSource).not.toMatch(/\bAssists\b/);
+  });
+
+  it('renders name/position/number as a genuine two-tone fill+outline pair (measured from the supplied reference, not a single solid fill like Crimson/Royal)', () => {
+    expect(emeraldSource).toContain('#f8e9b1');
+    expect(emeraldSource).toContain('#806600');
+    // both an outline span and a fill span must exist for each of the three dynamic fields
+    const outlineCount = (emeraldSource.match(/aria-hidden/g) || []).length;
+    expect(outlineCount).toBe(3); // number, name, position
+  });
+});
+
+describe('Emerald Edition ships no reference/calibration-only imagery at runtime', () => {
+  const emeraldAssetDir = resolve(process.cwd(), 'public/templates/custom-collection/emerald');
+  const manifestSource = readFileSync(resolve(process.cwd(), 'src/lib/custom-collection-manifest.ts'), 'utf8');
+  const emeraldArtSource = readFileSync(resolve(process.cwd(), 'src/components/builder/emblem/EmeraldCardArt.tsx'), 'utf8');
+  const cardArtSource = readFileSync(resolve(process.cwd(), 'src/components/builder/emblem/CardArt.tsx'), 'utf8');
+
+  it('reference.png / the complete visual-reference composite (33.png) is not present in the shipped asset directory', () => {
+    expect(existsSync(`${emeraldAssetDir}/reference.png`)).toBe(false);
+  });
+
+  it('the example-player calibration photo is not present in the shipped asset directory', () => {
+    expect(existsSync(`${emeraldAssetDir}/38.png`)).toBe(false);
+    expect(existsSync(`${emeraldAssetDir}/image.png`)).toBe(false);
+  });
+
+  it('the runtime asset directory contains only the four genuine reusable layers', () => {
+    const files = readdirSync(emeraldAssetDir).sort();
+    expect(files).toEqual(['back-base.png', 'base.png', 'emblem-logo-position.png', 'frame-overlay.png']);
+  });
+
+  it('no source file references a reference/preview composite, or the original numbered source filenames, as a runtime asset path — prose explaining the design may still name the file', () => {
+    for (const source of [manifestSource, emeraldArtSource, cardArtSource]) {
+      expect(source).not.toContain('/templates/custom-collection/emerald/reference.png');
+      expect(source).not.toMatch(/emerald\/(33|38|36|39|40)\.png/);
+    }
+  });
+});
