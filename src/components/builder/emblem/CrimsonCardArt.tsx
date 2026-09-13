@@ -34,15 +34,57 @@ import type { CardTemplate, Details } from './data';
  * not) — and it's already used elsewhere in this exact manifest (Solar/
  * Galaxy/Comic's own back.nameBox), so this needs no new font import.
  *
- * The photo window is a circle/ellipse cut into the shield artwork (base.png
- * — confirmed by direct pixel inspection: base.png has no transparent hole,
- * it's fully opaque, so the ring border must be visually exposed by clipping
- * the photo to the window's own inner edge, not by any alpha cutout in the
- * base art itself). Measured against the same native canvas: centre (50%,
- * 47.5%), radius (38% of W, 16.5% of H).
+ * FUT-style depth, corrected after a visual audit against the reference
+ * (a first pass wrongly clipped the photo tight to the ring's own inner
+ * edge — see below): base.png's own circular ring is `rearDecoration`,
+ * meant to sit BEHIND the player, with the player's head/shoulders
+ * overlapping it, not confined inside it. Confirmed directly by cropping
+ * and zooming into the supplied reference (1.png): the player's hair
+ * clearly extends above and in front of the ring's own top arc, into the
+ * plain background above it — the ring is only fully visible around the
+ * SIDES/below the player, exactly the classic FUT "photo breaks out of
+ * the badge" look, not a photo confined to a window.
+ *
+ * Confirmed further via the supplied example-player cutout itself
+ * (5.png, alpha bounds on the shared native canvas): top 11.75%, bottom
+ * 61.88%, left 19.05%, right 81.71% — i.e. the reference's own intended
+ * photo placement already reaches well above the ring's own top edge
+ * (~31%) and stops almost exactly where frame-overlay.png begins
+ * (~61.2%). PHOTO_CLIP below is a generous rectangle a small safety
+ * margin outside that measured box (not a tight shape matching the
+ * ring) — this is deliberately NOT trying to reproduce the ring's own
+ * silhouette; base.png has no transparent hole for it (confirmed by
+ * direct pixel inspection — fully opaque), so the ring is simply
+ * painted UNDER the player and the player's own real edges (background-
+ * removed for a real customer photo, via this app's own mandatory
+ * BackgroundRemovalStep — see bgRemoval.ts) do the rest, the same way
+ * the reference's own flattened composite does.
+ *
+ * Layers map onto the five standard groups as:
+ *   background      — base.png, the plain backdrop portion (z0)
+ *   rearDecoration   — the same base.png also carries the ring, since
+ *                       there is no separate alpha-isolated ring asset
+ *                       to split out — see the manifest's own comment
+ *                       on why splitting it into two files wasn't
+ *                       possible from the supplied flattened source
+ *   player           — the customer's photo, generously bounded by
+ *                       PHOTO_CLIP so it can overlap the ring while
+ *                       staying inside the shield's own straight sides
+ *                       and cutting off at the nameplate (z2)
+ *   foregroundFrame  — frame-overlay.png + emblem-logo-position.png (z3)
+ *   textAndBranding  — number/name/position (z4)
+ * Player positioning (photoScale/photoOffsetX/photoOffsetY) is applied only
+ * to the player <img> itself, never to any other layer.
  */
 
-const PHOTO_CLIP = 'ellipse(38% 16.5% at 50% 47.5%)';
+const LAYER_Z = { background: 0, player: 2, foregroundFrame: 3, textAndBranding: 4 } as const;
+// Generous inset(top right bottom left) — NOT a tight window. Bottom
+// (36% inset = clip ends at 64% of H) sits just past frame-overlay's own
+// measured top edge (61.2%) so there's no visible gap between the photo's
+// own clip and the overlay covering it; top (8%) and sides (15%) sit just
+// outside the reference's own measured photo placement (11.75%/19.05%–
+// 81.71%) with a small safety margin, not hugging the ring at all.
+const PHOTO_CLIP = 'inset(8% 15% 36% 15%)';
 const TEXT_COLOR = '#f8dcbf';
 const FONT_FAMILY = 'var(--font-barlow-condensed), "Arial Narrow", sans-serif';
 
@@ -86,7 +128,7 @@ export default function CrimsonCardArt({
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
   const root = '/templates/custom-collection/crimson';
-  const layerFit: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' };
+  const layerFit: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' };
 
   const playerName = d.name || 'Player Name';
   const positionLabel = positionCardLabel(d.position, 'POSITION');
@@ -120,11 +162,13 @@ export default function CrimsonCardArt({
         ...style,
       }}
     >
+      {/* — background — */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/base.png`} alt="" style={{ ...layerFit, zIndex: 0 }} />
+      <img src={`${root}/base.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.background }} />
 
+      {/* — player (positioning controls apply only to this layer) — */}
       {photo ? (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 1, clipPath: PHOTO_CLIP }}>
+        <div data-capture-clip-wrapper style={{ position: 'absolute', inset: 0, zIndex: LAYER_Z.player, clipPath: PHOTO_CLIP }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={photo}
@@ -141,10 +185,11 @@ export default function CrimsonCardArt({
         </div>
       ) : null}
 
+      {/* — foregroundFrame — */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/frame-overlay.png`} alt="" style={{ ...layerFit, zIndex: 2 }} />
+      <img src={`${root}/frame-overlay.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.foregroundFrame }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/emblem-logo-position.png`} alt="" style={{ ...layerFit, zIndex: 3 }} />
+      <img src={`${root}/emblem-logo-position.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.foregroundFrame }} />
 
       <div
         style={{
@@ -153,7 +198,7 @@ export default function CrimsonCardArt({
           top: NUMBER_GEOMETRY.bottom,
           transform: 'translate(-50%, -100%)',
           fontSize: W * NUMBER_GEOMETRY.fontSizeFactor * nameFitScale(number, NUMBER_GEOMETRY.comfortableChars, NUMBER_GEOMETRY.minScale),
-          zIndex: 4,
+          zIndex: LAYER_Z.textAndBranding,
         }}
       >
         {number}
@@ -167,7 +212,7 @@ export default function CrimsonCardArt({
           width: '86%',
           transform: 'translate(-50%, -100%)',
           fontSize: W * NAME_GEOMETRY.fontSizeFactor * nameFitScale(playerName, NAME_GEOMETRY.comfortableChars, NAME_GEOMETRY.minScale),
-          zIndex: 4,
+          zIndex: LAYER_Z.textAndBranding,
         }}
       >
         {playerName}
@@ -182,7 +227,7 @@ export default function CrimsonCardArt({
           letterSpacing: '0.1em',
           transform: 'translate(-50%, -100%)',
           fontSize: W * POSITION_GEOMETRY.fontSizeFactor * nameFitScale(positionLabel, POSITION_GEOMETRY.comfortableChars, POSITION_GEOMETRY.minScale),
-          zIndex: 4,
+          zIndex: LAYER_Z.textAndBranding,
         }}
       >
         {positionLabel}

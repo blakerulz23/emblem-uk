@@ -24,14 +24,31 @@ import type { CardTemplate, Details } from './data';
  * Font: Barlow Condensed Bold — same evidence-based match as Crimson (same
  * template family, same letterforms), already loaded, no new font import.
  *
- * The photo window is a circle/ellipse cut into the shield artwork
- * (base.png — confirmed via direct pixel inspection to be fully opaque,
- * same as Crimson's own base.png). Measured against this template's own
- * native canvas: within ~1% of Crimson's own window bounds, so the same
- * clip is reused: centre (50%, 47.5%), radius (38% of W, 16.5% of H).
+ * FUT-style depth (see CrimsonCardArt.tsx's own doc comment for the full
+ * reasoning and how this was found and corrected from a first, wrongly-
+ * tight-clipped pass): the ring painted into base.png is `rearDecoration`
+ * — behind the player, who overlaps it (head/shoulders extend above the
+ * ring's own top arc into the plain background, per the reference).
+ * Royal's own example-player cutout (13.png) measures top 11.82%, bottom
+ * 61.88%, left 19.05%, right 81.81% on the shared native canvas — within
+ * ~0.1% of Crimson's own, so the same generous PHOTO_CLIP is reused.
+ * base.png is fully opaque (confirmed by direct pixel inspection), so
+ * there's no alpha hole to rely on; the clip is a generous rectangle, not
+ * a shape tracing the ring, and a real customer photo's own background-
+ * removed edges (this app's mandatory BackgroundRemovalStep) do the rest.
+ *
+ * Layers map: background+rearDecoration — base.png, both the backdrop and
+ * the ring live in this one flattened asset (z0) · player — generously
+ * bounded photo (z2) · foregroundFrame — frame-overlay.png + emblem-logo-
+ * position.png (z3) · textAndBranding — number/name/position (z4).
+ * Player positioning applies only to the player <img>.
  */
 
-const PHOTO_CLIP = 'ellipse(38% 16.5% at 50% 47.5%)';
+const LAYER_Z = { background: 0, player: 2, foregroundFrame: 3, textAndBranding: 4 } as const;
+// Generous inset(top right bottom left) — see CrimsonCardArt.tsx's own
+// PHOTO_CLIP comment for the derivation; Royal's own measured example-
+// photo placement is within ~0.1% of Crimson's, so the same margins apply.
+const PHOTO_CLIP = 'inset(8% 15% 36% 15%)';
 const TEXT_COLOR = '#d9e0f0';
 const FONT_FAMILY = 'var(--font-barlow-condensed), "Arial Narrow", sans-serif';
 
@@ -75,7 +92,7 @@ export default function RoyalCardArt({
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
   const root = '/templates/custom-collection/royal';
-  const layerFit: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' };
+  const layerFit: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' };
 
   const playerName = d.name || 'Player Name';
   const positionLabel = positionCardLabel(d.position, 'POSITION');
@@ -109,11 +126,13 @@ export default function RoyalCardArt({
         ...style,
       }}
     >
+      {/* — background — */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/base.png`} alt="" style={{ ...layerFit, zIndex: 0 }} />
+      <img src={`${root}/base.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.background }} />
 
+      {/* — player (positioning controls apply only to this layer) — */}
       {photo ? (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 1, clipPath: PHOTO_CLIP }}>
+        <div data-capture-clip-wrapper style={{ position: 'absolute', inset: 0, zIndex: LAYER_Z.player, clipPath: PHOTO_CLIP }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={photo}
@@ -130,10 +149,11 @@ export default function RoyalCardArt({
         </div>
       ) : null}
 
+      {/* — foregroundFrame — */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/frame-overlay.png`} alt="" style={{ ...layerFit, zIndex: 2 }} />
+      <img src={`${root}/frame-overlay.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.foregroundFrame }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/emblem-logo-position.png`} alt="" style={{ ...layerFit, zIndex: 3 }} />
+      <img src={`${root}/emblem-logo-position.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.foregroundFrame }} />
 
       <div
         style={{
@@ -142,7 +162,7 @@ export default function RoyalCardArt({
           top: NUMBER_GEOMETRY.bottom,
           transform: 'translate(-50%, -100%)',
           fontSize: W * NUMBER_GEOMETRY.fontSizeFactor * nameFitScale(number, NUMBER_GEOMETRY.comfortableChars, NUMBER_GEOMETRY.minScale),
-          zIndex: 4,
+          zIndex: LAYER_Z.textAndBranding,
         }}
       >
         {number}
@@ -156,7 +176,7 @@ export default function RoyalCardArt({
           width: '86%',
           transform: 'translate(-50%, -100%)',
           fontSize: W * NAME_GEOMETRY.fontSizeFactor * nameFitScale(playerName, NAME_GEOMETRY.comfortableChars, NAME_GEOMETRY.minScale),
-          zIndex: 4,
+          zIndex: LAYER_Z.textAndBranding,
         }}
       >
         {playerName}
@@ -171,7 +191,7 @@ export default function RoyalCardArt({
           letterSpacing: '0.1em',
           transform: 'translate(-50%, -100%)',
           fontSize: W * POSITION_GEOMETRY.fontSizeFactor * nameFitScale(positionLabel, POSITION_GEOMETRY.comfortableChars, POSITION_GEOMETRY.minScale),
-          zIndex: 4,
+          zIndex: LAYER_Z.textAndBranding,
         }}
       >
         {positionLabel}

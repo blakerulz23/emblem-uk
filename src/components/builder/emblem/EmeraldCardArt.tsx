@@ -36,18 +36,36 @@ import type { CardTemplate, Details } from './data';
  * Font: Barlow Condensed Bold — same evidence-based match as Crimson/Royal
  * (same underlying template family, same letterforms), already loaded.
  *
- * The photo window is a circle cut into the shield artwork (base.png —
- * confirmed via direct pixel inspection to be fully opaque, same as
- * Crimson/Royal's own base.png). Measured against this template's own
- * native canvas: centre (50%, 48%), radius (39% of W, 20% of H) — visibly
- * rounder than Crimson/Royal's own flatter ellipse, so measured fresh
- * rather than reused.
+ * FUT-style depth (see CrimsonCardArt.tsx's own doc comment for the full
+ * reasoning and how this was found and corrected from a first, wrongly-
+ * tight-clipped pass): the ring painted into base.png is `rearDecoration`
+ * — behind the player, who overlaps it. Emerald's own example-player
+ * cutout (38.png) measures top 12.48%, bottom 61.82%, left 19.05%, right
+ * 82.00% on the shared native canvas — matching Crimson/Royal's own
+ * measurement closely, so the same generous PHOTO_CLIP applies. base.png
+ * is fully opaque (confirmed by direct pixel inspection), so there's no
+ * alpha hole to rely on; a real customer photo's own background-removed
+ * edges (this app's mandatory BackgroundRemovalStep) do the rest.
+ *
+ * Layers map: background+rearDecoration — base.png, both the backdrop and
+ * the ring live in this one flattened asset (z0) · player — generously
+ * bounded photo (z2) · foregroundFrame — frame-overlay.png + emblem-logo-
+ * position.png (z3) · textAndBranding — number/name/position (z4).
+ * Player positioning applies only to the player <img>.
  */
 
-const PHOTO_CLIP = 'ellipse(39% 20% at 50% 48%)';
+const LAYER_Z = { background: 0, player: 2, foregroundFrame: 3, textAndBranding: 4 } as const;
+// Generous inset(top right bottom left) — see CrimsonCardArt.tsx's own
+// PHOTO_CLIP comment for the derivation.
+const PHOTO_CLIP = 'inset(8% 15% 36% 15%)';
 const FILL_COLOR = '#f8e9b1';
 const OUTLINE_COLOR = '#806600';
-const OUTLINE_SCALE = 1.08;
+// Kept modest (see layeredText's own doc comment on the name row's
+// specific vertical-clearance constraint) — a larger value pushes the
+// wrapper's effective top edge up into the gap above frame-overlay's own
+// nameplate-opacity onset (~61.8% of H), where the still-unclipped player
+// photo is visible and bleeds through the whitespace around the glyphs.
+const OUTLINE_SCALE = 1.05;
 const FONT_FAMILY = 'var(--font-barlow-condensed), "Arial Narrow", sans-serif';
 
 const NUMBER_GEOMETRY = { left: '17.81%', bottom: '25.50%', fontSizeFactor: 0.21, comfortableChars: 2, minScale: 0.8 };
@@ -78,6 +96,20 @@ type TextGeometry = { left: string; bottom: string; fontSizeFactor: number; comf
  * enlargement is done via a literal larger fontSize here, not
  * `transform:scale`, removing the transform/compositing step entirely as
  * a possible contributor.
+ *
+ * Wrapper height clearance (1.18x fillSize, not a large arbitrary margin):
+ * found by direct visual audit that a taller wrapper (previously 1.3x)
+ * pushes the whole grid — including the larger outline span, vertically
+ * centred within it — far enough up that, for the name row specifically
+ * (bottom-anchored close to frame-overlay's own nameplate-opacity onset,
+ * ~61.8% of H — see PHOTO_CLIP's own comment), its effective top edge
+ * rises above that onset into the small band where frame-overlay is still
+ * transparent. The still-unclipped player photo (PHOTO_CLIP's own bottom
+ * inset only ends at 64%) is visible there and bled through the
+ * whitespace around the glyphs — confirmed directly with a synthetic
+ * opaque-silhouette test photo, then fixed by tightening both this margin
+ * and OUTLINE_SCALE, not by moving the (reference-measured)
+ * NAME_GEOMETRY.bottom value itself.
  */
 function layeredText(W: number, geom: TextGeometry, text: string, extraWrapper?: CSSProperties) {
   const scale = nameFitScale(text, geom.comfortableChars, geom.minScale);
@@ -100,7 +132,7 @@ function layeredText(W: number, geom: TextGeometry, text: string, extraWrapper?:
       transform: 'translate(-50%, -100%)',
       display: 'grid' as const,
       placeItems: 'center' as const,
-      height: fillSize * 1.3,
+      height: fillSize * 1.18,
       ...extraWrapper,
     },
     outline: { ...sharedSpan, fontSize: outlineSize, color: OUTLINE_COLOR },
@@ -144,7 +176,7 @@ export default function EmeraldCardArt({
   const H = Math.round(size * 1.4);
   const d = details || ({} as Partial<Details>);
   const root = '/templates/custom-collection/emerald';
-  const layerFit: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' };
+  const layerFit: CSSProperties = { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' };
 
   const playerName = d.name || 'Player Name';
   const positionLabel = positionCardLabel(d.position, 'POSITION');
@@ -172,11 +204,13 @@ export default function EmeraldCardArt({
         ...style,
       }}
     >
+      {/* — background — */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/base.png`} alt="" style={{ ...layerFit, zIndex: 0 }} />
+      <img src={`${root}/base.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.background }} />
 
+      {/* — player (positioning controls apply only to this layer) — */}
       {photo ? (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 1, clipPath: PHOTO_CLIP }}>
+        <div data-capture-clip-wrapper style={{ position: 'absolute', inset: 0, zIndex: LAYER_Z.player, clipPath: PHOTO_CLIP }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={photo}
@@ -193,22 +227,24 @@ export default function EmeraldCardArt({
         </div>
       ) : null}
 
+      {/* — foregroundFrame — */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/frame-overlay.png`} alt="" style={{ ...layerFit, zIndex: 2 }} />
+      <img src={`${root}/frame-overlay.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.foregroundFrame }} />
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`${root}/emblem-logo-position.png`} alt="" style={{ ...layerFit, zIndex: 3 }} />
+      <img src={`${root}/emblem-logo-position.png`} alt="" style={{ ...layerFit, zIndex: LAYER_Z.foregroundFrame }} />
 
-      <div style={{ ...numberLayers.wrapper, zIndex: 4 }}>
+      {/* — textAndBranding — */}
+      <div style={{ ...numberLayers.wrapper, zIndex: LAYER_Z.textAndBranding }}>
         <span aria-hidden style={numberLayers.outline}>{number}</span>
         <span style={numberLayers.fill}>{number}</span>
       </div>
 
-      <div style={{ ...nameLayers.wrapper, zIndex: 4 }}>
+      <div style={{ ...nameLayers.wrapper, zIndex: LAYER_Z.textAndBranding }}>
         <span aria-hidden style={nameLayers.outline}>{playerName}</span>
         <span style={nameLayers.fill}>{playerName}</span>
       </div>
 
-      <div style={{ ...positionLayers.wrapper, zIndex: 4 }}>
+      <div style={{ ...positionLayers.wrapper, zIndex: LAYER_Z.textAndBranding }}>
         <span aria-hidden style={positionLayers.outline}>{positionLabel}</span>
         <span style={positionLayers.fill}>{positionLabel}</span>
       </div>

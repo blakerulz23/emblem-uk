@@ -567,9 +567,13 @@ describe('GlacierCardArt renders dynamic customer data, not a fixture', () => {
     expect(glacierSource).not.toContain('aria-hidden'); // no separate outline layer needed
   });
 
-  it('builds the arch photo-clip from the card\'s own real W/H via an SVG path, not a fixed-percentage basic-shape ellipse', () => {
-    expect(glacierSource).toContain('buildArchClipPath');
-    expect(glacierSource).toContain("path('M");
+  it('uses a generous inset() photo clip (FUT-style: player overlaps the rear ring/arch), not a tight shape tracing the ring — same corrected model as Crimson/Royal/Emerald, no arch-tracing SVG path function', () => {
+    expect(glacierSource).toContain("PHOTO_CLIP = 'inset(");
+    // The doc comment may still name the removed function historically —
+    // this asserts it is no longer actually DEFINED or CALLED.
+    expect(glacierSource).not.toMatch(/function buildArchClipPath/);
+    expect(glacierSource).not.toMatch(/buildArchClipPath\(W, H\)/);
+    expect(glacierSource).not.toContain("path('M");
   });
 });
 
