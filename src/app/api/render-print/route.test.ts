@@ -3,8 +3,14 @@ import { NextRequest } from 'next/server';
 import { randomBytes } from 'crypto';
 
 const mockBuildPdf = vi.fn();
+// The "card" product (validBody's default) is routed through
+// buildCanonicalCardPdf, not buildPdf — see route.ts's own product===
+// 'card' branch. Both are mocked here; buildPdf's mock stays wired for
+// every non-card product this file also exercises.
+const mockBuildCanonicalCardPdf = vi.fn();
 vi.mock('@/lib/pdf-generator', () => ({
   buildPdf: (...args: unknown[]) => mockBuildPdf(...args),
+  buildCanonicalCardPdf: (...args: unknown[]) => mockBuildCanonicalCardPdf(...args),
 }));
 
 const mockUploadPdf = vi.fn();
@@ -82,6 +88,7 @@ const ORIGINAL_ENV = { ...process.env };
 beforeEach(() => {
   cookieStore = {};
   mockBuildPdf.mockReset().mockResolvedValue(Buffer.from('fake-pdf-bytes'));
+  mockBuildCanonicalCardPdf.mockReset().mockResolvedValue(Buffer.from('fake-canonical-card-pdf-bytes'));
   mockUploadPdf.mockReset().mockResolvedValue(undefined);
   mockGetSignedDownloadUrl.mockReset().mockResolvedValue('https://example.invalid/signed');
   mockConsumeAnonymousRequestRateLimit.mockReset().mockResolvedValue(true);
@@ -95,6 +102,7 @@ describe('POST /api/render-print — CSRF', () => {
     expect(res.status).toBe(403);
     expect(mockVerifyBuilderSubmissionCapability).not.toHaveBeenCalled();
     expect(mockBuildPdf).not.toHaveBeenCalled();
+    expect(mockBuildCanonicalCardPdf).not.toHaveBeenCalled();
   });
 
   it('rejects a mismatched CSRF header/cookie pair', async () => {
@@ -138,6 +146,7 @@ describe('POST /api/render-print — capability-verified generation', () => {
     const res = await POST(post(validBody()));
     expect(res.status).toBe(401);
     expect(mockBuildPdf).not.toHaveBeenCalled();
+    expect(mockBuildCanonicalCardPdf).not.toHaveBeenCalled();
     expect(mockVerifyBuilderSubmissionCapability).toHaveBeenCalledWith(undefined);
   });
 
@@ -147,6 +156,7 @@ describe('POST /api/render-print — capability-verified generation', () => {
     const res = await POST(post(validBody()));
     expect(res.status).toBe(401);
     expect(mockBuildPdf).not.toHaveBeenCalled();
+    expect(mockBuildCanonicalCardPdf).not.toHaveBeenCalled();
   });
 
   it('rejects an expired or revoked capability identically to a missing one (uniform failure)', async () => {
@@ -187,6 +197,7 @@ describe('POST /api/render-print — capability-verified generation', () => {
     const res = await POST(post(validBody({ product: 'nonexistent' })));
     expect(res.status).toBe(400);
     expect(mockBuildPdf).not.toHaveBeenCalled();
+    expect(mockBuildCanonicalCardPdf).not.toHaveBeenCalled();
     // Schema validation happens before capability verification is even reached.
     expect(mockVerifyBuilderSubmissionCapability).not.toHaveBeenCalled();
   });
@@ -195,6 +206,7 @@ describe('POST /api/render-print — capability-verified generation', () => {
     const res = await POST(post(validBody({ frontImageDataUrl: 'not-a-data-url' })));
     expect(res.status).toBe(400);
     expect(mockBuildPdf).not.toHaveBeenCalled();
+    expect(mockBuildCanonicalCardPdf).not.toHaveBeenCalled();
   });
 
   it('rejects an oversized frontImageDataUrl before ever calling buildPdf', async () => {
@@ -202,18 +214,21 @@ describe('POST /api/render-print — capability-verified generation', () => {
     const res = await POST(post(validBody({ frontImageDataUrl: huge })));
     expect(res.status).toBe(400);
     expect(mockBuildPdf).not.toHaveBeenCalled();
+    expect(mockBuildCanonicalCardPdf).not.toHaveBeenCalled();
   });
 
   it('rejects a request whose declared content-length exceeds the payload ceiling', async () => {
     const res = await POST(post(validBody(), { 'content-length': String(60_000_000) }));
     expect(res.status).toBe(413);
     expect(mockBuildPdf).not.toHaveBeenCalled();
+    expect(mockBuildCanonicalCardPdf).not.toHaveBeenCalled();
   });
 
   it('rejects an unrecognised meta field', async () => {
     const res = await POST(post(validBody({ meta: { playerName: 'X', evil: 'payload' } })));
     expect(res.status).toBe(400);
     expect(mockBuildPdf).not.toHaveBeenCalled();
+    expect(mockBuildCanonicalCardPdf).not.toHaveBeenCalled();
   });
 
   it('enforces the rate limiter, keyed to the verified capability, before PDF generation', async () => {
@@ -223,6 +238,7 @@ describe('POST /api/render-print — capability-verified generation', () => {
     const res = await POST(post(validBody()));
     expect(res.status).toBe(429);
     expect(mockBuildPdf).not.toHaveBeenCalled();
+    expect(mockBuildCanonicalCardPdf).not.toHaveBeenCalled();
     expect(mockConsumeAnonymousRequestRateLimit).toHaveBeenCalledWith(expect.anything(), 'render-print', FAKE_SUBMISSION_ID);
   });
 
@@ -253,13 +269,17 @@ describe('POST /api/render-print — capability-verified generation', () => {
     const res = await POST(post(validBody()));
     expect(res.status).toBe(503);
     expect(mockBuildPdf).not.toHaveBeenCalled();
+    expect(mockBuildCanonicalCardPdf).not.toHaveBeenCalled();
   });
 
   it('returns a generic error and never leaks the raw exception message on failure', async () => {
     cookieStore['emblem_builder_submission'] = 'some-token';
     mockVerifyBuilderSubmissionCapability.mockResolvedValue(FAKE_SUBMISSION_ID);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockBuildPdf.mockRejectedValue(new Error('leaky internal detail: /etc/secret-path'));
+    // validBody()'s default product is 'card', routed through
+    // buildCanonicalCardPdf — that is the mock whose rejection this
+    // request will actually hit.
+    mockBuildCanonicalCardPdf.mockRejectedValue(new Error('leaky internal detail: /etc/secret-path'));
     const res = await POST(post(validBody()));
     expect(res.status).toBe(500);
     const body = await res.json();

@@ -1027,6 +1027,35 @@ export default function ProductionBuilder({
   };
 
   /**
+   * The one canonical face-capture function (product decision: Emblem does
+   * not need a separate visual print renderer). Every consumer that needs
+   * a pixel-accurate image of a rendered card face — on-screen/download,
+   * Share S3 front, Share S3 back where supported, and the Print S3 PDF's
+   * front/back — renders the exact same PlayerCard/CardFace tree (no
+   * forPrint prop, no borderRadius override, no separate square-corner
+   * styling) and captures it through this one function. The only thing
+   * that may legitimately differ per caller is pixelRatio — print asks
+   * for a higher one for PDF quality, but width and height still scale
+   * proportionally from the same element, so the captured aspect ratio is
+   * always identical to the canonical on-screen card's own aspect ratio.
+   *
+   * Awaits real layout/decode readiness (waitForImages) and then verifies
+   * every rendered <img> actually has non-zero natural dimensions before
+   * ever calling captureElementToPng — decode() resolving is not itself
+   * proof a source rendered real pixels (the same gate captureShareImageFor
+   * already relied on; the print pipeline previously lacked it).
+   */
+  const captureCardFace = async (el: HTMLElement | null, pixelRatio: number): Promise<string> => {
+    if (!el) throw new Error('Could not prepare card image');
+    await waitForImages(el);
+    const imgs = Array.from(el.querySelectorAll('img'));
+    if (imgs.some((img) => img.naturalWidth === 0 || img.naturalHeight === 0)) {
+      throw new Error('Could not prepare the card image');
+    }
+    return captureElementToPng(el, { pixelRatio, backgroundColor: '#ffffff' });
+  };
+
+  /**
    * Guardian-controlled card-front sharing (Work Package B, draft). Renders
    * the SAME PlayerCard component the review screen and print pipeline
    * already use — unmodified — off-screen, captures it with the same
@@ -1115,23 +1144,13 @@ export default function ProductionBuilder({
       try {
         await nextPaint();
         const el = shareCaptureRef.current;
-        if (!el) throw new Error('Could not prepare card image');
-        await waitForImages(el);
-
-        // Deterministic capture-ready gate: waitForImages resolving is not
-        // itself proof every image actually rendered — decode() can settle
-        // for a source that failed to resolve to real pixels. Every <img>
-        // this off-screen rig renders must have genuine dimensions before
-        // capture proceeds; this is what makes the gate real rather than a
-        // hopeful wait, and is exactly the check that would have caught
-        // the reported defect instead of silently producing an incomplete
-        // image.
-        const imgs = Array.from(el.querySelectorAll('img'));
-        if (imgs.some((img) => img.naturalWidth === 0 || img.naturalHeight === 0)) {
-          throw new Error('Could not prepare the card image for sharing');
-        }
-
-        return await captureElementToPng(el, { pixelRatio: 2, backgroundColor: '#ffffff' });
+        // captureCardFace is the one canonical face-capture function — the
+        // same waitForImages-then-verify-real-pixels gate and the same
+        // captureElementToPng call the print pipeline now uses too (see
+        // its own doc comment above), at share's own lower pixelRatio.
+        // This is exactly the gate that would have caught the reported
+        // defect instead of silently producing an incomplete image.
+        return await captureCardFace(el, 2);
       } finally {
         setShareCapturePlayer(null);
       }
@@ -1228,10 +1247,13 @@ export default function ProductionBuilder({
         const frontEl = rig.get(`${player.id}:front`);
         const backEl = rig.get(`${player.id}:back`);
         if (!frontEl) continue;
-        const front = await captureElementToPng(frontEl, { pixelRatio: 3, backgroundColor: '#ffffff' });
-        const back = backEl
-          ? await captureElementToPng(backEl, { pixelRatio: 3, backgroundColor: '#ffffff' })
-          : undefined;
+        // Same captureCardFace the share pipeline uses (same PlayerCard
+        // tree, no forPrint/borderRadius override, same readiness gate) —
+        // only pixelRatio differs, for PDF quality. The Print S3 PDF's
+        // faces come directly from this canonical renderer, not a
+        // separately-styled print-only capture.
+        const front = await captureCardFace(frontEl, 3);
+        const back = backEl ? await captureCardFace(backEl, 3) : undefined;
         const rendered = await renderPrintFile(
           'card',
           front,
@@ -1676,13 +1698,13 @@ export default function ProductionBuilder({
                 ref={(el) => { if (el) captureRefs.current.set(`${player.id}:front`, el); }}
                 style={{ width: 340 }}
               >
-                <PlayerCard order={order} player={player} side="front" forPrint />
+                <PlayerCard order={order} player={player} side="front" />
               </div>
               <div
                 ref={(el) => { if (el) captureRefs.current.set(`${player.id}:back`, el); }}
                 style={{ width: 340 }}
               >
-                <PlayerCard order={order} player={player} side="back" forPrint />
+                <PlayerCard order={order} player={player} side="back" />
               </div>
             </div>
           ))}
@@ -3013,16 +3035,11 @@ function PlayerCard({
   player,
   compact = false,
   side = 'front',
-  forPrint = false,
 }: {
   order: OrderDraft;
   player: PlayerDraft;
   compact?: boolean;
   side?: CardSide;
-  /** True only inside the hidden print-capture rig — see pdf-generator.ts's
-   * buildFullBleedRaster doc comment for why print capture needs the card
-   * unclipped (borderRadius: 0) while every on-screen render stays rounded. */
-  forPrint?: boolean;
 }) {
   const template = selectedTemplate(order, player);
   const useRealBuilderArt =
@@ -3037,7 +3054,6 @@ function PlayerCard({
         side={side}
         size={compact ? 170 : 340}
         photoUrl={player.photo?.srcUrl || null}
-        style={forPrint ? { borderRadius: 0 } : undefined}
       />
     );
   }

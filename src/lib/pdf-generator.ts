@@ -320,3 +320,233 @@ export async function buildPdf(payload: DesignPayload): Promise<Buffer> {
   const bytes = await pdf.save();
   return Buffer.from(bytes);
 }
+
+/**
+ * Product decision: Emblem does not need a separate visual print renderer.
+ * The accurate on-screen/share-rendered card produces the better physical
+ * result — the existing forPrint-specific rendering (square corners, its
+ * own capture rig) changed borders/typography/scale unnecessarily and has
+ * been removed at the capture layer (see ProductionBuilder.tsx's
+ * captureCardFace). This is the PDF-side half of that same decision: the
+ * Print S3 PDF for the "card" product now embeds the canonical capture
+ * directly — no buildFullBleedRaster, no mirrored bleed margin, no crop
+ * marks, no independent re-render or restyling of either face.
+ *
+ * A physical two-sided card cannot have a front and back of different
+ * page sizes, so there is exactly ONE canonical physical page for the
+ * whole card — MediaBox, width, height, aspect ratio and centre point are
+ * identical on both pages by construction (both `pdf.addPage` calls below
+ * share the same `pageWidth`/`pageHeight` values; there is no code path
+ * that can diverge them). That page is derived from the FRONT capture's
+ * own aspect ratio, since every live-orderable template's front renders
+ * at the platform's universal 5:7 outer card canvas (CardArt.tsx's shared
+ * `H = size * 1.4`). Every live-orderable template's back does too
+ * (verified directly in CardArt.tsx for EMJFL, every live Hollinwood
+ * variant, and every Custom Collection template — Solar, Galaxy, Comic,
+ * Crimson, Royal, Emerald, Glacier), so in ordinary operation every
+ * face's own capture already matches the canonical page exactly and is
+ * embedded 1:1, verbatim, with no recompression.
+ *
+ * fitFaceToCanonicalCanvas is a generic defensive safety net, not a
+ * response to any known live-template mismatch: if some face's capture
+ * ever doesn't match the canonical aspect, it is fit proportionally
+ * inside the canonical page — uniform scale only, never stretched — with
+ * the small remaining margin filled by a mirrored/softened extension of
+ * that face's OWN edge pixels
+ * (an approximation of "the same background/edge treatment shown by its
+ * canonical on-screen back" derived only from the real approved artwork,
+ * never an invented colour), and the real artwork is always pasted back
+ * on top completely unmodified. Beyond a generous tolerance, generation
+ * refuses outright rather than silently placing a genuinely mismatched
+ * pair of faces onto one page.
+ *
+ * Deliberately separate from buildPdf/buildFullBleedRaster above, which
+ * are unchanged and still used for every other print product (sticker/
+ * keychain/poster/puzzle) — those are single-page, vendor-facing files
+ * that still need a real bleed/crop-mark trim spec; nothing about this
+ * task asked for that to change, and this function never touches them.
+ */
+export interface CanonicalCardPdfPayload {
+  frontImageDataUrl: string;
+  backImageDataUrl?: string;
+  meta?: DesignPayload['meta'];
+}
+
+/** The physical anchor for the canonical page — height is held at the
+ *  card's established physical size (matching PRINT_SPECS.card); width is
+ *  derived from the front capture's own measured aspect ratio, never
+ *  assumed to be exactly 2.5in, so this stays correct even if the
+ *  platform's canonical outer ratio is ever deliberately changed. */
+const CANONICAL_CARD_HEIGHT_IN = PRINT_SPECS.card.finalHeightIn;
+
+/** Below this, a face's own aspect is treated as exactly the canonical
+ *  page aspect — ordinary floating-point/pixel-rounding noise, not a real
+ *  mismatch worth compositing a letterboxed canvas for. */
+const NEGLIGIBLE_ASPECT_DEVIATION = 0.0015;
+
+/** Generous headroom above the legitimate ~1% deviation a Custom
+ *  Collection background asset can produce against its own container (see
+ *  CrimsonCardArt.tsx's contain-fit letterboxing). Anything beyond this
+ *  signals a genuinely mismatched pair of captures (wrong template, a
+ *  corrupt capture, a future regression) — refused outright (requirement:
+ *  a hard validation error), never silently placed. */
+const MAX_FACE_ASPECT_DEVIATION = 0.08;
+
+/** Same softening radius/technique as buildFullBleedRaster's own bleed
+ *  margin above — reads as ambient continuation of the real edge rather
+ *  than a visible hard seam. */
+const EDGE_SOFTEN_RADIUS = 12;
+
+export interface LoadedFace {
+  bytes: Uint8Array;
+  mime: string;
+  width: number;
+  height: number;
+  aspect: number;
+}
+
+async function loadFace(imageDataUrl: string): Promise<LoadedFace> {
+  const { bytes, mime } = await loadImageBytes(imageDataUrl);
+  const meta = await sharp(bytes).metadata();
+  if (!meta.width || !meta.height) {
+    throw new Error('Could not read the canonical card image dimensions.');
+  }
+  return { bytes, mime, width: meta.width, height: meta.height, aspect: meta.width / meta.height };
+}
+
+/** pdf-lib only embeds PNG/JPEG directly. captureElementToPng (despite its
+ *  name) already returns a JPEG data URL, and that is what every real
+ *  capture produces — this only re-encodes via sharp for some other,
+ *  currently-unused source format, so it never touches what a real
+ *  capture actually produces. */
+/**
+ * pdf-lib's JpegEmbedder reads its SOI marker via `new DataView(imageData
+ * .buffer)` — the underlying ArrayBuffer, at absolute offset 0, ignoring
+ * `imageData.byteOffset` entirely. `Buffer.from(...)` on data under
+ * Node's pooling threshold (~8KB — every small synthetic test fixture,
+ * and occasionally a real tiny capture) returns a Buffer whose own bytes
+ * start partway into a shared, larger pooled ArrayBuffer, so that
+ * DataView silently reads the wrong bytes and throws "SOI not found" even
+ * though the JPEG itself is completely valid (confirmed directly: the
+ * same bytes, read via their own byteOffset, are correct). A tight,
+ * unpooled copy — `new Uint8Array(n)` is never pool-backed, unlike
+ * `Buffer.from` — sidesteps the bug entirely, for every embed regardless
+ * of which path produced the bytes.
+ */
+function unpooled(bytes: Uint8Array): Uint8Array {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy;
+}
+
+async function embedCanonicalImage(pdf: PDFDocument, bytes: Uint8Array, mime: string) {
+  if (mime === 'image/png') return pdf.embedPng(unpooled(bytes));
+  if (mime === 'image/jpeg' || mime === 'image/jpg') return pdf.embedJpg(unpooled(bytes));
+  const png = await sharp(bytes).png().toBuffer();
+  return pdf.embedPng(unpooled(png));
+}
+
+/** Returns bytes ready to embed at exactly the canonical page's aspect
+ *  ratio — either the face's own original bytes untouched (the ordinary
+ *  case), or a freshly-composited canvas that fits the real artwork
+ *  proportionally inside the canonical aspect with a mirrored/softened
+ *  edge-extension margin (see this section's top comment). Throws if the
+ *  face cannot be placed safely (requirement: a hard validation error). */
+export async function fitFaceToCanonicalCanvas(face: LoadedFace, pageAspect: number): Promise<{ bytes: Buffer; mime: string }> {
+  const deviation = Math.abs(face.aspect - pageAspect) / pageAspect;
+  if (deviation > MAX_FACE_ASPECT_DEVIATION) {
+    throw new Error(
+      `Card face aspect ratio ${face.aspect.toFixed(4)} deviates ${(deviation * 100).toFixed(1)}% from the canonical page aspect ${pageAspect.toFixed(4)} — refusing to place mismatched card faces onto the same physical page.`
+    );
+  }
+  if (deviation <= NEGLIGIBLE_ASPECT_DEVIATION) {
+    return { bytes: Buffer.from(face.bytes), mime: face.mime };
+  }
+
+  // Uniform "contain" fit: the canvas grows around the face; the face
+  // itself is never resized or cropped.
+  let canvasW = face.width;
+  let canvasH = Math.round(face.width / pageAspect);
+  if (canvasH < face.height) {
+    canvasH = face.height;
+    canvasW = Math.round(face.height * pageAspect);
+  }
+  const marginX = Math.max(0, canvasW - face.width);
+  const marginY = Math.max(0, canvasH - face.height);
+  const left = Math.floor(marginX / 2);
+  const right = marginX - left;
+  const top = Math.floor(marginY / 2);
+  const bottom = marginY - top;
+
+  const opaque = await sharp(face.bytes).flatten({ background: '#ffffff' }).png().toBuffer();
+  const extended = await sharp(opaque).extend({ left, right, top, bottom, extendWith: 'mirror' }).png().toBuffer();
+  const softened = await sharp(extended).blur(EDGE_SOFTEN_RADIUS).toBuffer();
+  // The real approved artwork is pasted back on top completely unblurred
+  // and at its own native pixel size — only the margin is softened.
+  const composited = await sharp(softened).composite([{ input: opaque, left, top }]).png().toBuffer();
+  return { bytes: composited, mime: 'image/png' };
+}
+
+async function drawFacePage(pdf: PDFDocument, face: LoadedFace, pageAspect: number, pageWidth: number, pageHeight: number): Promise<void> {
+  const { bytes, mime } = await fitFaceToCanonicalCanvas(face, pageAspect);
+  const image = await embedCanonicalImage(pdf, bytes, mime);
+  const page = pdf.addPage([pageWidth, pageHeight]);
+  page.drawImage(image, { x: 0, y: 0, width: pageWidth, height: pageHeight });
+}
+
+/** Builds the customer-facing/owner-print two-page card PDF directly from
+ *  the canonical screen/share renderer's own captures. See this section's
+ *  top comment for why this is deliberately separate from buildPdf, and
+ *  for how both pages are guaranteed to share one identical physical
+ *  page size. */
+export async function buildCanonicalCardPdf(payload: CanonicalCardPdfPayload): Promise<Buffer> {
+  const pdf = await PDFDocument.create();
+  pdf.setTitle('Print: Trading Card');
+  pdf.setAuthor('Emblem / Last Shot Cards');
+  if (payload.meta?.orderRef) pdf.setSubject(`Order ${payload.meta.orderRef}`);
+  if (payload.meta) {
+    const kw = Object.entries(payload.meta)
+      .filter((entry): entry is [string, string] => entry[1] !== undefined)
+      .map(([k, v]) => `${k}:${v}`);
+    if (kw.length) pdf.setKeywords(kw);
+  }
+
+  const front = await loadFace(payload.frontImageDataUrl);
+  // The ONE canonical physical page for this card, derived from the
+  // front. Every subsequent page (the back, or the fallback back below)
+  // is built from these exact same pageWidth/pageHeight values — there is
+  // no path through this function that can produce two different page
+  // sizes for one card.
+  const pageAspect = front.aspect;
+  const pageWidth = CANONICAL_CARD_HEIGHT_IN * pageAspect * 72;
+  const pageHeight = CANONICAL_CARD_HEIGHT_IN * 72;
+
+  await drawFacePage(pdf, front, pageAspect, pageWidth, pageHeight);
+
+  if (payload.backImageDataUrl) {
+    const back = await loadFace(payload.backImageDataUrl);
+    await drawFacePage(pdf, back, pageAspect, pageWidth, pageHeight);
+  } else {
+    // Defensive fallback only — every real approved card should have its
+    // own corresponding approved back captured (see "Back rules": no
+    // template's back is ever swapped for a generic one). Sized to the
+    // exact same canonical page as the front — never recomputed from
+    // anything else.
+    const page = pdf.addPage([pageWidth, pageHeight]);
+    page.drawRectangle({ x: 0, y: 0, width: pageWidth, height: pageHeight, color: rgb(0, 0, 0) });
+    const font = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const text = 'LAST SHOT';
+    const textSize = Math.min(pageWidth, pageHeight) * 0.12;
+    const tw = font.widthOfTextAtSize(text, textSize);
+    page.drawText(text, {
+      x: (pageWidth - tw) / 2,
+      y: pageHeight / 2 - textSize / 2,
+      size: textSize,
+      font,
+      color: rgb(0.066, 0.427, 1), // #116DFF
+    });
+  }
+
+  const bytes = await pdf.save();
+  return Buffer.from(bytes);
+}

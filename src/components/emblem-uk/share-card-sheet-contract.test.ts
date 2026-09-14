@@ -526,17 +526,35 @@ describe('ProductionBuilder — ShareCardSheet is only mounted for a single-chil
     expect(builder).not.toMatch(/captureMode\s*&&\s*shareCapturePlayer|shareCapturePlayer\s*&&\s*captureMode/);
   });
 
-  it('captureShareImageFor never calls renderPrintFile — only the plain (mark-free) captureElementToPng', () => {
+  it('captureShareImageFor never calls renderPrintFile — only the one canonical captureCardFace', () => {
     const idx = builder.indexOf('const captureShareImageFor');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
-    expect(fnBody).toContain('captureElementToPng(el');
+    expect(fnBody).toContain('captureCardFace(el');
     expect(fnBody).not.toContain('renderPrintFile');
   });
 
-  it('captureShareImageFor uses a lower pixelRatio than the print pipeline\'s own pixelRatio: 3', () => {
+  it('captureShareImageFor uses a lower pixelRatio (2) than the print pipeline\'s own captureCardFace(el, 3) calls', () => {
     const idx = builder.indexOf('const captureShareImageFor');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
-    expect(fnBody).toContain('pixelRatio: 2');
+    expect(fnBody).toContain('captureCardFace(el, 2)');
+    const printFrontIdx = builder.indexOf('captureCardFace(frontEl, 3)');
+    const printBackIdx = builder.indexOf('captureCardFace(backEl, 3)');
+    expect(printFrontIdx).toBeGreaterThan(-1);
+    expect(printBackIdx).toBeGreaterThan(-1);
+  });
+
+  it('share and print both capture through the one canonical captureCardFace function — no forPrint prop, no separate print-only render tree', () => {
+    // A doc comment may still explain the removal in prose; no actual JSX
+    // usage or destructured parameter named forPrint may remain.
+    expect(builder).not.toContain('side="front" forPrint');
+    expect(builder).not.toContain('side="back" forPrint');
+    expect(builder).not.toContain('forPrint = false');
+    expect(builder).not.toContain('forPrint?: boolean');
+    const idx = builder.indexOf('const captureCardFace');
+    const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
+    expect(fnBody).toContain('await waitForImages(el)');
+    expect(fnBody).toContain('naturalWidth === 0 || img.naturalHeight === 0');
+    expect(fnBody).toContain('captureElementToPng(el, { pixelRatio, backgroundColor');
   });
 
   it('captureShareImage (the ordinary builder\'s own call site) is an unchanged-behaviour wrapper: same order id, same sole approved player', () => {
@@ -611,19 +629,24 @@ describe('ProductionBuilder — captureShareImage waits for and verifies the pla
     expect(fnBody).toContain('if (!response.ok) throw new Error');
   });
 
-  it('rejects the capture (throws) if any rendered image has zero natural dimensions, even after waitForImages resolved — the real capture-ready gate, not just a hopeful wait', () => {
-    const idx = builder.indexOf('const captureShareImageFor');
+  it('rejects the capture (throws) if any rendered image has zero natural dimensions, even after waitForImages resolved — the real capture-ready gate, not just a hopeful wait (now shared by captureCardFace, which captureShareImageFor calls)', () => {
+    const idx = builder.indexOf('const captureCardFace');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
     const waitIdx = fnBody.indexOf('await waitForImages(el)');
     const gateIdx = fnBody.indexOf('naturalWidth === 0 || img.naturalHeight === 0');
-    const throwIdx = fnBody.indexOf("throw new Error('Could not prepare the card image for sharing')");
+    const throwIdx = fnBody.indexOf("throw new Error('Could not prepare the card image')");
     expect(waitIdx).toBeGreaterThan(-1);
     expect(gateIdx).toBeGreaterThan(waitIdx);
     expect(throwIdx).toBeGreaterThan(gateIdx);
+    // And captureShareImageFor actually calls through this shared gate —
+    // the property isn't just present somewhere unrelated in the file.
+    const shareIdx = builder.indexOf('const captureShareImageFor');
+    const shareFnBody = builder.slice(shareIdx, builder.indexOf('\n  };', shareIdx));
+    expect(shareFnBody).toContain('captureCardFace(el, 2)');
   });
 
   it('the capture-ready gate runs before captureElementToPng, never after', () => {
-    const idx = builder.indexOf('const captureShareImageFor');
+    const idx = builder.indexOf('const captureCardFace');
     const fnBody = builder.slice(idx, builder.indexOf('\n  };', idx));
     const gateIdx = fnBody.indexOf('naturalWidth === 0');
     const captureIdx = fnBody.indexOf('captureElementToPng(el');
