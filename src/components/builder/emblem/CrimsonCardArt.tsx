@@ -89,7 +89,18 @@ const TEXT_COLOR = '#f8dcbf';
 const FONT_FAMILY = 'var(--font-barlow-condensed), "Arial Narrow", sans-serif';
 
 const NUMBER_GEOMETRY = { left: '17.81%', bottom: '25.63%', fontSizeFactor: 0.208, comfortableChars: 2, minScale: 0.8 };
-const NAME_GEOMETRY = { left: '50%', bottom: '69.23%', fontSizeFactor: 0.106, comfortableChars: 14, minScale: 0.6 };
+// bottom nudged from the originally-measured 69.23% to 70.00% (2026-09,
+// nameplate-alignment audit): the reference measurement placed the name's
+// box-bottom close enough to frame-overlay.png's own fixed top-band rule
+// (measured directly from the asset at ~62% of the native canvas height)
+// that real browser text rendering (line-height:1, this font's own
+// ascent/descent metrics) left under 8px of clearance between the rule
+// and the glyph tops at 750x1050 — confirmed by rendering and measuring
+// pixel bounds, not assumed. This only moves the name (and, by staying
+// well clear of POSITION_GEOMETRY's own anchor, nothing else) — the
+// name-to-position gap had 15-25px of slack to begin with, so this still
+// leaves it comfortably clear on both sides.
+const NAME_GEOMETRY = { left: '50%', bottom: '70.00%', fontSizeFactor: 0.106, comfortableChars: 14, minScale: 0.6 };
 const POSITION_GEOMETRY = { left: '50%', bottom: '73.83%', fontSizeFactor: 0.04, comfortableChars: 11, minScale: 0.85 };
 
 type PhotoNaturalSizeProp = { photoNaturalWidth?: number; photoNaturalHeight?: number };

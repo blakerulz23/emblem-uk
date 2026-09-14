@@ -68,7 +68,12 @@ const TEXT_SHADOW = '0.05em 0.06em 0.04em rgba(0,0,0,0.4)';
 const FONT_FAMILY = 'var(--font-barlow-condensed), "Arial Narrow", sans-serif';
 
 const NUMBER_GEOMETRY = { left: '18.24%', bottom: '26.23%', fontSizeFactor: 0.21, comfortableChars: 2, minScale: 0.8 };
-const NAME_GEOMETRY = { left: '50%', bottom: '69.43%', fontSizeFactor: 0.105, comfortableChars: 14, minScale: 0.6 };
+// bottom nudged from 69.43% to 69.90% — see CrimsonCardArt.tsx's own
+// comment on this exact change for the shared root cause. Glacier's
+// original value already cleared the 8px/750x1050 minimum by a couple of
+// pixels, but with little margin against measurement/rendering noise;
+// nudged for the same safety margin as the other three templates.
+const NAME_GEOMETRY = { left: '50%', bottom: '69.90%', fontSizeFactor: 0.105, comfortableChars: 14, minScale: 0.6 };
 const POSITION_GEOMETRY = { left: '50%', bottom: '74.03%', fontSizeFactor: 0.045, comfortableChars: 11, minScale: 0.85 };
 
 type PhotoNaturalSizeProp = { photoNaturalWidth?: number; photoNaturalHeight?: number };

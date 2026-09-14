@@ -69,7 +69,15 @@ const OUTLINE_SCALE = 1.05;
 const FONT_FAMILY = 'var(--font-barlow-condensed), "Arial Narrow", sans-serif';
 
 const NUMBER_GEOMETRY = { left: '17.81%', bottom: '25.50%', fontSizeFactor: 0.21, comfortableChars: 2, minScale: 0.8 };
-const NAME_GEOMETRY = { left: '50%', bottom: '68.89%', fontSizeFactor: 0.105, comfortableChars: 14, minScale: 0.6 };
+// bottom nudged from 68.89% to 70.80% — see CrimsonCardArt.tsx's own
+// comment on this exact change for the shared root cause. Emerald's own
+// layeredText wrapper (height: fillSize * 1.18, for the outline/glow
+// layer's own room) pushes the glyph top further upward than a plain
+// line-height:1 box for the same bottom anchor, on top of that shared
+// cause — measured with zero clearance (the rule and the glyph top were
+// indistinguishable as separate bright regions) before this change, the
+// largest shortfall of the four templates.
+const NAME_GEOMETRY = { left: '50%', bottom: '70.80%', fontSizeFactor: 0.105, comfortableChars: 14, minScale: 0.6 };
 const POSITION_GEOMETRY = { left: '50%', bottom: '73.90%', fontSizeFactor: 0.048, comfortableChars: 11, minScale: 0.85 };
 
 type TextGeometry = { left: string; bottom: string; fontSizeFactor: number; comfortableChars: number; minScale: number };

@@ -53,7 +53,11 @@ const TEXT_COLOR = '#d9e0f0';
 const FONT_FAMILY = 'var(--font-barlow-condensed), "Arial Narrow", sans-serif';
 
 const NUMBER_GEOMETRY = { left: '18.14%', bottom: '26.50%', fontSizeFactor: 0.22, comfortableChars: 2, minScale: 0.8 };
-const NAME_GEOMETRY = { left: '50%', bottom: '69.49%', fontSizeFactor: 0.111, comfortableChars: 14, minScale: 0.6 };
+// bottom nudged from 69.49% to 70.45% — see CrimsonCardArt.tsx's own
+// comment on this exact change for the full measurement/reasoning
+// (same root cause: box-bottom anchored too close to frame-overlay.png's
+// fixed top-band rule for real text rendering to clear it by 8px).
+const NAME_GEOMETRY = { left: '50%', bottom: '70.45%', fontSizeFactor: 0.111, comfortableChars: 14, minScale: 0.6 };
 const POSITION_GEOMETRY = { left: '50%', bottom: '74.10%', fontSizeFactor: 0.0453, comfortableChars: 11, minScale: 0.85 };
 
 type PhotoNaturalSizeProp = { photoNaturalWidth?: number; photoNaturalHeight?: number };
