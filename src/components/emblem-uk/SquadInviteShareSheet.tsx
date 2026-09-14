@@ -51,9 +51,14 @@ import {
 export default function SquadInviteShareSheet({
   orderId,
   getShareImage,
+  getShareBackImage,
 }: {
   orderId: string;
   getShareImage: () => Promise<string>;
+  /** Optional — see ShareCardSheet.tsx's own doc comment on this same
+   *  prop: omitted or resolving to null both mean "no approved back for
+   *  this design", never a capture failure. */
+  getShareBackImage?: () => Promise<string | null>;
 }) {
   const [eligibility, setEligibility] = useState<CardShareEligibility | null>(null);
   const [stage, dispatch] = useReducer(cardShareStageReducer, { type: 'closed' });
@@ -154,11 +159,16 @@ export default function SquadInviteShareSheet({
         return;
       }
 
-      // Founder-approved public share page (migration 0085) — creates the
-      // real per-share link BEFORE the message is composed. Re-verifies
-      // eligibility itself server-side; a card that became ineligible
-      // between the consent step above and this call is rejected here.
-      const publicPage = await createCardSharePublicPage(orderId, dataUrl);
+      // Back image is best-effort and never blocks sharing — see
+      // ShareCardSheet.tsx's own identical comment on this same step.
+      const backDataUrl = getShareBackImage ? await getShareBackImage().catch(() => null) : null;
+
+      // Founder-approved public share page (migration 0085, back image
+      // added 0087) — creates the real per-share link BEFORE the message
+      // is composed. Re-verifies eligibility itself server-side; a card
+      // that became ineligible between the consent step above and this
+      // call is rejected here.
+      const publicPage = await createCardSharePublicPage(orderId, dataUrl, backDataUrl ?? undefined);
       if (!publicPage.ok || !publicPage.token) {
         dispatch({ type: 'fail', message: publicPage.error || CARD_SHARE_LINK_FAILURE });
         return;

@@ -37,7 +37,7 @@ describe('Squad Invite builder completion screen — a real next step, not a dea
     const idx = successBlock.indexOf('{squadInviteOrderId && (');
     expect(idx).toBeGreaterThan(-1);
     const section = successBlock.slice(idx, successBlock.indexOf(')}', idx));
-    expect(section).toContain('<SquadInviteShareSheet orderId={squadInviteOrderId} getShareImage={captureSquadInviteShareImage} />');
+    expect(section).toContain('<SquadInviteShareSheet orderId={squadInviteOrderId} getShareImage={captureSquadInviteShareImage} getShareBackImage={captureSquadInviteShareBackImage} />');
   });
 
   it('offers a downgraded secondary action to squad progress — an outline style, never the dominant CTA class', () => {

@@ -10,6 +10,7 @@ import { resolveCustomCollectionBadge } from '@/lib/badge-resolution';
 import { DEFAULT_EMJFL_CLUB, EAST_MANCHESTER_LEAGUE, EMJFL_CLUBS, getEmjflClub, preferredTemplateForClub } from '@/lib/emjfl-clubs';
 import { DIRECT_BUILDER_MAX_PAID_PLAYERS } from '@/lib/order-enquiry-validation';
 import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
+import { templateHasApprovedBack } from '@/lib/card-face-registry';
 import { captureElementToPng, renderPrintFile, BUILDER_CSRF_HEADER, readBuilderCsrfCookie } from '@/lib/print-capture';
 import { autoFitPatchForPhoto } from '@/lib/card-photo-auto-fit';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
@@ -462,6 +463,17 @@ export default function ProductionBuilder({
   // captureShareImage.
   const [shareCapturePlayer, setShareCapturePlayer] = useState<PlayerDraft | null>(null);
   const shareCaptureRef = useRef<HTMLDivElement | null>(null);
+  // Separate state/ref/rig from the front capture above — deliberately not
+  // a shared "side" parameter on the same rig: front and back capture are
+  // two independent async calls (see captureShareBackImageFor), and giving
+  // each its own state avoids any risk of one call's cleanup (the `finally
+  // { setShareCapturePlayer(null) }` below) racing the other's in-flight
+  // render if a caller ever awaited both concurrently instead of in
+  // sequence. Only ever populated for a template with an approved back
+  // (card-face-registry.ts) — see captureShareBackImageFor's own early
+  // return otherwise.
+  const [shareCaptureBackPlayer, setShareCaptureBackPlayer] = useState<PlayerDraft | null>(null);
+  const shareCaptureBackRef = useRef<HTMLDivElement | null>(null);
   // Double-submit guard — a ref, not enquiryStatus state. Two clicks fired
   // on the same tick both run submitEnquiry before React has processed the
   // first setEnquiryStatus('sending') and re-rendered with a fresh
@@ -1166,6 +1178,61 @@ export default function ProductionBuilder({
   // object the pre-success review preview already renders via PlayerCard.
   const captureSquadInviteShareImage = (): Promise<string> => captureShareImageFor(squadInviteOrderId, order.players[0]);
 
+  /**
+   * Back-image counterpart to captureShareImageFor above — deliberately a
+   * separate function (own state/ref/rig: shareCaptureBackPlayer/
+   * shareCaptureBackRef), not that function parameterised by side, so
+   * captureShareImageFor's own existing behaviour/call-site/tests stay
+   * completely unchanged (see its own comment on why it's a stable,
+   * zero-behaviour-change wrapper). Returns null — not an error — for any
+   * template with no approved back (card-face-registry.ts), which the
+   * caller (ShareCardSheet/SquadInviteShareSheet) treats as "this design
+   * has no back to include", not a capture failure.
+   */
+  const captureShareBackImageFor = async (orderIdForCapture: string | null, playerForCapture: PlayerDraft | undefined): Promise<string | null> => {
+    if (!playerForCapture || !orderIdForCapture) return null;
+    if (!templateHasApprovedBack(selectedTemplate(order, playerForCapture).id)) return null;
+
+    const revokers: Array<() => void> = [];
+    try {
+      let capturePlayer = playerForCapture;
+
+      const photoUrl = capturePlayer.photo?.srcUrl;
+      if (needsLocalizing(photoUrl)) {
+        const local = await fetchProxiedShareAssetAsLocalUrl('photo', orderIdForCapture);
+        revokers.push(local.revoke);
+        capturePlayer = { ...capturePlayer, photo: { ...capturePlayer.photo!, srcUrl: local.url } };
+      }
+
+      const badgeUrl = capturePlayer.badgeUrl;
+      if (needsLocalizing(badgeUrl)) {
+        const local = await fetchProxiedShareAssetAsLocalUrl('badge', orderIdForCapture);
+        revokers.push(local.revoke);
+        capturePlayer = { ...capturePlayer, badgeUrl: local.url };
+      }
+
+      setShareCaptureBackPlayer(capturePlayer);
+      try {
+        await nextPaint();
+        const el = shareCaptureBackRef.current;
+        // captureCardFace is PR #102's one canonical face-capture function —
+        // the same waitForImages-then-verify-real-pixels gate and the same
+        // captureElementToPng call the front share capture and the print
+        // pipeline both use, at share's own lower pixelRatio. Front, back,
+        // share and print all go through this one implementation so their
+        // behaviour cannot drift.
+        return await captureCardFace(el, 2);
+      } finally {
+        setShareCaptureBackPlayer(null);
+      }
+    } finally {
+      for (const revoke of revokers) revoke();
+    }
+  };
+
+  const captureShareBackImage = (): Promise<string | null> => captureShareBackImageFor(submittedOrderId, summary.approvedPlayers[0]);
+  const captureSquadInviteShareBackImage = (): Promise<string | null> => captureShareBackImageFor(squadInviteOrderId, order.players[0]);
+
   const submitEnquiry = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     // Explicit synchronous guard via a ref, not enquiryStatus state — two
@@ -1717,6 +1784,13 @@ export default function ProductionBuilder({
           </div>
         </div>
       )}
+      {shareCaptureBackPlayer && (
+        <div aria-hidden style={{ position: 'fixed', left: -10000, top: 0, pointerEvents: 'none' }}>
+          <div ref={shareCaptureBackRef} style={{ width: 340 }}>
+            <PlayerCard order={order} player={shareCaptureBackPlayer} side="back" />
+          </div>
+        </div>
+      )}
       <div className={`uk-wizard-phone${activeStepId === 'review' && squadInviteContext ? ' uk-wizard-phone--squad-review' : ''}`}>
         <header className="uk-wizard-header">
           <div className="uk-wizard-topbar">
@@ -2086,69 +2160,78 @@ export default function ProductionBuilder({
               <div className="uk-edit-preview">
                 <PlayerCard order={order} player={selectedPlayer} side={cardSide} />
               </div>
-              {selectedPlayer.photo ? (
-                <div className="uk-crop-controls">
-                  <div className="uk-crop-controls-actions">
-                    <button
-                      type="button"
-                      className="uk-crop-auto-fit"
-                      onClick={() => autoFitPlayerPhoto(selectedPlayer.id)}
-                      disabled={autoFittingPlayerId === selectedPlayer.id}
-                    >
-                      {autoFittingPlayerId === selectedPlayer.id ? 'Fitting…' : 'Auto-fit player'}
-                    </button>
-                    {selectedPlayer.photo.suggestedCrop && (
-                      <button type="button" className="uk-crop-reset" onClick={() => resetPlayerPhotoToSuggested(selectedPlayer.id)}>
-                        Reset to suggested framing
+              {cardSide === 'front' ? (
+                selectedPlayer.photo ? (
+                  <div className="uk-crop-controls">
+                    <div className="uk-crop-controls-actions">
+                      <button
+                        type="button"
+                        className="uk-crop-auto-fit"
+                        onClick={() => autoFitPlayerPhoto(selectedPlayer.id)}
+                        disabled={autoFittingPlayerId === selectedPlayer.id}
+                      >
+                        {autoFittingPlayerId === selectedPlayer.id ? 'Fitting…' : 'Auto-fit player'}
                       </button>
-                    )}
+                      {selectedPlayer.photo.suggestedCrop && (
+                        <button type="button" className="uk-crop-reset" onClick={() => resetPlayerPhotoToSuggested(selectedPlayer.id)}>
+                          Reset to suggested framing
+                        </button>
+                      )}
+                    </div>
+                    <label>
+                      Zoom <b>{selectedPlayer.photo.crop.scale.toFixed(2)}x</b>
+                      <input
+                        type="range"
+                        min={0.25}
+                        max={1.8}
+                        step={0.05}
+                        value={selectedPlayer.photo.crop.scale}
+                        onChange={(event) => patchPlayer(selectedPlayer.id, { photo: selectedPlayer.photo ? { ...selectedPlayer.photo, crop: { ...selectedPlayer.photo.crop, scale: Number(event.target.value) } } : undefined })}
+                      />
+                    </label>
+                    <label>
+                      Horizontal <b>{selectedPlayer.photo.crop.x}</b>
+                      <input
+                        type="range"
+                        min={-40}
+                        max={40}
+                        step={1}
+                        value={selectedPlayer.photo.crop.x}
+                        onChange={(event) => patchPlayer(selectedPlayer.id, { photo: selectedPlayer.photo ? { ...selectedPlayer.photo, crop: { ...selectedPlayer.photo.crop, x: Number(event.target.value) } } : undefined })}
+                      />
+                    </label>
+                    <label>
+                      Vertical <b>{selectedPlayer.photo.crop.y}</b>
+                      <input
+                        type="range"
+                        min={-40}
+                        max={40}
+                        step={1}
+                        value={selectedPlayer.photo.crop.y}
+                        onChange={(event) => patchPlayer(selectedPlayer.id, { photo: selectedPlayer.photo ? { ...selectedPlayer.photo, crop: { ...selectedPlayer.photo.crop, y: Number(event.target.value) } } : undefined })}
+                      />
+                    </label>
                   </div>
-                  <label>
-                    Zoom <b>{selectedPlayer.photo.crop.scale.toFixed(2)}x</b>
-                    <input
-                      type="range"
-                      min={0.25}
-                      max={1.8}
-                      step={0.05}
-                      value={selectedPlayer.photo.crop.scale}
-                      onChange={(event) => patchPlayer(selectedPlayer.id, { photo: selectedPlayer.photo ? { ...selectedPlayer.photo, crop: { ...selectedPlayer.photo.crop, scale: Number(event.target.value) } } : undefined })}
-                    />
+                ) : (
+                  <label className="uk-photo-needed">
+                    <strong>Upload player photo</strong>
+                    <span>Add the photo first, then the positioning tools will appear.</span>
+                    <input type="file" accept="image/*" hidden onChange={(event) => assignPhoto(selectedPlayer.id, event.target.files?.[0])} />
                   </label>
-                  <label>
-                    Horizontal <b>{selectedPlayer.photo.crop.x}</b>
-                    <input
-                      type="range"
-                      min={-40}
-                      max={40}
-                      step={1}
-                      value={selectedPlayer.photo.crop.x}
-                      onChange={(event) => patchPlayer(selectedPlayer.id, { photo: selectedPlayer.photo ? { ...selectedPlayer.photo, crop: { ...selectedPlayer.photo.crop, x: Number(event.target.value) } } : undefined })}
-                    />
-                  </label>
-                  <label>
-                    Vertical <b>{selectedPlayer.photo.crop.y}</b>
-                    <input
-                      type="range"
-                      min={-40}
-                      max={40}
-                      step={1}
-                      value={selectedPlayer.photo.crop.y}
-                      onChange={(event) => patchPlayer(selectedPlayer.id, { photo: selectedPlayer.photo ? { ...selectedPlayer.photo, crop: { ...selectedPlayer.photo.crop, y: Number(event.target.value) } } : undefined })}
-                    />
-                  </label>
-                </div>
+                )
               ) : (
-                <label className="uk-photo-needed">
-                  <strong>Upload player photo</strong>
-                  <span>Add the photo first, then the positioning tools will appear.</span>
-                  <input type="file" accept="image/*" hidden onChange={(event) => assignPhoto(selectedPlayer.id, event.target.files?.[0])} />
-                </label>
+                // Back is the template's own static, approved design (see
+                // card-face-registry.ts) — never editable, so none of the
+                // photo/framing/text controls below apply here at all.
+                <p className="uk-wizard-copy">This is the back of your card — nothing to edit here. Switch to Front to keep personalising.</p>
               )}
               <div className="uk-card-side-toggle wide" aria-label="Choose card side">
                 <button type="button" className={cardSide === 'front' ? 'active' : ''} onClick={() => setCardSide('front')}>Front</button>
                 <button type="button" className={cardSide === 'back' ? 'active' : ''} onClick={() => setCardSide('back')}>Back</button>
               </div>
-              <PlayerEditor order={order} player={selectedPlayer} onPatch={patchPlayer} onPhoto={assignPhoto} onClub={selectPlayerClub} onBadge={assignPlayerBadge} />
+              {cardSide === 'front' && (
+                <PlayerEditor order={order} player={selectedPlayer} onPatch={patchPlayer} onPhoto={assignPhoto} onClub={selectPlayerClub} onBadge={assignPlayerBadge} />
+              )}
               <button
                 type="button"
                 className="uk-wizard-primary"
@@ -2307,7 +2390,7 @@ export default function ProductionBuilder({
 
                     <div className="uk-squad-invite-success-actions">
                       {squadInviteOrderId && (
-                        <SquadInviteShareSheet orderId={squadInviteOrderId} getShareImage={captureSquadInviteShareImage} />
+                        <SquadInviteShareSheet orderId={squadInviteOrderId} getShareImage={captureSquadInviteShareImage} getShareBackImage={captureSquadInviteShareBackImage} />
                       )}
                       <Link href="/squad-invite/join" className="uk-squad-invite-success-outline">View squad progress</Link>
                       <Link href="/" className="uk-squad-invite-success-secondary">Return to Emblem homepage</Link>
@@ -2566,6 +2649,7 @@ export default function ProductionBuilder({
                   <ShareCardSheet
                     orderId={shareableOrderContext.orderId}
                     getShareImage={captureShareImage}
+                    getShareBackImage={captureShareBackImage}
                     preview={<PlayerCard order={order} player={shareableOrderContext.player} side="front" />}
                     summary={{
                       collectionName: order.collectionName || 'Custom Collection',

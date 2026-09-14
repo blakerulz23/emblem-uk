@@ -170,13 +170,20 @@ describe('ShareCardSheet — the shared text carries the real per-share link (mi
   });
 
   it('messageText is built inside ensurePrepared from a genuine public-page token (createCardSharePublicPage), never a template literal or concatenation the client controls', () => {
-    expect(sheet).toContain('const publicPage = await createCardSharePublicPage(orderId, dataUrl);');
+    expect(sheet).toContain('const publicPage = await createCardSharePublicPage(orderId, dataUrl, backDataUrl ?? undefined);');
     expect(sheet).toContain('const shareUrl = cardSharePublicPageUrl(publicPage.token);');
     expect(sheet).toContain('const messageText = buildCardShareMessageText(shareUrl);');
   });
 
+  it('the optional back image (0087) is captured after getShareImage/consent, never before, and is never itself capable of blocking the share (a rejected getShareBackImage resolves to null, not a thrown error)', () => {
+    const idx = sheet.indexOf('const backDataUrl = getShareBackImage');
+    expect(idx).toBeGreaterThan(-1);
+    expect(sheet.indexOf('dataUrl = await getShareImage();')).toBeLessThan(idx);
+    expect(sheet.slice(idx, idx + 200)).toContain('.catch(() => null)');
+  });
+
   it('an ineligible/failed public-page creation fails the whole prepare attempt before ever calling navigator.share or getShareImage a second time', () => {
-    const createIdx = sheet.indexOf('createCardSharePublicPage(orderId, dataUrl)');
+    const createIdx = sheet.indexOf('createCardSharePublicPage(orderId, dataUrl, backDataUrl ?? undefined)');
     const failIdx = sheet.indexOf('if (!publicPage.ok || !publicPage.token)');
     const shareIdx = sheet.indexOf('navigator.share({');
     expect(createIdx).toBeGreaterThan(-1);
