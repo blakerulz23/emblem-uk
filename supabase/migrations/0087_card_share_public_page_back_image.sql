@@ -19,10 +19,46 @@
 --  - Every existing authorization/expiry/access-status check is
 --    reproduced byte-for-byte from 0085 — this migration adds a column
 --    and a return field, nothing about who can create or read a page.
+--
+-- Corrected before Production release (2026-09): PostgreSQL identifies a
+-- function by (schema, name, parameter TYPE LIST) — a CREATE OR REPLACE
+-- with a different argument COUNT never replaces an existing function, it
+-- creates a second overload alongside it. 0085's own
+-- create_card_share_public_page(uuid, text) has no default on either
+-- parameter, so the original version of this migration — which only ran
+-- `create or replace function create_card_share_public_page(uuid, text,
+-- text default null)` — would have left BOTH that two-argument function
+-- and this new three-argument-with-default one live at the same time.
+-- A two-argument call then satisfies two different candidates equally
+-- well (the two-argument function directly, or the three-argument one
+-- with its third parameter defaulted) — Postgres raises "function ... is
+-- not unique" (42725) for exactly this shape of overload, which
+-- PostgREST surfaces as its own "could not choose the best candidate
+-- function" error. Proven directly against this repository's own 0085
+-- migration text (read above `create_card_share_public_page(p_order_id
+-- uuid, p_front_image_key text)`), not assumed.
+--
+-- Fixed by explicitly dropping that old two-argument signature in the
+-- same transaction, before creating the three-argument one — so exactly
+-- ONE function named create_card_share_public_page exists once this
+-- migration commits, not two. A plain two-key call ({p_order_id,
+-- p_front_image_key}) still works unchanged (Postgres/PostgREST both
+-- support omitting any parameter that carries a DEFAULT, regardless of
+-- its position — this is standard, documented behaviour, not a fragile
+-- edge case), and a three-key call works the same way. No wrapper
+-- function, no duplicated authorization logic, no second object that
+-- could drift from the first — there is only ever one implementation.
 
 begin;
 
 alter table public.card_share_public_pages add column back_image_key text;
+
+-- Must run before the CREATE below — see this file's own header comment.
+-- Same signature 0085 created; dropping it (not merely superseding it via
+-- CREATE OR REPLACE, which cannot cross an argument-count change) is what
+-- makes the three-argument function below the only overload that exists
+-- once this transaction commits.
+drop function if exists public.create_card_share_public_page(uuid, text);
 
 comment on table public.card_share_public_pages is
   'Founder-approved public share pages (see migration 0085''s own header). One row per created share link. token is the only thing that grants access to view it — unguessable, never derived from order_id/card_id/participation_id. Every read re-verifies expires_at and the linked card''s current access_status; this table alone is never sufficient to prove a page is still viewable. back_image_key (0087) is null for templates with no approved back (see card-face-registry.ts) or for pages created before this migration.';
