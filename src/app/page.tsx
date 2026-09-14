@@ -1,5 +1,6 @@
 ﻿import Link from 'next/link';
 import Icon from '@/components/builder/emblem/Icon';
+import HeroSportRotator from './HeroSportRotator';
 import PlayerOsCollectionSection from '@/components/PlayerOsCollectionSection';
 import TrustSafeguardingPanel from '@/components/TrustSafeguardingPanel';
 import SquadInviteJourneySection from '@/components/SquadInviteJourneySection';
@@ -64,13 +65,7 @@ export default function Home() {
             </div>
           </div>
 
-          <img
-            className="emh-hero-product-image"
-            src="/hero-product-composition.png"
-            alt="A blank Emblem card ready for a photo upload, the finished printed card, and the connected digital player profile open on a phone"
-            loading="eager"
-            decoding="async"
-          />
+          <HeroSportRotator />
 
           <div className="emh-hero-footer">
             <p className="emh-hero-process">

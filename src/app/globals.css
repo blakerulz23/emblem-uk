@@ -10231,3 +10231,55 @@ a { text-decoration: none; color: inherit; }
     flex-wrap: wrap;
   }
 }
+
+/* --- Hero sport rotator (feat/hero-sport-rotator) --- */
+.emh-hero-rotator {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  justify-self: center;
+}
+.emh-hero-rotator-stage {
+  position: relative;
+  width: 300px;
+  height: 430px;
+}
+.emh-hero-rotator-slide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: translateY(10px) scale(0.97);
+  transition: opacity 700ms ease, transform 700ms ease;
+  pointer-events: none;
+}
+.emh-hero-rotator-slide.is-active {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.emh-hero-rotator-dots {
+  display: flex;
+  gap: 8px;
+}
+.emh-hero-rotator-dot {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font: 700 11px/1 var(--font-sora), system-ui;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 200ms ease;
+}
+.emh-hero-rotator-dot.is-active {
+  background: var(--accent, #f36a2d);
+  border-color: var(--accent, #f36a2d);
+  color: #fff;
+}
