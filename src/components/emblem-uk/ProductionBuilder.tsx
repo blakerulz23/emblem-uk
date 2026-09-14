@@ -1215,15 +1215,13 @@ export default function ProductionBuilder({
       try {
         await nextPaint();
         const el = shareCaptureBackRef.current;
-        if (!el) throw new Error('Could not prepare card back image');
-        await waitForImages(el);
-
-        const imgs = Array.from(el.querySelectorAll('img'));
-        if (imgs.some((img) => img.naturalWidth === 0 || img.naturalHeight === 0)) {
-          throw new Error('Could not prepare the card back image for sharing');
-        }
-
-        return await captureElementToPng(el, { pixelRatio: 2, backgroundColor: '#ffffff' });
+        // captureCardFace is PR #102's one canonical face-capture function —
+        // the same waitForImages-then-verify-real-pixels gate and the same
+        // captureElementToPng call the front share capture and the print
+        // pipeline both use, at share's own lower pixelRatio. Front, back,
+        // share and print all go through this one implementation so their
+        // behaviour cannot drift.
+        return await captureCardFace(el, 2);
       } finally {
         setShareCaptureBackPlayer(null);
       }
