@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import CountrySwitcher from './CountrySwitcher';
 
 const columns = [
   {
@@ -54,6 +55,7 @@ export default function Footer() {
       </div>
       <div className="emh-footer-bottom">
         <span>© {new Date().getFullYear()} Emblem. Made for grassroots football in the UK.</span>
+        <CountrySwitcher />
         <strong>Play. <b>Remember.</b> Belong.</strong>
       </div>
     </footer>
