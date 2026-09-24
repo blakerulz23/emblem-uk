@@ -20,7 +20,16 @@ export const COUNTRY_COOKIE = 'emblem_country';
 
 export type SiteUrls = Record<MarketId, string>;
 
-export function configuredSiteUrls(env: Record<string, string | undefined> = process.env): SiteUrls | null {
+// Literal process.env.NEXT_PUBLIC_* reads: Next.js only inlines those into
+// browser / edge bundles when they are spelled out like this (passing
+// process.env around as an object leaves them undefined in the browser).
+const BUILD_ENV = {
+  NEXT_PUBLIC_EMBLEM_SITE_UK: process.env.NEXT_PUBLIC_EMBLEM_SITE_UK,
+  NEXT_PUBLIC_EMBLEM_SITE_CA: process.env.NEXT_PUBLIC_EMBLEM_SITE_CA,
+  NEXT_PUBLIC_EMBLEM_SITE_US: process.env.NEXT_PUBLIC_EMBLEM_SITE_US,
+};
+
+export function configuredSiteUrls(env: Record<string, string | undefined> = BUILD_ENV): SiteUrls | null {
   const uk = env.NEXT_PUBLIC_EMBLEM_SITE_UK?.trim();
   const ca = env.NEXT_PUBLIC_EMBLEM_SITE_CA?.trim();
   const us = env.NEXT_PUBLIC_EMBLEM_SITE_US?.trim();
