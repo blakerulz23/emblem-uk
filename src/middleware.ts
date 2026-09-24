@@ -4,6 +4,7 @@ import { isSyntheticSquadInvitePreviewEnabled } from '@/lib/squad-invite-preview
 import { isInternalDevPreviewEnabled } from '@/lib/dev-preview-mode';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { BUILDER_CSRF_COOKIE } from '@/lib/builder-request-security';
+import { COUNTRY_COOKIE, geoRedirectTarget } from '@/lib/geo-routing';
 import {
   DISPOSABLE_SQUAD_INVITE_HEADERS,
   isDisposableSquadInviteMvpPreview,
@@ -65,6 +66,24 @@ function ensureBuilderCsrfCookie(request: NextRequest, response: NextResponse): 
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
+  // Send a visitor to their country's Emblem site: Canada -> ca.emblem.cards,
+  // US -> us.emblem.cards (see lib/geo-routing.ts; off until
+  // NEXT_PUBLIC_EMBLEM_SITE_UK/_CA/_US are all set).
+  const geoTarget = geoRedirectTarget(
+    {
+      method: request.method,
+      host: request.headers.get('host') ?? request.nextUrl.host,
+      path,
+      search: request.nextUrl.search,
+      country: request.headers.get('x-vercel-ip-country'),
+      userAgent: request.headers.get('user-agent'),
+      countryCookie: request.cookies.get(COUNTRY_COOKIE)?.value ?? null,
+    },
+    'uk'
+  );
+  if (geoTarget) {
+    return NextResponse.redirect(geoTarget, { status: 307, headers: { 'Cache-Control': 'private, no-store', Vary: 'x-vercel-ip-country, cookie' } });
+  }
   const syntheticPreview = path.startsWith('/dev/squad-invite-preview') || path.startsWith('/review/squad-invite');
   if (syntheticPreview && isSyntheticSquadInvitePreviewEnabled()) {
     const response = NextResponse.next();
