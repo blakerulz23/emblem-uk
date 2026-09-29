@@ -119,6 +119,10 @@ export type OsAppProps = {
    * Never set for any other outcome (anonymous, unrelated, coach) —
    * those still go through the normal server redirect. */
   cardAlreadyResolved?: boolean;
+  /** Public demo (/os/demo): opens straight into the app on the built-in
+   * sample data (DEMO_OS_DATA) — no sign-in, no real account, nothing
+   * saved. The Owner / Coach pill switches between the two sides. */
+  demo?: boolean;
 };
 
 export default function OsApp({
@@ -128,6 +132,7 @@ export default function OsApp({
   hasClaimedPlayer = false,
   hasTeam = false,
   cardAlreadyResolved = false,
+  demo = false,
 }: OsAppProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -152,6 +157,7 @@ export default function OsApp({
   // same as before this existed.
   const [state, setState] = useState<OsState>(() => ({
     ...initialOsState,
+    activated: demo || initialOsState.activated,
     role: profileRole === 'coach' ? 'coach' : 'owner',
     tab: resolveTabFromSearchParams(searchParams) ?? initialOsState.tab,
   }));
