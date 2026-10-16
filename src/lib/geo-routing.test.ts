@@ -54,3 +54,26 @@ describe('geo routing', () => {
     expect(sharedCookieDomain(urls)).toBe('.emblem.cards');
   });
 });
+
+describe('geo routing on the UK site — only pages every site has', () => {
+  const uk = (over: Partial<GeoRequest> = {}) => req({ host: 'emblem.cards', country: 'GB', search: '', ...over });
+
+  it('never redirects UK-only landing pages, even with a Canada cookie or a Canadian visitor', () => {
+    for (const path of ['/football-gifts-for-kids', '/trust-and-safeguarding', '/football-gifts-for-kids/']) {
+      expect(geoRedirectTarget(uk({ path, countryCookie: 'ca' }), 'uk', urls), path).toBeNull();
+      expect(geoRedirectTarget(uk({ path, country: 'CA' }), 'uk', urls), path).toBeNull();
+    }
+  });
+
+  it('still honours a deliberate country choice on pages that exist everywhere', () => {
+    expect(geoRedirectTarget(uk({ path: '/', countryCookie: 'ca' }), 'uk', urls)).toBe('https://ca.emblem.cards/');
+    expect(geoRedirectTarget(uk({ path: '/faq', countryCookie: 'us' }), 'uk', urls)).toBe('https://us.emblem.cards/faq');
+    expect(geoRedirectTarget(uk({ path: '/builder', search: '?mode=single', countryCookie: 'ca' }), 'uk', urls)).toBe('https://ca.emblem.cards/builder?mode=single');
+  });
+
+  it('keeps new UK visitors (no cookie) on the UK site', () => {
+    for (const path of ['/', '/faq', '/how-it-works', '/builder', '/football-gifts-for-kids']) {
+      expect(geoRedirectTarget(uk({ path }), 'uk', urls), path).toBeNull();
+    }
+  });
+});

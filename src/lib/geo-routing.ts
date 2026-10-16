@@ -63,8 +63,19 @@ export function parseCountryChoice(value: string | null | undefined): MarketId |
 
 const BOT = /bot|crawl|spider|slurp|facebookexternalhit|embedly|preview|lighthouse|headless/i;
 
-/** Paths that must never be redirected: app, APIs, auth, card taps, assets. */
+/**
+ * Pages that exist on every Emblem site (UK, Canada, US). Only these are
+ * country-redirected: a UK-only page (e.g. /football-gifts-for-kids,
+ * /trust-and-safeguarding) has no counterpart elsewhere, so redirecting it
+ * would land the visitor on a 404. Those are always served here; the footer
+ * country picker still lets anyone switch site deliberately.
+ */
+export const SHARED_MARKET_PATHS: readonly string[] = ['/', '/about', '/builder', '/pricing', '/privacy', '/terms', '/faq', '/how-it-works'];
+
+/** Paths that must never be redirected: app, APIs, auth, card taps, assets, and UK-only pages. */
 function isRoutablePage(path: string): boolean {
+  const normalized = path.length > 1 ? path.replace(/\/+$/, '') : path;
+  if (!SHARED_MARKET_PATHS.includes(normalized)) return false;
   // Card taps and shared player pages (/card, /card-share, /player) always
   // open on the site that printed the card — a UK card tapped in Canada
   // must show its UK profile.
