@@ -50,6 +50,7 @@ const ORDER_ROW = {
 const VALID_PAYLOAD = {
   id: 987654321,
   currency: 'GBP',
+  financial_status: 'paid',
   note_attributes: [{ name: 'Order Ref', value: 'EMB-ABC123' }],
   line_items: [{ variant_id: 123456789, quantity: 2, price: '24.99' }],
 };
@@ -141,9 +142,10 @@ describe('POST /api/webhooks/shopify/orders-paid — amount/quantity/currency ve
   });
 
   it('notifies staff on a currency mismatch, with the mismatch reason in the summary', async () => {
-    await post({ ...VALID_PAYLOAD, currency: 'USD' });
+    // A customer charged in USD (US market) for a GBP order.
+    await post({ ...VALID_PAYLOAD, currency: 'USD', presentment_currency: 'USD' });
     const call = mockEnqueueStaffNotification.mock.calls[0][1] as { summary: { reason: string } };
-    expect(call.summary.reason).toMatch(/currency mismatch/i);
+    expect(call.summary.reason).toMatch(/currency.mismatch/i);
   });
 
   it('notifies staff when the pricing snapshot or Shopify variant configuration is missing', async () => {
@@ -205,5 +207,101 @@ describe('POST /api/webhooks/shopify/orders-paid — Squad Invite bookkeeping', 
   it('never calls it for an ordinary (non-Squad-Invite) order', async () => {
     await post(VALID_PAYLOAD);
     expect(mockRpc).not.toHaveBeenCalledWith('mark_squad_invite_participation_paid', expect.anything());
+  });
+});
+
+/**
+ * End-to-end route behaviour for Emblem's real store set-up: Shopify shop
+ * currency USD, UK customer pays £24.99 GBP (Shopify Markets presentment).
+ */
+describe('POST /api/webhooks/shopify/orders-paid — USD store, GBP presentment', () => {
+  const usd = (amount: string) => ({ amount, currency_code: 'USD' });
+  const gbp = (amount: string) => ({ amount, currency_code: 'GBP' });
+  const USD_STORE_PAYLOAD = {
+    id: 5678901234567,
+    currency: 'USD',
+    presentment_currency: 'GBP',
+    financial_status: 'paid',
+    test: false,
+    cancelled_at: null,
+    refunds: [],
+    total_price: '74.42',
+    total_price_set: { shop_money: usd('74.42'), presentment_money: gbp('57.97') },
+    note_attributes: [{ name: 'Order Ref', value: 'EMB-ABC123' }],
+    line_items: [{
+      variant_id: 123456789,
+      quantity: 2,
+      current_quantity: 2,
+      price: '32.09',
+      price_set: { shop_money: usd('32.09'), presentment_money: gbp('24.99') },
+      discount_allocations: [],
+    }],
+  };
+
+  it('applies a genuine GBP payment, recording the GBP amount and currency (not USD)', async () => {
+    const res = await post(USD_STORE_PAYLOAD);
+    expect(res.status).toBe(200);
+    expect(mockRpc).toHaveBeenCalledWith('apply_gate3_payment_event', expect.objectContaining({
+      p_order_id: ORDER_ROW.id,
+      p_to_status: 'paid',
+      p_amount_pence: 2499 * 2,
+      p_currency: 'GBP',
+      p_shopify_order_id: '5678901234567',
+      p_shopify_event_id: WEBHOOK_ID,
+    }));
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
+  });
+
+  it('treats a replayed delivery as a safe no-op (idempotency stays in apply_gate3_payment_event)', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'duplicate_event' }, error: null });
+    const res = await post(USD_STORE_PAYLOAD);
+    expect(await res.json()).toMatchObject({ ok: true, applied: false, reason: 'duplicate_event' });
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
+  });
+
+  it('never re-pays an order Emblem already holds as refunded (database guard reported back)', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'order_refunded' }, error: null });
+    const res = await post(USD_STORE_PAYLOAD);
+    expect(await res.json()).toMatchObject({ ok: true, applied: false, reason: 'order_refunded' });
+  });
+
+  it('never applies, and alerts staff, when the Shopify order itself already carries a refund', async () => {
+    await post({ ...USD_STORE_PAYLOAD, financial_status: 'refunded', refunds: [{ id: 1 }] });
+    expect(mockRpc).not.toHaveBeenCalled();
+    const call = mockEnqueueStaffNotification.mock.calls[0][1] as { summary: { reason: string } };
+    expect(call.summary.reason).toMatch(/order_not_paid|order_refunded/);
+  });
+
+  it('never applies, and alerts staff, on the wrong GBP price', async () => {
+    const wrongPrice = { ...USD_STORE_PAYLOAD, line_items: [{ ...USD_STORE_PAYLOAD.line_items[0], price_set: { shop_money: usd('25.67'), presentment_money: gbp('19.99') } }] };
+    await post(wrongPrice);
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect((mockEnqueueStaffNotification.mock.calls[0][1] as { summary: { reason: string } }).summary.reason).toMatch(/price_mismatch/);
+  });
+
+  it('never applies, and alerts staff, on a line-item discount', async () => {
+    const discounted = { ...USD_STORE_PAYLOAD, line_items: [{ ...USD_STORE_PAYLOAD.line_items[0], discount_allocations: [{ amount: '6.42', amount_set: { shop_money: usd('6.42'), presentment_money: gbp('5.00') } }] }] };
+    await post(discounted);
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect((mockEnqueueStaffNotification.mock.calls[0][1] as { summary: { reason: string } }).summary.reason).toMatch(/discount_mismatch/);
+  });
+
+  it('fails closed, and alerts staff, when the GBP line amount is missing (no exchange-rate conversion)', async () => {
+    const noPresentment = { ...USD_STORE_PAYLOAD, line_items: [{ variant_id: 123456789, quantity: 2, price: '32.09' }] };
+    await post(noPresentment);
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect((mockEnqueueStaffNotification.mock.calls[0][1] as { summary: { reason: string } }).summary.reason).toMatch(/presentment_price_missing/);
+  });
+
+  it('still rejects a bad signature before any of this runs', async () => {
+    const res = await post(USD_STORE_PAYLOAD, { badSignature: true });
+    expect(res.status).toBe(401);
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+
+  it('leaves Squad Invite orders on their existing path (no line verification, unchanged)', async () => {
+    mockOrdersSelect.mockResolvedValue({ data: { ...ORDER_ROW, source: 'squad_invite' }, error: null });
+    await post({ ...USD_STORE_PAYLOAD, line_items: [] });
+    expect(mockRpc).toHaveBeenCalledWith('apply_gate3_payment_event', expect.objectContaining({ p_amount_pence: null, p_currency: null }));
   });
 });

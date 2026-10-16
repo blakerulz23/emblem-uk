@@ -129,7 +129,8 @@ export async function POST(req: NextRequest) {
       await notifyStaffOfPaymentVerificationFailure(supabase, orderRef, 'Pricing snapshot or variant configuration missing');
       return NextResponse.json({ ok: true, note: 'pricing snapshot unavailable, not applying' });
     }
-    const verification = verifyPaidLineItem(payload, variantId, existing.total_print_quantity, existing.unit_price_pence);
+    // Verified in the currency the customer paid (Shopify presentment currency), which must be this order's own snapshot currency.
+    const verification = verifyPaidLineItem(payload, variantId, existing.total_print_quantity, existing.unit_price_pence, existing.currency || 'GBP');
     if (!verification.ok) {
       // Never applied — flagged loudly for reconciliation. 200 because
       // retrying won't change what Shopify actually charged.

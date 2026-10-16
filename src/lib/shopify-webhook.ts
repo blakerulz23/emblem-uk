@@ -62,15 +62,28 @@ export function extractOrderRef(payload: unknown): string | null {
   return value && value.length > 0 ? value : null;
 }
 
+type ShopifyMoney = { amount?: string; currency_code?: string };
+type ShopifyMoneySet = { shop_money?: ShopifyMoney; presentment_money?: ShopifyMoney };
 type ShopifyLineItem = {
   variant_id?: number | string;
   quantity?: number;
+  current_quantity?: number;
+  /** Unit price before discounts, in the SHOP currency (USD for this store). */
   price?: string;
-  discount_allocations?: Array<{ amount?: string }>;
+  /** Unit price in shop and presentment (customer) currencies. */
+  price_set?: ShopifyMoneySet;
+  discount_allocations?: Array<{ amount?: string; amount_set?: ShopifyMoneySet }>;
 };
 type ShopifyOrderPayload = {
   id?: number | string;
+  /** ISO 4217 code of the SHOP currency — not what the customer paid in. */
   currency?: string;
+  /** ISO 4217 code of the currency the customer actually paid in. */
+  presentment_currency?: string;
+  financial_status?: string;
+  test?: boolean;
+  cancelled_at?: string | null;
+  refunds?: unknown[];
   line_items?: ShopifyLineItem[];
 };
 
@@ -79,19 +92,44 @@ type ShopifyOrderPayload = {
  * actually expects to have been charged, rather than trusting
  * `total_price` wholesale (Shopify's own checkout adds shipping/tax on
  * top of the card subtotal, which Emblem doesn't set and can't predict —
- * see migration 0080's own header comment). Finds the line item matching
- * `expectedVariantId`, and returns null (verification failure) unless its
- * quantity and per-unit price match what this order's own authoritative
- * snapshot already recorded. Currency is checked separately by the caller
- * against the same snapshot.
+ * see migration 0080's own header comment).
+ *
+ * Currency: the Shopify store's base (shop) currency is USD while UK
+ * customers pay in GBP through Shopify Markets. Shopify reports
+ * `currency`, `line_items[].price` and `discount_allocations[].amount` in
+ * the SHOP currency; the amount the customer actually paid is in the
+ * PRESENTMENT fields (`presentment_currency`, `price_set.presentment_money`,
+ * `discount_allocations[].amount_set.presentment_money`). Verification is
+ * done against the presentment amounts — never by converting USD with an
+ * exchange rate. The legacy shop-currency fields are used only when the
+ * shop currency itself is the expected currency (a GBP-based store), where
+ * shop and presentment amounts are the same thing.
+ *
+ * Fails closed (the caller notifies staff and never marks the order paid)
+ * when a field it needs is missing or malformed, because payload shapes
+ * depend on the webhook API version.
  */
 export function verifyPaidLineItem(
   payload: unknown,
   expectedVariantId: string,
   expectedQuantity: number,
   expectedUnitPricePence: number,
-): { ok: true; currency: string | null } | { ok: false; reason: string } {
+  expectedCurrency = 'GBP',
+): { ok: true; currency: string } | { ok: false; reason: string } {
   const order = payload as ShopifyOrderPayload;
+  const expected = expectedCurrency.trim().toUpperCase();
+  const shopCurrency = typeof order?.currency === 'string' ? order.currency.toUpperCase() : null;
+  const presentmentCurrency = typeof order?.presentment_currency === 'string' ? order.presentment_currency.toUpperCase() : null;
+
+  // The order as a whole must have been presented to the customer in the
+  // expected currency (when Shopify says so explicitly).
+  if (presentmentCurrency !== null && presentmentCurrency !== expected) {
+    return { ok: false, reason: 'currency_mismatch' };
+  }
+  // Shop-currency fields are only a valid stand-in for what the customer
+  // paid when the shop currency IS the expected currency.
+  const shopFieldsAreCustomerCurrency = shopCurrency === expected && (presentmentCurrency === null || presentmentCurrency === expected);
+
   const lineItems = Array.isArray(order?.line_items) ? order.line_items : [];
   const matches = lineItems.filter((item) => String(item?.variant_id ?? '') === expectedVariantId);
   if (matches.length === 0) {
@@ -103,21 +141,43 @@ export function verifyPaidLineItem(
     if (!Number.isSafeInteger(match.quantity) || (match.quantity ?? 0) <= 0) {
       return { ok: false, reason: 'quantity_mismatch' };
     }
+    // Items removed after purchase (current_quantity < quantity) mean the
+    // customer did not end up paying for the full quantity.
+    if (match.current_quantity !== undefined && match.current_quantity !== match.quantity) {
+      return { ok: false, reason: 'quantity_mismatch' };
+    }
     totalQuantity += match.quantity!;
     if (!Number.isSafeInteger(totalQuantity)) {
       return { ok: false, reason: 'quantity_mismatch' };
     }
 
-    // Shopify's `price` is the undiscounted unit price. A matching list price
-    // alone therefore cannot prove that the authoritative amount was paid.
     // Gate 3 does not support discounts: reject any non-zero (or malformed)
-    // allocation rather than marking a discounted order as fully paid.
+    // allocation, read in the customer's currency where Shopify provides it.
     const allocations = Array.isArray(match.discount_allocations) ? match.discount_allocations : [];
-    if (allocations.some((allocation) => moneyStringToPence(allocation?.amount) !== 0)) {
-      return { ok: false, reason: 'discount_mismatch' };
+    for (const allocation of allocations) {
+      const presentmentDiscount = allocation?.amount_set?.presentment_money;
+      const discountPence = presentmentDiscount !== undefined
+        ? moneyStringToPence(presentmentDiscount?.amount)
+        : moneyStringToPence(allocation?.amount);
+      if (discountPence !== 0) {
+        return { ok: false, reason: 'discount_mismatch' };
+      }
     }
 
-    const unitPricePence = moneyStringToPence(match.price);
+    // The unit price the customer actually paid.
+    const presentmentPrice = match.price_set?.presentment_money;
+    let unitPricePence: number | null;
+    if (presentmentPrice !== undefined) {
+      const lineCurrency = typeof presentmentPrice?.currency_code === 'string' ? presentmentPrice.currency_code.toUpperCase() : null;
+      if (lineCurrency !== expected) {
+        return { ok: false, reason: 'currency_mismatch' };
+      }
+      unitPricePence = moneyStringToPence(presentmentPrice.amount);
+    } else if (shopFieldsAreCustomerCurrency) {
+      unitPricePence = moneyStringToPence(match.price);
+    } else {
+      return { ok: false, reason: 'presentment_price_missing' };
+    }
     if (unitPricePence === null || unitPricePence !== expectedUnitPricePence) {
       return { ok: false, reason: 'price_mismatch' };
     }
@@ -125,7 +185,22 @@ export function verifyPaidLineItem(
   if (totalQuantity !== expectedQuantity) {
     return { ok: false, reason: 'quantity_mismatch' };
   }
-  return { ok: true, currency: typeof order?.currency === 'string' ? order.currency : null };
+
+  // Order-level state: only a genuinely paid, live, non-test order counts.
+  if (order?.financial_status !== 'paid') {
+    return { ok: false, reason: 'order_not_paid' };
+  }
+  if (order?.test === true) {
+    return { ok: false, reason: 'test_order' };
+  }
+  if (order?.cancelled_at) {
+    return { ok: false, reason: 'order_cancelled' };
+  }
+  if (Array.isArray(order?.refunds) && order.refunds.length > 0) {
+    return { ok: false, reason: 'order_refunded' };
+  }
+
+  return { ok: true, currency: expected };
 }
 
 function moneyStringToPence(value: unknown): number | null {
