@@ -15,8 +15,14 @@ export const WEB_ANALYTICS_ALLOWED_QUERY = ['utm_source', 'utm_medium', 'utm_cam
 
 const EXTRA_BLOCKED = ['/squad-invite'];
 
-export function webAnalyticsEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return env.NEXT_PUBLIC_VERCEL_WEB_ANALYTICS === 'true';
+/**
+ * The literal `process.env.NEXT_PUBLIC_VERCEL_WEB_ANALYTICS` default must stay
+ * spelled out: Next.js only inlines NEXT_PUBLIC_* values into browser bundles
+ * when written literally (reading them off a passed-around process.env object
+ * is always undefined in the browser, which silently disabled analytics).
+ */
+export function webAnalyticsEnabled(value: string | undefined = process.env.NEXT_PUBLIC_VERCEL_WEB_ANALYTICS): boolean {
+  return value === 'true';
 }
 
 /** Returns the URL to report, or null to drop the event entirely. */

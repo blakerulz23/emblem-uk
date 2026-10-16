@@ -3,8 +3,15 @@ import { sanitizeAnalyticsUrl, webAnalyticsEnabled } from './web-analytics';
 
 describe('Vercel Web Analytics privacy filter', () => {
   it('is off unless explicitly enabled', () => {
-    expect(webAnalyticsEnabled({})).toBe(false);
-    expect(webAnalyticsEnabled({ NEXT_PUBLIC_VERCEL_WEB_ANALYTICS: 'true' })).toBe(true);
+    expect(webAnalyticsEnabled(undefined)).toBe(false);
+    expect(webAnalyticsEnabled('1')).toBe(false);
+    expect(webAnalyticsEnabled('true')).toBe(true);
+  });
+
+  it('reads the flag with a literal process.env expression (required for browser inlining)', async () => {
+    const { readFileSync } = await import('fs');
+    const src = readFileSync(new URL('./web-analytics.ts', import.meta.url), 'utf8');
+    expect(src).toContain('= process.env.NEXT_PUBLIC_VERCEL_WEB_ANALYTICS)');
   });
 
   it('drops every private surface', () => {
