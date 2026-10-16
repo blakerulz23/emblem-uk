@@ -5,6 +5,7 @@ import ConditionalChrome from '@/components/ConditionalChrome';
 import { isDisposableSquadInviteMvpPreview } from '@/lib/squad-invite-preview-safety';
 import { googleSiteVerification, OG_IMAGE, SITE_URL } from '@/lib/marketing/site';
 import AnalyticsConsent from '@/components/marketing/AnalyticsConsent';
+import VercelWebAnalytics from '@/components/marketing/VercelWebAnalytics';
 
 // Marketing typography (emblem.cards). Scoped to the marketing shell via
 // .marketing-shell in globals.css — Builder, Player OS and Staff tools keep
@@ -66,6 +67,7 @@ export default function RootLayout({
       <body className="font-body text-[var(--ink)] antialiased">
         <ConditionalChrome disposableSquadInvitePreview={isDisposableSquadInviteMvpPreview()}>{children}</ConditionalChrome>
         <AnalyticsConsent />
+        <VercelWebAnalytics />
       </body>
     </html>
   );

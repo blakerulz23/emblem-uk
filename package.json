@@ -19,6 +19,7 @@
     "@stripe/stripe-js": "^8.11.0",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.7",
+    "@vercel/analytics": "^1.6.1",
     "html2canvas": "^1.4.1",
     "next": "14.2.35",
     "pdf-lib": "^1.17.1",
