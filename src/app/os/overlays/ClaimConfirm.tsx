@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { osAssetPath } from '../data';
 import type { ClaimLookupResult } from './ClaimCodeEntry';
+import BackLink from './BackLink';
 
 export type ClaimConfirmFields = { displayName: string; relationship: string };
 
@@ -53,6 +54,7 @@ export default function ClaimConfirm({
         textAlign: 'center',
       }}
     >
+      <BackLink onClick={onBack} />
       <img
         src={`${osAssetPath}/emblem-wordmark.png`}
         alt="Emblem"

@@ -5,24 +5,27 @@ const columns = [
   {
     title: 'Product',
     links: [
-      { href: '/#collection', label: 'The cards' },
-      { href: '/#journey', label: 'How it works' },
-      { href: '/#journey', label: 'Digital profile' },
+      { href: '/#cards', label: 'The cards' },
+      { href: '/how-it-works', label: 'How it works' },
+      { href: '/os/demo', label: 'Digital profile' },
       { href: '/#pricing', label: 'Pricing' },
+      { href: '/football-gifts-for-kids', label: 'Football gifts for kids' },
     ],
   },
   {
     title: 'For teams',
     links: [
-      { href: '/#squad', label: 'Clubs & coaches' },
+      { href: '/how-it-works#squad', label: 'Clubs & coaches' },
       { href: '/builder?mode=squad', label: 'Team packs' },
-      { href: '/#squad', label: 'Leagues' },
+      { href: '/how-it-works#squad', label: 'Leagues' },
     ],
   },
   {
     title: 'Emblem',
     links: [
       { href: '/#top', label: 'Play. Remember. Belong.' },
+      { href: '/faq', label: 'FAQ' },
+      { href: '/trust-and-safeguarding', label: 'Trust & safeguarding' },
       { href: '/privacy', label: 'Privacy' },
       { href: '/terms', label: 'Terms' },
     ],

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { osAssetPath } from '../data';
 import { createClient } from '@/lib/supabase/client';
+import BackLink from './BackLink';
 
 /**
  * The entry point into Emblem OS when there's no Supabase session yet.
@@ -13,7 +14,7 @@ import { createClient } from '@/lib/supabase/client';
  * a magic link's one-time token before the real user ever clicks it. A code
  * typed into the app can't be consumed that way.
  */
-export default function SignIn({ onSuccess }: { onSuccess?: () => void }) {
+export default function SignIn({ onSuccess, onBack }: { onSuccess?: () => void; onBack?: () => void }) {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -85,6 +86,20 @@ export default function SignIn({ onSuccess }: { onSuccess?: () => void }) {
         overflow: 'hidden',
       }}
     >
+      {step === 'code' ? (
+        <BackLink
+          onClick={() => {
+            setStep('email');
+            setCode('');
+            setStatus('idle');
+            setErrorMsg('');
+          }}
+        />
+      ) : onBack ? (
+        <BackLink onClick={onBack} />
+      ) : (
+        <BackLink href="/" label="Back to site" />
+      )}
       <img
         src={`${osAssetPath}/emblem-wordmark.png`}
         alt="Emblem"

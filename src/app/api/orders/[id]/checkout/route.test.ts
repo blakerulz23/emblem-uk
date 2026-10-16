@@ -100,7 +100,18 @@ describe('POST /api/orders/[id]/checkout — never accepts price/quantity/varian
 
   it('builds the cart URL only from the RPC-returned snapshot — never from anything the client supplied', async () => {
     await post();
-    expect(mockBuildUkCardCartUrl).toHaveBeenCalledWith(SNAPSHOT.quantity, SNAPSHOT.orderRef);
+    // Third argument is campaign attribution from our own utm cookie; null when the visit had none.
+    expect(mockBuildUkCardCartUrl).toHaveBeenCalledWith(SNAPSHOT.quantity, SNAPSHOT.orderRef, null);
+  });
+
+  it('passes campaign attribution only from the cleaned utm cookie, never from the request body', async () => {
+    const req = new NextRequest(`http://localhost/api/orders/${ORDER_ID}/checkout`, {
+      method: 'POST',
+      headers: { cookie: 'emblem_utm=utm_source=google|utm_medium=parent@example.com|utm_campaign=xmas' },
+      body: JSON.stringify({ utm_source: 'attacker', utm_campaign: 'injected' }),
+    });
+    await POST(req, { params: { id: ORDER_ID } });
+    expect(mockBuildUkCardCartUrl).toHaveBeenCalledWith(SNAPSHOT.quantity, SNAPSHOT.orderRef, { utm_source: 'google', utm_campaign: 'xmas' });
   });
 });
 

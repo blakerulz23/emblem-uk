@@ -25,7 +25,10 @@ import { isRealSquadInviteUiPath } from '@/lib/squad-invite-preview-safety';
 // else (Builder, Player OS, Staff tools, /lastshot, dead/internal routes)
 // keeps its current typography untouched, even where it shares the same
 // Navbar/Footer chrome.
-const MARKETING_ROUTES = ['/', '/about', '/pricing', '/privacy', '/terms', '/trust-and-safeguarding', '/card-setup-preview'];
+const MARKETING_ROUTES = ['/', '/about', '/pricing', '/privacy', '/terms', '/trust-and-safeguarding', '/card-setup-preview', '/how-it-works', '/faq', '/football-gifts-for-kids'];
+// Marketing landing pages built from the homepage's own sections share its
+// shell (announcement bar, sticky nav, .emh-home-shell spacing).
+const HOME_SHELL_ROUTES = ['/', '/how-it-works', '/faq', '/football-gifts-for-kids'];
 // /card-share/[token] is a dynamic route (usePathname() returns the real
 // token, never the literal '/card-share/[token]'), so it can't live in the
 // exact-match list above — matched by prefix instead, same technique
@@ -47,7 +50,7 @@ export default function ConditionalChrome({
   const isBuilder = pathname.startsWith('/builder');
   const isOs = pathname.startsWith('/os');
   const isPlayerProfile = pathname.startsWith('/player/');
-  const isHome = pathname === '/';
+  const isHome = HOME_SHELL_ROUTES.includes(pathname);
   const isSyntheticSquadInvitePreview = pathname.startsWith('/dev/squad-invite-preview') || pathname.startsWith('/review/squad-invite');
   const isMarketing = MARKETING_ROUTES.includes(pathname) || isCardSharePublicPage(pathname);
   const notice = disposableSquadInvitePreview && isRealSquadInviteUiPath(pathname)

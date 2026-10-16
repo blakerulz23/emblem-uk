@@ -1,4 +1,5 @@
 import { osAssetPath } from '../data';
+import BackLink from './BackLink';
 
 /**
  * The very first screen a brand-new visitor sees — card-first, per Core
@@ -30,6 +31,7 @@ export default function RoleFork({
         textAlign: 'center',
       }}
     >
+      <BackLink href="/" label="Back to site" />
       <img
         src={`${osAssetPath}/emblem-wordmark.png`}
         alt="Emblem"

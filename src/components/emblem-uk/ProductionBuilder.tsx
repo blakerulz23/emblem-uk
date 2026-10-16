@@ -54,6 +54,7 @@ import {
   selectCoachCardTeam,
   type CoachCardDraft,
 } from '@/lib/coach-card-draft';
+import { track } from '@/lib/analytics';
 
 /**
  * Squad Invite mode — reached from JoinSquadInvite's
@@ -325,6 +326,11 @@ export default function ProductionBuilder({
     if (squadInviteContext) return 'upload';
     return searchParams.get('step') === 'upload' ? 'upload' : 'order-type';
   });
+  // Funnel analytics: the step id only (never names, photos or emails). A no-op until analytics is enabled and consented.
+  useEffect(() => {
+    track('builder_step', { step: activeStepId, mode: order.type });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStepId]);
   const [squadInviteAccepted, setSquadInviteAccepted] = useState<Record<string, boolean>>({});
   const [squadInvitePhase, setSquadInvitePhase] = useState<'form' | 'success'>('form');
   // Captured from the commit route's own response body once a commitment
@@ -1491,6 +1497,7 @@ export default function ProductionBuilder({
         return;
       }
       setCheckoutUrl(result.checkoutUrl);
+      track('checkout_handoff', { mode: order.type });
       if (checkoutTab) {
         checkoutTab.location.href = result.checkoutUrl;
       }

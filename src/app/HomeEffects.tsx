@@ -3,6 +3,8 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { MouseEvent, useEffect, useRef, useState } from 'react';
+import { ALL_FAQ_ITEMS, type FaqItem } from '@/lib/marketing/faq';
+import { track } from '@/lib/analytics';
 
 type Moment = {
   title: string;
@@ -13,16 +15,6 @@ type Moment = {
 
 type ProfileItem = [string, string];
 type ProfileFeature = [string, string];
-type FaqItem = {
-  question: string;
-  lead?: string;
-  answer?: string;
-  chips?: string[];
-  /** Optional inline text link appended after the answer — e.g. a pointer
-   *  through to a dedicated policy page for questions the short answer
-   *  can only summarise. */
-  link?: { label: string; href: string };
-};
 type DigitalMoment = {
   key: string;
   title: string;
@@ -150,71 +142,7 @@ const whyProfileMatters: ProfileFeature[] = [
   ['One Story. Every Team', 'All clubs. All seasons. One profile that grows forever.'],
 ];
 
-const faqItems: FaqItem[] = [
-  {
-    question: 'What is an Emblem card?',
-    answer:
-      'An Emblem card is a personalised premium trading card with built-in NFC. Tap it with a compatible phone to open the player’s digital profile, where their milestones, achievements and memories can grow over time.',
-  },
-  {
-    question: 'How is my child’s information protected?',
-    answer:
-      'Player profiles are private by default and managed through guardian-controlled access. Emblem limits the information displayed, verifies coach contributions and provides controls for sharing, access and deletion.',
-    link: { label: 'Learn how we protect players →', href: '/trust-and-safeguarding' },
-  },
-  {
-    question: 'What happens if an Emblem card is lost?',
-    answer:
-      'Contact us and we can disable the card’s digital connection. Finding the physical card does not give someone access to the guardian account or private management controls.',
-  },
-  {
-    question: 'Do I need to download an app?',
-    answer: 'No. Tap the card with an NFC-compatible smartphone and the player’s profile opens in the phone’s browser.',
-  },
-  {
-    question: 'Is there an annual subscription?',
-    answer:
-      'No. Digital profile access is included with the card, with no annual subscription required. Existing moments, achievements and previous seasons remain accessible.',
-  },
-  {
-    question: 'Can the profile continue into another season?',
-    answer:
-      'Yes. The same profile can carry the player’s story forward from season to season. A new season card can become the next physical collectible connected to their continuing journey.',
-  },
-  {
-    question: 'Can I order just one card?',
-    answer: 'Yes. You can create one personalised player card, order multiple cards together or build a complete squad.',
-  },
-  {
-    question: 'What qualifies as a Full Squad order?',
-    answer: 'An order containing 10 or more player cards qualifies for Full Squad pricing and includes one free coach card.',
-  },
-  {
-    question: 'What is the free coach card?',
-    answer: 'It is a personalised Emblem card for the team’s coach, included at no extra cost with every qualifying Full Squad order.',
-  },
-  {
-    question: 'What can coaches do with Coach OS?',
-    answer: 'Coaches can manage their squad, verify moments submitted by parents and award player achievements from one dashboard.',
-  },
-  {
-    question: 'Can parents add photos and moments?',
-    answer:
-      'Yes. Parents can add memories and submit player moments. Where coach verification applies, the coach can review them before they appear as verified achievements.',
-  },
-  {
-    question: 'Is Emblem only for football?',
-    answer: 'No. Emblem is designed to celebrate players, teams and achievements across different sports and levels.',
-  },
-  {
-    question: 'Is the player’s information secure?',
-    answer: 'Player profiles are managed through authorised parent, guardian and coach access. Guardians remain in control of what is added and what they choose to share.',
-  },
-  {
-    question: 'How much is delivery?',
-    answer: 'UK delivery is calculated at checkout and shown before the order is completed.',
-  },
-];
+
 
 function ProfileIcon({ index }: { index: number }) {
   const common = {
@@ -760,12 +688,12 @@ function StepCard({ step }: { step: (typeof stepCards)[number] }) {
   );
 }
 
-export function FaqAccordion() {
+export function FaqAccordion({ items = ALL_FAQ_ITEMS, idPrefix = 'faq' }: { items?: FaqItem[]; idPrefix?: string }) {
   const [openIndex, setOpenIndex] = useState(0);
 
   return (
     <div className="emh-faq-list">
-      {faqItems.map((item, index) => {
+      {items.map((item, index) => {
         const isOpen = openIndex === index;
 
         return (
@@ -774,15 +702,18 @@ export function FaqAccordion() {
               type="button"
               className="emh-faq-question"
               aria-expanded={isOpen}
-              aria-controls={`faq-answer-${index}`}
-              onClick={() => setOpenIndex(isOpen ? -1 : index)}
+              aria-controls={`${idPrefix}-answer-${index}`}
+              onClick={() => {
+                if (!isOpen) track('faq_open', { question_index: index, page: idPrefix });
+                setOpenIndex(isOpen ? -1 : index);
+              }}
             >
               <span>{item.question}</span>
               <svg className="emh-faq-chevron" aria-hidden="true" viewBox="0 0 24 24">
                 <path d="m6 9 6 6 6-6" />
               </svg>
             </button>
-            <div id={`faq-answer-${index}`} className={`emh-faq-answer ${isOpen ? 'is-open' : ''}`}>
+            <div id={`${idPrefix}-answer-${index}`} className={`emh-faq-answer ${isOpen ? 'is-open' : ''}`}>
               <div>
                 {item.lead && <p className="emh-faq-lead">{item.lead}</p>}
                 {item.answer && <p>{item.answer}</p>}

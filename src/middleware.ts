@@ -5,6 +5,7 @@ import { isInternalDevPreviewEnabled } from '@/lib/dev-preview-mode';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { BUILDER_CSRF_COOKIE } from '@/lib/builder-request-security';
 import { COUNTRY_COOKIE, geoRedirectTarget } from '@/lib/geo-routing';
+import { serializeUtm, UTM_COOKIE, UTM_COOKIE_MAX_AGE_SECONDS, utmAttributionEnabled, utmFromSearchParams } from '@/lib/utm';
 import {
   DISPOSABLE_SQUAD_INVITE_HEADERS,
   isDisposableSquadInviteMvpPreview,
@@ -60,6 +61,25 @@ function ensureBuilderCsrfCookie(request: NextRequest, response: NextResponse): 
     sameSite: 'strict',
     path: '/',
     maxAge: 60 * 60 * 24,
+  });
+  return response;
+}
+
+/**
+ * Campaign attribution: a landing URL carrying utm_* tags (cleaned to short
+ * plain tokens) is remembered for 30 days; the newest tagged visit wins.
+ * Read at checkout and sent to Shopify as cart attributes (lib/utm.ts).
+ */
+function rememberCampaign(request: NextRequest, response: NextResponse): NextResponse {
+  if (!utmAttributionEnabled() || request.method !== 'GET' || request.nextUrl.pathname.startsWith('/api/')) return response;
+  const utm = utmFromSearchParams(request.nextUrl.searchParams);
+  if (!utm) return response;
+  response.cookies.set(UTM_COOKIE, serializeUtm(utm), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: UTM_COOKIE_MAX_AGE_SECONDS,
   });
   return response;
 }
@@ -123,7 +143,7 @@ export async function middleware(request: NextRequest) {
     response.headers.set('Referrer-Policy', 'no-referrer');
     return isDisposableSquadInviteMvpPreview() ? applyDisposableSquadInviteHeaders(response) : response;
   }
-  const response = await updateSession(request);
+  const response = rememberCampaign(request, await updateSession(request));
   const withBuilderCsrf = path === '/builder' ? ensureBuilderCsrfCookie(request, response) : response;
   return realSquadInviteSurface && isDisposableSquadInviteMvpPreview()
     ? applyDisposableSquadInviteHeaders(withBuilderCsrf)

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { osAssetPath } from '../data';
 import SignIn from './SignIn';
+import BackLink from './BackLink';
 
 type RecoverCard = { cardId: string; playerId: string | null; playerName: string | null };
 type RecoverOrder = { orderId: string; orderRef: string; source: string; cards: RecoverCard[] };
@@ -17,7 +18,7 @@ type RecoverOrder = { orderId: string; orderRef: string; source: string; cards: 
  * key (see src/app/api/os/recover/route.ts) — there's no way to search by
  * a typed, unverified email anywhere in this flow.
  */
-export default function RecoverByEmail({ hasSession }: { hasSession: boolean }) {
+export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boolean; onBack?: () => void }) {
   const router = useRouter();
   const [orders, setOrders] = useState<RecoverOrder[] | null>(null);
   const [handoffCardId, setHandoffCardId] = useState<string | null>(null);
@@ -33,7 +34,7 @@ export default function RecoverByEmail({ hasSession }: { hasSession: boolean }) 
   }, [hasSession]);
 
   if (!hasSession) {
-    return <SignIn />;
+    return <SignIn onBack={onBack} />;
   }
 
   const claimSelf = async (cardId: string) => {
@@ -83,6 +84,7 @@ export default function RecoverByEmail({ hasSession }: { hasSession: boolean }) 
         overflowY: 'auto',
       }}
     >
+      {onBack ? <BackLink onClick={onBack} /> : <BackLink href="/" label="Back to site" />}
       <img
         src={`${osAssetPath}/emblem-wordmark.png`}
         alt="Emblem"

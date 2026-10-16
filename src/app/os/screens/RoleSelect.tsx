@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { osAssetPath } from '../data';
 import { createClient } from '@/lib/supabase/client';
+import BackLink from '../overlays/BackLink';
 
 /**
  * Shown once, right after first sign-in, before a profile has a role.
@@ -57,6 +58,7 @@ export default function RoleSelect() {
         textAlign: 'center',
       }}
     >
+      <BackLink href="/" label="Back to site" />
       <img
         src={`${osAssetPath}/emblem-wordmark.png`}
         alt="Emblem"

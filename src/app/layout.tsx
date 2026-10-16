@@ -3,6 +3,8 @@ import { Sora, Manrope, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import ConditionalChrome from '@/components/ConditionalChrome';
 import { isDisposableSquadInviteMvpPreview } from '@/lib/squad-invite-preview-safety';
+import { OG_IMAGE, SITE_URL } from '@/lib/marketing/site';
+import AnalyticsConsent from '@/components/marketing/AnalyticsConsent';
 
 // Marketing typography (emblem.cards). Scoped to the marketing shell via
 // .marketing-shell in globals.css — Builder, Player OS and Staff tools keep
@@ -28,10 +30,20 @@ const marketingJbMono = JetBrains_Mono({
   display: 'swap',
 });
 
+// Site-wide defaults. Canonical URLs are set per page (never here: a root
+// canonical would point every page without its own metadata at the homepage).
 export const metadata: Metadata = {
-  title: 'Emblem UK | Grassroots player cards',
+  metadataBase: new URL(SITE_URL),
+  title: 'Emblem UK | Personalised football cards with a digital player profile',
   description:
-    'Turn a child football photo into a premium printed player card with an interactive digital profile for stats, photos, highlights and memories.',
+    'Personalised football cards made from your child’s photo, printed in the UK with a built-in NFC chip that opens a private, guardian-controlled player profile.',
+  openGraph: {
+    type: 'website',
+    siteName: 'Emblem',
+    locale: 'en_GB',
+    images: [{ url: OG_IMAGE.url, width: OG_IMAGE.width, height: OG_IMAGE.height, alt: 'A personalised Emblem football card and its digital player profile' }],
+  },
+  twitter: { card: 'summary_large_image', images: [OG_IMAGE.url] },
   manifest: '/manifest.json',
   themeColor: '#E97435',
   appleWebApp: {
@@ -47,9 +59,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${marketingSora.variable} ${marketingManrope.variable} ${marketingJbMono.variable}`}>
+    <html lang="en-GB" className={`${marketingSora.variable} ${marketingManrope.variable} ${marketingJbMono.variable}`}>
       <body className="font-body text-[var(--ink)] antialiased">
         <ConditionalChrome disposableSquadInvitePreview={isDisposableSquadInviteMvpPreview()}>{children}</ConditionalChrome>
+        <AnalyticsConsent />
       </body>
     </html>
   );

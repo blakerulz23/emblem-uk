@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { osAssetPath } from '../data';
+import BackLink from './BackLink';
 
 export type ClaimIdentity = {
   firstName: string;
@@ -122,6 +123,7 @@ export default function ClaimCodeEntry({
         textAlign: 'center',
       }}
     >
+      {onBack ? <BackLink onClick={onBack} /> : <BackLink href="/" label="Back to site" />}
       <img
         src={`${osAssetPath}/emblem-wordmark.png`}
         alt="Emblem"

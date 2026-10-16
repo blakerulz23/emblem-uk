@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { consumeAnonymousRequestRateLimit } from '@/lib/anonymous-request-rate-limit';
 import { hasValidBuilderCsrf } from '@/lib/builder-request-security';
 import { buildUkCardCartUrl, gate3CheckoutSupportsTier, isSafeShopifyCheckoutUrl } from '@/lib/shopify';
+import { parseUtmCookie, UTM_COOKIE } from '@/lib/utm';
 
 export const runtime = 'nodejs';
 
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: 'Secure checkout is not yet available for this order type — please contact us' }, { status: 503 });
   }
 
-  const checkoutUrl = buildUkCardCartUrl(result.quantity, result.orderRef);
+  const checkoutUrl = buildUkCardCartUrl(result.quantity, result.orderRef, parseUtmCookie(request.cookies.get(UTM_COOKIE)?.value));
   if (!checkoutUrl) {
     return NextResponse.json({ error: 'Secure checkout is not configured yet — please contact us' }, { status: 503 });
   }

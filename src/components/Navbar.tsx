@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { useState } from 'react';
 
 const links = [
-  { href: '/#collection', label: 'The Cards' },
-  { href: '/#journey', label: 'How It Works' },
-  { href: '/#squad', label: 'Teams' },
+  { href: '/#cards', label: 'The Cards' },
+  { href: '/how-it-works', label: 'How It Works' },
+  { href: '/football-gifts-for-kids', label: 'Gifts' },
   { href: '/#pricing', label: 'Pricing' },
+  { href: '/os/demo', label: 'See the App' },
 ];
 
 export default function Navbar({ sticky = false }: { sticky?: boolean }) {
@@ -39,11 +40,16 @@ export default function Navbar({ sticky = false }: { sticky?: boolean }) {
                 {link.label}
               </Link>
             ))}
+            {/* Existing customers: /os shows the guardian sign-in when there's no session. */}
+            <Link href="/os" className="emh-nav-link emh-nav-signin" data-track="nav_sign_in">
+              Sign in
+            </Link>
             <Link
               href="/builder?mode=single"
               className="emh-nav-cta"
+              data-track="nav_build"
             >
-              Build Your Card
+              Build My Card
             </Link>
           </div>
 
@@ -99,11 +105,21 @@ export default function Navbar({ sticky = false }: { sticky?: boolean }) {
               </Link>
             ))}
             <Link
+              href="/os"
+              onClick={() => setMobileOpen(false)}
+              className="rounded-xl px-3 py-3 text-base font-semibold transition-colors"
+              style={{ color: 'rgba(255,255,255,0.82)', fontFamily: 'var(--font-manrope), system-ui', letterSpacing: '0.02em' }}
+              data-track="nav_sign_in"
+            >
+              Sign in
+            </Link>
+            <Link
               href="/builder?mode=single"
               onClick={() => setMobileOpen(false)}
               className="emh-nav-cta mt-2 inline-flex items-center justify-center"
+              data-track="nav_build"
             >
-              Build Your Card
+              Build My Card
             </Link>
           </div>
         </div>

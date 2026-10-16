@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { osAssetPath } from '../data';
+import BackLink from './BackLink';
 
 /**
  * The masked-email confirm-to-send/enter-code step for a standalone
@@ -17,11 +18,14 @@ export default function VerifyIntendedEmail({
   maskedEmail,
   onVerified,
   onUseDifferentEmail,
+  onBack,
 }: {
   inviteCode: string;
   maskedEmail: string;
   onVerified: () => void;
   onUseDifferentEmail: () => void;
+  /** Back to the previous step (the claim confirm screen). */
+  onBack?: () => void;
 }) {
   const [step, setStep] = useState<'confirm' | 'code'>('confirm');
   const [token, setToken] = useState('');
@@ -85,6 +89,7 @@ export default function VerifyIntendedEmail({
         textAlign: 'center',
       }}
     >
+      {step === 'code' ? <BackLink onClick={() => setStep('confirm')} /> : onBack ? <BackLink onClick={onBack} /> : <BackLink href="/" label="Back to site" />}
       <img
         src={`${osAssetPath}/emblem-wordmark.png`}
         alt="Emblem"

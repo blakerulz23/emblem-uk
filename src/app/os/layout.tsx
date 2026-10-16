@@ -4,6 +4,8 @@ import './os.css';
 export const metadata: Metadata = {
   title: 'Emblem OS',
   description: 'The mobile experience an Emblem card unlocks.',
+  // Private, per-child app: never indexed (also disallowed in robots.txt).
+  robots: { index: false, follow: false },
 };
 
 /**

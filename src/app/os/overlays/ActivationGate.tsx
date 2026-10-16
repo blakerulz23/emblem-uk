@@ -101,6 +101,12 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   const [preAuthStep, setPreAuthStep] = useState<'fork' | 'code' | 'confirm' | 'verifyEmail' | 'recover' | 'auth' | 'teamInvite' | 'coachInvite'>(
     currentCoachInviteCode ? 'coachInvite' : currentTeamInviteCode ? 'teamInvite' : (currentInviteCode || currentCardCode) ? 'code' : 'fork'
   );
+  // Which pre-auth step opened the sign-in screen, so its Back returns there.
+  const [authReturnStep, setAuthReturnStep] = useState<'fork' | 'confirm' | 'verifyEmail' | 'teamInvite' | 'coachInvite'>('fork');
+  const openAuthFrom = (from: 'fork' | 'confirm' | 'verifyEmail' | 'teamInvite' | 'coachInvite') => {
+    setAuthReturnStep(from);
+    setPreAuthStep('auth');
+  };
   const [pendingResult, setPendingResult] = useState<ClaimLookupResult | null>(null);
   const [teamInviteResult, setTeamInviteResult] = useState<TeamInviteLookupResult | null>(null);
   const [coachInviteResult, setCoachInviteResult] = useState<CoachInviteLookupResult | null>(null);
@@ -233,10 +239,27 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
 
   if (!hasSession) {
     if (preAuthStep === 'auth') {
-      return <SignIn />;
+      return (
+        <SignIn
+          onBack={() => {
+            // Leaving sign-in from the first screen drops the half-chosen
+            // intent (e.g. "coach") so a later, different choice starts clean.
+            if (authReturnStep === 'fork') clearIntent();
+            setPreAuthStep(authReturnStep);
+          }}
+        />
+      );
     }
     if (preAuthStep === 'recover') {
-      return <RecoverByEmail hasSession={false} />;
+      return (
+        <RecoverByEmail
+          hasSession={false}
+          onBack={() => {
+            clearIntent();
+            setPreAuthStep('fork');
+          }}
+        />
+      );
     }
     if (preAuthStep === 'code') {
       return (
@@ -270,7 +293,8 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
             // redundantly re-triggers its own confirm/redeem for the same
             // code the auto-resolve effect is already finishing.
             setResolvedInviteCode(pendingResult.code);
-            setPreAuthStep(pendingResult.hasIntendedEmail ? 'verifyEmail' : 'auth');
+            if (pendingResult.hasIntendedEmail) setPreAuthStep('verifyEmail');
+            else openAuthFrom('confirm');
           }}
           onBack={() => setPreAuthStep('code')}
         />
@@ -282,7 +306,8 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
           inviteCode={pendingResult.code}
           maskedEmail={pendingResult.maskedEmail}
           onVerified={() => router.refresh()}
-          onUseDifferentEmail={() => setPreAuthStep('auth')}
+          onUseDifferentEmail={() => openAuthFrom('verifyEmail')}
+          onBack={() => setPreAuthStep('confirm')}
         />
       );
     }
@@ -296,7 +321,7 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
           onConfirm={(fields: TeamInviteConfirmFields) => {
             storeIntent({ kind: 'teamInvite', code: teamInviteResult.code, ...fields });
             setResolvedTeamInviteCode(teamInviteResult.code);
-            setPreAuthStep('auth');
+            openAuthFrom('teamInvite');
           }}
           onBack={() => setPreAuthStep('fork')}
         />
@@ -312,7 +337,7 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
           onConfirm={(fields: CoachInviteConfirmFields) => {
             storeIntent({ kind: 'coachInvite', code: coachInviteResult.code, ...fields });
             setResolvedCoachInviteCode(coachInviteResult.code);
-            setPreAuthStep('auth');
+            openAuthFrom('coachInvite');
           }}
           onBack={() => setPreAuthStep('fork')}
         />
@@ -327,7 +352,7 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
         }}
         onPickCoach={() => {
           storeIntent({ kind: 'coach' });
-          setPreAuthStep('auth');
+          openAuthFrom('fork');
         }}
       />
     );

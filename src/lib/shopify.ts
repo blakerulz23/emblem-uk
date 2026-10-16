@@ -1,4 +1,5 @@
 import { PrintProduct } from './print-capture';
+import { cleanUtmValue, UTM_CART_ATTRIBUTES, UTM_KEYS, type UtmParams } from './utm';
 
 export const SHOPIFY_SHOP = 'officialgudzzz.myshopify.com';
 
@@ -95,12 +96,18 @@ export const AI_VARIANT_BY_PRODUCT: Record<'armymen' | 'pendants' | 'rushmore', 
  * builder can fall back to the manual "we'll email a payment link" flow
  * instead of breaking — the env var is a launch switch, not a hard dep.
  */
-export function buildUkCardCartUrl(quantity: number, orderRef: string): string | null {
+export function buildUkCardCartUrl(quantity: number, orderRef: string, utm?: UtmParams | null): string | null {
   const variantId = process.env.NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT;
   const shop = gate3ShopifyShop();
   if (!variantId || !shop) return null;
   const params = new URLSearchParams();
   params.set('attributes[Order Ref]', orderRef);
+  // Campaign attribution only (no personal data): re-cleaned here so a
+  // tampered cookie can never put anything else into the cart.
+  for (const key of UTM_KEYS) {
+    const value = cleanUtmValue(utm?.[key]);
+    if (value) params.set(`attributes[${UTM_CART_ATTRIBUTES[key]}]`, value);
+  }
   return 'https://' + shop + '/cart/' + variantId + ':' + Math.max(1, quantity) + '?' + params.toString();
 }
 

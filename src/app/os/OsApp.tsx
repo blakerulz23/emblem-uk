@@ -28,6 +28,7 @@ function resolveTabFromSearchParams(searchParams: { get(key: string): string | n
 }
 
 import ActivationGate from './overlays/ActivationGate';
+import DemoBanner from './DemoBanner';
 import MomentStage from './overlays/MomentStage';
 import CollectibleViewer from './overlays/CollectibleViewer';
 import AddMomentFlow from './overlays/AddMomentFlow';
@@ -673,6 +674,9 @@ export default function OsApp({
             </div>
           )}
 
+          {/* Public /os/demo only: Exit back to the site, DEMO label, parent/coach switch and Build my card. */}
+          {demo && <DemoBanner isCoach={isCoach} onToggleRole={actions.toggleRole} />}
+
           {/* top bar */}
           <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px 12px' }}>
             {showBack ? (
@@ -742,7 +746,7 @@ export default function OsApp({
                   manual toggle exists so a signed-out visitor can preview
                   both experiences, never for a real account to peek at the
                   other role's (empty) shell. */}
-              {isDemo && (
+              {isDemo && !demo && (
                 <div onClick={actions.toggleRole} style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', background: isCoach ? 'rgba(21,19,15,.06)' : 'rgba(233,116,53,.1)', border: `1px solid ${isCoach ? 'rgba(21,19,15,.14)' : 'rgba(233,116,53,.3)'}`, borderRadius: 20, padding: '4px 10px 4px 5px' }}>
                   <div style={{ width: 26, height: 26, borderRadius: '50%', background: isCoach ? 'linear-gradient(150deg,#3a3a3a,#111)' : 'linear-gradient(150deg,#E9C46A,#C98B3A)', border: '1.5px solid #fff', boxShadow: '0 2px 6px -1px rgba(0,0,0,.25)', flex: '0 0 auto' }} />
                   <span style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.08em', fontSize: 10.5, color: isCoach ? '#15130F' : '#C4501C', textTransform: 'uppercase' }}>{isCoach ? 'Coach' : 'Owner'}</span>

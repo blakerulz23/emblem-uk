@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { osAssetPath } from '../data';
+import BackLink from './BackLink';
 
 type Season = { id: string; label: string; status: string };
 
@@ -97,6 +98,7 @@ export default function CreateTeamOnboarding() {
         textAlign: 'center',
       }}
     >
+      <BackLink href="/" label="Back to site" />
       <img
         src={`${osAssetPath}/emblem-wordmark.png`}
         alt="Emblem"

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { osAssetPath } from '../data';
+import BackLink from './BackLink';
 
 export type TeamInviteLookupResult = {
   code: string;
@@ -44,6 +45,7 @@ export default function TeamInviteConfirm({
         textAlign: 'center',
       }}
     >
+      <BackLink onClick={onBack} />
       <img
         src={`${osAssetPath}/emblem-wordmark.png`}
         alt="Emblem"
