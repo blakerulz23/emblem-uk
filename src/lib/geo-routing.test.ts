@@ -48,6 +48,21 @@ describe('geo routing', () => {
     }
   });
 
+  it('never redirects Google fetchers without "bot" in their user agent (Search Console verification, URL inspection)', () => {
+    for (const userAgent of ['Mozilla/5.0 (compatible; Google-Site-Verification/1.0)', 'Mozilla/5.0 (compatible; Google-InspectionTool/1.0;)', 'GoogleOther']) {
+      expect(geoRedirectTarget(req({ userAgent }), 'ca', urls), userAgent).toBeNull();
+    }
+  });
+
+  it('still routes ordinary browsers, including Chrome and the Google app', () => {
+    for (const userAgent of [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) GSA/330.0.0 Mobile/15E148 Safari/604.1',
+    ]) {
+      expect(geoRedirectTarget(req({ userAgent }), 'ca', urls), userAgent).not.toBeNull();
+    }
+  });
+
   it('maps countries and finds the shared cookie domain', () => {
     expect(marketForCountry('gb')).toBe('uk');
     expect(marketForCountry('PR')).toBe('us');
