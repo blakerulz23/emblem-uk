@@ -134,6 +134,42 @@ export const GIFT_PAGE_FAQ_ITEMS: FaqItem[] = [
   FAQ_PRIVACY[0],
 ];
 
+/**
+ * /football-cards-for-clubs. Worded to the live Squad Invite rules: the
+ * team's price tier is fixed at the deadline from completed family
+ * commitments, each family then pays for its own card, and the free coach
+ * card needs 10 paid families. Kept off /faq so that page is unchanged.
+ */
+export const CLUB_PAGE_FAQ_ITEMS: FaqItem[] = [
+  {
+    question: 'Do coaches or the club see children’s details?',
+    answer:
+      'No roster or photos are ever collected from the organiser. Each family creates and approves their own child’s card through the team link. The organiser sees the team’s progress and each joined player’s first name and surname initial, as printed on the card, never photos, full surnames, dates of birth or parents’ details.',
+  },
+  {
+    question: 'Who pays, and when?',
+    answer:
+      'Each family pays for their own card through secure checkout once the team’s price is confirmed after your deadline. The organiser does not pay for the team.',
+  },
+  {
+    question: 'How is the team’s price decided?',
+    answer: `At your deadline we count the families who have committed to a card: one family is ${PRICES.single}, two to nine families are ${PRICES.multi} per card, and ten or more families are ${PRICES.squad} per card.`,
+  },
+  {
+    question: 'How does the free coach card work?',
+    answer: 'Once ten families in the team have paid for their cards, the team’s coach receives a personalised Emblem coach card at no extra cost.',
+  },
+  {
+    question: 'Can we use our club badge?',
+    answer: 'Badge details are reviewed with our team after approval, and you confirm that the club has given permission for it to be used.',
+  },
+  {
+    question: 'Who can apply for the pilot?',
+    answer:
+      'UK grassroots clubs and teams with players aged U6 to U18. The organiser is a coach or authorised club representative, or a parent representative authorised by the team. Every request is reviewed by our team.',
+  },
+];
+
 /** Plain-text answer used in structured data: lead + answer, no chips or links. */
 export function faqPlainAnswer(item: FaqItem): string {
   return [item.lead, item.answer].filter(Boolean).join(' ');

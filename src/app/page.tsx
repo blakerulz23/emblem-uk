@@ -3,7 +3,6 @@ import Link from 'next/link';
 import Icon from '@/components/builder/emblem/Icon';
 import HeroStage from '@/components/marketing/HeroStage';
 import JsonLd from '@/components/marketing/JsonLd';
-import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { PAGE_DESCRIPTIONS, pageOpenGraph, PRICES } from '@/lib/marketing/site';
 import { organizationJsonLd, personalisedCardProductJsonLd } from '@/lib/marketing/structured-data';
 
@@ -68,14 +67,13 @@ const trustItems = [
 ];
 
 export default function Home() {
-  const squadInviteEnabled = isSquadInviteMvpEnabled();
   const explore = [
     { label: 'Try the app', body: 'Open the private profile a card unlocks, with sample data. No sign-in needed.', href: '/os/demo' },
     { label: 'How it works', body: 'From one photo to a printed card with a chip inside, and a profile that grows every season.', href: '/how-it-works' },
     {
       label: 'For coaches and teams',
       body: 'One invite for the whole squad, with a free coach card on full-squad orders.',
-      href: squadInviteEnabled ? '/squad-invite/start' : '/builder?mode=squad',
+      href: '/football-cards-for-clubs',
     },
     { label: 'Privacy and safety', body: 'Private by default and controlled by parents.', href: '/trust-and-safeguarding' },
   ];
