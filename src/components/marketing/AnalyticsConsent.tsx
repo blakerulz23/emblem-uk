@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { analyticsMeasurementId, isAnalyticsBlockedPath, readConsent, track, writeConsent, type ConsentState } from '@/lib/analytics';
+import { webAnalyticsEnabled } from '@/lib/web-analytics';
 
 /**
  * Cookie consent + GA4 loader. Renders nothing at all unless
@@ -11,7 +12,9 @@ import { analyticsMeasurementId, isAnalyticsBlockedPath, readConsent, track, wri
  * changes nothing until the analytics provider is chosen.
  *
  * GA is only requested after "Accept"; IP anonymisation and Google signals
- * off. Elements marked data-track="<name>" report a cta_click on click.
+ * off. Elements marked data-track="<name>" report a cta_click on click: this
+ * is the site's only click listener, on whenever GA or cookieless Vercel
+ * Web Analytics is enabled, and track() sends each click once per provider.
  */
 export default function AnalyticsConsent() {
   const id = analyticsMeasurementId();
@@ -41,15 +44,16 @@ export default function AnalyticsConsent() {
     }
   }, [id, consent, blocked]);
 
+  const listen = Boolean(id) || webAnalyticsEnabled();
   useEffect(() => {
-    if (!id) return;
+    if (!listen) return;
     const onClick = (e: MouseEvent) => {
       const el = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-track]');
       if (el?.dataset.track) track('cta_click', { cta: el.dataset.track, page: window.location.pathname });
     };
     document.addEventListener('click', onClick);
     return () => document.removeEventListener('click', onClick);
-  }, [id]);
+  }, [listen]);
 
   if (!id || blocked || consent !== null) return null;
 

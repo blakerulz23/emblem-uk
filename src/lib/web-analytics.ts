@@ -1,4 +1,4 @@
-import { isAnalyticsBlockedPath } from './analytics';
+import { isAnalyticsBlockedPath } from './analytics-paths';
 
 /**
  * Vercel Web Analytics privacy filter (pure, so it is unit-tested).

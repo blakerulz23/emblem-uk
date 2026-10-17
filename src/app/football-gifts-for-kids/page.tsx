@@ -5,7 +5,7 @@ import CardGallery from '@/components/marketing/CardGallery';
 import JsonLd from '@/components/marketing/JsonLd';
 import { FaqAccordion } from '../HomeEffects';
 import { GIFT_PAGE_FAQ_ITEMS } from '@/lib/marketing/faq';
-import { CHRISTMAS_ORDER_BY, pageOpenGraph, PRICES } from '@/lib/marketing/site';
+import { CHRISTMAS_ORDER_BY, PAGE_DESCRIPTIONS, pageOpenGraph, PRICES } from '@/lib/marketing/site';
 import { breadcrumbJsonLd, faqPageJsonLd, personalisedCardProductJsonLd } from '@/lib/marketing/structured-data';
 
 // Christmas gift landing page. Targets (UK DataForSEO, Oct 2026):
@@ -14,7 +14,7 @@ import { breadcrumbJsonLd, faqPageJsonLd, personalisedCardProductJsonLd } from '
 // christmas football presents (590), football stocking fillers (260).
 export const metadata: Metadata = {
   title: 'Personalised Football Gifts for Kids This Christmas | Emblem',
-  description: `A personalised football card made from their photo, with a chip that opens their own player profile. A Christmas football gift for kids that keeps growing. ${PRICES.single}, printed in the UK.`,
+  description: PAGE_DESCRIPTIONS.gifts,
   alternates: { canonical: '/football-gifts-for-kids' },
   openGraph: pageOpenGraph({ title: 'The football gift that keeps going', url: '/football-gifts-for-kids' }),
 };

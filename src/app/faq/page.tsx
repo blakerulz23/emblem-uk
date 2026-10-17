@@ -4,12 +4,11 @@ import JsonLd from '@/components/marketing/JsonLd';
 import { FaqAccordion } from '../HomeEffects';
 import { ALL_FAQ_ITEMS, FAQ_SECTIONS } from '@/lib/marketing/faq';
 import { breadcrumbJsonLd, faqPageJsonLd } from '@/lib/marketing/structured-data';
-import { pageOpenGraph } from '@/lib/marketing/site';
+import { PAGE_DESCRIPTIONS, pageOpenGraph } from '@/lib/marketing/site';
 
 export const metadata: Metadata = {
   title: 'Personalised Football Card FAQ | Emblem',
-  description:
-    'Answers about Emblem personalised football cards: price, delivery, gifts, how the NFC player profile works, and how guardians keep children’s information private.',
+  description: PAGE_DESCRIPTIONS.faq,
   alternates: { canonical: '/faq' },
   openGraph: pageOpenGraph({ title: 'Emblem questions, answered', url: '/faq' }),
 };

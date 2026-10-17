@@ -10780,3 +10780,21 @@ a { text-decoration: none; color: inherit; }
   .emh-phone-avatar,
   .emh-phone-moment { transition: none; }
 }
+
+
+/* Button contrast (WCAG AA): white text on the brand orange #f1601d is 3.27:1,
+   below the 4.5:1 AA minimum. Buttons and the tier flag use the deeper
+   #cc4a0e (4.61:1) and #b8430d on hover (5.46:1). The brand orange stays
+   everywhere else: accents, eyebrows, the NFC pulse, the announcement bar
+   and orange text on dark backgrounds. */
+.emh-nav-cta,
+.emh-btn-primary,
+.emh-tier-flag,
+.emh-tier-featured a,
+.emh-faq-cta a,
+.emh-consent-accept { background: #cc4a0e; }
+.emh-nav-cta:hover,
+.emh-btn-primary:hover,
+.emh-tier-featured a:hover,
+.emh-faq-cta a:hover,
+.emh-consent-accept:hover { background: #b8430d; }
