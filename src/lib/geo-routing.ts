@@ -61,7 +61,11 @@ export function parseCountryChoice(value: string | null | undefined): MarketId |
   return v === 'uk' || v === 'ca' || v === 'us' ? v : null;
 }
 
-const BOT = /bot|crawl|spider|slurp|facebookexternalhit|embedly|preview|lighthouse|headless/i;
+// `google` covers Google's fetchers whose user agent lacks "bot", notably
+// Google-Site-Verification (Search Console ownership checks, sent from US
+// addresses) and Google-InspectionTool. Browsers, including Chrome and the
+// Google app, never include "google" in their user agent.
+const BOT = /bot|crawl|spider|slurp|google|facebookexternalhit|embedly|preview|lighthouse|headless/i;
 
 /**
  * Pages that exist on every Emblem site (UK, Canada, US). Only these are
