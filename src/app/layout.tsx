@@ -3,7 +3,7 @@ import { Sora, Manrope, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import ConditionalChrome from '@/components/ConditionalChrome';
 import { isDisposableSquadInviteMvpPreview } from '@/lib/squad-invite-preview-safety';
-import { OG_IMAGE, SITE_URL } from '@/lib/marketing/site';
+import { googleSiteVerification, OG_IMAGE, SITE_URL } from '@/lib/marketing/site';
 import AnalyticsConsent from '@/components/marketing/AnalyticsConsent';
 
 // Marketing typography (emblem.cards). Scoped to the marketing shell via
@@ -51,6 +51,9 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: 'Emblem OS',
   },
+  // Google Search Console (URL-prefix property, HTML-tag method): renders
+  // <meta name="google-site-verification"> on every page via the Metadata API.
+  ...(googleSiteVerification() ? { verification: { google: googleSiteVerification() } } : {}),
 };
 
 export default function RootLayout({

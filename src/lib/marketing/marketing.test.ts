@@ -7,7 +7,7 @@ import { buildUkCardCartUrl } from '@/lib/shopify';
 import { cleanUtmValue, parseUtmCookie, serializeUtm, utmAttributionEnabled, utmFromSearchParams } from '@/lib/utm';
 import { ALL_FAQ_ITEMS, GIFT_PAGE_FAQ_ITEMS, HOMEPAGE_FAQ_ITEMS, faqPlainAnswer } from './faq';
 import { merchantFeedXml, merchantItems } from './merchant-feed';
-import { DISALLOWED_PREFIXES, PRICES, PUBLIC_PAGES } from './site';
+import { DISALLOWED_PREFIXES, GOOGLE_SITE_VERIFICATION_TOKEN, googleSiteVerification, PRICES, PUBLIC_PAGES } from './site';
 import { faqPageJsonLd, personalisedCardProductJsonLd, serializeJsonLd } from './structured-data';
 
 afterEach(() => {
@@ -166,5 +166,25 @@ describe('Merchant Center feed', () => {
     expect(xml).toContain('A &lt;b&gt;');
     expect(xml).toContain('?a=1&amp;b=2');
     expect(xml).toMatch(/^<\?xml version="1.0" encoding="UTF-8"\?>/);
+  });
+});
+
+describe('Search Console verification', () => {
+  it('uses the built-in emblem.cards token', () => {
+    expect(GOOGLE_SITE_VERIFICATION_TOKEN).toBe('CmeevP7YmeXBt4oPV9Y18ILS4-FRoXtRmcWPdAwRsCE');
+    expect(googleSiteVerification({})).toBe(GOOGLE_SITE_VERIFICATION_TOKEN);
+  });
+
+  it('accepts a valid override and never an HTML snippet', () => {
+    expect(googleSiteVerification({ GOOGLE_SITE_VERIFICATION: 'abcDEF123_-abcDEF123_-xyz' })).toBe('abcDEF123_-abcDEF123_-xyz');
+    expect(googleSiteVerification({ GOOGLE_SITE_VERIFICATION: '<meta name="google-site-verification" content="abc" />' })).toBe(GOOGLE_SITE_VERIFICATION_TOKEN);
+    expect(googleSiteVerification({ GOOGLE_SITE_VERIFICATION: 'short' })).toBe(GOOGLE_SITE_VERIFICATION_TOKEN);
+  });
+
+  it('is wired into the root layout metadata once', async () => {
+    const { readFileSync } = await import('fs');
+    const layout = readFileSync(new URL('../../app/layout.tsx', import.meta.url), 'utf8');
+    expect(layout.match(/verification:/g)).toHaveLength(1);
+    expect(layout).toContain('verification: { google: googleSiteVerification() }');
   });
 });
