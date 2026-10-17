@@ -211,12 +211,26 @@ export async function POST(req: NextRequest) {
   }
 
   // 5) Squad Invite bookkeeping — links this real payment to its
-  //     participation and recomputes free-coach-card eligibility. A no-op
-  //     for every other order. Never lets a failure here affect the
-  //     response — the payment itself already succeeded above.
-  if (result?.applied && existing.source === 'squad_invite') {
-    const { error: coachCardError } = await supabase.rpc('mark_squad_invite_participation_paid', { p_order_id: existing.id });
-    if (coachCardError) console.warn('shopify webhook: mark_squad_invite_participation_paid failed', { orderId: existing.id });
+  //     participation and recomputes free-coach-card eligibility. Runs
+  //     whenever the order is currently paid (applied now, or a retry of a
+  //     delivery already applied), so a failure here is retried rather than
+  //     lost: a database error returns 500 and Shopify's retry, arriving as
+  //     a duplicate, runs it again. mark_squad_invite_participation_paid
+  //     marks a family paid from any other status, so it is never called
+  //     for an order that is refunded or cancelled.
+  if (existing.source === 'squad_invite' && (result?.applied || result?.reason === 'duplicate_event' || result?.reason === 'already_paid')) {
+    const { data: current, error: currentError } = await supabase.from('orders').select('payment_status').eq('id', existing.id).maybeSingle();
+    if (currentError) {
+      return NextResponse.json({ error: currentError.message }, { status: 500 });
+    }
+    const currentStatus = (current as { payment_status?: string } | null)?.payment_status;
+    if (currentStatus === 'paid' || currentStatus === 'fulfilled') {
+      const { error: coachCardError } = await supabase.rpc('mark_squad_invite_participation_paid', { p_order_id: existing.id });
+      if (coachCardError) {
+        console.error('shopify webhook: mark_squad_invite_participation_paid failed, asking Shopify to retry', { orderId: existing.id });
+        return NextResponse.json({ error: coachCardError.message }, { status: 500 });
+      }
+    }
   }
 
   return NextResponse.json({ ok: true, orderId: existing.id, applied: result?.applied ?? false, reason: result?.reason });

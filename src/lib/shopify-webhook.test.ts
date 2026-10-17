@@ -1,5 +1,6 @@
 import { createHmac } from 'crypto';
 import { describe, expect, it } from 'vitest';
+import shopifyRefundExample from './__fixtures__/shopify-refunds-create.example.json';
 import { extractOrderRef, extractShopifyOrderId, verifyPaidLineItem, verifyShopifyHmac, classifyRefund, refundTouchesVariants } from './shopify-webhook';
 
 const SECRET = 'test-webhook-secret';
@@ -318,5 +319,43 @@ describe('refundTouchesVariants', () => {
     expect(refundTouchesVariants({ refund_line_items: [{ quantity: 1, line_item: { variant_id: 222 } }] }, ['111', '222'])).toBe(true);
     expect(refundTouchesVariants({ refund_line_items: [{ quantity: 1, line_item: { variant_id: 333 } }] }, ['111', '222'])).toBe(false);
     expect(refundTouchesVariants({}, ['111'])).toBe(false);
+  });
+});
+
+/**
+ * Shopify's own documented refunds/create example (shopify.dev webhook
+ * reference, also what "Send test notification" delivers), stored verbatim.
+ * It pins the real field names the classifier reads, and the fact that
+ * transactions carry currency: null.
+ */
+describe('classifyRefund against Shopify’s documented refunds/create payload', () => {
+  const example = shopifyRefundExample as unknown as {
+    refund_line_items: Array<{ quantity: number; line_item: Record<string, unknown> }>;
+    transactions: Array<Record<string, unknown>>;
+  };
+  const withVariant = (variantId: number) => ({
+    ...example,
+    refund_line_items: example.refund_line_items.map((r) => ({ ...r, line_item: { ...r.line_item, variant_id: variantId } })),
+  });
+
+  it('has the fields the classifier reads', () => {
+    expect(example.refund_line_items[0]).toHaveProperty('quantity');
+    expect(example.refund_line_items[0].line_item).toHaveProperty('variant_id');
+    expect(example.transactions[0]).toMatchObject({ kind: 'refund', status: 'success' });
+    expect(example.transactions[0]).toHaveProperty('amount');
+    expect(example.transactions[0].currency).toBeNull();
+  });
+
+  it('is not an Emblem refund as published (no Emblem variant): partial, never full', () => {
+    expect(classifyRefund(example, { cardVariantIds: ['46800821715116'], paidQuantity: 1, paidAmountPence: 2499 }).kind).toBe('partial');
+  });
+
+  it('with an Emblem variant on every line, it is full by quantity', () => {
+    const lines = example.refund_line_items.reduce((n, r) => n + r.quantity, 0);
+    expect(classifyRefund(withVariant(46800821715116), { cardVariantIds: ['46800821715116'], paidQuantity: lines, paidAmountPence: 2499 })).toEqual({ kind: 'full', basis: 'quantity' });
+  });
+
+  it('never treats its currency-less amounts as GBP (amount basis unknown)', () => {
+    expect(classifyRefund({ ...example, refund_line_items: [] }, { cardVariantIds: ['46800821715116'], paidQuantity: 1, paidAmountPence: 100 })).toEqual({ kind: 'partial', refundedQuantity: 0, refundedAmountPence: null });
   });
 });

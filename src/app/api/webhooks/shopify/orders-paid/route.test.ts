@@ -6,12 +6,14 @@ import { POST } from './route';
 const mockRpc = vi.fn();
 const mockOrdersSelect = vi.fn();
 const mockParticipationSelect = vi.fn();
+const mockOrderStatus = vi.fn();
 vi.mock('@/lib/supabase/server', () => ({
   createServiceRoleClient: () => ({
     rpc: (name: string, args: unknown) => mockRpc(name, args),
     from: (table: string) => {
       if (table === 'orders') {
-        return { select: () => ({ eq: () => ({ maybeSingle: () => mockOrdersSelect() }) }) };
+        // The re-read before Squad Invite bookkeeping selects payment_status only.
+        return { select: (cols: string) => ({ eq: () => ({ maybeSingle: () => (cols === 'payment_status' ? mockOrderStatus() : mockOrdersSelect()) }) }) };
       }
       if (table === 'squad_invite_participations') {
         return { select: () => ({ eq: () => ({ maybeSingle: () => mockParticipationSelect() }) }) };
@@ -93,7 +95,9 @@ beforeEach(() => {
   mockRpc.mockReset();
   mockOrdersSelect.mockReset();
   mockParticipationSelect.mockReset();
+  mockOrderStatus.mockReset();
   mockEnqueueStaffNotification.mockReset();
+  mockOrderStatus.mockResolvedValue({ data: { payment_status: 'paid' }, error: null });
   mockParticipationSelect.mockResolvedValue({ data: SQUAD_PARTICIPATION, error: null });
   mockOrdersSelect.mockResolvedValue({ data: ORDER_ROW, error: null });
   mockRpc.mockResolvedValue({ data: { applied: true, orderId: ORDER_ROW.id }, error: null });
@@ -224,10 +228,38 @@ describe('POST /api/webhooks/shopify/orders-paid — Squad Invite bookkeeping', 
     expect(mockRpc).toHaveBeenCalledWith('mark_squad_invite_participation_paid', { p_order_id: ORDER_ROW.id });
   });
 
-  it('never calls the coach-card bookkeeping when the payment event did not apply (e.g. a duplicate)', async () => {
+  it('re-runs the (idempotent) bookkeeping on a duplicate delivery while the order is paid, so an earlier failure is completed', async () => {
+    mockOrdersSelect.mockResolvedValue({ data: SQUAD_ORDER_ROW, error: null });
+    mockRpc.mockImplementation((name: string) =>
+      Promise.resolve(name === 'apply_gate3_payment_event' ? { data: { applied: false, reason: 'duplicate_event' }, error: null } : { data: { applied: false, reason: 'already paid' }, error: null }));
+    const res = await post(SQUAD_PAYLOAD);
+    expect(res.status).toBe(200);
+    expect(mockRpc).toHaveBeenCalledWith('mark_squad_invite_participation_paid', { p_order_id: ORDER_ROW.id });
+  });
+
+  it('never marks the family paid on a retry once the order has been refunded or cancelled', async () => {
     mockOrdersSelect.mockResolvedValue({ data: SQUAD_ORDER_ROW, error: null });
     mockRpc.mockResolvedValue({ data: { applied: false, reason: 'duplicate_event' }, error: null });
-    await post(SQUAD_PAYLOAD);
+    for (const status of ['refunded', 'cancelled', 'pending_payment']) {
+      mockOrderStatus.mockResolvedValue({ data: { payment_status: status }, error: null });
+      await post(SQUAD_PAYLOAD);
+    }
+    expect(mockRpc).not.toHaveBeenCalledWith('mark_squad_invite_participation_paid', expect.anything());
+  });
+
+  it('returns 500 so Shopify retries when the bookkeeping fails after the payment applied', async () => {
+    mockOrdersSelect.mockResolvedValue({ data: SQUAD_ORDER_ROW, error: null });
+    mockRpc.mockImplementation((name: string) =>
+      Promise.resolve(name === 'apply_gate3_payment_event' ? { data: { applied: true }, error: null } : { data: null, error: { message: 'lock timeout' } }));
+    const res = await post(SQUAD_PAYLOAD);
+    expect(res.status).toBe(500);
+  });
+
+  it('returns 500 when the order re-read fails before bookkeeping', async () => {
+    mockOrdersSelect.mockResolvedValue({ data: SQUAD_ORDER_ROW, error: null });
+    mockOrderStatus.mockResolvedValue({ data: null, error: { message: 'connection reset' } });
+    const res = await post(SQUAD_PAYLOAD);
+    expect(res.status).toBe(500);
     expect(mockRpc).not.toHaveBeenCalledWith('mark_squad_invite_participation_paid', expect.anything());
   });
 

@@ -242,9 +242,10 @@ export type RefundClassification =
  *  - refunded items with no refund transaction (restock only, £0 returned),
  *    shipping-only and goodwill amounts are partial;
  *  - a refund whose transactions all failed or errored is `failed`.
- * Amounts are compared only when the transaction currency is the expected
- * one (GBP); otherwise the quantity basis decides and anything else is
- * partial, so a currency surprise can never mark an order refunded.
+ * Amounts are compared only when every live transaction states the expected
+ * currency (GBP); a missing or other currency leaves the quantity basis to
+ * decide and anything else is partial, so a currency surprise can never mark
+ * an order refunded.
  */
 export function classifyRefund(
   payload: unknown,
@@ -270,7 +271,10 @@ export function classifyRefund(
   let refundedAmountPence: number | null = 0;
   for (const t of live) {
     const pence = moneyStringToPence(t.amount);
-    if (pence === null || (t.currency && t.currency.toUpperCase() !== expected)) {
+    // Shopify's documented refunds/create payload sends currency: null, so a
+    // missing currency is treated as unknown (it could be the USD shop
+    // currency), never assumed to be GBP.
+    if (pence === null || !t.currency || t.currency.toUpperCase() !== expected) {
       refundedAmountPence = null;
       break;
     }
