@@ -9,6 +9,26 @@ import { MULTI_UNIT_PRICE_PENCE, SINGLE_UNIT_PRICE_PENCE, SQUAD_UNIT_PRICE_PENCE
 /** Canonical origin for the UK site. Never derived from the request host, so preview URLs never become canonical. */
 export const SITE_URL = 'https://emblem.cards';
 
+/**
+ * Google Search Console verification for https://emblem.cards/ (URL-prefix
+ * property, HTML-tag method). Public by design: Google reads it from the page
+ * head. Keep it permanently: removing it un-verifies the property.
+ */
+export const GOOGLE_SITE_VERIFICATION_TOKEN = 'CmeevP7YmeXBt4oPV9Y18ILS4-FRoXtRmcWPdAwRsCE';
+
+/**
+ * Search Console verification token (the content="…" value only, never the
+ * whole <meta> tag). GOOGLE_SITE_VERIFICATION can override the built-in
+ * token; only Google's token alphabet is accepted, so a mistyped or pasted
+ * HTML snippet can never be injected into the page head.
+ */
+export function googleSiteVerification(env: Record<string, string | undefined> = process.env): string | null {
+  const isToken = (v: string | undefined): v is string => !!v && /^[A-Za-z0-9_-]{20,100}$/.test(v);
+  const override = env.GOOGLE_SITE_VERIFICATION?.trim();
+  if (isToken(override)) return override;
+  return isToken(GOOGLE_SITE_VERIFICATION_TOKEN) ? GOOGLE_SITE_VERIFICATION_TOKEN : null;
+}
+
 export const SITE_NAME = 'Emblem';
 
 export function absoluteUrl(path: string): string {
