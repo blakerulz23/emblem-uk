@@ -217,3 +217,81 @@ export function extractShopifyOrderId(payload: unknown): string | null {
   const id = (payload as ShopifyOrderPayload)?.id;
   return id === undefined || id === null ? null : String(id);
 }
+
+
+type ShopifyRefundTransaction = { kind?: string; status?: string; amount?: string; currency?: string };
+type ShopifyRefundLineItem = { quantity?: number; line_item?: { variant_id?: number | string } };
+type ShopifyRefundPayload = { order_id?: number | string; refund_line_items?: ShopifyRefundLineItem[]; transactions?: ShopifyRefundTransaction[] };
+
+export type RefundClassification =
+  /** Money is (being) returned for every paid card: stop counting it, block printing. */
+  | { kind: 'full'; basis: 'quantity' | 'amount' }
+  /** Some money or some cards refunded, or items refunded with no money returned: leave paid, staff decide. */
+  | { kind: 'partial'; refundedQuantity: number; refundedAmountPence: number | null }
+  /** Every refund transaction failed: no money moved, the order is still paid. */
+  | { kind: 'failed' };
+
+/**
+ * Classifies a Shopify `refunds/create` payload against what Emblem recorded
+ * as paid for the order. Conservative in both directions:
+ *  - only a refund that covers every paid card (by quantity of our own card
+ *    variants, or by GBP amount against paid_amount_pence) counts as full;
+ *  - a refund whose transactions are still `pending` counts as money being
+ *    returned (it stops the card being printed); a later settlement failure
+ *    is not reported by this webhook and needs staff follow-up in Shopify;
+ *  - refunded items with no refund transaction (restock only, £0 returned),
+ *    shipping-only and goodwill amounts are partial;
+ *  - a refund whose transactions all failed or errored is `failed`.
+ * Amounts are compared only when the transaction currency is the expected
+ * one (GBP); otherwise the quantity basis decides and anything else is
+ * partial, so a currency surprise can never mark an order refunded.
+ */
+export function classifyRefund(
+  payload: unknown,
+  opts: { cardVariantIds: readonly string[]; paidQuantity: number | null; paidAmountPence: number | null; currency?: string },
+): RefundClassification {
+  const refund = (payload ?? {}) as ShopifyRefundPayload;
+  const expected = (opts.currency ?? 'GBP').toUpperCase();
+  const txs = (Array.isArray(refund.transactions) ? refund.transactions : []).filter((t) => !t.kind || t.kind === 'refund');
+  const failedStatuses = new Set(['failure', 'error']);
+  if (txs.length > 0 && txs.every((t) => failedStatuses.has(String(t.status ?? '').toLowerCase()))) {
+    return { kind: 'failed' };
+  }
+  const live = txs.filter((t) => !failedStatuses.has(String(t.status ?? '').toLowerCase()));
+
+  const variants = new Set(opts.cardVariantIds.map(String));
+  let refundedQuantity = 0;
+  for (const item of Array.isArray(refund.refund_line_items) ? refund.refund_line_items : []) {
+    const variantId = item?.line_item?.variant_id;
+    if (variantId === undefined || variantId === null || !variants.has(String(variantId))) continue;
+    if (Number.isInteger(item.quantity) && (item.quantity as number) > 0) refundedQuantity += item.quantity as number;
+  }
+
+  let refundedAmountPence: number | null = 0;
+  for (const t of live) {
+    const pence = moneyStringToPence(t.amount);
+    if (pence === null || (t.currency && t.currency.toUpperCase() !== expected)) {
+      refundedAmountPence = null;
+      break;
+    }
+    refundedAmountPence += pence;
+  }
+
+  if (live.length > 0 && opts.paidQuantity && opts.paidQuantity > 0 && refundedQuantity >= opts.paidQuantity) {
+    return { kind: 'full', basis: 'quantity' };
+  }
+  if (live.length > 0 && opts.paidAmountPence && refundedAmountPence !== null && refundedAmountPence >= opts.paidAmountPence) {
+    return { kind: 'full', basis: 'amount' };
+  }
+  return { kind: 'partial', refundedQuantity, refundedAmountPence: live.length > 0 ? refundedAmountPence : 0 };
+}
+
+/** True when a refund names any of the given variants (used to spot refunds for our own cards). */
+export function refundTouchesVariants(payload: unknown, variantIds: readonly string[]): boolean {
+  const refund = (payload ?? {}) as ShopifyRefundPayload;
+  const variants = new Set(variantIds.map(String));
+  return (Array.isArray(refund.refund_line_items) ? refund.refund_line_items : []).some((item) => {
+    const variantId = item?.line_item?.variant_id;
+    return variantId !== undefined && variantId !== null && variants.has(String(variantId));
+  });
+}

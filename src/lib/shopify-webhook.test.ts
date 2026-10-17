@@ -1,6 +1,6 @@
 import { createHmac } from 'crypto';
 import { describe, expect, it } from 'vitest';
-import { extractOrderRef, extractShopifyOrderId, verifyPaidLineItem, verifyShopifyHmac } from './shopify-webhook';
+import { extractOrderRef, extractShopifyOrderId, verifyPaidLineItem, verifyShopifyHmac, classifyRefund, refundTouchesVariants } from './shopify-webhook';
 
 const SECRET = 'test-webhook-secret';
 
@@ -269,5 +269,54 @@ describe('verifyPaidLineItem — USD store, GBP presentment (Shopify Markets)', 
   it('never matches a Squad Invite variant to the individual card', () => {
     const squad = order({ line_items: [line({ variant_id: 46948820156588 })] });
     expect(verifyPaidLineItem(squad, UK_CARD, 1, 2499)).toEqual({ ok: false, reason: 'no_matching_line_item' });
+  });
+});
+
+describe('classifyRefund', () => {
+  const tx = (amount: string, status = 'success', currency = 'GBP') => ({ kind: 'refund', status, amount, currency });
+  const line = (variant: number, quantity: number) => ({ quantity, line_item: { variant_id: variant } });
+  const opts = { cardVariantIds: ['111', '222'], paidQuantity: 2, paidAmountPence: 4998 };
+
+  it('is full when every paid card is refunded with money returned (success or pending)', () => {
+    expect(classifyRefund({ refund_line_items: [line(111, 2)], transactions: [tx('49.98')] }, opts)).toEqual({ kind: 'full', basis: 'quantity' });
+    expect(classifyRefund({ refund_line_items: [line(111, 1), line(222, 1)], transactions: [tx('49.98', 'pending')] }, opts)).toEqual({ kind: 'full', basis: 'quantity' });
+  });
+
+  it('is full when the GBP amount refunded covers what was paid, even without line items', () => {
+    expect(classifyRefund({ refund_line_items: [], transactions: [tx('30.00'), tx('19.98')] }, opts)).toEqual({ kind: 'full', basis: 'amount' });
+  });
+
+  it('is partial for fewer cards, smaller amounts, other variants, or items with no money returned', () => {
+    expect(classifyRefund({ refund_line_items: [line(111, 1)], transactions: [tx('24.99')] }, opts)).toEqual({ kind: 'partial', refundedQuantity: 1, refundedAmountPence: 2499 });
+    expect(classifyRefund({ refund_line_items: [line(999, 5)], transactions: [tx('4.00')] }, opts)).toEqual({ kind: 'partial', refundedQuantity: 0, refundedAmountPence: 400 });
+    expect(classifyRefund({ refund_line_items: [line(111, 2)], transactions: [] }, opts)).toEqual({ kind: 'partial', refundedQuantity: 2, refundedAmountPence: 0 });
+    expect(classifyRefund({}, opts)).toEqual({ kind: 'partial', refundedQuantity: 0, refundedAmountPence: 0 });
+  });
+
+  it('is failed only when every refund transaction failed or errored', () => {
+    expect(classifyRefund({ refund_line_items: [line(111, 2)], transactions: [tx('49.98', 'failure')] }, opts)).toEqual({ kind: 'failed' });
+    expect(classifyRefund({ refund_line_items: [line(111, 2)], transactions: [tx('49.98', 'error'), tx('49.98', 'failure')] }, opts)).toEqual({ kind: 'failed' });
+    expect(classifyRefund({ refund_line_items: [line(111, 2)], transactions: [tx('49.98', 'failure'), tx('49.98', 'success')] }, opts)).toEqual({ kind: 'full', basis: 'quantity' });
+  });
+
+  it('never compares amounts in another currency (a currency surprise is partial, never full)', () => {
+    expect(classifyRefund({ transactions: [tx('100.00', 'success', 'USD')] }, opts)).toEqual({ kind: 'partial', refundedQuantity: 0, refundedAmountPence: null });
+  });
+
+  it('ignores non-refund transaction kinds and malformed amounts', () => {
+    expect(classifyRefund({ transactions: [{ kind: 'sale', status: 'success', amount: '49.98', currency: 'GBP' }] }, opts)).toEqual({ kind: 'partial', refundedQuantity: 0, refundedAmountPence: 0 });
+    expect(classifyRefund({ transactions: [tx('£49.98')] }, opts)).toEqual({ kind: 'partial', refundedQuantity: 0, refundedAmountPence: null });
+  });
+
+  it('needs a known paid quantity or amount to call a refund full', () => {
+    expect(classifyRefund({ refund_line_items: [line(111, 2)], transactions: [tx('49.98')] }, { cardVariantIds: ['111'], paidQuantity: null, paidAmountPence: null })).toEqual({ kind: 'partial', refundedQuantity: 2, refundedAmountPence: 4998 });
+  });
+});
+
+describe('refundTouchesVariants', () => {
+  it('spots refunds naming one of the given variants only', () => {
+    expect(refundTouchesVariants({ refund_line_items: [{ quantity: 1, line_item: { variant_id: 222 } }] }, ['111', '222'])).toBe(true);
+    expect(refundTouchesVariants({ refund_line_items: [{ quantity: 1, line_item: { variant_id: 333 } }] }, ['111', '222'])).toBe(false);
+    expect(refundTouchesVariants({}, ['111'])).toBe(false);
   });
 });

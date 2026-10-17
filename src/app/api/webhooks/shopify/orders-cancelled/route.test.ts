@@ -17,6 +17,11 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }));
 
+const mockNotify = vi.fn();
+vi.mock('@/lib/dispatch-staff-notification', () => ({
+  enqueueAndDispatchStaffNotification: (...args: unknown[]) => mockNotify(...args),
+}));
+
 const SECRET = 'test-webhook-secret';
 const WEBHOOK_ID = 'whid_cancel_1';
 
@@ -78,5 +83,41 @@ describe('POST /api/webhooks/shopify/orders-cancelled', () => {
       p_to_status: 'cancelled',
       p_shopify_order_id: '555',
     });
+  });
+});
+
+describe('POST /api/webhooks/shopify/orders-cancelled — paid and approved orders', () => {
+  const reason = () => (mockNotify.mock.calls[0][1] as { summary: { reason: string }; eventKey: string });
+  beforeEach(() => {
+    mockNotify.mockReset();
+    mockOrdersSelect.mockResolvedValue({ data: { id: 'order-5' }, error: null });
+  });
+
+  it('alerts staff when a paid order is cancelled in Shopify (it stays paid but can no longer be approved)', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'already_paid' }, error: null });
+    const res = await post(PAYLOAD);
+    expect(res.status).toBe(200);
+    expect(reason().summary.reason).toMatch(/Cancelled in Shopify while paid\. It can no longer be approved/);
+    expect(reason().eventKey).toMatch(/^payment_cancelled_while_paid:EMB-XYZ789:/);
+  });
+
+  it('tells staff to stop production when an approved order is cancelled', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'already_fulfilled' }, error: null });
+    await post(PAYLOAD);
+    expect(reason().summary.reason).toMatch(/after it was approved for production\. Stop printing/);
+  });
+
+  it('stays silent when the order was already refunded (the refund already stopped it)', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'already_refunded' }, error: null });
+    await post(PAYLOAD);
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it('stays silent for an ordinary cancellation of an unpaid order and for a replayed delivery', async () => {
+    mockRpc.mockResolvedValueOnce({ data: { applied: true }, error: null });
+    await post(PAYLOAD);
+    mockRpc.mockResolvedValueOnce({ data: { applied: false, reason: 'duplicate_event' }, error: null });
+    await post(PAYLOAD);
+    expect(mockNotify).not.toHaveBeenCalled();
   });
 });

@@ -52,6 +52,8 @@ type Fixture = {
   // preview email — distinct from `cards`, which is only the normal-order
   // branch's player_id list
   squadInviteCard?: { claim_token: string } | null;
+  // a recorded Shopify orders/cancelled delivery for this order's order_ref
+  shopifyCancelled?: boolean;
 };
 
 let fixture: Fixture;
@@ -86,6 +88,7 @@ vi.mock('@/lib/supabase/server', () => ({
                       authority_status: fixture.orderAuthorityStatus,
                       pricing_tier: fixture.orderPricingTier ?? null,
                       payment_status: fixture.orderPaymentStatus ?? null,
+                      order_ref: 'EMB-APPROVE-1',
                     }
                   : fixture.orderRow,
               }),
@@ -132,6 +135,17 @@ vi.mock('@/lib/supabase/server', () => ({
       }
       if (table === 'players') {
         return { update: () => ({ in: async () => ({ error: null }) }) };
+      }
+      if (table === 'shopify_webhook_events') {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                limit: () => ({ maybeSingle: async () => ({ data: fixture.shopifyCancelled ? { id: 'wh-cancel-1' } : null }) }),
+              }),
+            }),
+          }),
+        };
       }
       throw new Error(`unexpected table ${table}`);
     },
@@ -525,5 +539,66 @@ describe('POST /api/orders/[id]/approve — Squad Invite orders (source-aware br
     fixture.orderRow = { ...fixture.orderRow!, purchaser_email: '' };
     await approve();
     expect(mockSendEarlyPreviewEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/orders/[id]/approve — orders cancelled in Shopify', () => {
+  it('blocks a paid single-card order that Shopify cancelled (it stays paid in Emblem), with a 409 and no update', async () => {
+    mockGate3PaymentGateEnabled.mockReturnValue(true);
+    fixture = {
+      orderSource: 'team_order',
+      orderAuthorityStatus: 'confirmed',
+      orderPricingTier: 'single',
+      orderPaymentStatus: 'paid',
+      cards: [{ player_id: 'player-1' }],
+      orderRow: { id: ORDER_ID, purchaser_email: 'parent@example.test', intended_guardian_email: null },
+      shopifyCancelled: true,
+    };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/cancelled in Shopify and cannot be approved/);
+    expect(orderUpdates).toHaveLength(0);
+  });
+
+  it('blocks a paid Squad Invite order that Shopify cancelled, before the Squad Invite branch runs', async () => {
+    mockRpc.mockResolvedValue({ data: true, error: null });
+    fixture = {
+      orderSource: 'squad_invite',
+      orderRow: { id: ORDER_ID, purchaser_email: 'guardian@example.test', intended_guardian_email: null, payment_status: 'paid', team_name: 'Ashton Juniors U10' },
+      participations: [{ id: 'participation-1', campaign_id: 'campaign-1', squad_invites: { campaign_status: 'active' } }],
+      shopifyCancelled: true,
+    };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect(orderUpdates).toHaveLength(0);
+    expect(auditInserts).toHaveLength(0);
+  });
+
+  it('still approves a paid order with no Shopify cancellation recorded', async () => {
+    mockGate3PaymentGateEnabled.mockReturnValue(true);
+    fixture = {
+      orderSource: 'team_order',
+      orderAuthorityStatus: 'confirmed',
+      orderPricingTier: 'single',
+      orderPaymentStatus: 'paid',
+      cards: [{ player_id: 'player-1' }],
+      orderRow: { id: ORDER_ID, purchaser_email: 'parent@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(200);
+  });
+
+  it('refunded orders stay blocked by the existing payment gate (single card and Squad Invite)', async () => {
+    mockGate3PaymentGateEnabled.mockReturnValue(true);
+    fixture = { orderSource: 'team_order', orderAuthorityStatus: 'confirmed', orderPricingTier: 'single', orderPaymentStatus: 'refunded' };
+    expect((await approve()).status).toBe(409);
+    mockRpc.mockResolvedValue({ data: true, error: null });
+    fixture = {
+      orderSource: 'squad_invite',
+      orderRow: { id: ORDER_ID, purchaser_email: 'guardian@example.test', intended_guardian_email: null, payment_status: 'refunded', team_name: 'Ashton Juniors U10' },
+      participations: [{ id: 'participation-1', campaign_id: 'campaign-1', squad_invites: { campaign_status: 'active' } }],
+    };
+    expect((await approve()).status).toBe(409);
+    expect(orderUpdates).toHaveLength(0);
   });
 });

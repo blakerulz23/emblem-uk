@@ -429,3 +429,36 @@ describe('POST /api/webhooks/shopify/orders-paid — Squad Invite price validati
     expect(mockParticipationSelect).not.toHaveBeenCalled();
   });
 });
+
+describe('POST /api/webhooks/shopify/orders-paid — webhook ordering: payment after cancellation or refund', () => {
+  const call = () => mockEnqueueStaffNotification.mock.calls[0][1] as { eventKey: string; summary: { reason: string } };
+
+  it('never applies a payment for an order Emblem already holds as refunded, and alerts staff', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'order_refunded' }, error: null });
+    const res = await post(VALID_PAYLOAD);
+    expect(await res.json()).toMatchObject({ ok: true, applied: false, reason: 'order_refunded' });
+    expect(call().summary.reason).toMatch(/already holds it as refunded, so it was not marked paid/);
+    expect(call().eventKey).toMatch(/^payment_paid_after_close:EMB-ABC123:/);
+  });
+
+  it('never applies a payment for an order already cancelled (cancellation arrived first), and alerts staff', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'order_cancelled' }, error: null });
+    await post(VALID_PAYLOAD);
+    expect(call().summary.reason).toMatch(/already holds it as cancelled/);
+  });
+
+  it('stays silent for a replayed or already-paid delivery', async () => {
+    mockRpc.mockResolvedValueOnce({ data: { applied: false, reason: 'duplicate_event' }, error: null });
+    await post(VALID_PAYLOAD);
+    mockRpc.mockResolvedValueOnce({ data: { applied: false, reason: 'already_paid' }, error: null });
+    await post(VALID_PAYLOAD);
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
+  });
+
+  it('never runs Squad Invite paid bookkeeping when the payment was not applied', async () => {
+    mockOrdersSelect.mockResolvedValue({ data: SQUAD_ORDER_ROW, error: null });
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'order_refunded' }, error: null });
+    await post(SQUAD_PAYLOAD);
+    expect(mockRpc).not.toHaveBeenCalledWith('mark_squad_invite_participation_paid', expect.anything());
+  });
+});

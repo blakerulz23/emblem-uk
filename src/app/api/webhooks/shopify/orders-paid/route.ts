@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { extractOrderRef, extractShopifyOrderId, verifyShopifyHmac, verifyPaidLineItem } from '@/lib/shopify-webhook';
 import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 import { squadInviteVariantId } from '@/lib/squad-invite-payment-link';
+import { notifyStaffOfPaymentIssue } from '@/lib/payment-alerts';
 
 /**
  * Real money, currently invisible outside raw server logs — every failure
@@ -197,6 +198,17 @@ export async function POST(req: NextRequest) {
   }
 
   const result = applied as { applied: boolean; reason?: string } | null;
+
+  // A payment Shopify reports for an order Emblem already holds as
+  // cancelled or refunded is never applied (apply_gate3_payment_event), but
+  // money may have been taken, so staff are told.
+  if (!result?.applied && (result?.reason === 'order_cancelled' || result?.reason === 'order_refunded')) {
+    await notifyStaffOfPaymentIssue(supabase, {
+      kind: 'paid_after_close',
+      reference: orderRef,
+      reason: `Shopify reports this order paid, but Emblem already holds it as ${result.reason === 'order_cancelled' ? 'cancelled' : 'refunded'}, so it was not marked paid. Check the order in Shopify and refund it if money was taken.`,
+    });
+  }
 
   // 5) Squad Invite bookkeeping — links this real payment to its
   //     participation and recomputes free-coach-card eligibility. A no-op
