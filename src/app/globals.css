@@ -10505,3 +10505,278 @@ a { text-decoration: none; color: inherit; }
 .emh-spotlight-media img { width: min(54vw, 260px); }
 
 .emh-nav-signin { white-space: nowrap; }
+
+/* ── Homepage hero stage + Canada patterns (feat/homepage-canada-patterns) ──
+   Physical card and the profile it opens, side by side. The card rotates
+   through pre-rendered designs (HeroStage.tsx); the phone is plain HTML so
+   it costs no image bytes. Sizes inside the stage use container units so
+   the whole composition scales as one piece from 320px to desktop. */
+.emh-stage-wrap {
+  --stage-accent: #9d84ff;
+  scroll-margin-top: 24px;
+  position: relative;
+  z-index: 2;
+  width: min(100%, 640px);
+  margin: 26px auto 8px;
+}
+.emh-stage {
+  container-type: inline-size;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 640 / 470;
+}
+.emh-stage::before {
+  /* soft floor glow tinted by the active design */
+  content: '';
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 2%;
+  height: 16%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--stage-accent) 35%, transparent), transparent);
+  filter: blur(14px);
+  transition: background 0.6s ease;
+}
+.emh-stage-card {
+  position: absolute;
+  left: 7%;
+  top: 4%;
+  width: 41%;
+  aspect-ratio: 5 / 7;
+  transform: rotate(-6deg);
+  border-radius: 4.2cqw;
+  box-shadow: 0 3cqw 6cqw rgba(20, 16, 12, 0.35), 0 0.6cqw 1.4cqw rgba(20, 16, 12, 0.25);
+  overflow: hidden;
+  background: #15121a;
+}
+.emh-stage-card img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.emh-stage-card img.is-active { opacity: 1; }
+.emh-stage-card::after {
+  /* foil sheen */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.28) 48%, transparent 60%);
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .emh-stage:hover .emh-stage-card::after { transform: translateX(120%); transition: transform 0.9s ease; }
+}
+.emh-stage-nfc {
+  position: absolute;
+  left: 47%;
+  top: 42%;
+  width: 9%;
+  overflow: visible;
+  fill: none;
+  stroke: #f1601d;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.emh-stage-nfc path { animation: emh-nfc 2.4s ease-in-out infinite; }
+.emh-stage-nfc path:nth-child(2) { animation-delay: 0.25s; }
+.emh-stage-nfc path:nth-child(3) { animation-delay: 0.5s; }
+@keyframes emh-nfc {
+  0%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
+.emh-stage-phone {
+  position: absolute;
+  right: 6%;
+  top: 0;
+  width: 36%;
+  aspect-ratio: 9 / 18.5;
+  transform: rotate(4deg);
+  padding: 1.4cqw;
+  border-radius: 6.4cqw;
+  background: linear-gradient(160deg, #3a3833, #121110 40%, #23211e);
+  box-shadow: 0 3.4cqw 7cqw rgba(20, 16, 12, 0.4), inset 0 0 0 0.3cqw rgba(255, 255, 255, 0.12);
+}
+.emh-phone-screen {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2.2cqw;
+  padding: 7cqw 3cqw 3cqw;
+  border-radius: 5.2cqw;
+  overflow: hidden;
+  background: radial-gradient(120% 60% at 100% 0%, color-mix(in srgb, var(--stage-accent) 30%, transparent), transparent 60%), #0c0d10;
+  color: #f4f4f2;
+  text-align: left;
+  font-size: 2.3cqw;
+  line-height: 1.25;
+  transition: background 0.6s ease;
+}
+.emh-phone-notch {
+  position: absolute;
+  top: 2cqw;
+  left: 50%;
+  width: 30%;
+  height: 2.4cqw;
+  transform: translateX(-50%);
+  border-radius: 99px;
+  background: #000;
+}
+.emh-phone-kicker {
+  margin: 0;
+  color: var(--stage-accent);
+  font-family: var(--font-jbmono), monospace;
+  font-size: 1.7cqw;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: color 0.6s ease;
+}
+.emh-phone-id { display: flex; align-items: center; gap: 2cqw; }
+.emh-phone-id b { display: block; font-size: 3.1cqw; font-weight: 800; letter-spacing: -0.01em; }
+.emh-phone-id small,
+.emh-phone-moment small { display: block; color: rgba(244, 244, 242, 0.6); font-size: 1.8cqw; }
+.emh-phone-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 7.4cqw;
+  height: 7.4cqw;
+  border-radius: 50%;
+  border: 0.4cqw solid var(--stage-accent);
+  background: #1b1c21;
+  font-size: 2.4cqw;
+  font-weight: 800;
+  transition: border-color 0.6s ease;
+}
+.emh-phone-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2cqw; }
+.emh-phone-stats span {
+  display: grid;
+  padding: 1.6cqw 0.8cqw;
+  border-radius: 1.8cqw;
+  background: rgba(255, 255, 255, 0.06);
+  border: 0.2cqw solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+.emh-phone-stats b { font-size: 3.6cqw; font-weight: 800; }
+.emh-phone-stats small { color: rgba(244, 244, 242, 0.6); font-size: 1.6cqw; text-transform: uppercase; letter-spacing: 0.06em; }
+.emh-phone-moment {
+  padding: 2cqw;
+  border-radius: 2cqw;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--stage-accent) 26%, #17181c), #17181c);
+  transition: background 0.6s ease;
+}
+.emh-phone-moment b { display: block; margin: 0.4cqw 0; font-size: 2.6cqw; }
+.emh-phone-tap {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 1.4cqw;
+  padding: 1.6cqw 2cqw;
+  border-radius: 99px;
+  background: rgba(241, 96, 29, 0.16);
+  color: #ffb48f;
+  font-size: 1.8cqw;
+  font-weight: 700;
+}
+.emh-phone-tap i {
+  width: 1.6cqw;
+  height: 1.6cqw;
+  border-radius: 50%;
+  background: #f1601d;
+  box-shadow: 0 0 0 0.8cqw rgba(241, 96, 29, 0.25);
+}
+.emh-stage-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.emh-stage-designs { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.emh-stage-designs button,
+.emh-stage-pause {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid rgba(20, 17, 15, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #2a241d;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.emh-stage-designs button i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--chip-accent);
+}
+.emh-stage-designs button[aria-pressed='true'] { background: #16130f; border-color: #16130f; color: #fff; }
+.emh-stage-pause { justify-content: center; width: 36px; padding: 0; font-size: 11px; }
+.emh-stage-designs button:focus-visible,
+.emh-stage-pause:focus-visible { outline: 3px solid #f1601d; outline-offset: 2px; }
+
+/* Design · Print · Tap, with short captions (replaces the homepage section) */
+.emh-hero-steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  width: min(100%, 640px);
+  margin: 18px auto;
+  padding: 0;
+  list-style: none;
+}
+.emh-hero-steps li { display: grid; align-content: start; gap: 3px; padding: 0 4px; }
+.emh-hero-steps li + li { border-left: 1px solid rgba(20, 17, 15, 0.1); }
+.emh-hero-steps b {
+  font-family: var(--font-jbmono), monospace;
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  text-transform: uppercase;
+  color: #16130f;
+}
+.emh-hero-steps b::before { content: '\25CF\00a0'; color: #f1601d; font-size: 9px; vertical-align: 2px; }
+.emh-hero-steps span { color: #6f675d; font-size: 13px; line-height: 1.35; }
+
+/* Pricing: one column on phones so no tier is left alone on a half row */
+@media (max-width: 700px) {
+  .emh-pricing .emh-tier-grid { grid-template-columns: 1fr; gap: 12px; }
+}
+
+/* Explore: closing build action, integrated rather than a separate section */
+.emh-explore-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 28px;
+}
+.emh-explore-cta .emh-btn { min-height: 48px; padding: 12px 26px; }
+.emh-explore-cta .emh-explore-faq { margin-top: 12px; }
+
+@media (min-width: 760px) {
+  .emh-hero-steps b { font-size: 13.5px; letter-spacing: 0.14em; }
+  .emh-hero-steps span { font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .emh-stage-nfc path { animation: none; opacity: 0.85; }
+  .emh-stage-card img,
+  .emh-stage::before,
+  .emh-phone-screen,
+  .emh-phone-kicker,
+  .emh-phone-avatar,
+  .emh-phone-moment { transition: none; }
+}

@@ -1,18 +1,17 @@
 ﻿import type { Metadata } from 'next';
 import Link from 'next/link';
 import Icon from '@/components/builder/emblem/Icon';
-import CardGallery from '@/components/marketing/CardGallery';
+import HeroStage from '@/components/marketing/HeroStage';
 import JsonLd from '@/components/marketing/JsonLd';
-import { FaqAccordion } from './HomeEffects';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
-import { HOMEPAGE_FAQ_ITEMS } from '@/lib/marketing/faq';
 import { pageOpenGraph, PRICES } from '@/lib/marketing/site';
-import { faqPageJsonLd, organizationJsonLd, personalisedCardProductJsonLd } from '@/lib/marketing/structured-data';
+import { organizationJsonLd, personalisedCardProductJsonLd } from '@/lib/marketing/structured-data';
 
 // Homepage layout follows the shorter Canadian page (buy action and price
-// directly under the headline, a quiet "try the app" link, then pricing and
-// links out); copy targets the UK DataForSEO research.
-// The long story sections moved to /how-it-works, the full FAQ to /faq.
+// directly under the headline, card designs shown inside the hero, then
+// pricing and links out); copy targets the UK DataForSEO research.
+// The long story sections live on /how-it-works, the full FAQ (and its
+// FAQPage structured data) on /faq, the design gallery on the gift page.
 export const metadata: Metadata = {
   title: 'Personalised Football Cards with a Digital Profile | Emblem',
   description:
@@ -59,9 +58,9 @@ const tiers = [
 ];
 
 const steps = [
-  { title: 'Design it', body: 'Upload their best photo, choose a design and add their name, number and club. We tidy the background for you.' },
-  { title: 'Print it', body: 'We print it in the UK on premium 400gsm stock with a real NFC chip inside, and post it to you.' },
-  { title: 'Tap it', body: 'Hold the card to a phone and their private player profile opens. No app to download.' },
+  { title: 'Design it.', caption: 'Their photo, name and number' },
+  { title: 'Print it.', caption: 'Premium card with a chip inside' },
+  { title: 'Tap it.', caption: 'Their profile opens. No app' },
 ];
 
 const trustItems = [
@@ -86,7 +85,7 @@ export default function Home() {
 
   return (
     <main className="emh-page">
-      <JsonLd data={[organizationJsonLd(), personalisedCardProductJsonLd(), faqPageJsonLd(HOMEPAGE_FAQ_ITEMS)]} />
+      <JsonLd data={[organizationJsonLd(), personalisedCardProductJsonLd()]} />
 
       <section id="top" className="emh-hero-section">
         <div className="emh-glow" aria-hidden="true" />
@@ -112,28 +111,17 @@ export default function Home() {
             </p>
           </div>
 
-          <picture>
-            <source type="image/webp" srcSet="/assets/home/hero-composition-640.webp 640w, /assets/home/hero-composition-1008.webp 1008w" sizes="(max-width: 760px) 100vw, 560px" />
-            <img
-              className="emh-hero-product-image"
-              src="/hero-product-composition.png"
-              width={1008}
-              height={865}
-              alt="A blank Emblem card ready for a photo upload, the finished personalised football card, and the connected digital player profile open on a phone"
-              loading="eager"
-              fetchPriority="high"
-              decoding="async"
-            />
-          </picture>
+          <HeroStage />
 
           <div className="emh-hero-footer">
-            <p className="emh-hero-process">
-              <span>Design it.</span>
-              <i aria-hidden="true" className="emh-hero-process-dot" />
-              <span>Print it.</span>
-              <i aria-hidden="true" className="emh-hero-process-dot" />
-              <span>Tap it.</span>
-            </p>
+            <ol className="emh-hero-steps">
+              {steps.map((step) => (
+                <li key={step.title}>
+                  <b>{step.title}</b>
+                  <span>{step.caption}</span>
+                </li>
+              ))}
+            </ol>
             <div className="emh-hero-proof">
               <div className="emh-hero-proof-item">
                 <img className="emh-hero-proof-icon" src="/assets/hero-proof/premium-stock.svg" width={44} height={44} alt="" aria-hidden="true" />
@@ -148,46 +136,6 @@ export default function Home() {
                 Printed in the UK
               </div>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <CardGallery />
-
-      <section id="how" className="emh-section emh-steps" aria-labelledby="emh-steps-heading">
-        <p className="emh-eyebrow">How it works</p>
-        <h2 id="emh-steps-heading">Design it. Print it. Tap it.</h2>
-        <ol className="emh-steps-grid">
-          {steps.map((step, i) => (
-            <li key={step.title} className="emh-step">
-              <span className="emh-step-number" aria-hidden="true">{i + 1}</span>
-              <h3>{step.title}</h3>
-              <p>{step.body}</p>
-            </li>
-          ))}
-        </ol>
-        <Link className="emh-text-link" href="/how-it-works" data-track="steps_more">
-          See the whole journey <Icon name="chevR" size={14} />
-        </Link>
-      </section>
-
-      <section id="single" className="emh-section emh-spotlight" aria-labelledby="emh-spotlight-heading">
-        <div className="emh-spotlight-media">
-          <img src="/assets/home/gallery/custom-royal.webp" width={400} height={560} loading="lazy" decoding="async" alt="A Royal Edition personalised football card design" />
-        </div>
-        <div className="emh-spotlight-copy">
-          <p className="emh-eyebrow">One card · {PRICES.single}</p>
-          <h2 id="emh-spotlight-heading">One card. A whole season of memories.</h2>
-          <p>Every personalised football card comes with its own digital player profile for goals, appearances, photos and coach recognition, carried forward season after season.</p>
-          <ul className="emh-spotlight-list">
-            <li>Their photo, name, number and club on a premium printed card</li>
-            <li>A built-in NFC chip: tap to open their profile</li>
-            <li>A private profile their family controls</li>
-            <li>No app download and no subscription</li>
-          </ul>
-          <div className="emh-spotlight-actions">
-            <Link className="emh-btn emh-btn-primary" href="/builder?mode=single" data-track="spotlight_build">Build one card · {PRICES.single}</Link>
-            <Link className="emh-btn emh-btn-secondary" href="/os/demo" data-track="spotlight_try_app">See the app</Link>
           </div>
         </div>
       </section>
@@ -264,33 +212,16 @@ export default function Home() {
             </Link>
           ))}
         </div>
-      </section>
-
-      <section id="faq" className="emh-section emh-faq">
-        <div className="emh-faq-inner">
-          <div className="emh-faq-head">
-            <p className="emh-eyebrow">FAQ</p>
-            <h2>Questions, answered.</h2>
-            <p>The questions parents ask first.</p>
-          </div>
-          <FaqAccordion items={HOMEPAGE_FAQ_ITEMS} idPrefix="home-faq" />
-          <div className="emh-faq-cta">
-            <h3>More questions?</h3>
-            <Link href="/faq" data-track="faq_all">Read all questions</Link>
-          </div>
+        <div className="emh-explore-cta">
+          <Link className="emh-btn emh-btn-primary" href="/builder?mode=single" data-track="explore_build">
+            Build my card · {PRICES.single}
+          </Link>
+          <Link className="emh-explore-faq" href="/faq" data-track="explore_faq">
+            Questions? Read the FAQ
+          </Link>
         </div>
       </section>
 
-      <section className="emh-final-cta">
-        <img src="/embm.png" alt="Emblem" loading="lazy" decoding="async" />
-        <h2>Start their story today.</h2>
-        <p>Every football journey begins somewhere. Give them one worth keeping.</p>
-        <div className="emh-actions">
-          <Link className="emh-btn emh-btn-primary" href="/builder?mode=single" data-track="final_build">Build my card</Link>
-          <Link className="emh-btn emh-btn-secondary" href="/os/demo" data-track="final_try_app">Try the app</Link>
-        </div>
-        <p className="emh-final-note">Printed in the UK · Digital profile included · No annual subscription</p>
-      </section>
     </main>
   );
 }
