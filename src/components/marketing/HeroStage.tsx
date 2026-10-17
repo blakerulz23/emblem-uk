@@ -18,8 +18,9 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
  *   screen, and has a visible pause button. With reduced motion it never
  *   auto-rotates; the design buttons still switch cards.
  *
- * The player is synthetic: an invented name and a stylised silhouette with no
- * face, badge or sponsor. No child's photo.
+ * The player is synthetic: AI-generated from a text prompt only (no photo of
+ * a real child), with an invented name, and every kit marking (sponsor,
+ * phone number, crest, maker's logo, number) removed.
  */
 const DESIGNS = [
   { id: 'royal', name: 'Royal Edition', accent: '#9d84ff' },
