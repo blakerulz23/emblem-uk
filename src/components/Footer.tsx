@@ -15,7 +15,7 @@ const columns = [
   {
     title: 'For teams',
     links: [
-      { href: '/how-it-works#squad', label: 'Clubs & coaches' },
+      { href: '/football-cards-for-clubs', label: 'Clubs & coaches' },
       { href: '/builder?mode=squad', label: 'Team packs' },
       { href: '/how-it-works#squad', label: 'Leagues' },
     ],

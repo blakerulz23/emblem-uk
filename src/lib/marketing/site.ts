@@ -51,7 +51,11 @@ export const PAGE_DESCRIPTIONS = {
   gifts: `A personalised football card from their photo, with a chip that opens their own player profile. A Christmas football gift that keeps growing. ${PRICES.single}.`,
   howItWorks: 'Make a personalised football card: upload a photo, choose a design, and we print it in the UK with an NFC chip that opens a private player profile.',
   faq: 'Answers about Emblem personalised football cards: price, delivery, gifts, the NFC player profile, and how guardians keep children’s details private.',
+  clubs: 'Personalised NFC football cards for your whole squad: one link for families, guardian-controlled profiles and squad pricing. A UK grassroots club pilot.',
 } as const;
+
+/** Where clubs can ask about the pilot (shown on /football-cards-for-clubs). */
+export const CLUB_ENQUIRY_EMAIL = 'hello@emblem.cards';
 
 /** Share image for Open Graph / Twitter (1200×630). */
 export const OG_IMAGE = { url: '/og/emblem-share.jpg', width: 1200, height: 630 } as const;
@@ -73,6 +77,7 @@ export const PUBLIC_PAGES: ReadonlyArray<{ path: string; priority: number; chang
   { path: '/', priority: 1, changeFrequency: 'weekly', contentUpdated: '2026-10-17' },
   { path: '/football-gifts-for-kids', priority: 0.9, changeFrequency: 'weekly', contentUpdated: '2026-10-16' },
   { path: '/how-it-works', priority: 0.8, changeFrequency: 'monthly', contentUpdated: '2026-10-16' },
+  { path: '/football-cards-for-clubs', priority: 0.8, changeFrequency: 'monthly', contentUpdated: '2026-10-17' },
   { path: '/faq', priority: 0.7, changeFrequency: 'monthly', contentUpdated: '2026-10-16' },
   { path: '/trust-and-safeguarding', priority: 0.6, changeFrequency: 'monthly', contentUpdated: '2026-09-07' },
   { path: '/about', priority: 0.5, changeFrequency: 'yearly', contentUpdated: '2026-07-04' },

@@ -5,7 +5,7 @@ import { SINGLE_UNIT_PRICE_PENCE } from '@/lib/pricing-engine';
 import { isAnalyticsBlockedPath, sanitizeEventParams } from '@/lib/analytics';
 import { buildUkCardCartUrl } from '@/lib/shopify';
 import { cleanUtmValue, parseUtmCookie, serializeUtm, utmAttributionEnabled, utmFromSearchParams } from '@/lib/utm';
-import { ALL_FAQ_ITEMS, GIFT_PAGE_FAQ_ITEMS, HOMEPAGE_FAQ_ITEMS, faqPlainAnswer } from './faq';
+import { ALL_FAQ_ITEMS, CLUB_PAGE_FAQ_ITEMS, GIFT_PAGE_FAQ_ITEMS, HOMEPAGE_FAQ_ITEMS, faqPlainAnswer } from './faq';
 import { merchantFeedXml, merchantItems } from './merchant-feed';
 import { DISALLOWED_PREFIXES, GOOGLE_SITE_VERIFICATION_TOKEN, googleSiteVerification, PAGE_DESCRIPTIONS, PRICES, PUBLIC_PAGES } from './site';
 import { faqPageJsonLd, personalisedCardProductJsonLd, serializeJsonLd } from './structured-data';
@@ -209,5 +209,38 @@ describe('Search Console verification', () => {
     const layout = readFileSync(new URL('../../app/layout.tsx', import.meta.url), 'utf8');
     expect(layout.match(/verification:/g)).toHaveLength(1);
     expect(layout).toContain('verification: { google: googleSiteVerification() }');
+  });
+});
+
+describe('grassroots club landing page', () => {
+  const read = async (rel: string) => (await import('fs')).readFileSync(new URL(rel, import.meta.url), 'utf8');
+
+  it('is in the sitemap with a real content date and is crawlable', () => {
+    const entry = sitemap().find((e) => e.url === 'https://emblem.cards/football-cards-for-clubs');
+    expect(entry?.lastModified).toBe('2026-10-17');
+    expect(DISALLOWED_PREFIXES.some((p) => '/football-cards-for-clubs'.startsWith(p))).toBe(false);
+  });
+
+  it('states the live Squad Invite rules: tier at the deadline from family commitments, coach card after 10 paid families', () => {
+    const text = CLUB_PAGE_FAQ_ITEMS.map(faqPlainAnswer).join(' ');
+    for (const price of [PRICES.single, PRICES.multi, PRICES.squad]) expect(text).toContain(price);
+    expect(text).toContain('ten families in the team have paid');
+    expect(text).toContain('At your deadline');
+    expect(text).not.toMatch(/10 or more player cards/i);
+  });
+
+  it('promises no delivery cost or delivery date, and sends the CTA into the existing Squad Invite flow', async () => {
+    const page = await read('../../app/football-cards-for-clubs/page.tsx');
+    expect(page).toContain("'/squad-invite/start'");
+    expect(page).not.toMatch(/free (uk )?delivery|free shipping|delivered (with)?in \d|working days/i);
+    expect(page).toContain("canonical: '/football-cards-for-clubs'");
+    for (const id of ['clubs_hero_start', 'clubs_final_start', 'clubs_hero_coach_demo', 'clubs_coach_demo', 'clubs_safeguarding', 'clubs_email']) {
+      expect(page).toContain(`data-track="${id}"`);
+    }
+  });
+
+  it('is linked from the footer club link and the homepage coach link', async () => {
+    expect(await read('../../components/Footer.tsx')).toContain("{ href: '/football-cards-for-clubs', label: 'Clubs & coaches' }");
+    expect(await read('../../app/page.tsx')).toContain("href: '/football-cards-for-clubs'");
   });
 });
