@@ -13,17 +13,24 @@ describe('orders-paid webhook — wires real payment to Squad Invite coach-card 
     expect(source).toContain("select('id, payment_status, source, unit_price_pence, total_print_quantity, currency')");
   });
 
-  it('calls mark_squad_invite_participation_paid only for squad_invite orders, and only once apply_gate3_payment_event reports the transition actually applied', () => {
+  it('calls mark_squad_invite_participation_paid only for squad_invite orders, after apply_gate3_payment_event, and only while the order is currently paid', () => {
     const rpcIndex = source.indexOf("rpc('apply_gate3_payment_event'");
-    const coachCardIfIndex = source.indexOf("result?.applied && existing.source === 'squad_invite'");
+    const coachCardIfIndex = source.indexOf("existing.source === 'squad_invite' && (result?.applied || result?.reason === 'duplicate_event' || result?.reason === 'already_paid')");
+    const paidGuardIndex = source.indexOf("currentStatus === 'paid' || currentStatus === 'fulfilled'");
     const coachCardRpcIndex = source.indexOf("rpc('mark_squad_invite_participation_paid'");
     expect(rpcIndex).toBeGreaterThan(-1);
     expect(coachCardIfIndex).toBeGreaterThan(rpcIndex);
-    expect(coachCardRpcIndex).toBeGreaterThan(coachCardIfIndex);
+    expect(paidGuardIndex).toBeGreaterThan(coachCardIfIndex);
+    expect(coachCardRpcIndex).toBeGreaterThan(paidGuardIndex);
   });
 
-  it('a failure in the coach-card bookkeeping never fails the webhook response — the payment already succeeded and must not be retried by Shopify', () => {
-    const bookkeepingBlock = source.slice(source.indexOf("result?.applied && existing.source === 'squad_invite'"), source.indexOf('return NextResponse.json({ ok: true, orderId'));
-    expect(bookkeepingBlock).not.toMatch(/return NextResponse\.json\(\{\s*error/);
+  // Updated deliberately (payment-safety branch): a bookkeeping failure used
+  // to be swallowed, which could leave a paying family out of the paid count
+  // for good. Retrying is safe because apply_gate3_payment_event records each
+  // delivery once (a retry arrives as duplicate_event and cannot double-pay),
+  // and the retry is what completes the bookkeeping.
+  it('a failure in the coach-card bookkeeping asks Shopify to retry (500); the retry re-runs it without re-applying the payment', () => {
+    const bookkeepingBlock = source.slice(source.indexOf("rpc('mark_squad_invite_participation_paid'"), source.indexOf('return NextResponse.json({ ok: true, orderId'));
+    expect(bookkeepingBlock).toMatch(/if \(coachCardError\) \{[\s\S]*status: 500/);
   });
 });

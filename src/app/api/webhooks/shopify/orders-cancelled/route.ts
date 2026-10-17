@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { extractOrderRef, extractShopifyOrderId, verifyShopifyHmac } from '@/lib/shopify-webhook';
+import { notifyStaffOfPaymentIssue } from '@/lib/payment-alerts';
 
 export const runtime = 'nodejs';
 
@@ -62,5 +63,20 @@ export async function POST(req: NextRequest) {
   }
 
   const result = applied as { applied: boolean; reason?: string } | null;
+
+  // A paid or production-approved order can't move to cancelled (the money
+  // is still taken), but it must not be printed either: the delivery is
+  // recorded in shopify_webhook_events, which the approve route checks, and
+  // staff are told so they can refund it in Shopify.
+  if (!result?.applied && (result?.reason === 'already_paid' || result?.reason === 'already_fulfilled')) {
+    await notifyStaffOfPaymentIssue(supabase, {
+      kind: 'cancelled_while_paid',
+      reference: orderRef,
+      reason: result.reason === 'already_fulfilled'
+        ? 'Cancelled in Shopify after it was approved for production. Stop printing or posting this card, then refund it in Shopify.'
+        : 'Cancelled in Shopify while paid. It can no longer be approved for production; refund it in Shopify.',
+    });
+  }
+
   return NextResponse.json({ ok: true, orderId: existing.id, applied: result?.applied ?? false, reason: result?.reason });
 }

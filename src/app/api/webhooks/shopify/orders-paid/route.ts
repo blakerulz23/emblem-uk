@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { extractOrderRef, extractShopifyOrderId, verifyShopifyHmac, verifyPaidLineItem } from '@/lib/shopify-webhook';
 import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
+import { squadInviteVariantId } from '@/lib/squad-invite-payment-link';
+import { notifyStaffOfPaymentIssue } from '@/lib/payment-alerts';
 
 /**
  * Real money, currently invisible outside raw server logs — every failure
@@ -53,9 +55,9 @@ export const runtime = 'nodejs';
  *      adds shipping/tax Emblem doesn't set).
  *
  * Setup: see docs/infra/shopify-webhook-setup.md for the Shopify Admin
- * side. Squad Invite orders continue to use their own, separate
- * mark_squad_invite_participation_paid bookkeeping (unchanged, still
- * fired unconditionally as a safe no-op for every non-Squad-Invite order).
+ * side. Squad Invite orders are price-verified like builder orders (step 3)
+ * and then use their own, separate mark_squad_invite_participation_paid
+ * bookkeeping (unchanged).
  */
 export async function POST(req: NextRequest) {
   // 1) HMAC verification, against the raw body — parsing to JSON first and
@@ -116,10 +118,12 @@ export async function POST(req: NextRequest) {
   }
 
   // 3) Verify the paid line item against this order's own authoritative
-  //    pricing snapshot — never trust total_price wholesale. Squad Invite
-  //    orders use their own variants (not NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT)
-  //    and their own separate payment RPC, so this verification only ever
-  //    applies to the ordinary-builder path.
+  //    pricing snapshot — never trust total_price wholesale. Builder orders
+  //    are checked against NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT and the
+  //    order's own snapshot; Squad Invite orders against their campaign's
+  //    frozen tier and unit price, that tier's own variant, and the
+  //    family's own print quantity (the same values their checkout link
+  //    was built from). Both fail closed with a staff alert.
   let verifiedAmountPence: number | null = null;
   let verifiedCurrency: string | null = null;
   if (existing.source !== 'squad_invite') {
@@ -145,6 +149,35 @@ export async function POST(req: NextRequest) {
       await notifyStaffOfPaymentVerificationFailure(supabase, orderRef, `Currency mismatch — expected ${existing.currency}, got ${verifiedCurrency}`);
       return NextResponse.json({ ok: true, note: 'currency mismatch, not applying' });
     }
+  } else {
+    const { data: participation, error: participationError } = await supabase
+      .from('squad_invite_participations')
+      .select('print_quantity, squad_invites(final_tier, final_unit_price_pence)')
+      .eq('order_id', existing.id)
+      .maybeSingle();
+    if (participationError) {
+      // Transient DB error — let Shopify retry.
+      return NextResponse.json({ error: participationError.message }, { status: 500 });
+    }
+    const campaignRaw = (participation as { squad_invites?: unknown } | null)?.squad_invites;
+    const campaign = (Array.isArray(campaignRaw) ? campaignRaw[0] : campaignRaw) as { final_tier?: string | null; final_unit_price_pence?: number | null } | null | undefined;
+    const tier = campaign?.final_tier;
+    const unitPricePence = campaign?.final_unit_price_pence;
+    const printQuantity = (participation as { print_quantity?: number | null } | null)?.print_quantity;
+    const variantId = tier === 'single' || tier === 'multi' || tier === 'squad' ? squadInviteVariantId(tier) : null;
+    if (!variantId || unitPricePence == null || printQuantity == null) {
+      console.error('shopify webhook: cannot verify Squad Invite payment — participation, final price or tier variant missing', { orderRef });
+      await notifyStaffOfPaymentVerificationFailure(supabase, orderRef, 'Squad Invite final price, participation or tier variant missing');
+      return NextResponse.json({ ok: true, note: 'squad invite pricing unavailable, not applying' });
+    }
+    const verification = verifyPaidLineItem(payload, variantId, printQuantity, unitPricePence, 'GBP');
+    if (!verification.ok) {
+      console.error('shopify webhook: Squad Invite paid line item verification failed', { orderRef, reason: verification.reason });
+      await notifyStaffOfPaymentVerificationFailure(supabase, orderRef, `Squad Invite paid line item verification failed: ${verification.reason}`);
+      return NextResponse.json({ ok: true, note: 'verification failed, not applying' });
+    }
+    verifiedAmountPence = unitPricePence * printQuantity;
+    verifiedCurrency = verification.currency ?? 'GBP';
   }
 
   // 4) Exactly-once, idempotent state transition — migration 0080's
@@ -166,13 +199,38 @@ export async function POST(req: NextRequest) {
 
   const result = applied as { applied: boolean; reason?: string } | null;
 
+  // A payment Shopify reports for an order Emblem already holds as
+  // cancelled or refunded is never applied (apply_gate3_payment_event), but
+  // money may have been taken, so staff are told.
+  if (!result?.applied && (result?.reason === 'order_cancelled' || result?.reason === 'order_refunded')) {
+    await notifyStaffOfPaymentIssue(supabase, {
+      kind: 'paid_after_close',
+      reference: orderRef,
+      reason: `Shopify reports this order paid, but Emblem already holds it as ${result.reason === 'order_cancelled' ? 'cancelled' : 'refunded'}, so it was not marked paid. Check the order in Shopify and refund it if money was taken.`,
+    });
+  }
+
   // 5) Squad Invite bookkeeping — links this real payment to its
-  //     participation and recomputes free-coach-card eligibility. A no-op
-  //     for every other order. Never lets a failure here affect the
-  //     response — the payment itself already succeeded above.
-  if (result?.applied && existing.source === 'squad_invite') {
-    const { error: coachCardError } = await supabase.rpc('mark_squad_invite_participation_paid', { p_order_id: existing.id });
-    if (coachCardError) console.warn('shopify webhook: mark_squad_invite_participation_paid failed', { orderId: existing.id });
+  //     participation and recomputes free-coach-card eligibility. Runs
+  //     whenever the order is currently paid (applied now, or a retry of a
+  //     delivery already applied), so a failure here is retried rather than
+  //     lost: a database error returns 500 and Shopify's retry, arriving as
+  //     a duplicate, runs it again. mark_squad_invite_participation_paid
+  //     marks a family paid from any other status, so it is never called
+  //     for an order that is refunded or cancelled.
+  if (existing.source === 'squad_invite' && (result?.applied || result?.reason === 'duplicate_event' || result?.reason === 'already_paid')) {
+    const { data: current, error: currentError } = await supabase.from('orders').select('payment_status').eq('id', existing.id).maybeSingle();
+    if (currentError) {
+      return NextResponse.json({ error: currentError.message }, { status: 500 });
+    }
+    const currentStatus = (current as { payment_status?: string } | null)?.payment_status;
+    if (currentStatus === 'paid' || currentStatus === 'fulfilled') {
+      const { error: coachCardError } = await supabase.rpc('mark_squad_invite_participation_paid', { p_order_id: existing.id });
+      if (coachCardError) {
+        console.error('shopify webhook: mark_squad_invite_participation_paid failed, asking Shopify to retry', { orderId: existing.id });
+        return NextResponse.json({ error: coachCardError.message }, { status: 500 });
+      }
+    }
   }
 
   return NextResponse.json({ ok: true, orderId: existing.id, applied: result?.applied ?? false, reason: result?.reason });

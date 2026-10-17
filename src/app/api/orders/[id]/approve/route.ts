@@ -169,9 +169,29 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   const serviceRole = createServiceRoleClient();
 
-  const { data: sourceRow } = await serviceRole.from('orders').select('source, authority_status, pricing_tier, payment_status').eq('id', params.id).maybeSingle();
+  const { data: sourceRow } = await serviceRole.from('orders').select('source, authority_status, pricing_tier, payment_status, order_ref').eq('id', params.id).maybeSingle();
   if (!sourceRow) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  }
+  // Shopify cancelled this order. A paid order stays 'paid' in Emblem when
+  // that happens (the money is still taken), so the cancellation delivery
+  // itself (recorded by apply_gate3_payment_event in shopify_webhook_events)
+  // is what blocks printing. The resolution is a refund in Shopify, which
+  // moves the order to refunded; there is no override.
+  if (sourceRow.order_ref) {
+    const { data: cancellation } = await serviceRole
+      .from('shopify_webhook_events')
+      .select('id')
+      .eq('order_ref', sourceRow.order_ref)
+      .eq('topic', 'orders/cancelled')
+      .limit(1)
+      .maybeSingle();
+    if (cancellation) {
+      return NextResponse.json(
+        { error: 'This order was cancelled in Shopify and cannot be approved for production. Refund it in Shopify.' },
+        { status: 409 }
+      );
+    }
   }
   if (sourceRow.source === 'squad_invite') {
     return approveSquadInviteOrder(serviceRole, params.id, staffCheck.userId);

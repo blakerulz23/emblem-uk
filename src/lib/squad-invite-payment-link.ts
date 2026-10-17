@@ -25,10 +25,19 @@ const VARIANT_ENV_BY_TIER: Record<'single' | 'multi' | 'squad', string> = {
  * contract buildUkCardCartUrl already uses for its own variant.
  */
 export function buildSquadInvitePaymentUrl(tier: 'single' | 'multi' | 'squad', printQuantity: number, orderRef: string): string | null {
-  const variantId = process.env[VARIANT_ENV_BY_TIER[tier]];
+  const variantId = squadInviteVariantId(tier);
   if (!variantId) return null;
   const quantity = Math.max(1, Math.floor(printQuantity) || 1);
   const params = new URLSearchParams();
   params.set('attributes[Order Ref]', orderRef);
   return 'https://' + SHOPIFY_SHOP + '/cart/' + variantId + ':' + quantity + '?' + params.toString();
+}
+
+/**
+ * The Shopify variant a Squad Invite tier is charged on, or null when it
+ * isn't configured. Shared by the checkout link above and the orders/paid
+ * webhook, which verifies a paid Squad Invite order against this variant.
+ */
+export function squadInviteVariantId(tier: 'single' | 'multi' | 'squad'): string | null {
+  return process.env[VARIANT_ENV_BY_TIER[tier]] || null;
 }
