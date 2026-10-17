@@ -45,6 +45,14 @@ export const PRICES = {
   squad: formatPence(SQUAD_UNIT_PRICE_PENCE),
 } as const;
 
+/** Meta descriptions for the main marketing pages, kept under ~155 characters so search results show them in full. */
+export const PAGE_DESCRIPTIONS = {
+  home: `Personalised football cards made from your child’s photo, printed in the UK with an NFC chip that opens a private player profile. From ${PRICES.single}.`,
+  gifts: `A personalised football card from their photo, with a chip that opens their own player profile. A Christmas football gift that keeps growing. ${PRICES.single}.`,
+  howItWorks: 'Make a personalised football card: upload a photo, choose a design, and we print it in the UK with an NFC chip that opens a private player profile.',
+  faq: 'Answers about Emblem personalised football cards: price, delivery, gifts, the NFC player profile, and how guardians keep children’s details private.',
+} as const;
+
 /** Share image for Open Graph / Twitter (1200×630). */
 export const OG_IMAGE = { url: '/og/emblem-share.jpg', width: 1200, height: 630 } as const;
 
@@ -56,15 +64,20 @@ export const OG_IMAGE = { url: '/og/emblem-share.jpg', width: 1200, height: 630 
 export const CHRISTMAS_ORDER_BY: string | null = null;
 
 /** Public marketing pages that belong in the sitemap. Private app surfaces never do. */
-export const PUBLIC_PAGES: ReadonlyArray<{ path: string; priority: number; changeFrequency: 'weekly' | 'monthly' | 'yearly' }> = [
-  { path: '/', priority: 1, changeFrequency: 'weekly' },
-  { path: '/football-gifts-for-kids', priority: 0.9, changeFrequency: 'weekly' },
-  { path: '/how-it-works', priority: 0.8, changeFrequency: 'monthly' },
-  { path: '/faq', priority: 0.7, changeFrequency: 'monthly' },
-  { path: '/trust-and-safeguarding', priority: 0.6, changeFrequency: 'monthly' },
-  { path: '/about', priority: 0.5, changeFrequency: 'yearly' },
-  { path: '/privacy', priority: 0.3, changeFrequency: 'yearly' },
-  { path: '/terms', priority: 0.3, changeFrequency: 'yearly' },
+/**
+ * `contentUpdated` is the date the page's visible content last changed
+ * (sitemap <lastmod>). Update it when a page's copy or layout changes, not
+ * on every deploy: Google ignores lastmod values that change without reason.
+ */
+export const PUBLIC_PAGES: ReadonlyArray<{ path: string; priority: number; changeFrequency: 'weekly' | 'monthly' | 'yearly'; contentUpdated: string }> = [
+  { path: '/', priority: 1, changeFrequency: 'weekly', contentUpdated: '2026-10-17' },
+  { path: '/football-gifts-for-kids', priority: 0.9, changeFrequency: 'weekly', contentUpdated: '2026-10-16' },
+  { path: '/how-it-works', priority: 0.8, changeFrequency: 'monthly', contentUpdated: '2026-10-16' },
+  { path: '/faq', priority: 0.7, changeFrequency: 'monthly', contentUpdated: '2026-10-16' },
+  { path: '/trust-and-safeguarding', priority: 0.6, changeFrequency: 'monthly', contentUpdated: '2026-09-07' },
+  { path: '/about', priority: 0.5, changeFrequency: 'yearly', contentUpdated: '2026-07-04' },
+  { path: '/privacy', priority: 0.3, changeFrequency: 'yearly', contentUpdated: '2026-08-17' },
+  { path: '/terms', priority: 0.3, changeFrequency: 'yearly', contentUpdated: '2026-08-17' },
 ];
 
 /** Path prefixes search engines must not crawl (private, per-child or internal). */

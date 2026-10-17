@@ -4,7 +4,7 @@ import Icon from '@/components/builder/emblem/Icon';
 import HeroStage from '@/components/marketing/HeroStage';
 import JsonLd from '@/components/marketing/JsonLd';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
-import { pageOpenGraph, PRICES } from '@/lib/marketing/site';
+import { PAGE_DESCRIPTIONS, pageOpenGraph, PRICES } from '@/lib/marketing/site';
 import { organizationJsonLd, personalisedCardProductJsonLd } from '@/lib/marketing/structured-data';
 
 // Homepage layout follows the shorter Canadian page (buy action and price
@@ -14,10 +14,7 @@ import { organizationJsonLd, personalisedCardProductJsonLd } from '@/lib/marketi
 // FAQPage structured data) on /faq, the design gallery on the gift page.
 export const metadata: Metadata = {
   title: 'Personalised Football Cards with a Digital Profile | Emblem',
-  description:
-    'Personalised football cards made from your child’s photo, printed in the UK with a built-in NFC chip that opens a private, guardian-controlled player profile. From ' +
-    PRICES.single +
-    '.',
+  description: PAGE_DESCRIPTIONS.home,
   alternates: { canonical: '/' },
   openGraph: pageOpenGraph({
     title: 'Personalised football cards that come to life with a tap | Emblem',

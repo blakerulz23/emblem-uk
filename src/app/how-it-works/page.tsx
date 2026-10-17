@@ -7,15 +7,14 @@ import SquadInviteJourneySection from '@/components/SquadInviteJourneySection';
 import JsonLd from '@/components/marketing/JsonLd';
 import { HowItWorksSection, TapVideo } from '../HomeEffects';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
-import { pageOpenGraph, PRICES } from '@/lib/marketing/site';
+import { PAGE_DESCRIPTIONS, pageOpenGraph, PRICES } from '@/lib/marketing/site';
 import { breadcrumbJsonLd } from '@/lib/marketing/structured-data';
 
 // The long-form story that used to sit on the homepage (moved here unchanged
 // when the homepage was shortened). Same components, same copy.
 export const metadata: Metadata = {
   title: 'How Emblem Personalised Football Cards Work | Design, Print, Tap',
-  description:
-    'How to make your own personalised football card: upload a photo, choose a design, and we print it in the UK with an NFC chip that opens a private, guardian-controlled player profile.',
+  description: PAGE_DESCRIPTIONS.howItWorks,
   alternates: { canonical: '/how-it-works' },
   openGraph: pageOpenGraph({ title: 'How Emblem works: design it, print it, tap it', url: '/how-it-works' }),
 };

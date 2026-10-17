@@ -7,7 +7,7 @@ import { buildUkCardCartUrl } from '@/lib/shopify';
 import { cleanUtmValue, parseUtmCookie, serializeUtm, utmAttributionEnabled, utmFromSearchParams } from '@/lib/utm';
 import { ALL_FAQ_ITEMS, GIFT_PAGE_FAQ_ITEMS, HOMEPAGE_FAQ_ITEMS, faqPlainAnswer } from './faq';
 import { merchantFeedXml, merchantItems } from './merchant-feed';
-import { DISALLOWED_PREFIXES, GOOGLE_SITE_VERIFICATION_TOKEN, googleSiteVerification, PRICES, PUBLIC_PAGES } from './site';
+import { DISALLOWED_PREFIXES, GOOGLE_SITE_VERIFICATION_TOKEN, googleSiteVerification, PAGE_DESCRIPTIONS, PRICES, PUBLIC_PAGES } from './site';
 import { faqPageJsonLd, personalisedCardProductJsonLd, serializeJsonLd } from './structured-data';
 
 afterEach(() => {
@@ -42,6 +42,29 @@ describe('sitemap', () => {
       expect(DISALLOWED_PREFIXES.some((p) => path.startsWith(p))).toBe(false);
     }
     expect(urls).toHaveLength(PUBLIC_PAGES.length);
+  });
+
+  it('uses each page’s real content date as lastmod, not the build time', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const entries = sitemap();
+    entries.forEach((entry, i) => {
+      const date = String(entry.lastModified);
+      expect(date, entry.url).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(Number.isNaN(Date.parse(date)), entry.url).toBe(false);
+      expect(date <= today, `${entry.url} lastmod is in the future`).toBe(true);
+      expect(date).toBe(PUBLIC_PAGES[i].contentUpdated);
+    });
+    expect(sitemap()).toEqual(entries);
+  });
+});
+
+describe('meta descriptions', () => {
+  it('stay within ~155 characters so search results show them in full', () => {
+    for (const [page, description] of Object.entries(PAGE_DESCRIPTIONS)) {
+      expect(description.length, page).toBeGreaterThanOrEqual(110);
+      expect(description.length, page).toBeLessThanOrEqual(155);
+    }
+    expect(PAGE_DESCRIPTIONS.home).toContain(PRICES.single);
   });
 });
 
