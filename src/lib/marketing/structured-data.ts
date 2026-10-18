@@ -24,7 +24,7 @@ export function personalisedCardProductJsonLd() {
     '@type': 'Product',
     name: 'Personalised Football Card with Digital Player Profile',
     description:
-      'A personalised football trading card made from your photo, printed in the UK on premium 400gsm stock with a built-in NFC chip that opens a private, guardian-controlled digital player profile.',
+      'A personalised football trading card made from your photo, printed in the UK as a premium trading card with a built-in NFC chip that opens a private, guardian-controlled digital player profile.',
     image: [absoluteUrl(OG_IMAGE.url)],
     brand: { '@type': 'Brand', name: SITE_NAME },
     offers: {

@@ -24,7 +24,7 @@ export function merchantItems(): MerchantItem[] {
       id: 'emblem-uk-single-card',
       title: 'Personalised Football Card with NFC Digital Player Profile',
       description:
-        'A personalised football trading card made from your photo, with name, number and club. Printed in the UK on premium 400gsm stock with a built-in NFC chip that opens a private, guardian-controlled digital player profile. No subscription.',
+        'A personalised football trading card made from your photo, with name, number and club. A premium trading card printed in the UK, with a built-in NFC chip that opens a private, guardian-controlled digital player profile. No subscription.',
       link: absoluteUrl('/'),
       imageLink: absoluteUrl('/assets/home/gallery/custom-royal.webp'),
       price: `${(SINGLE_UNIT_PRICE_PENCE / 100).toFixed(2)} GBP`,
