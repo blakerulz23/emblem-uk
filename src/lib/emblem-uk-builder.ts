@@ -16,12 +16,11 @@ export type TemplateId = 'emjfl-official' | HollinwoodTemplateId | CustomCollect
 // (migration 0071) is the last step for every order type — the short Adult
 // Permission confirmation shown after Review, immediately before the order
 // is actually created.
-export type StepId = 'order-type' | 'collection' | 'upload' | 'bg-removal' | 'personalise' | 'approve' | 'review' | 'adult-permission';
+export type StepId = 'collection' | 'upload' | 'bg-removal' | 'personalise' | 'approve' | 'review' | 'adult-permission';
 
 export const STEP_LABEL: Record<StepId, string> = {
-  'order-type': 'Choose order type',
   collection: 'Choose collection',
-  upload: 'Upload photos',
+  upload: 'Add the photo',
   'bg-removal': 'Remove background',
   personalise: 'Personalise cards',
   approve: 'Approve cards',
@@ -29,8 +28,17 @@ export const STEP_LABEL: Record<StepId, string> = {
   'adult-permission': 'Confirm permission',
 };
 
+/**
+ * Photo first (adapted from Emblem Canada): the direct builder opens on the
+ * photo, then the background, then the collection (chosen with the player
+ * already on the card), then personalise. The old "who are you building
+ * for?" screen is gone: one player is the default, and "a whole team" /
+ * "invite your squad" sit under the photo step instead. Squad Invite keeps
+ * its own fixed four steps (SQUAD_INVITE_STEP_ORDER in ProductionBuilder).
+ * Review and the adult-permission step (email verification) are unchanged.
+ */
 export function stepsFor(orderType: OrderType): StepId[] {
-  const base: StepId[] = ['order-type', 'collection', 'upload', 'bg-removal', 'personalise'];
+  const base: StepId[] = ['upload', 'bg-removal', 'collection', 'personalise'];
   return orderType === 'single' ? [...base, 'review', 'adult-permission'] : [...base, 'approve', 'review', 'adult-permission'];
 }
 

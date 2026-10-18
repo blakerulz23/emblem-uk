@@ -100,11 +100,6 @@ function readSquadInviteCsrfCookie(): string {
 
 type SquadInviteCommitOutcome = null | 'sign_in_required' | 'unavailable' | 'validation' | 'network' | 'photo_upload_failed' | 'campaign_closed';
 
-const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'person' | 'group' }> = [
-  { id: 'single', title: 'One player', copy: 'Create a card for one player.', icon: 'person' },
-  { id: 'squad', title: 'A whole team', copy: "Create several players' cards yourself.", icon: 'group' },
-];
-
 const collections = [
   {
     id: 'custom',
@@ -313,20 +308,9 @@ export default function ProductionBuilder({
     }
     return draft;
   });
-  // A marketing entry point can still skip straight to the photo-upload
-  // step via ?step=upload if one is ever added — the order-type/collection
-  // steps ahead of it are never a required gate (every field already has a
-  // sensible default from defaultOrder()), so this reuses the same
-  // initial-state-from-searchParams pattern as `mode` above rather than
-  // adding a second entry flow. No current CTA uses it: the homepage hero
-  // link now points at plain /builder so every marketing entry point lands
-  // on Step 1 (order-type) consistently. Squad Invite mode always starts on
-  // Upload — order-type/collection are never reachable steps in that mode
-  // (see stepOrder below), not merely hidden.
-  const [activeStepId, setActiveStepId] = useState<StepId>(() => {
-    if (squadInviteContext) return 'upload';
-    return searchParams.get('step') === 'upload' ? 'upload' : 'order-type';
-  });
+  // Photo first: every builder journey opens on the photo step. Squad
+  // Invite mode never has a collection step at all (see stepOrder below).
+  const [activeStepId, setActiveStepId] = useState<StepId>('upload');
   // Funnel analytics: the step id only (never names, photos or emails). A no-op until analytics is enabled and consented.
   useEffect(() => {
     track('builder_step', { step: activeStepId, mode: order.type });
@@ -587,7 +571,6 @@ export default function ProductionBuilder({
       ? { orderId: submittedOrderId, player: soleApprovedPlayer }
       : null;
   const orderMode = orderModeLimits[order.type];
-  const visibleOrderType = order.type === 'single' ? 'single' : 'squad';
   // Gate 3 — read-only, copy-only signal (NEXT_PUBLIC_ vars are already
   // inlined client-side by Next.js regardless). The actual authorization —
   // whether checkout is really allowed for this order — is decided
@@ -903,7 +886,9 @@ export default function ProductionBuilder({
     // The squad walk through bg-removal ends on the last player — hand off to
     // Personalise starting back at the first player, not mid/end of roster.
     if (order.type !== 'single' && order.players[0]) setSelectedId(order.players[0].id);
-    setActiveStepId('personalise');
+    // Direct builder: the collection comes next (chosen with the player on
+    // the card). Squad Invite has no collection step, so personalise.
+    setActiveStepId(stepOrder[stepOrder.indexOf('bg-removal') + 1] ?? 'personalise');
   };
 
   const removePlayer = (id: string) => {
@@ -1825,7 +1810,7 @@ export default function ProductionBuilder({
     submitEnquiry(event);
   };
   const approveOrReviewStep: StepId = stepOrder.includes('approve') ? 'approve' : 'review';
-  const prePersonaliseSteps: StepId[] = ['order-type', 'collection', 'upload', 'bg-removal'];
+  const prePersonaliseSteps: StepId[] = ['upload', 'bg-removal', 'collection'];
   const selectedIndex = selectedPlayer ? order.players.findIndex((player) => player.id === selectedPlayer.id) : -1;
   const selectAdjacentPlayer = (direction: -1 | 1) => {
     if (selectedIndex < 0) return;
@@ -1944,93 +1929,9 @@ export default function ProductionBuilder({
               <button type="button" onClick={startNewCard}>Start a new card</button>
             </div>
           )}
-          {activeStepId === 'order-type' && (
-            <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Start order</p>
-              <h1>Who are you building for?</h1>
-              <p className="uk-wizard-copy">Choose how you&apos;d like to create your cards.</p>
-              <div className="uk-wizard-choice-list" role="radiogroup" aria-label="Who are you building for?">
-                {orderTypes.map((type) => {
-                  const inputId = `order-type-${type.id}`;
-                  return (
-                    <label key={type.id} htmlFor={inputId} className={visibleOrderType === type.id ? 'active' : ''}>
-                      <input
-                        type="radio"
-                        id={inputId}
-                        name="orderType"
-                        className="uk-choice-native-radio"
-                        checked={visibleOrderType === type.id}
-                        onChange={() => patchOrder({ type: type.id })}
-                      />
-                      <span className="uk-choice-icon" aria-hidden="true">
-                        {type.icon === 'person' ? (
-                          <svg viewBox="0 0 24 24" role="img">
-                            <circle cx="12" cy="8" r="3.5" />
-                            <path d="M5.8 20c0-4 2.7-7 6.2-7s6.2 3 6.2 7" />
-                          </svg>
-                        ) : (
-                          <svg viewBox="0 0 24 24" role="img">
-                            <circle cx="9" cy="8.5" r="3" />
-                            <circle cx="16.5" cy="9.5" r="2.5" />
-                            <path d="M3.8 20c0-3.8 2.3-6.3 5.2-6.3s5.2 2.5 5.2 6.3" />
-                            <path d="M13.8 15c2.8.2 4.7 2.3 4.7 5" />
-                          </svg>
-                        )}
-                      </span>
-                      <span>
-                        <strong>{type.title}</strong>
-                        <small>{type.copy}</small>
-                      </span>
-                      <span className="uk-choice-radio" aria-hidden="true" />
-                    </label>
-                  );
-                })}
-              </div>
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('collection')}>Continue</button>
-
-              {squadInviteEnabled && (
-                <>
-                  <div className="uk-choice-divider" role="separator">
-                    <span>Want parents to create their own?</span>
-                  </div>
-                  <div className="uk-wizard-choice-list">
-                    <a href="/squad-invite/start" className="uk-wizard-choice-invite">
-                      <span className="uk-choice-icon" aria-hidden="true">
-                        {/* eslint-disable-next-line @next/next/no-img-element -- a
-                            fixed 38px decorative icon inside a small circular
-                            badge; next/image's overhead (loader, layout shift
-                            reservation) isn't warranted here, matching how this
-                            same badge already renders hand-drawn SVGs for the
-                            other two options via a plain element, not <Image>. */}
-                        <img src="/invite-squad-icon.png" alt="" />
-                      </span>
-                      <span>
-                        <em className="uk-choice-badge">Best for clubs</em>
-                        <strong>Invite your squad</strong>
-                        <small>Send a private link so each parent creates their child&apos;s card.</small>
-                      </span>
-                      <span className="uk-choice-arrow" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" role="img">
-                          <path d="M9 5l7 7-7 7" />
-                        </svg>
-                      </span>
-                    </a>
-                  </div>
-                  <div className="uk-choice-reassurance">
-                    <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
-                      <path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z" />
-                      <path d="M9 12l2 2 4-4" />
-                    </svg>
-                    <span>Parents only see their own child&apos;s details.</span>
-                  </div>
-                </>
-              )}
-            </section>
-          )}
-
           {activeStepId === 'collection' && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Start order</p>
+              <p className="uk-wizard-kicker">Choose collection</p>
               <h1>Choose your collection.</h1>
               <p className="uk-wizard-copy">Pick the collection this card belongs to.</p>
               <div className="uk-collection-choice">
@@ -2053,7 +1954,7 @@ export default function ProductionBuilder({
                   ))}
                 </div>
               </div>
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('upload')}>Continue</button>
+              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('personalise')}>Continue</button>
             </section>
           )}
 
@@ -2172,6 +2073,52 @@ export default function ProductionBuilder({
                   Continue
                 </button>
               </div>
+            </section>
+          )}
+
+          {activeStepId === 'upload' && !squadInviteContext && (
+            <section className="uk-wizard-entry-options" aria-label="Other ways to order">
+              {order.type === 'single' ? (
+                <button type="button" className="uk-entry-link" onClick={() => patchOrder({ type: 'squad' })}>
+                  Making cards for a whole team yourself? &rarr;
+                </button>
+              ) : (
+                <button type="button" className="uk-entry-link" onClick={() => patchOrder({ type: 'single' })}>
+                  Just one player? &larr;
+                </button>
+              )}
+              {squadInviteEnabled && (
+                <>
+                  <div className="uk-choice-divider" role="separator">
+                    <span>Want parents to create their own?</span>
+                  </div>
+                  <div className="uk-wizard-choice-list">
+                    <a href="/squad-invite/start" className="uk-wizard-choice-invite">
+                      <span className="uk-choice-icon" aria-hidden="true">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- fixed 38px decorative badge icon */}
+                        <img src="/invite-squad-icon.png" alt="" />
+                      </span>
+                      <span>
+                        <em className="uk-choice-badge">Best for clubs</em>
+                        <strong>Invite your squad</strong>
+                        <small>Send a private link so each parent creates their child&apos;s card.</small>
+                      </span>
+                      <span className="uk-choice-arrow" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" role="img">
+                          <path d="M9 5l7 7-7 7" />
+                        </svg>
+                      </span>
+                    </a>
+                  </div>
+                  <div className="uk-choice-reassurance">
+                    <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                      <path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z" />
+                      <path d="M9 12l2 2 4-4" />
+                    </svg>
+                    <span>Parents only see their own child&apos;s details.</span>
+                  </div>
+                </>
+              )}
             </section>
           )}
 

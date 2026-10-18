@@ -28,11 +28,15 @@ describe('Squad Invite / ProductionBuilder reuse — no duplicate builder, real 
     expect(builder).toMatch(/if \(squadInviteContext\) \{[\s\S]{0,600}type: 'single', collectionType: 'custom'/);
   });
 
-  it('the order-type and collection step JSX are completely unaware of squadInviteContext — unreachable by step-list construction, not by a conditional guard', () => {
-    const orderTypeBlock = builder.match(/\{activeStepId === 'order-type' && \(([\s\S]*?)\n {10}\)\}/)?.[1] ?? '';
+  it('the collection step JSX is completely unaware of squadInviteContext — unreachable by step-list construction, not by a conditional guard', () => {
     const collectionBlock = builder.match(/\{activeStepId === 'collection' && \(([\s\S]*?)\n {10}\)\}/)?.[1] ?? '';
-    expect(orderTypeBlock).not.toContain('squadInviteContext');
     expect(collectionBlock).not.toContain('squadInviteContext');
+  });
+
+  it('photo-first direct builder: the old order-type screen is gone, and its "whole team" / "invite your squad" choices never show in Squad Invite mode', () => {
+    expect(builder).not.toContain("activeStepId === 'order-type'");
+    expect(builder).toContain("{activeStepId === 'upload' && !squadInviteContext && (");
+    expect(builder).toContain("useState<StepId>('upload')");
   });
 
   it('reuses the same template gallery, PlayerCard rendering, photo upload/crop and background removal unchanged', () => {

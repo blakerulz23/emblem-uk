@@ -10898,3 +10898,22 @@ button.uk-wizard-brand {
 .emh-tier-featured a:hover,
 .emh-faq-cta a:hover,
 .emh-consent-accept:hover { background: #b8430d; }
+
+/* Photo-first direct builder (adapted from Emblem Canada): the old
+   "who are you building for?" choices sit under the photo step. */
+.uk-wizard-entry-options {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+.uk-entry-link {
+  justify-self: center;
+  border: 0;
+  background: none;
+  padding: 6px 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--wizard-accent);
+  cursor: pointer;
+}
+.uk-entry-link:hover { text-decoration: underline; text-underline-offset: 3px; }
