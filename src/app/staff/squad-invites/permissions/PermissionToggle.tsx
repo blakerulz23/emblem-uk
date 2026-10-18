@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-type Permission = 'squad_invite_reviewer' | 'squad_invite_approver';
+type Permission = 'squad_invite_reviewer' | 'squad_invite_approver' | 'test_data_admin';
 
 /**
  * Revoke gets a confirm() prompt — the one hard-to-reverse action here

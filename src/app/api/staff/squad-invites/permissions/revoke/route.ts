@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   if (!staff.ok) return NextResponse.json({ error: staff.error }, { status: staff.status });
   const body = await request.json().catch(() => null) as { staffProfileId?: unknown; permission?: unknown } | null;
   const staffProfileId = typeof body?.staffProfileId === 'string' ? body.staffProfileId : null;
-  const permission = body?.permission === 'squad_invite_reviewer' || body?.permission === 'squad_invite_approver' ? body.permission : null;
+  const permission = body?.permission === 'squad_invite_reviewer' || body?.permission === 'squad_invite_approver' || body?.permission === 'test_data_admin' ? body.permission : null;
   if (!staffProfileId || !permission) return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   const service = createServiceRoleClient();
   const { data, error } = await service.rpc('revoke_squad_invite_staff_permission', {

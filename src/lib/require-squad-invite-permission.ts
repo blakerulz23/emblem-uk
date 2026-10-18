@@ -3,6 +3,9 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import type { SquadInviteStaffPermission } from './squad-invite-mvp';
 
+/** Every grantable staff permission: the two Squad Invite roles plus test_data_admin (archiving internal test cards, migration 0088). */
+export type StaffPermission = SquadInviteStaffPermission | 'test_data_admin';
+
 /**
  * Accepts either one permission (exact match, used by every mutation
  * endpoint — start_review/request_changes/reject need reviewer; approve/
@@ -11,7 +14,7 @@ import type { SquadInviteStaffPermission } from './squad-invite-mvp';
  * squad-invite authority at all, regardless of which specific permission
  * they hold). A single string and a one-element array behave identically.
  */
-export async function requireSquadInvitePermission(client: SupabaseClient, permission: SquadInviteStaffPermission | SquadInviteStaffPermission[]) {
+export async function requireSquadInvitePermission(client: SupabaseClient, permission: StaffPermission | StaffPermission[]) {
   const staff = await requireStaff(client);
   if (!staff.ok) return staff;
   const permissions = Array.isArray(permission) ? permission : [permission];
