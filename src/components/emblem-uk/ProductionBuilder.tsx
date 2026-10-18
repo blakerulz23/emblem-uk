@@ -55,6 +55,7 @@ import {
   type CoachCardDraft,
 } from '@/lib/coach-card-draft';
 import { track } from '@/lib/analytics';
+import { warmOnDeviceBackgroundRemoval } from '@/components/builder/emblem/bgRemovalOnDevice';
 import { clearBuilderDraft, draftScopeFor, loadBuilderDraft, purgeExpiredBuilderDrafts, saveBuilderDraft } from '@/lib/builder-draft-persistence';
 
 /**
@@ -938,6 +939,9 @@ export default function ProductionBuilder({
 
   const assignPhoto = (id: string, file?: File) => {
     if (!file) return;
+    // Start fetching the on-device background engine now, not on page open:
+    // a parent who never picks a photo never downloads it.
+    warmOnDeviceBackgroundRemoval();
     patchPlayer(id, {
       photo: {
         srcUrl: URL.createObjectURL(file),
@@ -1048,6 +1052,7 @@ export default function ProductionBuilder({
       .slice(0, Math.max(0, emptyPhotoSlots + remainingSlots));
 
     if (imageFiles.length === 0) return;
+    warmOnDeviceBackgroundRemoval();
 
     const photoAssets = imageFiles.map((file) => ({
       srcUrl: URL.createObjectURL(file),

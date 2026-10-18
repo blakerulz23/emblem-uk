@@ -1,24 +1,25 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { removeBackgroundSmart } from '@/components/builder/emblem/bgRemoval';
+import { removeBackgroundOnDevice } from '@/components/builder/emblem/bgRemovalOnDevice';
 import { autoFitPatchForPhoto } from '@/lib/card-photo-auto-fit';
 import type { PlayerDraft } from '@/lib/emblem-uk-builder';
 
-async function blobUrlToFile(url: string, name: string): Promise<File> {
+async function urlToBlob(url: string): Promise<Blob> {
   const res = await fetch(url);
-  const blob = await res.blob();
-  return new File([blob], name, { type: blob.type || 'image/jpeg' });
-}
-
-async function dataUrlToFile(dataUrl: string, name: string): Promise<File> {
-  const res = await fetch(dataUrl);
-  const blob = await res.blob();
-  return new File([blob], name, { type: blob.type || 'image/png' });
+  return res.blob();
 }
 
 type Status = 'processing' | 'ready' | 'error';
+type Choice = 'cutout' | 'original';
 
+/**
+ * Background removal, on this device (adapted from Emblem Canada). The photo
+ * is cut out in the browser by bgRemovalOnDevice.ts — it is never sent to
+ * Gemini or any other service for this step. The guardian sees the original
+ * and the result side by side, chooses which to use, and can switch back to
+ * the original later (the untouched upload is kept as photo.originalUrl).
+ */
 export default function BackgroundRemovalStep({
   player,
   isSquad,
@@ -43,42 +44,51 @@ export default function BackgroundRemovalStep({
   onContinue: () => void;
 }) {
   const [status, setStatus] = useState<Status>('processing');
-  const [beforeUrl, setBeforeUrl] = useState<string | null>(null);
-  const [afterUrl, setAfterUrl] = useState<string | null>(null);
-  const [method, setMethod] = useState<'gemini' | 'canvas' | null>(null);
+  const [cutoutUrl, setCutoutUrl] = useState<string | null>(null);
+  const [engineFailed, setEngineFailed] = useState(false);
+  const [choice, setChoice] = useState<Choice>('cutout');
   const [committing, setCommitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const photoSrc = player.photo?.srcUrl;
-  const alreadyRemoved = Boolean(player.photo?.bgRemoved);
+  const photo = player.photo;
+  const photoSrc = photo?.srcUrl;
+  // The untouched upload: originalUrl once a cut-out has been committed,
+  // otherwise the current photo itself.
+  const alreadyRemoved = Boolean(photo?.bgRemoved);
+  // After a cut-out is committed, the original is only offered while its
+  // bytes still exist (a restored draft can lose them).
+  const originalSrc = alreadyRemoved ? photo?.originalUrl || undefined : photoSrc;
 
   useEffect(() => {
     let cancelled = false;
+    setEngineFailed(false);
     if (!photoSrc) {
       setStatus('error');
-      setBeforeUrl(null);
-      setAfterUrl(null);
+      setCutoutUrl(null);
       return;
     }
-    setBeforeUrl(photoSrc);
     if (alreadyRemoved) {
-      // Already committed on a previous visit to this step — the true
-      // "before" no longer exists (it was overwritten on Continue), so we
-      // show the current result rather than re-running removal on it.
+      // Committed on an earlier visit: show it, and offer the original back.
+      setCutoutUrl(photoSrc);
+      setChoice('cutout');
       setStatus('ready');
-      setAfterUrl(null);
-      setMethod(null);
       return;
     }
     setStatus('processing');
-    setAfterUrl(null);
+    setCutoutUrl(null);
+    setChoice('cutout');
     (async () => {
       try {
-        const file = await blobUrlToFile(photoSrc, player.photo?.fileName || 'photo.jpg');
-        const result = await removeBackgroundSmart(file);
+        const result = await removeBackgroundOnDevice(await urlToBlob(photoSrc));
         if (cancelled) return;
-        setAfterUrl(result.dataUrl);
-        setMethod(result.method === 'gemini' ? 'gemini' : 'canvas');
+        if (result.method === 'on-device') {
+          const blob = await urlToBlob(result.dataUrl);
+          if (cancelled) return;
+          setCutoutUrl(URL.createObjectURL(blob));
+        } else {
+          setEngineFailed(true);
+          setChoice('original');
+        }
         setStatus('ready');
       } catch {
         if (!cancelled) setStatus('error');
@@ -91,31 +101,29 @@ export default function BackgroundRemovalStep({
   }, [player.id, photoSrc, alreadyRemoved]);
 
   const handleContinue = async () => {
-    if (status === 'processing' || committing) return;
-    if (afterUrl && player.photo) {
-      setCommitting(true);
-      try {
-        const file = await dataUrlToFile(afterUrl, `${player.photo?.fileName || 'photo'}-cutout.png`);
-        const url = URL.createObjectURL(file);
-        // Auto-fit Player runs once here, automatically, right after the
-        // cutout is ready — this is the "reliable starting composition"
-        // every guardian sees by default. It never runs again on its own
-        // after this (see the "Auto-fit player" button in the crop step for
-        // the only other place it runs) — a manual Horizontal/Vertical/Zoom
-        // adjustment made after this point is never silently overwritten.
-        const autoFit = await autoFitPatchForPhoto(url);
+    if (status === 'processing' || committing || !photo || !photoSrc) {
+      if (status !== 'processing' && !committing) onContinue();
+      return;
+    }
+    setCommitting(true);
+    try {
+      if (choice === 'cutout' && cutoutUrl && !alreadyRemoved) {
+        const untouched = photoSrc;
+        // Auto-fit runs once here, right after the cut-out is chosen — the
+        // guardian's later manual framing is never silently overwritten.
+        const autoFit = await autoFitPatchForPhoto(cutoutUrl);
         onPatchPlayer(player.id, {
-          photo: {
-            ...player.photo,
-            srcUrl: url,
-            hiResUrl: url,
-            bgRemoved: true,
-            ...(autoFit ?? {}),
-          },
+          photo: { ...photo, srcUrl: cutoutUrl, hiResUrl: cutoutUrl, bgRemoved: true, originalUrl: untouched, ...(autoFit ?? {}) },
         });
-      } finally {
-        setCommitting(false);
+      } else if (choice === 'original' && alreadyRemoved && originalSrc) {
+        // Back to the untouched upload, with framing worked out for it afresh.
+        const autoFit = await autoFitPatchForPhoto(originalSrc);
+        onPatchPlayer(player.id, {
+          photo: { ...photo, srcUrl: originalSrc, hiResUrl: originalSrc, bgRemoved: false, originalUrl: undefined, crop: { x: 0, y: 0, scale: 1 }, suggestedCrop: undefined, subjectBounds: undefined, ...(autoFit ?? {}) },
+        });
       }
+    } finally {
+      setCommitting(false);
     }
     onContinue();
   };
@@ -128,11 +136,15 @@ export default function BackgroundRemovalStep({
     });
   };
 
+  const showCompare = status === 'ready';
+
   return (
     <section className="uk-wizard-panel">
       <p className="uk-wizard-kicker">Remove background</p>
       <h1>Let&apos;s clean up that photo.</h1>
-      <p className="uk-wizard-copy">Our AI lifts them off the background so the card art looks sharp. This takes a few seconds.</p>
+      <p className="uk-wizard-copy">
+        We lift the player off the background right here on your device. The photo isn&apos;t sent anywhere for this step.
+      </p>
 
       {isSquad && (
         <div className="uk-squad-edit-bar">
@@ -153,29 +165,52 @@ export default function BackgroundRemovalStep({
         <div className="uk-bgremove-processing">
           <span className="uk-bgremove-spinner" aria-hidden="true" />
           <strong>Removing the background&hellip;</strong>
-          <small>Hang tight, this only takes a moment.</small>
+          <small>This happens on your device. The first time can take a little longer.</small>
         </div>
       )}
 
-      {status === 'ready' && beforeUrl && (
-        <div className="uk-bgremove-compare">
+      {showCompare && (
+        <div className="uk-bgremove-compare" role="radiogroup" aria-label="Which photo should the card use?">
+          {originalSrc && (
           <figure>
-            <div className="uk-bgremove-frame original">
-              <img src={beforeUrl} alt="Original photo" />
-            </div>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={choice === 'original'}
+              className={`uk-bgremove-frame original${choice === 'original' ? ' is-chosen' : ''}`}
+              onClick={() => setChoice('original')}
+            >
+              <img src={originalSrc} alt="Original photo" />
+            </button>
             <figcaption>Original</figcaption>
           </figure>
+          )}
           <figure>
-            <div className="uk-bgremove-frame result">
-              <img src={afterUrl || beforeUrl} alt="Background removed" />
-            </div>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={choice === 'cutout'}
+              className={`uk-bgremove-frame result${choice === 'cutout' ? ' is-chosen' : ''}`}
+              onClick={() => cutoutUrl && setChoice('cutout')}
+              disabled={!cutoutUrl}
+            >
+              <img src={cutoutUrl || photoSrc} alt="Background removed" />
+            </button>
             <figcaption>Background removed</figcaption>
           </figure>
         </div>
       )}
 
-      {status === 'ready' && method === 'canvas' && (
-        <p className="uk-bgremove-note">We couldn&apos;t reach the AI just now, so the original photo carries through unchanged — you can still continue, or replace the photo to try again.</p>
+      {showCompare && cutoutUrl && originalSrc && (
+        <p className="uk-bgremove-note">
+          {choice === 'cutout'
+            ? 'Using the background-removed photo. Tap the original to use that instead.'
+            : 'Using the original photo. Tap the other one to remove the background.'}
+        </p>
+      )}
+
+      {status === 'ready' && engineFailed && (
+        <p className="uk-bgremove-note">We couldn&apos;t remove the background on this device just now, so the original photo carries through unchanged. You can still continue, or replace the photo to try again.</p>
       )}
 
       <div className="uk-bgremove-actions">

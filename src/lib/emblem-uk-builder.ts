@@ -78,6 +78,11 @@ export type PhotoAsset = {
   // only ever runs on an explicit action (a fresh photo, or the guardian
   // pressing the button), never as a side effect of rendering.
   suggestedCrop?: CropTransform;
+  // The untouched upload (a local blob: URL), kept after the background is
+  // removed on this device so the guardian can switch back to it at any
+  // point. Local only: the server builds the photo it stores from an
+  // explicit allowlist of fields, so this is never submitted.
+  originalUrl?: string;
 };
 
 export type PlayerDraft = {

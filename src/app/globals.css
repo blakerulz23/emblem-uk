@@ -3325,6 +3325,20 @@ button.uk-wizard-brand {
   display: block;
 }
 
+/* The two previews are buttons: the guardian picks which photo the card uses. */
+button.uk-bgremove-frame {
+  display: block;
+  width: 100%;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+button.uk-bgremove-frame:disabled { cursor: default; }
+.uk-bgremove-frame.is-chosen {
+  border: 2px solid var(--wizard-accent);
+  box-shadow: 0 0 0 3px rgba(242, 97, 50, 0.18);
+}
+
 .uk-bgremove-compare figcaption {
   color: var(--wizard-soft);
   font-family: var(--font-jbmono), ui-monospace, monospace;

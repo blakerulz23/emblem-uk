@@ -45,3 +45,6 @@ supabase/.temp/
 
 local-print-poc/
 player-os-verification/
+
+# onnxruntime-web runtime, copied at predev/prebuild by scripts/copy-ort-wasm.mjs
+/public/ort/

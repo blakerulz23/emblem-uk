@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/copy-ort-wasm.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/copy-ort-wasm.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -22,6 +24,7 @@
     "@vercel/analytics": "^1.6.1",
     "html2canvas": "^1.4.1",
     "next": "14.2.35",
+    "onnxruntime-web": "1.21.0",
     "pdf-lib": "^1.17.1",
     "react": "^18",
     "react-dom": "^18",
