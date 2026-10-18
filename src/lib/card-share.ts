@@ -1,4 +1,5 @@
 import { postJson } from './builder-authority-client';
+import { appBaseUrl, SITE_URL } from '@/lib/marketing/site';
 
 /**
  * Pure client-side logic for guardian-controlled card-front sharing (Work
@@ -28,14 +29,13 @@ export const CARD_SHARE_RECALL_NOTICE =
   'Emblem cannot recall copies already downloaded, sent, saved or reposted by other people or social platforms.';
 
 /**
- * emblem.cards is a DIFFERENT, unrelated product (a separate live site
- * with its own real customers) — this constant previously pointed there
- * by mistake. Fixed to this app's own domain. This is the generic/preview
- * link only, shown in the confirm dialog before a real per-share link
- * exists (see cardSharePublicPageUrl/buildCardShareMessageText below for
- * what's actually sent once the guardian clicks Share now).
+ * The public "create your own card" link included in every share message
+ * and shown in the confirm dialog before a real per-share link exists (see
+ * cardSharePublicPageUrl/buildCardShareMessageText below). emblem.cards is
+ * now this app's production domain, so it is the canonical SITE_URL —
+ * never a *.vercel.app host, which shared messages would carry forever.
  */
-export const CARD_SHARE_LINK_URL = 'https://emblem-uk.vercel.app/builder';
+export const CARD_SHARE_LINK_URL = `${SITE_URL}/builder`;
 
 export const CARD_SHARE_MESSAGE_TEXT =
   `Look what I made with Emblem.\nCreate your own card: ${CARD_SHARE_LINK_URL}`;
@@ -51,7 +51,7 @@ export const CARD_SHARE_MESSAGE_TEXT =
  * so it can't exist yet at preview time).
  */
 export function cardSharePublicPageUrl(token: string): string {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk.vercel.app';
+  const siteUrl = appBaseUrl();
   return `${siteUrl}/card-share/${token}`;
 }
 

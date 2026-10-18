@@ -7,17 +7,15 @@ import { sendSquadInvitePaymentRequestEmail } from '@/lib/send-squad-invite-paym
 import { sendSquadInvitePricingConfirmedEmail } from '@/lib/send-squad-invite-pricing-confirmed-email';
 import { createSquadInvitePaymentPreviewToken } from '@/lib/squad-invite-payment-preview-token';
 import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
+import { appBaseUrl } from '@/lib/marketing/site';
 
 /**
- * Same site-URL fallback nfc-link.ts's buildNfcCardUrl already uses — kept
- * as a literal duplicate rather than a shared import, since the two
- * callers are otherwise unrelated (one builds a physical-card claim URL,
- * this builds a payment-preview URL) and this codebase's own convention
- * elsewhere (send-squad-invite-early-preview-email.ts vs. its siblings) is
- * to accept a little duplication over coupling two independent concerns.
+ * Origin for the payment-preview links emailed below — the shared
+ * appBaseUrl(), so a missing NEXT_PUBLIC_SITE_URL can never send parents
+ * to a login-protected *.vercel.app host.
  */
 function siteUrl(): string {
-  return process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk-lauda-collectives-projects.vercel.app';
+  return appBaseUrl();
 }
 
 /**

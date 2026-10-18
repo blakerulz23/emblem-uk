@@ -10,6 +10,19 @@ import { MULTI_UNIT_PRICE_PENCE, SINGLE_UNIT_PRICE_PENCE, SQUAD_UNIT_PRICE_PENCE
 export const SITE_URL = 'https://emblem.cards';
 
 /**
+ * Origin for every absolute link the app sends out: NFC chip URLs, payment
+ * and preview links, emails and card-share pages. Production sets
+ * NEXT_PUBLIC_SITE_URL to https://emblem.cards; when it is unset (local,
+ * Preview) this falls back to the canonical site, never to a *.vercel.app
+ * host — the old fallbacks pointed at a login-protected Vercel alias, so
+ * any link built without the variable was broken for families.
+ */
+export function appBaseUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, '');
+  return configured || SITE_URL;
+}
+
+/**
  * Google Search Console verification for https://emblem.cards/ (URL-prefix
  * property, HTML-tag method). Public by design: Google reads it from the page
  * head. Keep it permanently: removing it un-verifies the property.

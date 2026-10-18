@@ -1,3 +1,5 @@
+import { appBaseUrl } from '@/lib/marketing/site';
+
 /**
  * Sends a Squad Invite lifecycle email directly via Resend's HTTP API —
  * the same integration send-invite-email.ts already uses (Resend is
@@ -34,7 +36,7 @@ export async function sendSquadInviteNotificationEmail(params: {
   }
 
   const from = process.env.RESEND_FROM_EMAIL || 'Emblem <onboarding@resend.dev>';
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk-lauda-collectives-projects.vercel.app';
+  const siteUrl = appBaseUrl();
   const manageUrl = `${siteUrl}/squad-invite/manage/${encodeURIComponent(params.publicReference)}`;
   const { subject, html, text } = buildSquadInviteEmail(params, manageUrl);
 

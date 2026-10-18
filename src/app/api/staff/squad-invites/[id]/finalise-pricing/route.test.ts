@@ -268,7 +268,7 @@ describe('POST /api/staff/squad-invites/[id]/finalise-pricing — payment mode O
     expect(mockSendPaymentRequestEmail).toHaveBeenNthCalledWith(1, {
       toEmail: 'guardian1@example.test',
       teamName: 'Ashton Juniors U10',
-      paymentUrl: 'https://emblem-uk-lauda-collectives-projects.vercel.app/squad-invite/pay#token=preview-token-abc',
+      paymentUrl: 'https://emblem.cards/squad-invite/pay#token=preview-token-abc',
       unitPricePence: 2199,
       printQuantity: 1,
     });

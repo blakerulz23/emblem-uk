@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createCoachInvite } from '@/lib/create-coach-invite';
+import { appBaseUrl } from '@/lib/marketing/site';
 
 export const runtime = 'nodejs';
 
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk-lauda-collectives-projects.vercel.app';
+  const siteUrl = appBaseUrl();
   return NextResponse.json({
     ok: true,
     code: result.code,

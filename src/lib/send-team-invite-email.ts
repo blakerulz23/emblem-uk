@@ -1,3 +1,5 @@
+import { appBaseUrl } from '@/lib/marketing/site';
+
 /**
  * Sends the "your squad's Emblem cards are ready to manage" email —
  * duplicates send-invite-email.ts's Resend-call scaffolding with
@@ -17,7 +19,7 @@ export async function sendTeamInviteEmail(toEmail: string, inviteCode: string): 
   }
 
   const from = process.env.RESEND_FROM_EMAIL || 'Emblem <onboarding@resend.dev>';
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk.vercel.app';
+  const siteUrl = appBaseUrl();
   const inviteUrl = `${siteUrl}/os?teaminvite=${encodeURIComponent(inviteCode)}`;
 
   try {

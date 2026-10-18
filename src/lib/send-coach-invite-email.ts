@@ -1,3 +1,5 @@
+import { appBaseUrl } from '@/lib/marketing/site';
+
 /**
  * Sends the "a guardian invited you to connect as their child's coach"
  * email — a dedicated template, deliberately not sendInviteEmail's
@@ -32,7 +34,7 @@ export async function sendCoachInviteEmail(
   }
 
   const from = process.env.RESEND_FROM_EMAIL || 'Emblem <onboarding@resend.dev>';
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk-lauda-collectives-projects.vercel.app';
+  const siteUrl = appBaseUrl();
   const inviteUrl = `${siteUrl}/os?coachinvite=${encodeURIComponent(inviteCode)}`;
   const playerLabel = `${player.firstName} ${player.lastInitial}.`;
   const fromWhom = guardianName?.trim() || 'A parent';

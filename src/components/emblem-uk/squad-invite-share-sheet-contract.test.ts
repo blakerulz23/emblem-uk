@@ -117,11 +117,11 @@ describe('SquadInviteShareSheet — consent before image, and every mandatory ca
     expect(failReturnIdx).toBeLessThan(getImageIdx);
   });
 
-  it('the generic preview constant (CARD_SHARE_MESSAGE_TEXT, shown only before the guardian has committed to sharing) points at this app\'s own domain — not emblem.cards, a different, unrelated product — and contains exactly one URL', () => {
+  it('the generic preview constant (CARD_SHARE_MESSAGE_TEXT, shown only before the guardian has committed to sharing) points at this app\'s own production domain (emblem.cards), never a *.vercel.app host, and contains exactly one URL', () => {
     const urlMatches = CARD_SHARE_MESSAGE_TEXT.match(/https?:\/\//g) ?? [];
     expect(urlMatches).toHaveLength(1);
     expect(CARD_SHARE_MESSAGE_TEXT).toContain(CARD_SHARE_LINK_URL);
-    expect(CARD_SHARE_LINK_URL).toBe('https://emblem-uk.vercel.app/builder');
+    expect(CARD_SHARE_LINK_URL).toBe('https://emblem.cards/builder');
     expect(CARD_SHARE_MESSAGE_TEXT).not.toMatch(/squadParticipation|participationId|orderId|submissionKey|cardId|SI-[A-Z0-9]/i);
   });
 
