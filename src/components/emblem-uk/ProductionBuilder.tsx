@@ -2,7 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { CardFace } from '@/lib/card-definition';
 import type { CardFaceData } from '@/lib/card-definition';
 import { isCustomCollectionTemplateId } from '@/lib/custom-collection-manifest';
@@ -55,6 +55,7 @@ import {
   type CoachCardDraft,
 } from '@/lib/coach-card-draft';
 import { track } from '@/lib/analytics';
+import { clearBuilderDraft, draftScopeFor, loadBuilderDraft, purgeExpiredBuilderDrafts, saveBuilderDraft } from '@/lib/builder-draft-persistence';
 
 /**
  * Squad Invite mode — reached from JoinSquadInvite's
@@ -622,6 +623,95 @@ export default function ProductionBuilder({
       ? 'Approve ready cards to unlock the order summary.'
       : 'Complete at least one card before continuing.';
   const canEditOrder = enquiryStatus !== 'sent';
+
+  // Save and resume (see builder-draft-persistence.ts). The draft is scoped
+  // to this journey (the direct builder, or this one Squad Invite
+  // participation), kept on this device only, and never carries guardian
+  // verification, adult permission or Squad Invite declarations: those are
+  // always confirmed again in the live session.
+  const draftScope = draftScopeFor(squadInviteContext?.participationId);
+  type BuilderDraftData = {
+    order: OrderDraft;
+    activeStepId: StepId;
+    selectedId: string;
+    enquiry: typeof enquiry;
+    coachCardDraft: CoachCardDraft;
+  };
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [resumedDraft, setResumedDraft] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    purgeExpiredBuilderDrafts()
+      .catch(() => undefined)
+      .then(() => loadBuilderDraft<BuilderDraftData>(draftScope))
+      .then((draft) => {
+        if (cancelled || !draft) return;
+        const restored = draft.data;
+        // A photo whose bytes didn't survive comes back as '' — treat it as missing.
+        const players = restored.order.players.map((player) => (
+          player.photo && !player.photo.srcUrl ? { ...player, photo: undefined } : player
+        ));
+        const nextOrder: OrderDraft = squadInviteContext
+          // A Squad Invite card stays locked to one child, the Custom
+          // Collection and the campaign's own club, whatever the draft says.
+          ? { ...restored.order, players, type: 'single', collectionType: 'custom', collectionName: 'Custom Collection', club: squadInviteContext.campaignClubName }
+          : { ...restored.order, players };
+        const steps = squadInviteContext ? SQUAD_INVITE_STEP_ORDER : stepsFor(nextOrder.type);
+        // Never resume on (or past) the permission step: the adult
+        // permission and its email verification are always done again.
+        const wanted: StepId = restored.activeStepId === 'adult-permission' ? 'review' : restored.activeStepId;
+        const step = steps.includes(wanted) ? wanted : steps[0];
+        setOrder(nextOrder);
+        setActiveStepId(step);
+        setSelectedId(players.some((player) => player.id === restored.selectedId) ? restored.selectedId : players[0]?.id || '');
+        if (!squadInviteContext) setEnquiry(restored.enquiry);
+        setCoachCardDraft(restored.coachCardDraft);
+        setResumedDraft(true);
+      })
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setDraftRestored(true); });
+    return () => { cancelled = true; };
+    // Mount-once by design.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const draftDone = enquiryStatus === 'sent' || squadInvitePhase === 'success';
+  useEffect(() => {
+    if (!draftRestored || draftDone) return;
+    const id = window.setTimeout(() => {
+      saveBuilderDraft<BuilderDraftData>(draftScope, { order, activeStepId, selectedId, enquiry, coachCardDraft }).catch(() => undefined);
+    }, 400);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftRestored, draftDone, order, activeStepId, selectedId, enquiry, coachCardDraft]);
+  // Leaving the builder: the brand mark used to be a plain link home, which
+  // dropped a half-built card with no warning. The prompt says what happens,
+  // and "Save and leave" flushes the draft rather than trusting the debounce.
+  const router = useRouter();
+  const [exitPrompt, setExitPrompt] = useState(false);
+  const [exitBusy, setExitBusy] = useState<'save' | 'discard' | null>(null);
+  useEffect(() => {
+    if (!exitPrompt) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !exitBusy) setExitPrompt(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [exitPrompt, exitBusy]);
+  const saveAndExit = async () => {
+    setExitBusy('save');
+    if (!draftDone) {
+      await saveBuilderDraft<BuilderDraftData>(draftScope, { order, activeStepId, selectedId, enquiry, coachCardDraft }).catch(() => undefined);
+    }
+    router.push('/');
+  };
+  const discardAndExit = async () => {
+    setExitBusy('discard');
+    await clearBuilderDraft(draftScope).catch(() => undefined);
+    router.push('/');
+  };
+  const startNewCard = async () => {
+    if (!window.confirm('Start a new card? This clears the one saved on this device.')) return;
+    await clearBuilderDraft(draftScope).catch(() => undefined);
+    window.location.reload();
+  };
 
   const patchOrder = (patch: Partial<OrderDraft>) => {
     setOrder((current) => ({ ...current, ...patch }));
@@ -1421,6 +1511,8 @@ export default function ProductionBuilder({
 
       setOrder(productionOrder);
       setEnquiryStatus('sent');
+      // Submitted: nothing left to resume on this device.
+      clearBuilderDraft(draftScope).catch(() => undefined);
       setSubmittedOrderId(result.orderId);
       setSubmittedAuthorityStatus(typeof result.authorityStatus === 'string' ? result.authorityStatus : null);
 
@@ -1694,6 +1786,7 @@ export default function ProductionBuilder({
       const successBody = await response.json().catch(() => null) as { orderId?: string } | null;
       if (successBody?.orderId) setSquadInviteOrderId(successBody.orderId);
       setSquadInvitePhase('success');
+      clearBuilderDraft(draftScope).catch(() => undefined);
       succeeded = true;
       // submittingRef intentionally stays true on success — one-shot
       // commitment, matching the server's own one-shot semantics (a repeat
@@ -1798,15 +1891,36 @@ export default function ProductionBuilder({
           </div>
         </div>
       )}
+      {exitPrompt && (
+        <div className="ukd-exit-scrim" role="presentation" onClick={() => { if (!exitBusy) setExitPrompt(false); }}>
+          <div className="ukd-exit-dialog" role="dialog" aria-modal="true" aria-labelledby="ukd-exit-title" aria-describedby="ukd-exit-body" onClick={(event) => event.stopPropagation()}>
+            <h2 id="ukd-exit-title">Leave the builder?</h2>
+            <p id="ukd-exit-body">
+              Your card is kept on this device for 3 days, so you can carry on where you left off. Discarding clears it, including the photo, for good.
+            </p>
+            <div className="ukd-exit-actions">
+              <button type="button" className="ukd-exit-save" onClick={saveAndExit} disabled={exitBusy !== null}>
+                {exitBusy === 'save' ? 'Saving…' : 'Save and leave'}
+              </button>
+              <button type="button" className="ukd-exit-stay" onClick={() => setExitPrompt(false)} disabled={exitBusy !== null}>
+                Keep editing
+              </button>
+              <button type="button" className="ukd-exit-discard" onClick={discardAndExit} disabled={exitBusy !== null}>
+                {exitBusy === 'discard' ? 'Discarding…' : 'Discard and leave'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className={`uk-wizard-phone${activeStepId === 'review' && squadInviteContext ? ' uk-wizard-phone--squad-review' : ''}`}>
         <header className="uk-wizard-header">
           <div className="uk-wizard-topbar">
             <button type="button" className="uk-icon-button" onClick={goBack} aria-label="Back" disabled={activeIndex === 0}>
               &lsaquo;
             </button>
-            <Link href="/" className="uk-wizard-brand" aria-label="Emblem home">
+            <button type="button" className="uk-wizard-brand" onClick={() => (draftDone ? router.push('/') : setExitPrompt(true))} aria-label="Leave the builder">
               <img src="/builder-emblem-logo.png" alt="Emblem" />
-            </Link>
+            </button>
             <button
               type="button"
               className="uk-progress-pill"
@@ -1824,6 +1938,12 @@ export default function ProductionBuilder({
         </header>
 
         <main className="uk-wizard-screen">
+          {resumedDraft && !draftDone && (
+            <div className="uk-resumed-note" role="status">
+              <span>Picked up where you left off. Your card is saved on this device only.</span>
+              <button type="button" onClick={startNewCard}>Start a new card</button>
+            </div>
+          )}
           {activeStepId === 'order-type' && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Start order</p>

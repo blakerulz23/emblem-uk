@@ -699,6 +699,106 @@ a { text-decoration: none; color: inherit; }
   object-fit: contain;
 }
 
+/* The brand mark is a button now (it opens "Leave the builder?"), so reset
+   the native button chrome to keep it looking exactly like the old link. */
+button.uk-wizard-brand {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* Save and resume (adapted from Emblem Canada). */
+.uk-resumed-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border: 1px solid #e3d9c8;
+  border-radius: 10px;
+  background: #fffaf2;
+  font-size: 12.5px;
+  color: #5f574d;
+}
+.uk-resumed-note span { flex: 1 1 auto; min-width: 0; }
+.uk-resumed-note button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--wizard-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.ukd-exit-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(14, 14, 15, 0.55);
+}
+.ukd-exit-dialog {
+  width: min(420px, 100%);
+  background: #fff;
+  border: 1px solid #e7e2da;
+  border-radius: 16px;
+  padding: 24px 24px 20px;
+  box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.45);
+}
+.ukd-exit-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 19px;
+  font-weight: 800;
+  color: #141414;
+}
+.ukd-exit-dialog p {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #5f574d;
+}
+.ukd-exit-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.ukd-exit-actions button {
+  height: 44px;
+  border-radius: 10px;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ukd-exit-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.ukd-exit-save {
+  border: 0;
+  background: var(--wizard-accent);
+  color: #fff;
+}
+.ukd-exit-stay {
+  border: 1px solid #cfc8bd;
+  background: #fff;
+  color: #141414;
+}
+/* Destructive, so it sits last and carries no fill. */
+.ukd-exit-discard {
+  border: 0;
+  background: none;
+  color: #b42318;
+}
+.ukd-exit-discard:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
 .uk-wizard-progress {
   padding: 0 16px 10px;
   display: grid;
