@@ -8,6 +8,7 @@ import {
   hashGuardianApprovalToken,
 } from '@/lib/builder-authority';
 import { sendBuilderGuardianApprovalEmail } from '@/lib/send-builder-guardian-approval-email';
+import { appBaseUrl } from '@/lib/marketing/site';
 
 /**
  * Guardian-pending screen: collects the real guardian email for a
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'We could not send that request. Please check the order and try again.' }, { status: 400 });
   }
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk-lauda-collectives-projects.vercel.app';
+  const siteUrl = appBaseUrl();
   const approveUrl = `${siteUrl}/builder-approval/${encodeURIComponent(rawToken)}`;
   const emailResult = await sendBuilderGuardianApprovalEmail({ toEmail: guardianEmail, approveUrl });
   if (!emailResult.ok) {

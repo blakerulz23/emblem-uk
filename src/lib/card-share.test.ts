@@ -44,11 +44,11 @@ describe('required copy is present and distinct', () => {
 
 describe('the shared message text and link are fixed and generic — never derived from this specific order', () => {
   it('the link is the public builder marketing page, never a card-specific or recipient-specific page', () => {
-    expect(CARD_SHARE_LINK_URL).toBe('https://emblem-uk.vercel.app/builder');
+    expect(CARD_SHARE_LINK_URL).toBe('https://emblem.cards/builder');
   });
 
   it('the message text names Emblem, invites the recipient to make their own, and contains the exact link', () => {
-    expect(CARD_SHARE_MESSAGE_TEXT).toBe('Look what I made with Emblem.\nCreate your own card: https://emblem-uk.vercel.app/builder');
+    expect(CARD_SHARE_MESSAGE_TEXT).toBe('Look what I made with Emblem.\nCreate your own card: https://emblem.cards/builder');
     expect(CARD_SHARE_MESSAGE_TEXT).toContain(CARD_SHARE_LINK_URL);
   });
 
@@ -203,9 +203,9 @@ describe('cardSharePublicPageUrl / buildCardShareMessageText — the real per-sh
   const originalEnv = process.env.NEXT_PUBLIC_SITE_URL;
   afterEach(() => { process.env.NEXT_PUBLIC_SITE_URL = originalEnv; });
 
-  it('builds a URL under this app\'s own domain from a token, defaulting to the emblem-uk.vercel.app fallback', () => {
+  it('builds a URL under this app\'s own domain from a token, defaulting to https://emblem.cards (never a *.vercel.app host)', () => {
     delete process.env.NEXT_PUBLIC_SITE_URL;
-    expect(cardSharePublicPageUrl('a'.repeat(64))).toBe(`https://emblem-uk.vercel.app/card-share/${'a'.repeat(64)}`);
+    expect(cardSharePublicPageUrl('a'.repeat(64))).toBe(`https://emblem.cards/card-share/${'a'.repeat(64)}`);
   });
 
   it('respects NEXT_PUBLIC_SITE_URL when set, same fallback convention as every other site-URL usage in this codebase', () => {
@@ -214,7 +214,7 @@ describe('cardSharePublicPageUrl / buildCardShareMessageText — the real per-sh
   });
 
   it('labels the real per-share URL as viewing this card, not creating a new one — the founder-reported mislabel this fixes', () => {
-    const url = 'https://emblem-uk.vercel.app/card-share/' + 'c'.repeat(64);
+    const url = 'https://emblem.cards/card-share/' + 'c'.repeat(64);
     const text = buildCardShareMessageText(url);
     expect(text).toContain(`View my card: ${url}`);
     expect(text).not.toMatch(new RegExp(`Create your own card:\\s*${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
@@ -222,7 +222,7 @@ describe('cardSharePublicPageUrl / buildCardShareMessageText — the real per-sh
   });
 
   it('separately offers the real, generic builder link (not the per-card URL) as the "create your own" CTA', () => {
-    const url = 'https://emblem-uk.vercel.app/card-share/' + 'd'.repeat(64);
+    const url = 'https://emblem.cards/card-share/' + 'd'.repeat(64);
     const text = buildCardShareMessageText(url);
     expect(text).toContain(`Create your own: ${CARD_SHARE_LINK_URL}`);
   });

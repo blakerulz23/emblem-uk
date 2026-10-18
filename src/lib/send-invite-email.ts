@@ -1,3 +1,5 @@
+import { appBaseUrl } from '@/lib/marketing/site';
+
 /**
  * Sends the "you've been invited to set up your child's Emblem profile"
  * email directly via Resend's HTTP API — this isn't a Supabase Auth email
@@ -19,7 +21,7 @@ export async function sendInviteEmail(toEmail: string, inviteCode: string): Prom
   }
 
   const from = process.env.RESEND_FROM_EMAIL || 'Emblem <onboarding@resend.dev>';
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk-lauda-collectives-projects.vercel.app';
+  const siteUrl = appBaseUrl();
   const inviteUrl = `${siteUrl}/os?invite=${encodeURIComponent(inviteCode)}`;
 
   try {

@@ -1,3 +1,5 @@
+import { appBaseUrl } from '@/lib/marketing/site';
+
 /**
  * Sends a single "a staff member needs to know this happened" email —
  * same Resend integration and never-throws contract as every other
@@ -44,7 +46,7 @@ export async function sendStaffNotificationEmail(params: {
   }
 
   const from = process.env.RESEND_FROM_EMAIL || 'Emblem <onboarding@resend.dev>';
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://emblem-uk-lauda-collectives-projects.vercel.app';
+  const siteUrl = appBaseUrl();
   const link = `${siteUrl}${params.linkPath}`;
   const label = EVENT_LABELS[params.eventType] ?? params.eventType;
 
