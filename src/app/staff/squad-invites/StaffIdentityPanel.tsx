@@ -1,9 +1,10 @@
 import Link from 'next/link';
-import type { SquadInviteStaffPermission } from '@/lib/squad-invite-mvp';
+import type { StaffPermission } from '@/lib/require-squad-invite-permission';
 
-const PERMISSION_BADGES: { key: SquadInviteStaffPermission; label: string }[] = [
+const PERMISSION_BADGES: { key: StaffPermission; label: string }[] = [
   { key: 'squad_invite_reviewer', label: 'Reviewer' },
   { key: 'squad_invite_approver', label: 'Approver' },
+  { key: 'test_data_admin', label: 'Test data admin' },
 ];
 
 // Staff-only, server-rendered inside the two Squad Invite staff pages —
@@ -11,7 +12,7 @@ const PERMISSION_BADGES: { key: SquadInviteStaffPermission; label: string }[] = 
 // email prop must always originate from the server-authenticated Supabase
 // session (client.auth.getUser()), never from a request body, URL or
 // searchParams — see the callers in page.tsx / [reference]/page.tsx.
-export default function StaffIdentityPanel({ email, permissions }: { email: string; permissions: SquadInviteStaffPermission[] }) {
+export default function StaffIdentityPanel({ email, permissions }: { email: string; permissions: StaffPermission[] }) {
   const held = PERMISSION_BADGES.filter((badge) => permissions.includes(badge.key));
   return (
     <section aria-label="Signed-in staff identity" className="mt-6 rounded-2xl border bg-white p-5 text-sm">

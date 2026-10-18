@@ -31,6 +31,8 @@ import CopyLinkButton from './CopyLinkButton';
 import SendClaimReminderButton from './SendClaimReminderButton';
 import SectionSearchControls from './SectionSearchControls';
 import SectionSearchEmptyState from './SectionSearchEmptyState';
+import TestArchivePanel from './TestArchivePanel';
+import { getTestArchiveData, hasTestDataAdmin } from './test-archive-data';
 
 // This reads live pending orders on every request — without this, Next
 // would statically prerender the page at build time (its data fetch has
@@ -148,7 +150,9 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
   let { data } = await supabase
     .from('orders')
     .select('id, order_ref, purchaser_email, payment_status, created_at, print_files, club_name, team_name, source')
-    .in('payment_status', ['order_intent', 'pending_payment', 'paid']);
+    .in('payment_status', ['order_intent', 'pending_payment', 'paid'])
+    // Internal test orders archived by staff (migration 0088) stay out of every queue.
+    .eq('is_internal_test', false);
 
   // Until migrations 0007 (print_files) / 0009 (club_name/team_name) run,
   // those columns don't exist and the select above errors out (returns
@@ -228,6 +232,7 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
     .from('orders')
     .select('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name, source')
     .eq('payment_status', 'fulfilled')
+    .eq('is_internal_test', false)
     .order('approved_at', { ascending: false })
     // Not-searching keeps today's existing raw-fetch size (bounded, cheap);
     // searching needs the full eligible universe to search across, bounded
@@ -311,7 +316,8 @@ async function getProductionQueueCards(setupQ: string, setupSort: QueueSort) {
   const { data: fulfilledOrders } = await supabase
     .from('orders')
     .select('id, order_ref, purchaser_email, print_files, source')
-    .eq('payment_status', 'fulfilled');
+    .eq('payment_status', 'fulfilled')
+    .eq('is_internal_test', false);
   if (!fulfilledOrders?.length) return empty;
   const orderById = new Map(fulfilledOrders.map((o) => [o.id, o]));
 
@@ -327,7 +333,8 @@ async function getProductionQueueCards(setupQ: string, setupSort: QueueSort) {
       fulfilledOrders.map((o) => o.id)
     )
     .not('player_id', 'is', null)
-    .is('production_dismissed_at', null);
+    .is('production_dismissed_at', null)
+    .is('archived_as_test_at', null);
 
   type CardRow = {
     id: string;
@@ -472,6 +479,7 @@ export default async function StaffQueuePage({
   const pending = await getPendingOrders(approvalQ, approvalSort);
   const approved = await getRecentlyApprovedSingleCardOrders(approvedQ, approvedSort, approvedPageParam);
   const productionQueue = await getProductionQueueCards(setupQ, setupSort);
+  const testArchive = (await hasTestDataAdmin(staffCheck.userId)) ? await getTestArchiveData() : null;
   const totalSetupResults = productionQueue.waitingCount + productionQueue.submittedCount;
 
   return (
@@ -1044,6 +1052,8 @@ export default async function StaffQueuePage({
           );
         })}
       </div>
+
+      {testArchive && <TestArchivePanel {...testArchive} />}
     </div>
   );
 }

@@ -169,9 +169,14 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   const serviceRole = createServiceRoleClient();
 
-  const { data: sourceRow } = await serviceRole.from('orders').select('source, authority_status, pricing_tier, payment_status, order_ref').eq('id', params.id).maybeSingle();
+  const { data: sourceRow } = await serviceRole.from('orders').select('source, authority_status, pricing_tier, payment_status, order_ref, is_internal_test').eq('id', params.id).maybeSingle();
   if (!sourceRow) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  }
+  // Archived internal test orders (migration 0088) are out of production;
+  // Restore them first if one genuinely needs approving.
+  if ((sourceRow as { is_internal_test?: boolean }).is_internal_test === true) {
+    return NextResponse.json({ error: 'This order is archived as an internal test. Restore it before approving.' }, { status: 409 });
   }
   // Shopify cancelled this order. A paid order stays 'paid' in Emblem when
   // that happens (the money is still taken), so the cancellation delivery

@@ -39,7 +39,7 @@ describe('Squad Invite staff read access — reviewer OR approver, no redirect l
 
   it('requireSquadInvitePermission itself supports the array form the read-access fix depends on', () => {
     const source = read('src/lib/require-squad-invite-permission.ts');
-    expect(source).toContain('SquadInviteStaffPermission | SquadInviteStaffPermission[]');
+    expect(source).toContain('StaffPermission | StaffPermission[]');
     expect(source).toContain("in('permission',permissions)");
   });
 });

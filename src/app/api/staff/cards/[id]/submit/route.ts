@@ -21,7 +21,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
     .from('cards')
     .update({ production_status: 'ready_for_programming', production_submitted_at: new Date().toISOString() })
     .eq('id', params.id)
-    .is('production_dismissed_at', null);
+    .is('production_dismissed_at', null)
+    // An archived internal test card can never be sent to programming.
+    .is('archived_as_test_at', null);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
