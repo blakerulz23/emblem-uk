@@ -523,6 +523,86 @@ item 4, risk R4) — the RPCs correctly check that the caller is a
 *recorded* guardian, not that the guardian relationship was ever properly
 established in the first place.
 
+## Card builder — device drafts, on-device background removal, interrupted-submit recovery — 19 October 2026
+
+**Status: implementation evidence only (PR #115); DPIA remains unapproved.
+Does not change the overall recommendation below.**
+
+**What changed in processing.**
+
+- **VERIFIED IN LOCAL SOURCE — photo processing moved onto the device.**
+  Optional background removal in the UK card builder now runs in the
+  parent's browser (u2netp model via onnxruntime-web, served from
+  Emblem's own origin under `/ort/` and `/models/`). The photo is not sent
+  to Emblem or to Google Gemini for this step (`BackgroundRemovalStep.tsx`,
+  `bgRemovalOnDevice.ts`; contract tests assert no `/api/ai-mockup` or
+  Gemini call from the builder). This **removes** Google Gemini as a
+  recipient of child photographs for card orders from this release. Photos
+  processed by Gemini under the earlier builder are historical processing;
+  the existing supplier-status deletion route still lists Gemini for that
+  reason. The parent can always continue with the original photo; on slow
+  connections (Data Saver, 2G/3G) removal is opt-in so the ~17 MB engine
+  is never downloaded without a tap.
+- **VERIFIED IN LOCAL SOURCE — new on-device storage (save and resume).**
+  While building, the builder stores card details (player name, number,
+  position, design choices, typed contact details) in `localStorage` and
+  every image the parent added (chosen photo, its unedited original when
+  background removal was used, any badge) in IndexedDB
+  (`emblem-uk-builder-draft`). Scope is per journey (`direct`, or
+  `squad-invite:<participationId>` so one family's draft can never restore
+  into another family's invite). Drafts expire after 72 hours and are
+  purged on next load; they are deleted after a confirmed order or Squad
+  Invite commit, and on "Discard". Nothing in the draft is sent to Emblem.
+  Adult permission, guardian verification state, consent answers, Squad
+  Invite acceptance and order/checkout identifiers are never stored in the
+  draft (contract test `builder-draft-persistence.test.ts`), so restoring
+  a draft cannot bypass guardian verification or consent: those steps are
+  asked again.
+- **VERIFIED IN LOCAL SOURCE — what is uploaded on submit.** Only when the
+  parent sends the card: the chosen photo (the cut-out if they chose
+  background removal), any badge, and the server-rendered print file are
+  uploaded to private S3 under the server-issued submission namespace. The
+  unedited original is not uploaded, and the stored order photo record is
+  limited to `storageKey`, `contentType`, `crop` and `bgRemoved`
+  (isolated integration test `builder-checkout-payload-integration.test.ts`
+  runs the builder payload through the server validator).
+- **VERIFIED IN LOCAL SOURCE — interrupted submits do not lose work or
+  duplicate orders.** The draft is no longer deleted when a submit starts.
+  The submission id is written into the draft before any upload; if the
+  page is closed or the network fails, the restored draft is checked via
+  `POST /api/builder-submissions/status` (CSRF-protected, rate-limited,
+  returns only `placed` / `not_placed` / `in_progress`, never an order id or
+  any personal data). An unused submission capability is revoked before
+  `not_placed` is reported, so a late in-flight request cannot then create
+  an order. Sending stays paused while the outcome is unknown.
+
+**New risk recorded — shared devices (R-new, provisional rating: medium
+likelihood × moderate impact).** Anyone using the same browser profile on
+the same device within 72 hours can reopen the builder and see the saved
+draft, including the child's photograph and the parent's typed contact
+details. Mitigations implemented: 72-hour expiry; deletion on success;
+one-tap "Discard"; an in-builder notice that the work is saved on this
+device only; the Privacy Policy section "Saved on your device while you
+build" names the shared/public-device risk and advises Discard or a
+private window. Not implemented: an opt-out of saving, or encryption at
+rest of the draft (browser storage is protected only by the device/OS
+account). **REQUIRES SPECIALIST REVIEW:** whether default-on device saving
+is proportionate for a children's-photo service under the Children's Code
+"default settings" standard, or should become opt-in.
+
+**Residual risk — duplicate unpaid order record.** If a submit request is
+still in flight at the moment the status check runs and passes the server's
+finalising step after the 1.5 s grace re-check, a second, unpaid order
+record is theoretically possible. It cannot cause a duplicate charge:
+payment is a separate, explicit Shopify checkout per order. Staff would see
+two orders with the same content for the same contact.
+
+**Not verified in this release.** No full staging payment checkout was
+performed (no Shopify development store, no Preview S3 credentials,
+staging database behind production — recorded as separate infrastructure
+tasks). Upload, storage and checkout request handling are verified only by
+isolated route tests with mocked S3, Supabase and Shopify.
+
 ## Evidence labels and risk method
 
 - **VERIFIED** — directly supported by repository evidence cited in this document.
