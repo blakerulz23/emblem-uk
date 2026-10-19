@@ -56,7 +56,7 @@ import {
 } from '@/lib/coach-card-draft';
 import { track } from '@/lib/analytics';
 import { warmOnDeviceBackgroundRemoval } from '@/components/builder/emblem/bgRemovalOnDevice';
-import { clearBuilderDraft, draftScopeFor, loadBuilderDraft, purgeExpiredBuilderDrafts, saveBuilderDraft } from '@/lib/builder-draft-persistence';
+import { clearAllBuilderDrafts, clearBuilderDraft, draftScopeFor, isBuilderDeviceSaveOff, loadBuilderDraft, purgeExpiredBuilderDrafts, saveBuilderDraft, setBuilderDeviceSaveOff } from '@/lib/builder-draft-persistence';
 
 /**
  * Squad Invite mode — reached from JoinSquadInvite's
@@ -637,6 +637,16 @@ export default function ProductionBuilder({
   };
   const [draftRestored, setDraftRestored] = useState(false);
   const [resumedDraft, setResumedDraft] = useState(false);
+  // "Don't save on this device": nothing is saved while it's on (enforced in
+  // builder-draft-persistence too), and switching it on deletes every draft
+  // and photo already saved here. Consent and verification are unaffected:
+  // they were never saved, and are always asked again.
+  const [deviceSaveOff, setDeviceSaveOff] = useState(false);
+  const changeDeviceSave = async (off: boolean) => {
+    setDeviceSaveOff(off);
+    if (off) setResumedDraft(false);
+    await setBuilderDeviceSaveOff(off).catch(() => undefined);
+  };
   const checkPendingSubmission = async (key: string) => {
     setSubmitRecovery('checking');
     try {
@@ -666,6 +676,12 @@ export default function ProductionBuilder({
   };
   useEffect(() => {
     let cancelled = false;
+    if (isBuilderDeviceSaveOff()) {
+      // Chosen earlier on this device: never restore, and make sure nothing is left.
+      setDeviceSaveOff(true);
+      clearAllBuilderDrafts().catch(() => undefined).finally(() => { if (!cancelled) setDraftRestored(true); });
+      return () => { cancelled = true; };
+    }
     purgeExpiredBuilderDrafts()
       .catch(() => undefined)
       .then(() => loadBuilderDraft<BuilderDraftData>(draftScope))
@@ -705,13 +721,13 @@ export default function ProductionBuilder({
   }, []);
   const draftDone = enquiryStatus === 'sent' || squadInvitePhase === 'success' || submitRecovery === 'placed';
   useEffect(() => {
-    if (!draftRestored || draftDone) return;
+    if (!draftRestored || draftDone || deviceSaveOff) return;
     const id = window.setTimeout(() => {
       saveBuilderDraft<BuilderDraftData>(draftScope, { order, activeStepId, selectedId, enquiry, coachCardDraft, pendingSubmission }).catch(() => undefined);
     }, 400);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftRestored, draftDone, order, activeStepId, selectedId, enquiry, coachCardDraft, pendingSubmission]);
+  }, [draftRestored, draftDone, deviceSaveOff, order, activeStepId, selectedId, enquiry, coachCardDraft, pendingSubmission]);
   // Leaving the builder: the brand mark used to be a plain link home, which
   // dropped a half-built card with no warning. The prompt says what happens,
   // and "Save and leave" flushes the draft rather than trusting the debounce.
@@ -726,7 +742,7 @@ export default function ProductionBuilder({
   }, [exitPrompt, exitBusy]);
   const saveAndExit = async () => {
     setExitBusy('save');
-    if (!draftDone) {
+    if (!draftDone && !deviceSaveOff) {
       await saveBuilderDraft<BuilderDraftData>(draftScope, { order, activeStepId, selectedId, enquiry, coachCardDraft, pendingSubmission }).catch(() => undefined);
     }
     router.push('/');
@@ -1938,12 +1954,16 @@ export default function ProductionBuilder({
           <div className="ukd-exit-dialog" role="dialog" aria-modal="true" aria-labelledby="ukd-exit-title" aria-describedby="ukd-exit-body" onClick={(event) => event.stopPropagation()}>
             <h2 id="ukd-exit-title">Leave the builder?</h2>
             <p id="ukd-exit-body">
-              Your card is kept on this device for 3 days, so you can carry on where you left off. Discarding clears it, including the photo, for good.
+              {deviceSaveOff
+                ? 'Your card isn’t saved on this device, so if you leave now it can’t be recovered.'
+                : 'Your card is kept on this device for 3 days, so you can carry on where you left off. Discarding clears it, including the photo, for good.'}
             </p>
             <div className="ukd-exit-actions">
-              <button type="button" className="ukd-exit-save" onClick={saveAndExit} disabled={exitBusy !== null}>
-                {exitBusy === 'save' ? 'Saving…' : 'Save and leave'}
-              </button>
+              {!deviceSaveOff && (
+                <button type="button" className="ukd-exit-save" onClick={saveAndExit} disabled={exitBusy !== null}>
+                  {exitBusy === 'save' ? 'Saving…' : 'Save and leave'}
+                </button>
+              )}
               <button type="button" className="ukd-exit-stay" onClick={() => setExitPrompt(false)} disabled={exitBusy !== null}>
                 Keep editing
               </button>
@@ -2137,9 +2157,17 @@ export default function ProductionBuilder({
               ) : order.type === 'single' ? (
                 <PlayerStrip order={order} selectedId={selectedId} onSelect={setSelectedId} />
               ) : null}
-              <p className="uk-draft-notice">
-                While you build, your card&apos;s details and photo are saved on this device only, for up to 3 days, so you can carry on later. Nothing is uploaded until you send your card, and you can delete it at any time with &ldquo;Discard&rdquo; (tap the Emblem logo).
-              </p>
+              <div className="uk-draft-notice">
+                <p>
+                  {deviceSaveOff
+                    ? <>Your card isn&apos;t being saved on this device. If you leave or reload the page, you&apos;ll need to start again. Nothing is uploaded until you send your card.</>
+                    : <>While you build, your card&apos;s details and photo are saved on this device only, for up to 3 days, so you can carry on later. Nothing is uploaded until you send your card, and you can delete it at any time with &ldquo;Discard&rdquo; (tap the Emblem logo).</>}
+                </p>
+                <label className="uk-draft-optout">
+                  <input type="checkbox" checked={deviceSaveOff} onChange={(event) => { void changeDeviceSave(event.target.checked); }} />
+                  <span>Don&apos;t save on this device <small>(best on a shared or public device; deletes anything already saved here)</small></span>
+                </label>
+              </div>
               <div className="uk-wizard-row-actions">
                 {order.type !== 'single' && <button type="button" onClick={() => addPlayer()} disabled={addDisabled}>Add player</button>}
                 <button

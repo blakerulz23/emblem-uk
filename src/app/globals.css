@@ -10972,6 +10972,21 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   line-height: 1.5;
   color: var(--wizard-soft);
 }
+.uk-draft-notice p { margin: 0; }
+.uk-draft-optout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 6px 0 16px;
+  color: var(--wizard-ink);
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  cursor: pointer;
+}
+.uk-draft-optout input { width: 22px; height: 22px; flex: none; accent-color: var(--wizard-accent); }
+.uk-draft-optout small { display: block; color: var(--wizard-soft); font-weight: 500; font-size: 12px; }
 
 /* Interrupted-submit recovery (save and resume). */
 .uk-recovery-note {

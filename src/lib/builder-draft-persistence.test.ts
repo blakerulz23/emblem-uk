@@ -1,8 +1,11 @@
 import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 import {
+  clearAllDraftsWith,
   clearDraftWith,
   collectBlobUrls,
+  isDeviceSaveOffWith,
+  setDeviceSaveOffWith,
   DRAFT_TTL_MS,
   draftScopeFor,
   loadDraftWith,
@@ -55,6 +58,82 @@ const order = (photoUrl: string, extra: Record<string, unknown> = {}) => ({
   type: 'single',
   players: [{ id: 'p1', firstName: 'Riley', photo: { srcUrl: photoUrl, hiResUrl: photoUrl, crop: { x: 0, y: 0, scale: 1 }, bgRemoved: false } }],
   ...extra,
+});
+
+describe("Don't save on this device", () => {
+  it('turning it on deletes every saved draft and photo on the device, in every journey', async () => {
+    const d = fakeDevice();
+    await saveDraftWith(d.env, 'direct', order(d.photo('a')));
+    await saveDraftWith(d.env, draftScopeFor('part-1'), order(d.photo('b')));
+    expect(d.blobMap.size).toBe(2);
+    await setDeviceSaveOffWith(d.env, true);
+    expect(Array.from(d.kvMap.keys()).filter((k) => k.startsWith('emblem.uk.builder.draft'))).toEqual([]);
+    expect(d.blobMap.size).toBe(0);
+    expect(await loadDraftWith(d.env, 'direct')).toBeNull();
+  });
+
+  it('while it is on, nothing is saved, not even by save-and-leave or a submit', async () => {
+    const d = fakeDevice();
+    await setDeviceSaveOffWith(d.env, true);
+    await saveDraftWith(d.env, 'direct', order(d.photo('a')));
+    expect(await loadDraftWith(d.env, 'direct')).toBeNull();
+    expect(d.blobMap.size).toBe(0);
+  });
+
+  it('a save already in flight when it is switched on is undone', async () => {
+    const d = fakeDevice();
+    const slow = d.env.readBlobUrl;
+    let release: () => void = () => undefined;
+    d.env.readBlobUrl = (url) => new Promise((resolve) => { release = () => resolve(slow(url)); });
+    const saving = saveDraftWith(d.env, 'direct', order(d.photo('a')));
+    await setDeviceSaveOffWith(d.env, true);
+    release();
+    await saving;
+    expect(await loadDraftWith(d.env, 'direct')).toBeNull();
+    expect(d.blobMap.size).toBe(0);
+  });
+
+  it('the choice is remembered on the device, holds no personal data, and survives the expiry purge', async () => {
+    const d = fakeDevice();
+    await setDeviceSaveOffWith(d.env, true);
+    expect(isDeviceSaveOffWith(d.env)).toBe(true);
+    expect(d.kvMap.get('emblem.uk.builder.no-device-save')).toBe('1');
+    d.advance(DRAFT_TTL_MS * 2);
+    await purgeExpiredDraftsWith(d.env);
+    expect(isDeviceSaveOffWith(d.env)).toBe(true);
+  });
+
+  it('turning it off again resumes saving', async () => {
+    const d = fakeDevice();
+    await setDeviceSaveOffWith(d.env, true);
+    await setDeviceSaveOffWith(d.env, false);
+    expect(isDeviceSaveOffWith(d.env)).toBe(false);
+    await saveDraftWith(d.env, 'direct', order(d.photo('a')));
+    expect(await loadDraftWith(d.env, 'direct')).not.toBeNull();
+  });
+
+  it('clearAllDraftsWith leaves unrelated site storage alone', async () => {
+    const d = fakeDevice();
+    d.kvMap.set('emblem.analytics.consent', 'granted');
+    await saveDraftWith(d.env, 'direct', order(d.photo('a')));
+    await clearAllDraftsWith(d.env);
+    expect(d.kvMap.get('emblem.analytics.consent')).toBe('granted');
+  });
+
+  it('the builder: an earlier choice skips restoring and clears the device; autosave and save-and-leave honour it', () => {
+    const b = readFileSync('src/components/emblem-uk/ProductionBuilder.tsx', 'utf8');
+    expect(b).toMatch(/if \(isBuilderDeviceSaveOff\(\)\) \{\s*\/\/[^\n]*\n\s*setDeviceSaveOff\(true\);\s*clearAllBuilderDrafts\(\)/);
+    expect(b).toMatch(/if \(!draftDone && !deviceSaveOff\) \{\s*await saveBuilderDraft/);
+    expect(b).toMatch(/\{!deviceSaveOff && \(\s*<button type="button" className="ukd-exit-save"/);
+    expect(b).toMatch(/<input type="checkbox" checked=\{deviceSaveOff\} onChange=\{\(event\) => \{ void changeDeviceSave\(event\.target\.checked\); \}\} \/>/);
+    expect(b).toContain('Don&apos;t save on this device');
+  });
+
+  it('the opt-out never touches guardian consent or verification (still never saved, still asked again)', () => {
+    const b = readFileSync('src/components/emblem-uk/ProductionBuilder.tsx', 'utf8');
+    const change = b.slice(b.indexOf('const changeDeviceSave = async'), b.indexOf('const changeDeviceSave = async') + 300);
+    expect(change).not.toMatch(/adultPermission|squadInviteAccepted|authority|verify/i);
+  });
 });
 
 describe('pure helpers', () => {
@@ -212,7 +291,7 @@ describe('the builder keeps guardian controls and creates no records when saving
     expect(check).toMatch(/body\.status === 'not_placed'\) \{[\s\S]*?setPendingSubmission\(null\);[\s\S]*?setSubmitRecovery\('not_placed'\)/);
     expect(check).toMatch(/catch \{[\s\S]*?setSubmitRecovery\('unknown'\)/);
     expect(builder).toMatch(/const draftDone = enquiryStatus === 'sent' \|\| squadInvitePhase === 'success' \|\| submitRecovery === 'placed';/);
-    expect(builder).toMatch(/if \(!draftRestored \|\| draftDone\) return;/);
+    expect(builder).toMatch(/if \(!draftRestored \|\| draftDone \|\| deviceSaveOff\) return;/);
   });
 
   it('tells parents, on the photo step, that unfinished details and photos stay on this device for up to 3 days', () => {
