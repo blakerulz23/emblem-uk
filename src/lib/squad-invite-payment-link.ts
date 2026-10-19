@@ -1,4 +1,4 @@
-import { SHOPIFY_SHOP } from './shopify';
+import { gate3ShopifyShop } from './shopify';
 
 const VARIANT_ENV_BY_TIER: Record<'single' | 'multi' | 'squad', string> = {
   single: 'NEXT_PUBLIC_SHOPIFY_SQUAD_INVITE_VARIANT_SINGLE',
@@ -23,14 +23,21 @@ const VARIANT_ENV_BY_TIER: Record<'single' | 'multi' | 'squad', string> = {
  * env vars, one per tier, since each is priced differently), so a caller
  * can skip issuing a broken link rather than crash — same fallback
  * contract buildUkCardCartUrl already uses for its own variant.
+ *
+ * The shop comes from gate3ShopifyShop(), exactly like the single-card
+ * checkout: production uses the production shop; a Vercel Preview (staging)
+ * may only use an explicitly configured development store and gets NO link
+ * at all otherwise. A staging Squad Invite can therefore never send a
+ * family to the production shop and take real money.
  */
 export function buildSquadInvitePaymentUrl(tier: 'single' | 'multi' | 'squad', printQuantity: number, orderRef: string): string | null {
   const variantId = squadInviteVariantId(tier);
-  if (!variantId) return null;
+  const shop = gate3ShopifyShop();
+  if (!variantId || !shop) return null;
   const quantity = Math.max(1, Math.floor(printQuantity) || 1);
   const params = new URLSearchParams();
   params.set('attributes[Order Ref]', orderRef);
-  return 'https://' + SHOPIFY_SHOP + '/cart/' + variantId + ':' + quantity + '?' + params.toString();
+  return 'https://' + shop + '/cart/' + variantId + ':' + quantity + '?' + params.toString();
 }
 
 /**

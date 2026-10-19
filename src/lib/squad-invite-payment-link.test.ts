@@ -41,4 +41,37 @@ describe('buildSquadInvitePaymentUrl', () => {
     expect(buildSquadInvitePaymentUrl('multi', 1, 'r')).toContain('/cart/222:');
     expect(buildSquadInvitePaymentUrl('squad', 1, 'r')).toContain('/cart/333:');
   });
+
+  describe('staging safety: never a production payment link outside production', () => {
+    it('production builds the link on the production shop', () => {
+      delete process.env.VERCEL_ENV;
+      process.env.NEXT_PUBLIC_SHOPIFY_SQUAD_INVITE_VARIANT_SINGLE = '46948820156588';
+      expect(new URL(buildSquadInvitePaymentUrl('single', 1, 'r')!).hostname).toBe('officialgudzzz.myshopify.com');
+      process.env.VERCEL_ENV = 'production';
+      expect(new URL(buildSquadInvitePaymentUrl('single', 1, 'r')!).hostname).toBe('officialgudzzz.myshopify.com');
+    });
+
+    it('a Preview (staging) deployment with no development store gets no link at all', () => {
+      process.env.VERCEL_ENV = 'preview';
+      delete process.env.SHOPIFY_STORE_DOMAIN;
+      process.env.NEXT_PUBLIC_SHOPIFY_SQUAD_INVITE_VARIANT_SINGLE = '46948820156588';
+      expect(buildSquadInvitePaymentUrl('single', 1, 'r')).toBeNull();
+    });
+
+    it('a Preview pointed at the production shop (or a malformed host) still gets no link', () => {
+      process.env.VERCEL_ENV = 'preview';
+      process.env.NEXT_PUBLIC_SHOPIFY_SQUAD_INVITE_VARIANT_SINGLE = '1';
+      for (const domain of ['officialgudzzz.myshopify.com', 'OfficialGudzzz.myshopify.com', 'evil.example.com', 'https://dev.myshopify.com']) {
+        process.env.SHOPIFY_STORE_DOMAIN = domain;
+        expect(buildSquadInvitePaymentUrl('single', 1, 'r')).toBeNull();
+      }
+    });
+
+    it('a Preview with an explicitly configured development store uses that store only', () => {
+      process.env.VERCEL_ENV = 'preview';
+      process.env.SHOPIFY_STORE_DOMAIN = 'emblem-dev.myshopify.com';
+      process.env.NEXT_PUBLIC_SHOPIFY_SQUAD_INVITE_VARIANT_MULTI = '5';
+      expect(new URL(buildSquadInvitePaymentUrl('multi', 2, 'r')!).hostname).toBe('emblem-dev.myshopify.com');
+    });
+  });
 });
