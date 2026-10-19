@@ -87,8 +87,13 @@ export default function PrivacyPage() {
       <ul style={{ ...BODY, paddingLeft: 20, display: 'grid', gap: 8 }}>
         <li>
           <strong style={{ color: 'var(--ink)' }}>Photos you upload</strong> — used to build the
-          card design and, where AI-styled processing is used, sent to a third-party AI image
-          service to generate that styling. A non-AI option is available for this.
+          card design. Background removal is optional and runs on your own device, in your
+          browser: the photo is not sent to us or to any AI service for it, and you can always
+          continue with the original photo instead. Nothing is uploaded to us while you build.
+          When you send your card, the photo you chose (with its background removed, if you
+          chose that) is uploaded to our private storage, together with the print-ready card
+          file made from it, so we can check and produce your card. The unedited original stays
+          on your device and is not sent.
         </li>
         <li>
           <strong style={{ color: 'var(--ink)' }}>Player details</strong> — first name, surname
@@ -104,6 +109,25 @@ export default function PrivacyPage() {
           your design and stored privately on Amazon S3 solely to produce and ship the order.
         </li>
       </ul>
+
+      <h3 style={SUBSECTION_TITLE}>Saved on your device while you build</h3>
+      <p style={BODY}>
+        So you don&rsquo;t lose your work, the card builder saves your card&rsquo;s details
+        (player name, number, position, design choices and the contact details you typed) and
+        the images you added (the photo, its original if you removed the background, and any
+        badge) in your browser&rsquo;s own storage on this device. None of this is sent to us
+        until you send your card. It is deleted automatically after 3 days, once your card has been sent, or
+        straight away if you choose &ldquo;Discard&rdquo; (tap the Emblem logo in the builder).
+        We never save adult permission or consent answers this way — those are asked again.
+      </p>
+      <p style={{ ...BODY, marginTop: 10 }}>
+        <strong style={{ color: 'var(--ink)' }}>Shared or public devices:</strong> anyone who
+        uses the same browser on the same device within those 3 days could reopen the builder
+        and see the saved card, including the child&rsquo;s photo. On a shared, family or public
+        device, choose &ldquo;Discard&rdquo; when you finish, or use a private browsing window.
+        If sending was interrupted, the builder keeps your card and checks with us whether the
+        order already reached us before letting you send it again, so the builder never sends the same order twice.
+      </p>
 
       <h3 style={SUBSECTION_TITLE}>Once a card is claimed — Player OS</h3>
       <p style={BODY}>
@@ -191,7 +215,7 @@ export default function PrivacyPage() {
         <li><strong style={{ color: 'var(--ink)' }}>Supabase</strong> — hosts our database and handles sign-in (including one-time email codes).</li>
         <li><strong style={{ color: 'var(--ink)' }}>Amazon Web Services (S3)</strong> — stores photos and print files privately; access is signed and time-limited.</li>
         <li><strong style={{ color: 'var(--ink)' }}>Vercel</strong> — hosts the website and app.</li>
-        <li><strong style={{ color: 'var(--ink)' }}>Google (Gemini)</strong> — processes a photo only when AI-styled background removal or styling is used for that specific upload; a non-AI option is always available.</li>
+        <li><strong style={{ color: 'var(--ink)' }}>Google (Gemini)</strong> — not used for photos in the current card builder, where background removal runs on your device. Earlier versions of the builder sent a photo to Gemini when AI background removal was chosen for that upload; a non-AI option was always available.</li>
         <li><strong style={{ color: 'var(--ink)' }}>Resend</strong> — sends transactional email (sign-in codes, order and account notifications) on our behalf.</li>
       </ul>
       <p style={{ ...BODY, marginTop: 14 }}>

@@ -34,6 +34,17 @@ describe('Privacy Policy and Terms — DPIA-required topic coverage stays presen
     expect(source).toContain('non-AI option');
   });
 
+  it('privacy policy describes on-device background removal, the 3-day device draft, shared-device risk and what is uploaded on send', () => {
+    const source = read(PRIVACY);
+    expect(source).toMatch(/Background removal is optional and runs on your own device/);
+    expect(source).toMatch(/not sent to us or to any AI service/);
+    expect(source).toMatch(/deleted automatically after 3 days/);
+    expect(source).toMatch(/Shared or public devices/);
+    expect(source).toMatch(/When you send your card, the photo you chose[\s\S]{0,200}uploaded to our private storage/);
+    expect(source).toMatch(/unedited original stays[\s\S]{0,20}on your device and is not sent/);
+    expect(source).toMatch(/never save adult permission or consent answers/);
+  });
+
   it('privacy policy names every current supplier — never silently drops one', () => {
     const source = read(PRIVACY);
     for (const supplier of ['Shopify', 'Supabase', 'Amazon Web Services', 'Vercel', 'Google', 'Resend']) {

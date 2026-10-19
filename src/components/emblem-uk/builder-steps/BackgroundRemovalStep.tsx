@@ -1,24 +1,36 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { removeBackgroundSmart } from '@/components/builder/emblem/bgRemoval';
+import {
+  ENGINE_DOWNLOAD_MB,
+  isLikelySlowConnection,
+  onDeviceEngineReady,
+  removeBackgroundOnDevice,
+} from '@/components/builder/emblem/bgRemovalOnDevice';
 import { autoFitPatchForPhoto } from '@/lib/card-photo-auto-fit';
 import type { PlayerDraft } from '@/lib/emblem-uk-builder';
 
-async function blobUrlToFile(url: string, name: string): Promise<File> {
+async function urlToBlob(url: string): Promise<Blob> {
   const res = await fetch(url);
-  const blob = await res.blob();
-  return new File([blob], name, { type: blob.type || 'image/jpeg' });
+  return res.blob();
 }
 
-async function dataUrlToFile(dataUrl: string, name: string): Promise<File> {
-  const res = await fetch(dataUrl);
-  const blob = await res.blob();
-  return new File([blob], name, { type: blob.type || 'image/png' });
-}
+type Status = 'offer' | 'downloading' | 'processing' | 'ready' | 'error';
+type Choice = 'cutout' | 'original';
 
-type Status = 'processing' | 'ready' | 'error';
-
+/**
+ * Background removal, on this device (adapted from Emblem Canada). The photo
+ * is cut out in the browser by bgRemovalOnDevice.ts — it is never sent to
+ * Gemini or any other service for this step.
+ *
+ * Optional at every point: "Continue with original photo" is always there,
+ * so nobody waits for the engine. On a slow or Data Saver connection the
+ * ~17 MB one-off download only starts if the parent taps "Remove
+ * background"; elsewhere it starts automatically. Download progress is
+ * shown. The guardian sees the original and the result side by side,
+ * chooses which to use, and can switch back to the original later (the
+ * untouched upload is kept as photo.originalUrl).
+ */
 export default function BackgroundRemovalStep({
   player,
   isSquad,
@@ -43,79 +55,113 @@ export default function BackgroundRemovalStep({
   onContinue: () => void;
 }) {
   const [status, setStatus] = useState<Status>('processing');
-  const [beforeUrl, setBeforeUrl] = useState<string | null>(null);
-  const [afterUrl, setAfterUrl] = useState<string | null>(null);
-  const [method, setMethod] = useState<'gemini' | 'canvas' | null>(null);
+  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const [cutoutUrl, setCutoutUrl] = useState<string | null>(null);
+  const [engineFailed, setEngineFailed] = useState(false);
+  const [choice, setChoice] = useState<Choice>('cutout');
   const [committing, setCommitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const runRef = useRef(0);
 
-  const photoSrc = player.photo?.srcUrl;
-  const alreadyRemoved = Boolean(player.photo?.bgRemoved);
+  const photo = player.photo;
+  const photoSrc = photo?.srcUrl;
+  const alreadyRemoved = Boolean(photo?.bgRemoved);
+  // After a cut-out is committed, the original is only offered while its
+  // bytes still exist (a restored draft can lose them).
+  const originalSrc = alreadyRemoved ? photo?.originalUrl || undefined : photoSrc;
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!photoSrc) {
-      setStatus('error');
-      setBeforeUrl(null);
-      setAfterUrl(null);
-      return;
-    }
-    setBeforeUrl(photoSrc);
-    if (alreadyRemoved) {
-      // Already committed on a previous visit to this step — the true
-      // "before" no longer exists (it was overwritten on Continue), so we
-      // show the current result rather than re-running removal on it.
-      setStatus('ready');
-      setAfterUrl(null);
-      setMethod(null);
-      return;
-    }
-    setStatus('processing');
-    setAfterUrl(null);
+  const startRemoval = (source: string) => {
+    const run = ++runRef.current;
+    setEngineFailed(false);
+    setCutoutUrl(null);
+    setChoice('cutout');
+    setProgress(null);
+    setStatus(onDeviceEngineReady() ? 'processing' : 'downloading');
     (async () => {
       try {
-        const file = await blobUrlToFile(photoSrc, player.photo?.fileName || 'photo.jpg');
-        const result = await removeBackgroundSmart(file);
-        if (cancelled) return;
-        setAfterUrl(result.dataUrl);
-        setMethod(result.method === 'gemini' ? 'gemini' : 'canvas');
+        const result = await removeBackgroundOnDevice(await urlToBlob(source), {
+          onProgress: (loaded, total) => {
+            if (runRef.current !== run) return;
+            setProgress({ loaded, total });
+            if (total > 0 && loaded >= total) setStatus('processing');
+          },
+        });
+        if (runRef.current !== run) return;
+        if (result.method === 'on-device') {
+          const blob = await urlToBlob(result.dataUrl);
+          if (runRef.current !== run) return;
+          setCutoutUrl(URL.createObjectURL(blob));
+        } else {
+          setEngineFailed(true);
+          setChoice('original');
+        }
         setStatus('ready');
       } catch {
-        if (!cancelled) setStatus('error');
+        if (runRef.current === run) setStatus('error');
       }
     })();
+  };
+
+  useEffect(() => {
+    if (!photoSrc) {
+      runRef.current += 1;
+      setStatus('error');
+      setCutoutUrl(null);
+      return;
+    }
+    if (alreadyRemoved) {
+      // Committed on an earlier visit: show it, and offer the original back.
+      runRef.current += 1;
+      setCutoutUrl(photoSrc);
+      setChoice('cutout');
+      setStatus('ready');
+      return;
+    }
+    if (!onDeviceEngineReady() && isLikelySlowConnection()) {
+      // Slow or Data Saver connection: the parent decides.
+      runRef.current += 1;
+      setCutoutUrl(null);
+      setStatus('offer');
+      return;
+    }
+    startRemoval(photoSrc);
     return () => {
-      cancelled = true;
+      runRef.current += 1;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player.id, photoSrc, alreadyRemoved]);
 
+  /** Keep the photo exactly as uploaded and move on, without waiting. */
+  const continueWithOriginal = () => {
+    runRef.current += 1;
+    onContinue();
+  };
+
   const handleContinue = async () => {
-    if (status === 'processing' || committing) return;
-    if (afterUrl && player.photo) {
-      setCommitting(true);
-      try {
-        const file = await dataUrlToFile(afterUrl, `${player.photo?.fileName || 'photo'}-cutout.png`);
-        const url = URL.createObjectURL(file);
-        // Auto-fit Player runs once here, automatically, right after the
-        // cutout is ready — this is the "reliable starting composition"
-        // every guardian sees by default. It never runs again on its own
-        // after this (see the "Auto-fit player" button in the crop step for
-        // the only other place it runs) — a manual Horizontal/Vertical/Zoom
-        // adjustment made after this point is never silently overwritten.
-        const autoFit = await autoFitPatchForPhoto(url);
+    if (committing) return;
+    if (status !== 'ready' || !photo || !photoSrc) {
+      continueWithOriginal();
+      return;
+    }
+    setCommitting(true);
+    try {
+      if (choice === 'cutout' && cutoutUrl && !alreadyRemoved) {
+        const untouched = photoSrc;
+        // Auto-fit runs once here, right after the cut-out is chosen — the
+        // guardian's later manual framing is never silently overwritten.
+        const autoFit = await autoFitPatchForPhoto(cutoutUrl);
         onPatchPlayer(player.id, {
-          photo: {
-            ...player.photo,
-            srcUrl: url,
-            hiResUrl: url,
-            bgRemoved: true,
-            ...(autoFit ?? {}),
-          },
+          photo: { ...photo, srcUrl: cutoutUrl, hiResUrl: cutoutUrl, bgRemoved: true, originalUrl: untouched, ...(autoFit ?? {}) },
         });
-      } finally {
-        setCommitting(false);
+      } else if (choice === 'original' && alreadyRemoved && originalSrc) {
+        // Back to the untouched upload, with framing worked out for it afresh.
+        const autoFit = await autoFitPatchForPhoto(originalSrc);
+        onPatchPlayer(player.id, {
+          photo: { ...photo, srcUrl: originalSrc, hiResUrl: originalSrc, bgRemoved: false, originalUrl: undefined, crop: { x: 0, y: 0, scale: 1 }, suggestedCrop: undefined, subjectBounds: undefined, ...(autoFit ?? {}) },
+        });
       }
+    } finally {
+      setCommitting(false);
     }
     onContinue();
   };
@@ -128,11 +174,16 @@ export default function BackgroundRemovalStep({
     });
   };
 
+  const busy = status === 'downloading' || status === 'processing';
+  const percent = progress && progress.total > 0 ? Math.min(100, Math.round((progress.loaded / progress.total) * 100)) : null;
+
   return (
     <section className="uk-wizard-panel">
       <p className="uk-wizard-kicker">Remove background</p>
       <h1>Let&apos;s clean up that photo.</h1>
-      <p className="uk-wizard-copy">Our AI lifts them off the background so the card art looks sharp. This takes a few seconds.</p>
+      <p className="uk-wizard-copy">
+        Optional: we can lift the player off the background right here on your device. The photo isn&apos;t sent anywhere for this step.
+      </p>
 
       {isSquad && (
         <div className="uk-squad-edit-bar">
@@ -149,33 +200,81 @@ export default function BackgroundRemovalStep({
         </div>
       )}
 
-      {status === 'processing' && (
-        <div className="uk-bgremove-processing">
-          <span className="uk-bgremove-spinner" aria-hidden="true" />
-          <strong>Removing the background&hellip;</strong>
-          <small>Hang tight, this only takes a moment.</small>
+      {status === 'offer' && photoSrc && (
+        <div className="uk-bgremove-offer">
+          <div className="uk-bgremove-frame original">
+            <img src={photoSrc} alt="Your photo" />
+          </div>
+          <p>
+            Your connection looks slow, so we haven&apos;t started. Removing the background downloads about {ENGINE_DOWNLOAD_MB}&nbsp;MB once.
+            You can skip it and use this photo as it is.
+          </p>
+          <button type="button" className="uk-bgremove-start" onClick={() => startRemoval(photoSrc)}>
+            Remove background
+          </button>
         </div>
       )}
 
-      {status === 'ready' && beforeUrl && (
-        <div className="uk-bgremove-compare">
+      {busy && (
+        <div className="uk-bgremove-processing" role="status" aria-live="polite">
+          <span className="uk-bgremove-spinner" aria-hidden="true" />
+          <strong>{status === 'downloading' ? 'Getting the background tool ready…' : 'Removing the background…'}</strong>
+          {status === 'downloading' && (
+            <>
+              <div className="uk-bgremove-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent ?? undefined} aria-label="Download progress">
+                <span style={{ width: `${percent ?? 4}%` }} />
+              </div>
+              <small>
+                {percent === null ? `One-off download of about ${ENGINE_DOWNLOAD_MB} MB` : `${percent}% of about ${ENGINE_DOWNLOAD_MB} MB, downloaded once`}
+              </small>
+            </>
+          )}
+          {status === 'processing' && <small>This happens on your device.</small>}
+        </div>
+      )}
+
+      {status === 'ready' && (
+        <div className="uk-bgremove-compare" role="radiogroup" aria-label="Which photo should the card use?">
+          {originalSrc && (
           <figure>
-            <div className="uk-bgremove-frame original">
-              <img src={beforeUrl} alt="Original photo" />
-            </div>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={choice === 'original'}
+              className={`uk-bgremove-frame original${choice === 'original' ? ' is-chosen' : ''}`}
+              onClick={() => setChoice('original')}
+            >
+              <img src={originalSrc} alt="Original photo" />
+            </button>
             <figcaption>Original</figcaption>
           </figure>
+          )}
           <figure>
-            <div className="uk-bgremove-frame result">
-              <img src={afterUrl || beforeUrl} alt="Background removed" />
-            </div>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={choice === 'cutout'}
+              className={`uk-bgremove-frame result${choice === 'cutout' ? ' is-chosen' : ''}`}
+              onClick={() => cutoutUrl && setChoice('cutout')}
+              disabled={!cutoutUrl}
+            >
+              <img src={cutoutUrl || photoSrc} alt="Background removed" />
+            </button>
             <figcaption>Background removed</figcaption>
           </figure>
         </div>
       )}
 
-      {status === 'ready' && method === 'canvas' && (
-        <p className="uk-bgremove-note">We couldn&apos;t reach the AI just now, so the original photo carries through unchanged — you can still continue, or replace the photo to try again.</p>
+      {status === 'ready' && cutoutUrl && originalSrc && (
+        <p className="uk-bgremove-note">
+          {choice === 'cutout'
+            ? 'Using the background-removed photo. Tap the original to use that instead.'
+            : 'Using the original photo. Tap the other one to remove the background.'}
+        </p>
+      )}
+
+      {status === 'ready' && engineFailed && (
+        <p className="uk-bgremove-note">We couldn&apos;t remove the background on this device just now, so the original photo carries through unchanged. You can still continue, or replace the photo to try again.</p>
       )}
 
       <div className="uk-bgremove-actions">
@@ -189,14 +288,15 @@ export default function BackgroundRemovalStep({
             onChange={(event) => handleReplace(event.target.files?.[0])}
           />
         </label>
-        <button
-          type="button"
-          className="uk-wizard-primary compact"
-          onClick={handleContinue}
-          disabled={status === 'processing' || committing}
-        >
-          {committing ? 'Saving…' : 'Continue'}
-        </button>
+        {status === 'ready' ? (
+          <button type="button" className="uk-wizard-primary compact" onClick={handleContinue} disabled={committing}>
+            {committing ? 'Saving…' : 'Continue'}
+          </button>
+        ) : (
+          <button type="button" className="uk-wizard-primary compact" onClick={continueWithOriginal}>
+            Continue with original photo
+          </button>
+        )}
       </div>
     </section>
   );

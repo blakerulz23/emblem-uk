@@ -2,7 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { CardFace } from '@/lib/card-definition';
 import type { CardFaceData } from '@/lib/card-definition';
 import { isCustomCollectionTemplateId } from '@/lib/custom-collection-manifest';
@@ -55,6 +55,8 @@ import {
   type CoachCardDraft,
 } from '@/lib/coach-card-draft';
 import { track } from '@/lib/analytics';
+import { warmOnDeviceBackgroundRemoval } from '@/components/builder/emblem/bgRemovalOnDevice';
+import { clearBuilderDraft, draftScopeFor, loadBuilderDraft, purgeExpiredBuilderDrafts, saveBuilderDraft } from '@/lib/builder-draft-persistence';
 
 /**
  * Squad Invite mode — reached from JoinSquadInvite's
@@ -98,11 +100,6 @@ function readSquadInviteCsrfCookie(): string {
 }
 
 type SquadInviteCommitOutcome = null | 'sign_in_required' | 'unavailable' | 'validation' | 'network' | 'photo_upload_failed' | 'campaign_closed';
-
-const orderTypes: Array<{ id: OrderType; title: string; copy: string; icon: 'person' | 'group' }> = [
-  { id: 'single', title: 'One player', copy: 'Create a card for one player.', icon: 'person' },
-  { id: 'squad', title: 'A whole team', copy: "Create several players' cards yourself.", icon: 'group' },
-];
 
 const collections = [
   {
@@ -312,20 +309,9 @@ export default function ProductionBuilder({
     }
     return draft;
   });
-  // A marketing entry point can still skip straight to the photo-upload
-  // step via ?step=upload if one is ever added — the order-type/collection
-  // steps ahead of it are never a required gate (every field already has a
-  // sensible default from defaultOrder()), so this reuses the same
-  // initial-state-from-searchParams pattern as `mode` above rather than
-  // adding a second entry flow. No current CTA uses it: the homepage hero
-  // link now points at plain /builder so every marketing entry point lands
-  // on Step 1 (order-type) consistently. Squad Invite mode always starts on
-  // Upload — order-type/collection are never reachable steps in that mode
-  // (see stepOrder below), not merely hidden.
-  const [activeStepId, setActiveStepId] = useState<StepId>(() => {
-    if (squadInviteContext) return 'upload';
-    return searchParams.get('step') === 'upload' ? 'upload' : 'order-type';
-  });
+  // Photo first: every builder journey opens on the photo step. Squad
+  // Invite mode never has a collection step at all (see stepOrder below).
+  const [activeStepId, setActiveStepId] = useState<StepId>('upload');
   // Funnel analytics: the step id only (never names, photos or emails). A no-op until analytics is enabled and consented.
   useEffect(() => {
     track('builder_step', { step: activeStepId, mode: order.type });
@@ -586,7 +572,6 @@ export default function ProductionBuilder({
       ? { orderId: submittedOrderId, player: soleApprovedPlayer }
       : null;
   const orderMode = orderModeLimits[order.type];
-  const visibleOrderType = order.type === 'single' ? 'single' : 'squad';
   // Gate 3 — read-only, copy-only signal (NEXT_PUBLIC_ vars are already
   // inlined client-side by Next.js regardless). The actual authorization —
   // whether checkout is really allowed for this order — is decided
@@ -604,7 +589,19 @@ export default function ProductionBuilder({
   // zero-approved-players case is unaffected by quoteMatchesCurrentCounts —
   // it already short-circuits to false before that check is ever reached,
   // preserving the builder's existing zero-player submission rule exactly.
+  // Interrupted-submit recovery (save and resume). pendingSubmission is the
+  // submission id an order submit was using; it is kept in the draft until
+  // the server confirms the order, so a failed or interrupted submit never
+  // costs the parent their work. A restored draft that still carries one is
+  // checked with /api/builder-submissions/status before sending is allowed
+  // again (see builder-submission-status.ts): this is what stops the same
+  // order being placed twice under two submission ids.
+  type SubmitRecovery = 'none' | 'checking' | 'placed' | 'not_placed' | 'in_progress' | 'unknown';
+  const [pendingSubmission, setPendingSubmission] = useState<{ key: string; since: number } | null>(null);
+  const [submitRecovery, setSubmitRecovery] = useState<SubmitRecovery>('none');
+  const recoveryAllowsSend = submitRecovery === 'none' || submitRecovery === 'not_placed';
   const canSendEnquiry =
+    recoveryAllowsSend &&
     summary.checkoutEligible &&
     enquiry.name.trim().length > 1 &&
     /\S+@\S+\.\S+/.test(enquiry.email) &&
@@ -622,6 +619,128 @@ export default function ProductionBuilder({
       ? 'Approve ready cards to unlock the order summary.'
       : 'Complete at least one card before continuing.';
   const canEditOrder = enquiryStatus !== 'sent';
+
+  // Save and resume (see builder-draft-persistence.ts). The draft is scoped
+  // to this journey (the direct builder, or this one Squad Invite
+  // participation), kept on this device only, and never carries guardian
+  // verification, adult permission or Squad Invite declarations: those are
+  // always confirmed again in the live session.
+  const draftScope = draftScopeFor(squadInviteContext?.participationId);
+  type BuilderDraftData = {
+    order: OrderDraft;
+    activeStepId: StepId;
+    selectedId: string;
+    enquiry: typeof enquiry;
+    coachCardDraft: CoachCardDraft;
+    // The submission id an interrupted order submit was using (see above).
+    pendingSubmission?: { key: string; since: number } | null;
+  };
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [resumedDraft, setResumedDraft] = useState(false);
+  const checkPendingSubmission = async (key: string) => {
+    setSubmitRecovery('checking');
+    try {
+      const response = await fetch('/api/builder-submissions/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
+        body: JSON.stringify({ submissionKey: key }),
+      });
+      const body = (await response.json().catch(() => null)) as { status?: string } | null;
+      if (!response.ok || !body?.status) throw new Error('status unavailable');
+      if (body.status === 'placed') {
+        // The order is already with us: nothing to resend, nothing to keep.
+        clearBuilderDraft(draftScope).catch(() => undefined);
+        setSubmitRecovery('placed');
+      } else if (body.status === 'not_placed') {
+        // Nothing was ordered and the old submission can no longer create
+        // an order: carry on under a fresh submission, work intact.
+        setPendingSubmission(null);
+        setSubmitRecovery('not_placed');
+      } else {
+        setSubmitRecovery('in_progress');
+      }
+    } catch {
+      // Unknown is never "safe to resend": sending stays paused.
+      setSubmitRecovery('unknown');
+    }
+  };
+  useEffect(() => {
+    let cancelled = false;
+    purgeExpiredBuilderDrafts()
+      .catch(() => undefined)
+      .then(() => loadBuilderDraft<BuilderDraftData>(draftScope))
+      .then((draft) => {
+        if (cancelled || !draft) return;
+        const restored = draft.data;
+        // A photo whose bytes didn't survive comes back as '' — treat it as missing.
+        const players = restored.order.players.map((player) => (
+          player.photo && !player.photo.srcUrl ? { ...player, photo: undefined } : player
+        ));
+        const nextOrder: OrderDraft = squadInviteContext
+          // A Squad Invite card stays locked to one child, the Custom
+          // Collection and the campaign's own club, whatever the draft says.
+          ? { ...restored.order, players, type: 'single', collectionType: 'custom', collectionName: 'Custom Collection', club: squadInviteContext.campaignClubName }
+          : { ...restored.order, players };
+        const steps = squadInviteContext ? SQUAD_INVITE_STEP_ORDER : stepsFor(nextOrder.type);
+        // Never resume on (or past) the permission step: the adult
+        // permission and its email verification are always done again.
+        const wanted: StepId = restored.activeStepId === 'adult-permission' ? 'review' : restored.activeStepId;
+        const step = steps.includes(wanted) ? wanted : steps[0];
+        setOrder(nextOrder);
+        setActiveStepId(step);
+        setSelectedId(players.some((player) => player.id === restored.selectedId) ? restored.selectedId : players[0]?.id || '');
+        if (!squadInviteContext) setEnquiry(restored.enquiry);
+        setCoachCardDraft(restored.coachCardDraft);
+        setResumedDraft(true);
+        if (!squadInviteContext && restored.pendingSubmission?.key) {
+          setPendingSubmission(restored.pendingSubmission);
+          checkPendingSubmission(restored.pendingSubmission.key);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setDraftRestored(true); });
+    return () => { cancelled = true; };
+    // Mount-once by design.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const draftDone = enquiryStatus === 'sent' || squadInvitePhase === 'success' || submitRecovery === 'placed';
+  useEffect(() => {
+    if (!draftRestored || draftDone) return;
+    const id = window.setTimeout(() => {
+      saveBuilderDraft<BuilderDraftData>(draftScope, { order, activeStepId, selectedId, enquiry, coachCardDraft, pendingSubmission }).catch(() => undefined);
+    }, 400);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftRestored, draftDone, order, activeStepId, selectedId, enquiry, coachCardDraft, pendingSubmission]);
+  // Leaving the builder: the brand mark used to be a plain link home, which
+  // dropped a half-built card with no warning. The prompt says what happens,
+  // and "Save and leave" flushes the draft rather than trusting the debounce.
+  const router = useRouter();
+  const [exitPrompt, setExitPrompt] = useState(false);
+  const [exitBusy, setExitBusy] = useState<'save' | 'discard' | null>(null);
+  useEffect(() => {
+    if (!exitPrompt) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !exitBusy) setExitPrompt(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [exitPrompt, exitBusy]);
+  const saveAndExit = async () => {
+    setExitBusy('save');
+    if (!draftDone) {
+      await saveBuilderDraft<BuilderDraftData>(draftScope, { order, activeStepId, selectedId, enquiry, coachCardDraft, pendingSubmission }).catch(() => undefined);
+    }
+    router.push('/');
+  };
+  const discardAndExit = async () => {
+    setExitBusy('discard');
+    await clearBuilderDraft(draftScope).catch(() => undefined);
+    router.push('/');
+  };
+  const startNewCard = async () => {
+    if (!window.confirm('Start a new card? This clears the one saved on this device.')) return;
+    await clearBuilderDraft(draftScope).catch(() => undefined);
+    window.location.reload();
+  };
 
   const patchOrder = (patch: Partial<OrderDraft>) => {
     setOrder((current) => ({ ...current, ...patch }));
@@ -813,7 +932,9 @@ export default function ProductionBuilder({
     // The squad walk through bg-removal ends on the last player — hand off to
     // Personalise starting back at the first player, not mid/end of roster.
     if (order.type !== 'single' && order.players[0]) setSelectedId(order.players[0].id);
-    setActiveStepId('personalise');
+    // Direct builder: the collection comes next (chosen with the player on
+    // the card). Squad Invite has no collection step, so personalise.
+    setActiveStepId(stepOrder[stepOrder.indexOf('bg-removal') + 1] ?? 'personalise');
   };
 
   const removePlayer = (id: string) => {
@@ -863,6 +984,9 @@ export default function ProductionBuilder({
 
   const assignPhoto = (id: string, file?: File) => {
     if (!file) return;
+    // Start fetching the on-device background engine now, not on page open:
+    // a parent who never picks a photo never downloads it.
+    warmOnDeviceBackgroundRemoval();
     patchPlayer(id, {
       photo: {
         srcUrl: URL.createObjectURL(file),
@@ -973,6 +1097,7 @@ export default function ProductionBuilder({
       .slice(0, Math.max(0, emptyPhotoSlots + remainingSlots));
 
     if (imageFiles.length === 0) return;
+    warmOnDeviceBackgroundRemoval();
 
     const photoAssets = imageFiles.map((file) => ({
       srcUrl: URL.createObjectURL(file),
@@ -1260,6 +1385,7 @@ export default function ProductionBuilder({
     // conflict. Recovery requires the explicit "Start a new order" action
     // below, never an ordinary resubmit.
     if (enquiryConflict) return;
+    if (!recoveryAllowsSend) return;
     submittingRef.current = true;
     // canSendEnquiry already guarantees quoteMatchesCurrentCounts, so
     // currentQuote is confirmed non-null and fresh for exactly this
@@ -1283,6 +1409,12 @@ export default function ProductionBuilder({
       // could realistically reach this button, but this makes the
       // function correct regardless of timing rather than reliant on it).
       const submissionKey = await ensureSubmissionKey();
+      // Recorded in the draft before any upload or order request, so an
+      // interrupted submit is checked on return instead of being resent
+      // under a new submission id (in-page retries keep this same key).
+      const pending = { key: submissionKey, since: Date.now() };
+      setPendingSubmission(pending);
+      await saveBuilderDraft<BuilderDraftData>(draftScope, { order, activeStepId, selectedId, enquiry, coachCardDraft, pendingSubmission: pending }).catch(() => undefined);
 
       // One order reference, generated once, reused everywhere: the print
       // PDF metadata, the orders row, and the Shopify cart attribute the
@@ -1421,6 +1553,8 @@ export default function ProductionBuilder({
 
       setOrder(productionOrder);
       setEnquiryStatus('sent');
+      // Submitted: nothing left to resume on this device.
+      clearBuilderDraft(draftScope).catch(() => undefined);
       setSubmittedOrderId(result.orderId);
       setSubmittedAuthorityStatus(typeof result.authorityStatus === 'string' ? result.authorityStatus : null);
 
@@ -1694,6 +1828,7 @@ export default function ProductionBuilder({
       const successBody = await response.json().catch(() => null) as { orderId?: string } | null;
       if (successBody?.orderId) setSquadInviteOrderId(successBody.orderId);
       setSquadInvitePhase('success');
+      clearBuilderDraft(draftScope).catch(() => undefined);
       succeeded = true;
       // submittingRef intentionally stays true on success — one-shot
       // commitment, matching the server's own one-shot semantics (a repeat
@@ -1732,7 +1867,7 @@ export default function ProductionBuilder({
     submitEnquiry(event);
   };
   const approveOrReviewStep: StepId = stepOrder.includes('approve') ? 'approve' : 'review';
-  const prePersonaliseSteps: StepId[] = ['order-type', 'collection', 'upload', 'bg-removal'];
+  const prePersonaliseSteps: StepId[] = ['upload', 'bg-removal', 'collection'];
   const selectedIndex = selectedPlayer ? order.players.findIndex((player) => player.id === selectedPlayer.id) : -1;
   const selectAdjacentPlayer = (direction: -1 | 1) => {
     if (selectedIndex < 0) return;
@@ -1798,15 +1933,36 @@ export default function ProductionBuilder({
           </div>
         </div>
       )}
+      {exitPrompt && (
+        <div className="ukd-exit-scrim" role="presentation" onClick={() => { if (!exitBusy) setExitPrompt(false); }}>
+          <div className="ukd-exit-dialog" role="dialog" aria-modal="true" aria-labelledby="ukd-exit-title" aria-describedby="ukd-exit-body" onClick={(event) => event.stopPropagation()}>
+            <h2 id="ukd-exit-title">Leave the builder?</h2>
+            <p id="ukd-exit-body">
+              Your card is kept on this device for 3 days, so you can carry on where you left off. Discarding clears it, including the photo, for good.
+            </p>
+            <div className="ukd-exit-actions">
+              <button type="button" className="ukd-exit-save" onClick={saveAndExit} disabled={exitBusy !== null}>
+                {exitBusy === 'save' ? 'Saving…' : 'Save and leave'}
+              </button>
+              <button type="button" className="ukd-exit-stay" onClick={() => setExitPrompt(false)} disabled={exitBusy !== null}>
+                Keep editing
+              </button>
+              <button type="button" className="ukd-exit-discard" onClick={discardAndExit} disabled={exitBusy !== null}>
+                {exitBusy === 'discard' ? 'Discarding…' : 'Discard and leave'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className={`uk-wizard-phone${activeStepId === 'review' && squadInviteContext ? ' uk-wizard-phone--squad-review' : ''}`}>
         <header className="uk-wizard-header">
           <div className="uk-wizard-topbar">
             <button type="button" className="uk-icon-button" onClick={goBack} aria-label="Back" disabled={activeIndex === 0}>
               &lsaquo;
             </button>
-            <Link href="/" className="uk-wizard-brand" aria-label="Emblem home">
+            <button type="button" className="uk-wizard-brand" onClick={() => (draftDone ? router.push('/') : setExitPrompt(true))} aria-label="Leave the builder">
               <img src="/builder-emblem-logo.png" alt="Emblem" />
-            </Link>
+            </button>
             <button
               type="button"
               className="uk-progress-pill"
@@ -1824,93 +1980,40 @@ export default function ProductionBuilder({
         </header>
 
         <main className="uk-wizard-screen">
-          {activeStepId === 'order-type' && (
-            <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Start order</p>
-              <h1>Who are you building for?</h1>
-              <p className="uk-wizard-copy">Choose how you&apos;d like to create your cards.</p>
-              <div className="uk-wizard-choice-list" role="radiogroup" aria-label="Who are you building for?">
-                {orderTypes.map((type) => {
-                  const inputId = `order-type-${type.id}`;
-                  return (
-                    <label key={type.id} htmlFor={inputId} className={visibleOrderType === type.id ? 'active' : ''}>
-                      <input
-                        type="radio"
-                        id={inputId}
-                        name="orderType"
-                        className="uk-choice-native-radio"
-                        checked={visibleOrderType === type.id}
-                        onChange={() => patchOrder({ type: type.id })}
-                      />
-                      <span className="uk-choice-icon" aria-hidden="true">
-                        {type.icon === 'person' ? (
-                          <svg viewBox="0 0 24 24" role="img">
-                            <circle cx="12" cy="8" r="3.5" />
-                            <path d="M5.8 20c0-4 2.7-7 6.2-7s6.2 3 6.2 7" />
-                          </svg>
-                        ) : (
-                          <svg viewBox="0 0 24 24" role="img">
-                            <circle cx="9" cy="8.5" r="3" />
-                            <circle cx="16.5" cy="9.5" r="2.5" />
-                            <path d="M3.8 20c0-3.8 2.3-6.3 5.2-6.3s5.2 2.5 5.2 6.3" />
-                            <path d="M13.8 15c2.8.2 4.7 2.3 4.7 5" />
-                          </svg>
-                        )}
-                      </span>
-                      <span>
-                        <strong>{type.title}</strong>
-                        <small>{type.copy}</small>
-                      </span>
-                      <span className="uk-choice-radio" aria-hidden="true" />
-                    </label>
-                  );
-                })}
-              </div>
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('collection')}>Continue</button>
-
-              {squadInviteEnabled && (
+          {submitRecovery !== 'none' && (
+            <div className={`uk-recovery-note uk-recovery-${submitRecovery}`} role={submitRecovery === 'placed' ? 'status' : 'alert'}>
+              {submitRecovery === 'checking' && <span>Checking whether your last order went through&hellip;</span>}
+              {submitRecovery === 'placed' && (
                 <>
-                  <div className="uk-choice-divider" role="separator">
-                    <span>Want parents to create their own?</span>
-                  </div>
-                  <div className="uk-wizard-choice-list">
-                    <a href="/squad-invite/start" className="uk-wizard-choice-invite">
-                      <span className="uk-choice-icon" aria-hidden="true">
-                        {/* eslint-disable-next-line @next/next/no-img-element -- a
-                            fixed 38px decorative icon inside a small circular
-                            badge; next/image's overhead (loader, layout shift
-                            reservation) isn't warranted here, matching how this
-                            same badge already renders hand-drawn SVGs for the
-                            other two options via a plain element, not <Image>. */}
-                        <img src="/invite-squad-icon.png" alt="" />
-                      </span>
-                      <span>
-                        <em className="uk-choice-badge">Best for clubs</em>
-                        <strong>Invite your squad</strong>
-                        <small>Send a private link so each parent creates their child&apos;s card.</small>
-                      </span>
-                      <span className="uk-choice-arrow" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" role="img">
-                          <path d="M9 5l7 7-7 7" />
-                        </svg>
-                      </span>
-                    </a>
-                  </div>
-                  <div className="uk-choice-reassurance">
-                    <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
-                      <path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z" />
-                      <path d="M9 12l2 2 4-4" />
-                    </svg>
-                    <span>Parents only see their own child&apos;s details.</span>
-                  </div>
+                  <strong>We already have this order.</strong>
+                  <span>Your last attempt reached us, so there&apos;s nothing to send again. If you weren&apos;t taken to payment, or didn&apos;t finish paying, email hello@emblem.cards and we&apos;ll help you complete this order. Please don&apos;t make the same card again.</span>
+                  <button type="button" onClick={() => window.location.assign('/builder')}>Start a new card</button>
                 </>
               )}
-            </section>
+              {submitRecovery === 'not_placed' && (
+                <span>Your last attempt didn&apos;t go through, so nothing was ordered. Your card is still here and you can send it again.</span>
+              )}
+              {(submitRecovery === 'in_progress' || submitRecovery === 'unknown') && (
+                <>
+                  <span>
+                    {submitRecovery === 'in_progress'
+                      ? 'Your last attempt is still being processed. Sending again is paused until we know, so the order can\u2019t be placed twice.'
+                      : 'We couldn\u2019t check whether your last order went through. Your card is safe here; sending is paused until we can check.'}
+                  </span>
+                  <button type="button" onClick={() => pendingSubmission && checkPendingSubmission(pendingSubmission.key)}>Check again</button>
+                </>
+              )}
+            </div>
           )}
-
+          {resumedDraft && !draftDone && (
+            <div className="uk-resumed-note" role="status">
+              <span>Picked up where you left off. Your card is saved on this device only.</span>
+              <button type="button" onClick={startNewCard}>Start a new card</button>
+            </div>
+          )}
           {activeStepId === 'collection' && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Start order</p>
+              <p className="uk-wizard-kicker">Choose collection</p>
               <h1>Choose your collection.</h1>
               <p className="uk-wizard-copy">Pick the collection this card belongs to.</p>
               <div className="uk-collection-choice">
@@ -1933,7 +2036,7 @@ export default function ProductionBuilder({
                   ))}
                 </div>
               </div>
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('upload')}>Continue</button>
+              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('personalise')}>Continue</button>
             </section>
           )}
 
@@ -2034,6 +2137,9 @@ export default function ProductionBuilder({
               ) : order.type === 'single' ? (
                 <PlayerStrip order={order} selectedId={selectedId} onSelect={setSelectedId} />
               ) : null}
+              <p className="uk-draft-notice">
+                While you build, your card&apos;s details and photo are saved on this device only, for up to 3 days, so you can carry on later. Nothing is uploaded until you send your card, and you can delete it at any time with &ldquo;Discard&rdquo; (tap the Emblem logo).
+              </p>
               <div className="uk-wizard-row-actions">
                 {order.type !== 'single' && <button type="button" onClick={() => addPlayer()} disabled={addDisabled}>Add player</button>}
                 <button
@@ -2052,6 +2158,52 @@ export default function ProductionBuilder({
                   Continue
                 </button>
               </div>
+            </section>
+          )}
+
+          {activeStepId === 'upload' && !squadInviteContext && (
+            <section className="uk-wizard-entry-options" aria-label="Other ways to order">
+              {order.type === 'single' ? (
+                <button type="button" className="uk-entry-link" onClick={() => patchOrder({ type: 'squad' })}>
+                  Making cards for a whole team yourself? &rarr;
+                </button>
+              ) : (
+                <button type="button" className="uk-entry-link" onClick={() => patchOrder({ type: 'single' })}>
+                  Just one player? &larr;
+                </button>
+              )}
+              {squadInviteEnabled && (
+                <>
+                  <div className="uk-choice-divider" role="separator">
+                    <span>Want parents to create their own?</span>
+                  </div>
+                  <div className="uk-wizard-choice-list">
+                    <a href="/squad-invite/start" className="uk-wizard-choice-invite">
+                      <span className="uk-choice-icon" aria-hidden="true">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- fixed 38px decorative badge icon */}
+                        <img src="/invite-squad-icon.png" alt="" />
+                      </span>
+                      <span>
+                        <em className="uk-choice-badge">Best for clubs</em>
+                        <strong>Invite your squad</strong>
+                        <small>Send a private link so each parent creates their child&apos;s card.</small>
+                      </span>
+                      <span className="uk-choice-arrow" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" role="img">
+                          <path d="M9 5l7 7-7 7" />
+                        </svg>
+                      </span>
+                    </a>
+                  </div>
+                  <div className="uk-choice-reassurance">
+                    <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                      <path d="M12 3l7 3v5c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6l7-3z" />
+                      <path d="M9 12l2 2 4-4" />
+                    </svg>
+                    <span>Parents only see their own child&apos;s details.</span>
+                  </div>
+                </>
+              )}
             </section>
           )}
 

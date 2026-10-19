@@ -28,6 +28,9 @@ import { createServiceRoleClient } from './supabase/server';
  */
 export type AnonymousRequestAction =
   | 'builder-submission-issue'
+  // Save and resume: "did my interrupted submit place an order?" — asked
+  // once per restored draft that still carries a submission id.
+  | 'builder-submission-status'
   | 'render-print'
   | 'order-asset-upload'
   // Ordinary-builder Adult Permission step (migration 0071) — same
@@ -66,6 +69,7 @@ export type AnonymousRequestAction =
   | 'card-share-public-page-view';
 
 const LIMITS: Record<
+  | 'builder-submission-status'
   | 'render-print'
   | 'order-asset-upload'
   | 'builder-authority-otp-request'
@@ -82,6 +86,8 @@ const LIMITS: Record<
   | 'card-share-public-page-view',
   { ip: number; subject?: number }
 > = {
+  // One check per restored, interrupted submit, plus "Check again" taps.
+  'builder-submission-status': { ip: 20, subject: 10 },
   'render-print': { ip: 30, subject: 20 },
   // Generous enough for the largest real order this app already supports
   // (order-enquiry-validation.ts's own MAX_PLAYERS=200, up to two asset
