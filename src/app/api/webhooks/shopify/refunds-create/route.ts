@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { classifyRefund, refundTouchesVariants, verifyShopifyHmac } from '@/lib/shopify-webhook';
 import { squadInviteVariantId } from '@/lib/squad-invite-payment-link';
 import { notifyStaffOfPaymentIssue } from '@/lib/payment-alerts';
+import { recordDuplicateRefund } from '@/lib/duplicate-payment';
 
 export const runtime = 'nodejs';
 
@@ -74,6 +75,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: lookupError.message }, { status: 500 });
   }
   if (!existing) {
+    // The refund of a second payment staff were alerted about (see
+    // duplicate-payment.ts): recorded against its Emblem order, which keeps
+    // its original payment.
+    const duplicate = await recordDuplicateRefund(supabase, { shopifyOrderId: String(shopifyOrderId), webhookId });
+    if (duplicate === 'failed') {
+      return NextResponse.json({ error: 'duplicate refund not yet recorded' }, { status: 500 });
+    }
+    if (duplicate) {
+      return NextResponse.json({ ok: true, orderId: duplicate.orderId, applied: false, reason: 'duplicate_payment_refunded' });
+    }
     // Usually a refund on another product sold on the same store. If it
     // names one of our own card variants, Emblem never recorded this order
     // as paid (orders/paid missing or not yet processed) — a payment could
