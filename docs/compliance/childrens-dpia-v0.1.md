@@ -588,9 +588,12 @@ details. Mitigations implemented: 72-hour expiry; deletion on success;
 one-tap "Discard"; an in-builder notice that the work is saved on this
 device only; the Privacy Policy section "Saved on your device while you
 build" names the shared/public-device risk and advises Discard or a
-private window. Not implemented: an opt-out of saving, or encryption at
-rest of the draft (browser storage is protected only by the device/OS
-account). **REQUIRES SPECIALIST REVIEW:** whether default-on device saving
+private window. **Added (PR #118):** a "Don't save on this device" option
+on the photo step. While it's ticked nothing is saved (enforced in the
+persistence layer), and ticking it deletes every builder draft and photo
+already on the device; the choice is a device flag with no personal data.
+Not implemented: encryption at rest of the draft (browser storage is
+protected only by the device/OS account). **REQUIRES SPECIALIST REVIEW:** whether default-on device saving
 is proportionate for a children's-photo service under the Children's Code
 "default settings" standard, or should become opt-in.
 
