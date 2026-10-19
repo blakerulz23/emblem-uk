@@ -25,9 +25,12 @@ export const CUTOUT_ENGINE_VERSION = 1;
 const MODEL_URL = '/models/u2netp.onnx';
 const ORT_SCRIPT = '/ort/ort.wasm.min.js';
 const ORT_WASM_DIR = '/ort/';
+const ORT_WASM_BINARY = '/ort/ort-wasm-simd-threaded.wasm';
+/** Approximate one-off download (runtime + model), shown to parents before they opt in. */
+export const ENGINE_DOWNLOAD_MB = 17;
 const INPUT = 320;
 const MAX_DIM = 1600;
-/** A first visit downloads the runtime and model; after this, give up and keep the original. */
+/** Time limit for cutting out one photo once the engine is ready; after this the original is kept. */
 export const ON_DEVICE_TIMEOUT_MS = 45_000;
 const MEAN = [0.485, 0.456, 0.406];
 const STD = [0.229, 0.224, 0.225];
@@ -37,11 +40,62 @@ type OrtSession = { inputNames: string[]; outputNames: string[]; run(feeds: Reco
 type OrtModule = {
   env: { wasm: { wasmPaths?: string; numThreads?: number } };
   Tensor: new (type: 'float32', data: Float32Array, dims: number[]) => OrtTensor;
-  InferenceSession: { create(url: string, options?: Record<string, unknown>): Promise<OrtSession> };
+  InferenceSession: { create(model: string | Uint8Array, options?: Record<string, unknown>): Promise<OrtSession> };
 };
+
+export type EngineProgress = (loadedBytes: number, totalBytes: number) => void;
 
 let ortPromise: Promise<OrtModule> | null = null;
 let sessionPromise: Promise<OrtSession> | null = null;
+let sessionReady = false;
+const progressListeners = new Set<EngineProgress>();
+
+/** True once the engine is downloaded and initialised in this page. */
+export function onDeviceEngineReady(): boolean {
+  return sessionReady;
+}
+
+/**
+ * True on a connection where a ~17 MB one-off download should be the
+ * parent's choice, not automatic: Data Saver on, or a 2G/3G-class link
+ * (Network Information API, where the browser offers it).
+ */
+export function isLikelySlowConnection(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const connection = (navigator as unknown as { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+  if (!connection) return false;
+  return Boolean(connection.saveData) || ['slow-2g', '2g', '3g'].includes(connection.effectiveType ?? '');
+}
+
+/** Fetches a same-origin file, reporting bytes as they arrive. */
+async function fetchWithProgress(url: string, onChunk: (bytes: number) => void, onTotal: (bytes: number) => void): Promise<Uint8Array> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Could not download ${url}`);
+  const length = Number(response.headers.get('content-length')) || 0;
+  onTotal(length);
+  if (!response.body) {
+    const buffer = new Uint8Array(await response.arrayBuffer());
+    onChunk(buffer.byteLength);
+    return buffer;
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.byteLength;
+    onChunk(value.byteLength);
+  }
+  const out = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
 
 /** True when this browser can run the on-device engine at all. */
 export function onDeviceBackgroundRemovalSupported(): boolean {
@@ -64,23 +118,45 @@ function loadOrt(): Promise<OrtModule> {
   return ortPromise;
 }
 
-function getSession(): Promise<OrtSession> {
+function getSession(onProgress?: EngineProgress): Promise<OrtSession> {
+  if (onProgress) progressListeners.add(onProgress);
   if (sessionPromise) return sessionPromise;
   sessionPromise = (async () => {
-    const ort = await loadOrt();
+    // The two big files (WASM runtime + model, ~17 MB) are fetched here so
+    // progress can be shown; the runtime then reads the WASM from the
+    // browser cache and the model is handed over as bytes.
+    let loaded = 0;
+    const totals = new Map<string, number>();
+    const emit = () => {
+      const total = Array.from(totals.values()).reduce((a, b) => a + b, 0);
+      progressListeners.forEach((listener) => listener(loaded, total));
+    };
+    const track = (url: string) => fetchWithProgress(
+      url,
+      (bytes) => { loaded += bytes; emit(); },
+      (bytes) => { totals.set(url, bytes); emit(); },
+    );
+    const [ort, , model] = await Promise.all([loadOrt(), track(ORT_WASM_BINARY), track(MODEL_URL)]);
     ort.env.wasm.wasmPaths = ORT_WASM_DIR;
     // Threads need cross-origin isolation, which this site doesn't set; one
     // thread keeps the runtime from probing for SharedArrayBuffer.
     ort.env.wasm.numThreads = 1;
-    return ort.InferenceSession.create(MODEL_URL, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+    const session = await ort.InferenceSession.create(model, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+    sessionReady = true;
+    return session;
   })();
   sessionPromise.catch(() => { sessionPromise = null; });
+  sessionPromise.finally(() => progressListeners.clear()).catch(() => undefined);
   return sessionPromise;
 }
 
-/** Start downloading the runtime + model ahead of need (e.g. while a photo is chosen). */
+/**
+ * Start downloading the runtime + model ahead of need (when a photo is
+ * chosen). Skipped on slow / Data Saver connections: there the download
+ * only happens if the parent taps "Remove background".
+ */
 export function warmOnDeviceBackgroundRemoval(): void {
-  if (!onDeviceBackgroundRemovalSupported()) return;
+  if (!onDeviceBackgroundRemovalSupported() || isLikelySlowConnection()) return;
   getSession().catch(() => undefined);
 }
 
@@ -157,7 +233,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-export async function removeBackgroundOnDevice(file: Blob): Promise<OnDeviceRemoveBgResult> {
+export async function removeBackgroundOnDevice(file: Blob, options: { onProgress?: EngineProgress } = {}): Promise<OnDeviceRemoveBgResult> {
   const img = await loadImage(file);
   const scale = Math.min(1, MAX_DIM / Math.max(img.width, img.height));
   const w = Math.max(1, Math.round(img.width * scale));
@@ -176,7 +252,9 @@ export async function removeBackgroundOnDevice(file: Blob): Promise<OnDeviceRemo
   let session: OrtSession;
   let ort: OrtModule;
   try {
-    [session, ort] = await withTimeout(Promise.all([getSession(), loadOrt()]), ON_DEVICE_TIMEOUT_MS);
+    // No time limit on the download itself: progress is shown, and the parent
+    // can always choose "Continue with original photo" instead of waiting.
+    [session, ort] = await Promise.all([getSession(options.onProgress), loadOrt()]);
   } catch {
     return original();
   }

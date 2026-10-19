@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'fs';
 import { describe, expect, it } from 'vitest';
-import { contentBounds, saliencyToAlpha, toInputTensorData } from './bgRemovalOnDevice';
+import { afterEach } from 'vitest';
+import { contentBounds, isLikelySlowConnection, saliencyToAlpha, toInputTensorData } from './bgRemovalOnDevice';
 
 /**
  * On-device background removal (adapted from Emblem Canada). The parent's
@@ -50,8 +51,11 @@ describe('privacy: the card builder never sends photos to an external service fo
   it('the engine loads its runtime and model from our own origin and calls no API', () => {
     expect(engine).toContain("const MODEL_URL = '/models/u2netp.onnx'");
     expect(engine).toContain("const ORT_SCRIPT = '/ort/ort.wasm.min.js'");
-    expect(engine).not.toMatch(/fetch\(/);
+    // The only fetches are the two same-origin engine files (for progress).
+    expect(engine).not.toMatch(/fetch\(['"`]\/api/);
     expect(engine).not.toMatch(/https?:\/\//);
+    expect(engine).toContain("track(ORT_WASM_BINARY), track(MODEL_URL)");
+    expect(engine).toContain("const ORT_WASM_BINARY = '/ort/ort-wasm-simd-threaded.wasm'");
   });
 
   it('the model ships with the app (4.6 MB, Apache-2.0, documented) and the runtime is copied at build', () => {
@@ -104,5 +108,43 @@ describe('checkout compatibility: the local original never leaves the device', (
     const commitPhoto = builder.slice(builder.indexOf('photo: photo && {'), builder.indexOf('accepted: Object.fromEntries('));
     expect(commitPhoto).toContain('storageKey: photo.storageKey');
     expect(commitPhoto).not.toContain('originalUrl');
+  });
+});
+
+describe('optional, with progress, never blocking (slow mobile connections)', () => {
+  const step = readFileSync('src/components/emblem-uk/builder-steps/BackgroundRemovalStep.tsx', 'utf8');
+  const engine = readFileSync('src/components/builder/emblem/bgRemovalOnDevice.ts', 'utf8');
+  const realNavigator = globalThis.navigator;
+  afterEach(() => { Object.defineProperty(globalThis, 'navigator', { value: realNavigator, configurable: true }); });
+  const withConnection = (connection: unknown) => Object.defineProperty(globalThis, 'navigator', { value: { connection }, configurable: true });
+
+  it('treats Data Saver and 2G/3G as slow, and 4G or unknown as not slow', () => {
+    withConnection({ saveData: true, effectiveType: '4g' });
+    expect(isLikelySlowConnection()).toBe(true);
+    withConnection({ effectiveType: '3g' });
+    expect(isLikelySlowConnection()).toBe(true);
+    withConnection({ effectiveType: '4g' });
+    expect(isLikelySlowConnection()).toBe(false);
+    withConnection(undefined);
+    expect(isLikelySlowConnection()).toBe(false);
+  });
+
+  it('on a slow connection nothing downloads until the parent taps "Remove background"', () => {
+    expect(engine).toMatch(/if \(!onDeviceBackgroundRemovalSupported\(\) \|\| isLikelySlowConnection\(\)\) return;/);
+    expect(step).toMatch(/if \(!onDeviceEngineReady\(\) && isLikelySlowConnection\(\)\) \{[\s\S]{0,160}setStatus\('offer'\)/);
+    expect(step).toContain('onClick={() => startRemoval(photoSrc)}');
+  });
+
+  it('shows download progress, then processing', () => {
+    expect(step).toContain('role="progressbar"');
+    expect(step).toContain("Getting the background tool ready…");
+    expect(engine).toContain('progressListeners.forEach((listener) => listener(loaded, total))');
+  });
+
+  it('"Continue with original photo" is available at every stage before a result, without waiting', () => {
+    expect(step).toMatch(/status === 'ready' \? \([\s\S]*?\) : \([\s\S]*?Continue with original photo/);
+    expect(step).toMatch(/const continueWithOriginal = \(\) => \{\s*runRef\.current \+= 1;\s*onContinue\(\);/);
+    // The download itself has no time limit (the parent can always skip); only processing does.
+    expect(engine).toContain('[session, ort] = await Promise.all([getSession(options.onProgress), loadOrt()]);');
   });
 });

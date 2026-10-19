@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { removeBackgroundOnDevice } from '@/components/builder/emblem/bgRemovalOnDevice';
+import {
+  ENGINE_DOWNLOAD_MB,
+  isLikelySlowConnection,
+  onDeviceEngineReady,
+  removeBackgroundOnDevice,
+} from '@/components/builder/emblem/bgRemovalOnDevice';
 import { autoFitPatchForPhoto } from '@/lib/card-photo-auto-fit';
 import type { PlayerDraft } from '@/lib/emblem-uk-builder';
 
@@ -10,15 +15,21 @@ async function urlToBlob(url: string): Promise<Blob> {
   return res.blob();
 }
 
-type Status = 'processing' | 'ready' | 'error';
+type Status = 'offer' | 'downloading' | 'processing' | 'ready' | 'error';
 type Choice = 'cutout' | 'original';
 
 /**
  * Background removal, on this device (adapted from Emblem Canada). The photo
  * is cut out in the browser by bgRemovalOnDevice.ts — it is never sent to
- * Gemini or any other service for this step. The guardian sees the original
- * and the result side by side, chooses which to use, and can switch back to
- * the original later (the untouched upload is kept as photo.originalUrl).
+ * Gemini or any other service for this step.
+ *
+ * Optional at every point: "Continue with original photo" is always there,
+ * so nobody waits for the engine. On a slow or Data Saver connection the
+ * ~17 MB one-off download only starts if the parent taps "Remove
+ * background"; elsewhere it starts automatically. Download progress is
+ * shown. The guardian sees the original and the result side by side,
+ * chooses which to use, and can switch back to the original later (the
+ * untouched upload is kept as photo.originalUrl).
  */
 export default function BackgroundRemovalStep({
   player,
@@ -44,46 +55,41 @@ export default function BackgroundRemovalStep({
   onContinue: () => void;
 }) {
   const [status, setStatus] = useState<Status>('processing');
+  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [cutoutUrl, setCutoutUrl] = useState<string | null>(null);
   const [engineFailed, setEngineFailed] = useState(false);
   const [choice, setChoice] = useState<Choice>('cutout');
   const [committing, setCommitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const runRef = useRef(0);
 
   const photo = player.photo;
   const photoSrc = photo?.srcUrl;
-  // The untouched upload: originalUrl once a cut-out has been committed,
-  // otherwise the current photo itself.
   const alreadyRemoved = Boolean(photo?.bgRemoved);
   // After a cut-out is committed, the original is only offered while its
   // bytes still exist (a restored draft can lose them).
   const originalSrc = alreadyRemoved ? photo?.originalUrl || undefined : photoSrc;
 
-  useEffect(() => {
-    let cancelled = false;
+  const startRemoval = (source: string) => {
+    const run = ++runRef.current;
     setEngineFailed(false);
-    if (!photoSrc) {
-      setStatus('error');
-      setCutoutUrl(null);
-      return;
-    }
-    if (alreadyRemoved) {
-      // Committed on an earlier visit: show it, and offer the original back.
-      setCutoutUrl(photoSrc);
-      setChoice('cutout');
-      setStatus('ready');
-      return;
-    }
-    setStatus('processing');
     setCutoutUrl(null);
     setChoice('cutout');
+    setProgress(null);
+    setStatus(onDeviceEngineReady() ? 'processing' : 'downloading');
     (async () => {
       try {
-        const result = await removeBackgroundOnDevice(await urlToBlob(photoSrc));
-        if (cancelled) return;
+        const result = await removeBackgroundOnDevice(await urlToBlob(source), {
+          onProgress: (loaded, total) => {
+            if (runRef.current !== run) return;
+            setProgress({ loaded, total });
+            if (total > 0 && loaded >= total) setStatus('processing');
+          },
+        });
+        if (runRef.current !== run) return;
         if (result.method === 'on-device') {
           const blob = await urlToBlob(result.dataUrl);
-          if (cancelled) return;
+          if (runRef.current !== run) return;
           setCutoutUrl(URL.createObjectURL(blob));
         } else {
           setEngineFailed(true);
@@ -91,18 +97,50 @@ export default function BackgroundRemovalStep({
         }
         setStatus('ready');
       } catch {
-        if (!cancelled) setStatus('error');
+        if (runRef.current === run) setStatus('error');
       }
     })();
+  };
+
+  useEffect(() => {
+    if (!photoSrc) {
+      runRef.current += 1;
+      setStatus('error');
+      setCutoutUrl(null);
+      return;
+    }
+    if (alreadyRemoved) {
+      // Committed on an earlier visit: show it, and offer the original back.
+      runRef.current += 1;
+      setCutoutUrl(photoSrc);
+      setChoice('cutout');
+      setStatus('ready');
+      return;
+    }
+    if (!onDeviceEngineReady() && isLikelySlowConnection()) {
+      // Slow or Data Saver connection: the parent decides.
+      runRef.current += 1;
+      setCutoutUrl(null);
+      setStatus('offer');
+      return;
+    }
+    startRemoval(photoSrc);
     return () => {
-      cancelled = true;
+      runRef.current += 1;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player.id, photoSrc, alreadyRemoved]);
 
+  /** Keep the photo exactly as uploaded and move on, without waiting. */
+  const continueWithOriginal = () => {
+    runRef.current += 1;
+    onContinue();
+  };
+
   const handleContinue = async () => {
-    if (status === 'processing' || committing || !photo || !photoSrc) {
-      if (status !== 'processing' && !committing) onContinue();
+    if (committing) return;
+    if (status !== 'ready' || !photo || !photoSrc) {
+      continueWithOriginal();
       return;
     }
     setCommitting(true);
@@ -136,14 +174,15 @@ export default function BackgroundRemovalStep({
     });
   };
 
-  const showCompare = status === 'ready';
+  const busy = status === 'downloading' || status === 'processing';
+  const percent = progress && progress.total > 0 ? Math.min(100, Math.round((progress.loaded / progress.total) * 100)) : null;
 
   return (
     <section className="uk-wizard-panel">
       <p className="uk-wizard-kicker">Remove background</p>
       <h1>Let&apos;s clean up that photo.</h1>
       <p className="uk-wizard-copy">
-        We lift the player off the background right here on your device. The photo isn&apos;t sent anywhere for this step.
+        Optional: we can lift the player off the background right here on your device. The photo isn&apos;t sent anywhere for this step.
       </p>
 
       {isSquad && (
@@ -161,15 +200,40 @@ export default function BackgroundRemovalStep({
         </div>
       )}
 
-      {status === 'processing' && (
-        <div className="uk-bgremove-processing">
-          <span className="uk-bgremove-spinner" aria-hidden="true" />
-          <strong>Removing the background&hellip;</strong>
-          <small>This happens on your device. The first time can take a little longer.</small>
+      {status === 'offer' && photoSrc && (
+        <div className="uk-bgremove-offer">
+          <div className="uk-bgremove-frame original">
+            <img src={photoSrc} alt="Your photo" />
+          </div>
+          <p>
+            Your connection looks slow, so we haven&apos;t started. Removing the background downloads about {ENGINE_DOWNLOAD_MB}&nbsp;MB once.
+            You can skip it and use this photo as it is.
+          </p>
+          <button type="button" className="uk-bgremove-start" onClick={() => startRemoval(photoSrc)}>
+            Remove background
+          </button>
         </div>
       )}
 
-      {showCompare && (
+      {busy && (
+        <div className="uk-bgremove-processing" role="status" aria-live="polite">
+          <span className="uk-bgremove-spinner" aria-hidden="true" />
+          <strong>{status === 'downloading' ? 'Getting the background tool ready…' : 'Removing the background…'}</strong>
+          {status === 'downloading' && (
+            <>
+              <div className="uk-bgremove-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent ?? undefined} aria-label="Download progress">
+                <span style={{ width: `${percent ?? 4}%` }} />
+              </div>
+              <small>
+                {percent === null ? `One-off download of about ${ENGINE_DOWNLOAD_MB} MB` : `${percent}% of about ${ENGINE_DOWNLOAD_MB} MB, downloaded once`}
+              </small>
+            </>
+          )}
+          {status === 'processing' && <small>This happens on your device.</small>}
+        </div>
+      )}
+
+      {status === 'ready' && (
         <div className="uk-bgremove-compare" role="radiogroup" aria-label="Which photo should the card use?">
           {originalSrc && (
           <figure>
@@ -201,7 +265,7 @@ export default function BackgroundRemovalStep({
         </div>
       )}
 
-      {showCompare && cutoutUrl && originalSrc && (
+      {status === 'ready' && cutoutUrl && originalSrc && (
         <p className="uk-bgremove-note">
           {choice === 'cutout'
             ? 'Using the background-removed photo. Tap the original to use that instead.'
@@ -224,14 +288,15 @@ export default function BackgroundRemovalStep({
             onChange={(event) => handleReplace(event.target.files?.[0])}
           />
         </label>
-        <button
-          type="button"
-          className="uk-wizard-primary compact"
-          onClick={handleContinue}
-          disabled={status === 'processing' || committing}
-        >
-          {committing ? 'Saving…' : 'Continue'}
-        </button>
+        {status === 'ready' ? (
+          <button type="button" className="uk-wizard-primary compact" onClick={handleContinue} disabled={committing}>
+            {committing ? 'Saving…' : 'Continue'}
+          </button>
+        ) : (
+          <button type="button" className="uk-wizard-primary compact" onClick={continueWithOriginal}>
+            Continue with original photo
+          </button>
+        )}
       </div>
     </section>
   );

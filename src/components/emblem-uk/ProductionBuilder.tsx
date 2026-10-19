@@ -623,6 +623,11 @@ export default function ProductionBuilder({
   };
   const [draftRestored, setDraftRestored] = useState(false);
   const [resumedDraft, setResumedDraft] = useState(false);
+  // Set the moment an order submission or Squad Invite commit starts. From
+  // then on this page neither saves nor offers a draft: every page load
+  // issues a NEW submission key, so a draft restored after a submit whose
+  // reply was lost could otherwise place the same order a second time.
+  const [submissionStarted, setSubmissionStarted] = useState(false);
   useEffect(() => {
     let cancelled = false;
     purgeExpiredBuilderDrafts()
@@ -658,7 +663,7 @@ export default function ProductionBuilder({
     // Mount-once by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const draftDone = enquiryStatus === 'sent' || squadInvitePhase === 'success';
+  const draftDone = submissionStarted || enquiryStatus === 'sent' || squadInvitePhase === 'success';
   useEffect(() => {
     if (!draftRestored || draftDone) return;
     const id = window.setTimeout(() => {
@@ -1341,6 +1346,9 @@ export default function ProductionBuilder({
     // below, never an ordinary resubmit.
     if (enquiryConflict) return;
     submittingRef.current = true;
+    // Never resumable from here on (see submissionStarted).
+    setSubmissionStarted(true);
+    clearBuilderDraft(draftScope).catch(() => undefined);
     // canSendEnquiry already guarantees quoteMatchesCurrentCounts, so
     // currentQuote is confirmed non-null and fresh for exactly this
     // submission — captured once here rather than re-read later, so the
@@ -1700,6 +1708,9 @@ export default function ProductionBuilder({
     }
     squadInviteSubmittingRef.current = true;
     setSquadInviteSubmitting(true);
+    // Never resumable from here on (see submissionStarted).
+    setSubmissionStarted(true);
+    clearBuilderDraft(draftScope).catch(() => undefined);
     setSquadInviteOutcome(null);
     let succeeded = false;
     try {
@@ -2060,6 +2071,9 @@ export default function ProductionBuilder({
               ) : order.type === 'single' ? (
                 <PlayerStrip order={order} selectedId={selectedId} onSelect={setSelectedId} />
               ) : null}
+              <p className="uk-draft-notice">
+                While you build, your card&apos;s details and photo are saved on this device only, for up to 3 days, so you can carry on later. Nothing is uploaded until you send your card, and you can delete it at any time with &ldquo;Discard&rdquo; (tap the Emblem logo).
+              </p>
               <div className="uk-wizard-row-actions">
                 {order.type !== 'single' && <button type="button" onClick={() => addPlayer()} disabled={addDisabled}>Add player</button>}
                 <button

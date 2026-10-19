@@ -182,6 +182,18 @@ describe('the builder keeps guardian controls and creates no records when saving
     expect(builder).toMatch(/const draftScope = draftScopeFor\(squadInviteContext\?\.participationId\)/);
   });
 
+  it('save-and-resume cannot place an order twice: from the moment a submit starts, the draft is deleted and never saved or restored again on that page', () => {
+    expect(builder).toMatch(/const draftDone = submissionStarted \|\| enquiryStatus === 'sent' \|\| squadInvitePhase === 'success'/);
+    expect(builder).toMatch(/submittingRef\.current = true;\s*\/\/ Never resumable from here on \(see submissionStarted\)\.\s*setSubmissionStarted\(true\);\s*clearBuilderDraft\(draftScope\)/);
+    expect(builder).toMatch(/setSquadInviteSubmitting\(true\);\s*\/\/ Never resumable from here on \(see submissionStarted\)\.\s*setSubmissionStarted\(true\);\s*clearBuilderDraft\(draftScope\)/);
+    expect(builder).toMatch(/if \(!draftRestored \|\| draftDone\) return;/);
+  });
+
+  it('tells parents, on the photo step, that unfinished details and photos stay on this device for up to 3 days', () => {
+    expect(builder).toContain('className="uk-draft-notice"');
+    expect(builder).toMatch(/saved on this device only, for up to 3 days/);
+  });
+
   it('clears the draft when an order is submitted or a Squad Invite card is committed', () => {
     expect(builder).toMatch(/setEnquiryStatus\('sent'\);\s*\/\/ Submitted: nothing left to resume on this device\.\s*clearBuilderDraft\(draftScope\)/);
     expect(builder).toMatch(/setSquadInvitePhase\('success'\);\s*clearBuilderDraft\(draftScope\)/);
