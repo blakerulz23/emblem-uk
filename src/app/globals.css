@@ -11305,6 +11305,21 @@ button.uk-bgremove-frame:disabled { cursor: default; }
     width: min(560px, calc((100dvh - 200px) * 0.7));
     filter: drop-shadow(0 40px 50px rgba(0, 0, 0, 0.55));
   }
+  /* CardArt lays itself out at a literal 340px with inline pixel sizes, so
+     it is scaled to the stage width the same way the share sheet does it
+     (.uk-card-share-preview .uk-real-card): a query container plus
+     scale(100cqw / 340px). CardArt's own DOM is untouched (print capture
+     renders its own off-screen copy at native size). */
+  .ukd .ukd-stage-card > .uk-real-card {
+    aspect-ratio: 340 / 476;
+    position: relative;
+    container-type: inline-size;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ukd .ukd-stage-card > .uk-real-card > div {
+    transform-origin: top left;
+    transform: scale(calc(100cqw / 340px));
+  }
   .ukd .ukd-drop {
     width: min(380px, calc((100dvh - 220px) * 0.7));
     aspect-ratio: 3.5 / 5;
