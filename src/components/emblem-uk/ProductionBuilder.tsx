@@ -1986,7 +1986,7 @@ export default function ProductionBuilder({
               {submitRecovery === 'placed' && (
                 <>
                   <strong>We already have this order.</strong>
-                  <span>Your last attempt reached us, so there&apos;s nothing to send again. If you weren&apos;t taken to payment, or didn&apos;t finish paying, email hello@emblem.cards and we&apos;ll help you complete this order. Please don&apos;t make the same card again.</span>
+                  <span>Your last attempt reached us, so there&apos;s nothing to send again. If you weren&apos;t taken to payment, or didn&apos;t finish paying, you can <a href="/builder?pay=1">pay for this order here</a>. Please don&apos;t make the same card again.</span>
                   <button type="button" onClick={() => window.location.assign('/builder')}>Start a new card</button>
                 </>
               )}
@@ -2782,6 +2782,9 @@ export default function ProductionBuilder({
                   {checkoutStage === 'error' && checkoutError && (
                     <p className="uk-enquiry-error" role="alert">{checkoutError}</p>
                   )}
+                  <p className="uk-gate3-pay-later">
+                    Closed this page before paying? You can come back and <a href="/builder?pay=1">pay for this order later</a> using your email.
+                  </p>
                 </div>
               )}
               <div className="uk-production-snapshot">

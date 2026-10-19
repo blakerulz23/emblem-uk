@@ -59,6 +59,12 @@ export const FAQ_GIFTS_AND_DELIVERY: FaqItem[] = [
     answer: 'UK delivery is calculated at checkout and shown before the order is completed.',
   },
   {
+    question: 'I sent my card but didn’t finish paying. What now?',
+    answer:
+      'You don’t need to make the card again. Enter the email you used, we’ll send you a code, and you can pay for the same order. This works for single cards sent in the last 30 days.',
+    link: { label: 'Pay for an order you’ve already sent →', href: '/builder?pay=1' },
+  },
+  {
     question: 'Will it arrive in time for Christmas?',
     answer:
       'Please order as early as you can. Every card is made to order, and if you are not the child’s parent or guardian, they need to approve the card before it is printed. UK delivery is calculated at checkout and shown before you pay.',

@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import ProductionBuilder from '@/components/emblem-uk/ProductionBuilder';
+import PaymentRecovery from '@/components/emblem-uk/PaymentRecovery';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 
@@ -29,7 +30,12 @@ async function resolveSquadInviteContext(participationId: string) {
   return { participationId: data.id as string, campaignClubName: campaign?.club_team_name ?? '' };
 }
 
-export default async function BuilderPage({ searchParams }: { searchParams: { squadParticipation?: string } }) {
+export default async function BuilderPage({ searchParams }: { searchParams: { squadParticipation?: string; pay?: string } }) {
+  // "Pay for an order you've already sent" — lives on /builder so the
+  // middleware's builder CSRF cookie applies to its requests.
+  if (searchParams.pay === '1') {
+    return <PaymentRecovery />;
+  }
   if (searchParams.squadParticipation) {
     const context = await resolveSquadInviteContext(searchParams.squadParticipation);
     if (!context) notFound();

@@ -31,6 +31,8 @@ export type AnonymousRequestAction =
   // Save and resume: "did my interrupted submit place an order?" — asked
   // once per restored draft that still carries a submission id.
   | 'builder-submission-status'
+  // Pay for an already-sent order: list the verified adult's unpaid orders.
+  | 'unpaid-order-recovery'
   | 'render-print'
   | 'order-asset-upload'
   // Ordinary-builder Adult Permission step (migration 0071) — same
@@ -70,6 +72,7 @@ export type AnonymousRequestAction =
 
 const LIMITS: Record<
   | 'builder-submission-status'
+  | 'unpaid-order-recovery'
   | 'render-print'
   | 'order-asset-upload'
   | 'builder-authority-otp-request'
@@ -88,6 +91,7 @@ const LIMITS: Record<
 > = {
   // One check per restored, interrupted submit, plus "Check again" taps.
   'builder-submission-status': { ip: 20, subject: 10 },
+  'unpaid-order-recovery': { ip: 20, subject: 10 },
   'render-print': { ip: 30, subject: 20 },
   // Generous enough for the largest real order this app already supports
   // (order-enquiry-validation.ts's own MAX_PLAYERS=200, up to two asset
