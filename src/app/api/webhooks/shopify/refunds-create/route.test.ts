@@ -3,6 +3,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 
+const mockRecordDuplicateRefund = vi.fn();
+vi.mock('@/lib/duplicate-payment', () => ({
+  recordDuplicateRefund: (...args: unknown[]) => mockRecordDuplicateRefund(...args),
+}));
+
 const mockRpc = vi.fn();
 const mockOrdersSelect = vi.fn();
 const mockOrderStatus = vi.fn();
@@ -77,6 +82,7 @@ const reasons = () => mockNotify.mock.calls.map((c) => (c[1] as { summary: { rea
 const keys = () => mockNotify.mock.calls.map((c) => (c[1] as { eventKey: string }).eventKey);
 
 beforeEach(() => {
+  mockRecordDuplicateRefund.mockReset().mockResolvedValue(null);
   process.env.SHOPIFY_WEBHOOK_SECRET = SECRET;
   process.env.NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT = UK_VARIANT;
   process.env.NEXT_PUBLIC_SHOPIFY_SQUAD_INVITE_VARIANT_SINGLE = '9001';
@@ -220,6 +226,22 @@ describe('POST /api/webhooks/shopify/refunds-create — refunds for orders Emble
     mockOrdersSelect.mockResolvedValue({ data: null, error: null });
     await post({ ...FULL_REFUND, refund_line_items: [line('111222333', 1)] });
     expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it('the refund of a flagged duplicate payment is recorded against its Emblem order, never marking that order refunded', async () => {
+    mockOrdersSelect.mockResolvedValue({ data: null, error: null });
+    mockRecordDuplicateRefund.mockResolvedValue({ orderId: 'order-1' });
+    const res = await post(FULL_REFUND);
+    expect(await res.json()).toMatchObject({ ok: true, applied: false, reason: 'duplicate_payment_refunded', orderId: 'order-1' });
+    expect(mockRecordDuplicateRefund).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ shopifyOrderId: '987654321' }));
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled(); // no misleading "not recorded as paid" alert
+  });
+
+  it('asks Shopify to retry when the duplicate refund cannot be recorded yet', async () => {
+    mockOrdersSelect.mockResolvedValue({ data: null, error: null });
+    mockRecordDuplicateRefund.mockResolvedValue('failed');
+    expect((await post(FULL_REFUND)).status).toBe(500);
   });
 });
 

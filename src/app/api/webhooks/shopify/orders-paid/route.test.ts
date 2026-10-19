@@ -3,6 +3,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST } from './route';
 
+const mockFlagSecondPayment = vi.fn();
+vi.mock('@/lib/duplicate-payment', () => ({
+  flagSecondPaymentIfAny: (...args: unknown[]) => mockFlagSecondPayment(...args),
+}));
+
 const mockRpc = vi.fn();
 const mockOrdersSelect = vi.fn();
 const mockParticipationSelect = vi.fn();
@@ -101,6 +106,7 @@ beforeEach(() => {
   mockParticipationSelect.mockResolvedValue({ data: SQUAD_PARTICIPATION, error: null });
   mockOrdersSelect.mockResolvedValue({ data: ORDER_ROW, error: null });
   mockRpc.mockResolvedValue({ data: { applied: true, orderId: ORDER_ROW.id }, error: null });
+  mockFlagSecondPayment.mockReset().mockResolvedValue('none');
 });
 
 describe('POST /api/webhooks/shopify/orders-paid — signature and delivery-id verification', () => {
@@ -492,5 +498,47 @@ describe('POST /api/webhooks/shopify/orders-paid — webhook ordering: payment a
     mockRpc.mockResolvedValue({ data: { applied: false, reason: 'order_refunded' }, error: null });
     await post(SQUAD_PAYLOAD);
     expect(mockRpc).not.toHaveBeenCalledWith('mark_squad_invite_participation_paid', expect.anything());
+  });
+});
+
+describe('POST /api/webhooks/shopify/orders-paid — second payment for an already-paid order', () => {
+  it('a first, applied payment never runs the duplicate check', async () => {
+    await post(VALID_PAYLOAD);
+    expect(mockFlagSecondPayment).not.toHaveBeenCalled();
+  });
+
+  it('already_paid: checks for a second payment with the order, ref, payload and delivery id', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'already_paid' }, error: null });
+    await post(VALID_PAYLOAD);
+    expect(mockFlagSecondPayment).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ orderId: 'order-1', orderRef: 'EMB-ABC123', webhookId: WEBHOOK_ID, payload: expect.objectContaining({ id: 987654321 }) }));
+  });
+
+  it('a flagged second payment is reported, never a silent ok, and nothing else mutates the order', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'already_paid' }, error: null });
+    mockFlagSecondPayment.mockResolvedValue('flagged');
+    const res = await post(VALID_PAYLOAD);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ applied: false, reason: 'duplicate_payment_flagged' });
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks Shopify to retry (500) when the second payment could not be recorded or alerted', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'already_paid' }, error: null });
+    mockFlagSecondPayment.mockResolvedValue('failed');
+    expect((await post(VALID_PAYLOAD)).status).toBe(500);
+  });
+
+  it('a repeated delivery (duplicate_event) re-runs the check so a failed alert is retried; a redelivered first payment stays a quiet ok', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'duplicate_event' }, error: null });
+    const res = await post(VALID_PAYLOAD);
+    expect(mockFlagSecondPayment).toHaveBeenCalledTimes(1);
+    expect(await res.json()).toMatchObject({ ok: true, reason: 'duplicate_event' });
+  });
+
+  it('a payment for a refunded order keeps its own paid-after-close alert and skips the duplicate check', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'order_refunded' }, error: null });
+    await post(VALID_PAYLOAD);
+    expect(mockFlagSecondPayment).not.toHaveBeenCalled();
+    expect(mockEnqueueStaffNotification).toHaveBeenCalledTimes(1);
   });
 });

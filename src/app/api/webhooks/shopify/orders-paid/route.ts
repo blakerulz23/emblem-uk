@@ -4,6 +4,7 @@ import { extractOrderRef, extractShopifyOrderId, verifyShopifyHmac, verifyPaidLi
 import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 import { squadInviteVariantId } from '@/lib/squad-invite-payment-link';
 import { notifyStaffOfPaymentIssue } from '@/lib/payment-alerts';
+import { flagSecondPaymentIfAny } from '@/lib/duplicate-payment';
 
 /**
  * Real money, currently invisible outside raw server logs — every failure
@@ -208,6 +209,23 @@ export async function POST(req: NextRequest) {
       reference: orderRef,
       reason: `Shopify reports this order paid, but Emblem already holds it as ${result.reason === 'order_cancelled' ? 'cancelled' : 'refunded'}, so it was not marked paid. Check the order in Shopify and refund it if money was taken.`,
     });
+  }
+
+  // 4b) A second payment for an order Emblem already holds as paid (two
+  //     Shopify checkouts completed for one order) is never silently
+  //     ignored: recorded append-only and staff alerted with what to refund
+  //     (duplicate-payment.ts). Also runs on a duplicate delivery, so an
+  //     alert that failed to enqueue is retried; a redelivery of the payment
+  //     already recorded stays silent. 500 asks Shopify to retry.
+  if (!result?.applied && (result?.reason === 'already_paid' || result?.reason === 'duplicate_event')) {
+    const outcome = await flagSecondPaymentIfAny(supabase, { orderId: existing.id, orderRef, payload, webhookId });
+    if (outcome === 'failed') {
+      console.error('shopify webhook: second payment could not be recorded or alerted, asking Shopify to retry', { orderRef });
+      return NextResponse.json({ error: 'duplicate payment not yet recorded' }, { status: 500 });
+    }
+    if (outcome === 'flagged' && existing.source !== 'squad_invite') {
+      return NextResponse.json({ ok: true, applied: false, reason: 'duplicate_payment_flagged', orderId: existing.id });
+    }
   }
 
   // 5) Squad Invite bookkeeping — links this real payment to its
