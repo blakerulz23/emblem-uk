@@ -182,10 +182,36 @@ describe('the builder keeps guardian controls and creates no records when saving
     expect(builder).toMatch(/const draftScope = draftScopeFor\(squadInviteContext\?\.participationId\)/);
   });
 
-  it('save-and-resume cannot place an order twice: from the moment a submit starts, the draft is deleted and never saved or restored again on that page', () => {
-    expect(builder).toMatch(/const draftDone = submissionStarted \|\| enquiryStatus === 'sent' \|\| squadInvitePhase === 'success'/);
-    expect(builder).toMatch(/submittingRef\.current = true;\s*\/\/ Never resumable from here on \(see submissionStarted\)\.\s*setSubmissionStarted\(true\);\s*clearBuilderDraft\(draftScope\)/);
-    expect(builder).toMatch(/setSquadInviteSubmitting\(true\);\s*\/\/ Never resumable from here on \(see submissionStarted\)\.\s*setSubmissionStarted\(true\);\s*clearBuilderDraft\(draftScope\)/);
+  it('a failed or interrupted submit never costs the parent their work: the draft is kept until the server confirms', () => {
+    const submit = builder.slice(builder.indexOf('const submitEnquiry = async'), builder.indexOf('const startNewOrder'));
+    expect(submit).not.toMatch(/submittingRef\.current = true;\s*[\s\S]{0,120}clearBuilderDraft/);
+    // Cleared only after a confirmed success response.
+    expect(submit).toMatch(/setEnquiryStatus\('sent'\);\s*\/\/ Submitted: nothing left to resume on this device\.\s*clearBuilderDraft\(draftScope\)/);
+    const commit = builder.slice(builder.indexOf('const submitSquadInviteCommitment = async'));
+    expect(commit.slice(0, commit.indexOf("setSquadInvitePhase('success')"))).not.toContain('clearBuilderDraft');
+  });
+
+  it('save-and-resume cannot place an order twice: the submission id is stored before anything is sent, and a restored draft is checked before sending is allowed', () => {
+    const submit = builder.slice(builder.indexOf('const submitEnquiry = async'), builder.indexOf('const startNewOrder'));
+    const keyAt = submit.indexOf('const submissionKey = await ensureSubmissionKey();');
+    const savedAt = submit.indexOf('pendingSubmission: pending');
+    const firstUpload = submit.indexOf('orderWithUploadedAssets(');
+    expect(keyAt).toBeGreaterThan(-1);
+    expect(savedAt).toBeGreaterThan(keyAt);
+    expect(savedAt).toBeLessThan(firstUpload);
+    expect(submit).toContain('if (!recoveryAllowsSend) return;');
+    expect(builder).toMatch(/const recoveryAllowsSend = submitRecovery === 'none' \|\| submitRecovery === 'not_placed';/);
+    expect(builder).toMatch(/const canSendEnquiry =\s*recoveryAllowsSend &&/);
+    expect(builder).toMatch(/if \(!squadInviteContext && restored\.pendingSubmission\?\.key\) \{\s*setPendingSubmission\(restored\.pendingSubmission\);\s*checkPendingSubmission\(restored\.pendingSubmission\.key\);/);
+    expect(builder).toContain("fetch('/api/builder-submissions/status'");
+  });
+
+  it('recovery outcomes: placed clears the draft; not_placed continues with work intact; unknown or in-progress keeps sending paused', () => {
+    const check = builder.slice(builder.indexOf('const checkPendingSubmission = async'), builder.indexOf('const checkPendingSubmission = async') + 1600);
+    expect(check).toMatch(/body\.status === 'placed'\) \{[\s\S]*?clearBuilderDraft\(draftScope\)[\s\S]*?setSubmitRecovery\('placed'\)/);
+    expect(check).toMatch(/body\.status === 'not_placed'\) \{[\s\S]*?setPendingSubmission\(null\);[\s\S]*?setSubmitRecovery\('not_placed'\)/);
+    expect(check).toMatch(/catch \{[\s\S]*?setSubmitRecovery\('unknown'\)/);
+    expect(builder).toMatch(/const draftDone = enquiryStatus === 'sent' \|\| squadInvitePhase === 'success' \|\| submitRecovery === 'placed';/);
     expect(builder).toMatch(/if \(!draftRestored \|\| draftDone\) return;/);
   });
 

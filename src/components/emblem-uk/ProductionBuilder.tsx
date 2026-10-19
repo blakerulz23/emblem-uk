@@ -589,7 +589,19 @@ export default function ProductionBuilder({
   // zero-approved-players case is unaffected by quoteMatchesCurrentCounts —
   // it already short-circuits to false before that check is ever reached,
   // preserving the builder's existing zero-player submission rule exactly.
+  // Interrupted-submit recovery (save and resume). pendingSubmission is the
+  // submission id an order submit was using; it is kept in the draft until
+  // the server confirms the order, so a failed or interrupted submit never
+  // costs the parent their work. A restored draft that still carries one is
+  // checked with /api/builder-submissions/status before sending is allowed
+  // again (see builder-submission-status.ts): this is what stops the same
+  // order being placed twice under two submission ids.
+  type SubmitRecovery = 'none' | 'checking' | 'placed' | 'not_placed' | 'in_progress' | 'unknown';
+  const [pendingSubmission, setPendingSubmission] = useState<{ key: string; since: number } | null>(null);
+  const [submitRecovery, setSubmitRecovery] = useState<SubmitRecovery>('none');
+  const recoveryAllowsSend = submitRecovery === 'none' || submitRecovery === 'not_placed';
   const canSendEnquiry =
+    recoveryAllowsSend &&
     summary.checkoutEligible &&
     enquiry.name.trim().length > 1 &&
     /\S+@\S+\.\S+/.test(enquiry.email) &&
@@ -620,14 +632,38 @@ export default function ProductionBuilder({
     selectedId: string;
     enquiry: typeof enquiry;
     coachCardDraft: CoachCardDraft;
+    // The submission id an interrupted order submit was using (see above).
+    pendingSubmission?: { key: string; since: number } | null;
   };
   const [draftRestored, setDraftRestored] = useState(false);
   const [resumedDraft, setResumedDraft] = useState(false);
-  // Set the moment an order submission or Squad Invite commit starts. From
-  // then on this page neither saves nor offers a draft: every page load
-  // issues a NEW submission key, so a draft restored after a submit whose
-  // reply was lost could otherwise place the same order a second time.
-  const [submissionStarted, setSubmissionStarted] = useState(false);
+  const checkPendingSubmission = async (key: string) => {
+    setSubmitRecovery('checking');
+    try {
+      const response = await fetch('/api/builder-submissions/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', [BUILDER_CSRF_HEADER]: readBuilderCsrfCookie() },
+        body: JSON.stringify({ submissionKey: key }),
+      });
+      const body = (await response.json().catch(() => null)) as { status?: string } | null;
+      if (!response.ok || !body?.status) throw new Error('status unavailable');
+      if (body.status === 'placed') {
+        // The order is already with us: nothing to resend, nothing to keep.
+        clearBuilderDraft(draftScope).catch(() => undefined);
+        setSubmitRecovery('placed');
+      } else if (body.status === 'not_placed') {
+        // Nothing was ordered and the old submission can no longer create
+        // an order: carry on under a fresh submission, work intact.
+        setPendingSubmission(null);
+        setSubmitRecovery('not_placed');
+      } else {
+        setSubmitRecovery('in_progress');
+      }
+    } catch {
+      // Unknown is never "safe to resend": sending stays paused.
+      setSubmitRecovery('unknown');
+    }
+  };
   useEffect(() => {
     let cancelled = false;
     purgeExpiredBuilderDrafts()
@@ -656,6 +692,10 @@ export default function ProductionBuilder({
         if (!squadInviteContext) setEnquiry(restored.enquiry);
         setCoachCardDraft(restored.coachCardDraft);
         setResumedDraft(true);
+        if (!squadInviteContext && restored.pendingSubmission?.key) {
+          setPendingSubmission(restored.pendingSubmission);
+          checkPendingSubmission(restored.pendingSubmission.key);
+        }
       })
       .catch(() => undefined)
       .finally(() => { if (!cancelled) setDraftRestored(true); });
@@ -663,15 +703,15 @@ export default function ProductionBuilder({
     // Mount-once by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const draftDone = submissionStarted || enquiryStatus === 'sent' || squadInvitePhase === 'success';
+  const draftDone = enquiryStatus === 'sent' || squadInvitePhase === 'success' || submitRecovery === 'placed';
   useEffect(() => {
     if (!draftRestored || draftDone) return;
     const id = window.setTimeout(() => {
-      saveBuilderDraft<BuilderDraftData>(draftScope, { order, activeStepId, selectedId, enquiry, coachCardDraft }).catch(() => undefined);
+      saveBuilderDraft<BuilderDraftData>(draftScope, { order, activeStepId, selectedId, enquiry, coachCardDraft, pendingSubmission }).catch(() => undefined);
     }, 400);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftRestored, draftDone, order, activeStepId, selectedId, enquiry, coachCardDraft]);
+  }, [draftRestored, draftDone, order, activeStepId, selectedId, enquiry, coachCardDraft, pendingSubmission]);
   // Leaving the builder: the brand mark used to be a plain link home, which
   // dropped a half-built card with no warning. The prompt says what happens,
   // and "Save and leave" flushes the draft rather than trusting the debounce.
@@ -687,7 +727,7 @@ export default function ProductionBuilder({
   const saveAndExit = async () => {
     setExitBusy('save');
     if (!draftDone) {
-      await saveBuilderDraft<BuilderDraftData>(draftScope, { order, activeStepId, selectedId, enquiry, coachCardDraft }).catch(() => undefined);
+      await saveBuilderDraft<BuilderDraftData>(draftScope, { order, activeStepId, selectedId, enquiry, coachCardDraft, pendingSubmission }).catch(() => undefined);
     }
     router.push('/');
   };
@@ -1345,10 +1385,8 @@ export default function ProductionBuilder({
     // conflict. Recovery requires the explicit "Start a new order" action
     // below, never an ordinary resubmit.
     if (enquiryConflict) return;
+    if (!recoveryAllowsSend) return;
     submittingRef.current = true;
-    // Never resumable from here on (see submissionStarted).
-    setSubmissionStarted(true);
-    clearBuilderDraft(draftScope).catch(() => undefined);
     // canSendEnquiry already guarantees quoteMatchesCurrentCounts, so
     // currentQuote is confirmed non-null and fresh for exactly this
     // submission — captured once here rather than re-read later, so the
@@ -1371,6 +1409,12 @@ export default function ProductionBuilder({
       // could realistically reach this button, but this makes the
       // function correct regardless of timing rather than reliant on it).
       const submissionKey = await ensureSubmissionKey();
+      // Recorded in the draft before any upload or order request, so an
+      // interrupted submit is checked on return instead of being resent
+      // under a new submission id (in-page retries keep this same key).
+      const pending = { key: submissionKey, since: Date.now() };
+      setPendingSubmission(pending);
+      await saveBuilderDraft<BuilderDraftData>(draftScope, { order, activeStepId, selectedId, enquiry, coachCardDraft, pendingSubmission: pending }).catch(() => undefined);
 
       // One order reference, generated once, reused everywhere: the print
       // PDF metadata, the orders row, and the Shopify cart attribute the
@@ -1708,9 +1752,6 @@ export default function ProductionBuilder({
     }
     squadInviteSubmittingRef.current = true;
     setSquadInviteSubmitting(true);
-    // Never resumable from here on (see submissionStarted).
-    setSubmissionStarted(true);
-    clearBuilderDraft(draftScope).catch(() => undefined);
     setSquadInviteOutcome(null);
     let succeeded = false;
     try {
@@ -1939,6 +1980,31 @@ export default function ProductionBuilder({
         </header>
 
         <main className="uk-wizard-screen">
+          {submitRecovery !== 'none' && (
+            <div className={`uk-recovery-note uk-recovery-${submitRecovery}`} role={submitRecovery === 'placed' ? 'status' : 'alert'}>
+              {submitRecovery === 'checking' && <span>Checking whether your last order went through&hellip;</span>}
+              {submitRecovery === 'placed' && (
+                <>
+                  <strong>We already have this order.</strong>
+                  <span>Your last attempt went through, so there&apos;s nothing to send again. Check your email for the confirmation. If you still need to pay, use the payment link there or contact hello@emblem.cards.</span>
+                  <button type="button" onClick={() => window.location.assign('/builder')}>Start a new card</button>
+                </>
+              )}
+              {submitRecovery === 'not_placed' && (
+                <span>Your last attempt didn&apos;t go through, so nothing was ordered. Your card is still here and you can send it again.</span>
+              )}
+              {(submitRecovery === 'in_progress' || submitRecovery === 'unknown') && (
+                <>
+                  <span>
+                    {submitRecovery === 'in_progress'
+                      ? 'Your last attempt is still being processed. Sending again is paused until we know, so the order can\u2019t be placed twice.'
+                      : 'We couldn\u2019t check whether your last order went through. Your card is safe here; sending is paused until we can check.'}
+                  </span>
+                  <button type="button" onClick={() => pendingSubmission && checkPendingSubmission(pendingSubmission.key)}>Check again</button>
+                </>
+              )}
+            </div>
+          )}
           {resumedDraft && !draftDone && (
             <div className="uk-resumed-note" role="status">
               <span>Picked up where you left off. Your card is saved on this device only.</span>

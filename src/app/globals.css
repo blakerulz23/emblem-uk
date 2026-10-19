@@ -10972,3 +10972,34 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   line-height: 1.5;
   color: var(--wizard-soft);
 }
+
+/* Interrupted-submit recovery (save and resume). */
+.uk-recovery-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 12px;
+  padding: 11px 13px;
+  border-radius: 10px;
+  border: 1px solid #e3d9c8;
+  background: #fffaf2;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #5f574d;
+}
+.uk-recovery-note strong { flex: 1 0 100%; color: #141414; }
+.uk-recovery-note span { flex: 1 1 220px; min-width: 0; }
+.uk-recovery-note button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--wizard-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.uk-recovery-placed { border-color: #b7e0c4; background: #f1fbf4; }
+.uk-recovery-in_progress, .uk-recovery-unknown { border-color: #f1c9a8; }
