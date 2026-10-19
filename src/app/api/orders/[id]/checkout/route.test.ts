@@ -188,3 +188,51 @@ describe('POST /api/orders/[id]/checkout — never forwards a malformed or non-S
     expect(res.status).toBe(500);
   });
 });
+
+// Payment recovery (/builder?pay=1) resumes checkout through this same
+// route. These pin what recovery relies on: resuming never creates or
+// re-prices an order, and paid/closed orders can never be checked out.
+describe('POST /api/orders/[id]/checkout — resuming payment for an existing order', () => {
+  it('concurrent checkout attempts for one unpaid order both point at the SAME order (same Order Ref, stored price) — no new order', async () => {
+    const [a, b] = await Promise.all([post(), post()]);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(mockRpc).toHaveBeenCalledTimes(2);
+    for (const call of mockRpc.mock.calls) expect(call).toEqual(['begin_gate3_checkout', { p_order_id: ORDER_ID }]);
+    for (const call of mockBuildUkCardCartUrl.mock.calls) expect(call.slice(0, 2)).toEqual([2, 'EMB-ABC123']);
+  });
+
+  it('once paid, every further or concurrent attempt is refused — no second checkout link is issued', async () => {
+    mockRpc.mockResolvedValue({ data: { ok: false, reason: 'already_paid' }, error: null });
+    const results = await Promise.all([post(), post()]);
+    for (const res of results) {
+      expect(res.status).toBe(409);
+      expect((await res.json()).error).toMatch(/already been paid/);
+    }
+    expect(mockBuildUkCardCartUrl).not.toHaveBeenCalled();
+  });
+
+  it('refunded, cancelled and failed orders are refused', async () => {
+    for (const reason of ['order_refunded', 'order_cancelled', 'order_failed']) {
+      mockRpc.mockResolvedValue({ data: { ok: false, reason }, error: null });
+      const res = await post();
+      expect(res.status).toBe(409);
+    }
+    expect(mockBuildUkCardCartUrl).not.toHaveBeenCalled();
+  });
+
+  it('another adult’s order gets the same generic 403 as a missing one (no detail leaks)', async () => {
+    mockRpc.mockResolvedValue({ data: { ok: false, reason: 'not_authorized' }, error: null });
+    const res = await post();
+    expect(res.status).toBe(403);
+    expect(JSON.stringify(await res.json())).not.toMatch(/EMB-|2499/);
+  });
+
+  it('a failed checkout start can simply be retried: the next attempt succeeds for the same order', async () => {
+    mockRpc.mockResolvedValueOnce({ data: null, error: { message: 'timeout' } });
+    expect((await post()).status).toBe(400);
+    const retry = await post();
+    expect(retry.status).toBe(200);
+    expect(mockRpc).toHaveBeenLastCalledWith('begin_gate3_checkout', { p_order_id: ORDER_ID });
+  });
+});

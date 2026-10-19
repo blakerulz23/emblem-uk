@@ -11003,3 +11003,66 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 }
 .uk-recovery-placed { border-color: #b7e0c4; background: #f1fbf4; }
 .uk-recovery-in_progress, .uk-recovery-unknown { border-color: #f1c9a8; }
+
+/* Pay for an order you've already sent (/builder?pay=1). */
+.uk-pay-brand {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  color: var(--wizard-ink);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-weight: 900;
+  letter-spacing: 0.32em;
+  text-decoration: none;
+}
+.uk-pay-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.uk-pay-order {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 14px;
+  background: #fff;
+  padding: 14px;
+  min-width: 0;
+}
+.uk-pay-order-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  color: var(--wizard-ink);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.uk-pay-order-head span { color: var(--wizard-soft); font-weight: 700; }
+.uk-pay-ref {
+  color: var(--wizard-faint);
+  font-family: var(--font-jbmono), ui-monospace, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.uk-pay-order .uk-wizard-primary { margin-top: 4px; min-height: 52px; }
+.uk-pay-warning,
+.uk-pay-awaiting,
+.uk-pay-done {
+  margin: 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.uk-pay-warning { background: #fff4e5; color: #7a4a00; }
+.uk-pay-awaiting { background: var(--wizard-surface); color: var(--wizard-ink); }
+.uk-pay-done { background: #e8f6ec; color: #135c2b; font-weight: 700; }
+.uk-pay-empty a,
+.uk-pay-awaiting a { color: var(--wizard-accent); font-weight: 800; }
+.uk-pay-recovery .uk-adult-permission-back { text-align: center; }
+.uk-gate3-pay-later { margin: 4px 0 0; color: var(--wizard-soft); font-size: 13px; line-height: 1.45; }
+.uk-gate3-pay-later a,
+.uk-recovery-note a { color: var(--wizard-accent); font-weight: 800; }
