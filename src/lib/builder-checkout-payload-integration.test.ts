@@ -27,6 +27,8 @@ function approvedOrder(): OrderDraft {
       kitNo: '7',
       position: 'MID',
       prints: 1,
+      // Edited before it was approved (a later updatedAt would make it unapproved).
+      updatedAt: '2026-10-19T08:59:00.000Z',
       approvedAt: '2026-10-19T09:00:00.000Z',
       photo: {
         srcUrl: 'https://bucket.example/signed/player-1.png',
