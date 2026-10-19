@@ -1986,7 +1986,7 @@ export default function ProductionBuilder({
               {submitRecovery === 'placed' && (
                 <>
                   <strong>We already have this order.</strong>
-                  <span>Your last attempt went through, so there&apos;s nothing to send again. Check your email for the confirmation. If you still need to pay, use the payment link there or contact hello@emblem.cards.</span>
+                  <span>Your last attempt reached us, so there&apos;s nothing to send again. If you weren&apos;t taken to payment, or didn&apos;t finish paying, email hello@emblem.cards and we&apos;ll help you complete this order. Please don&apos;t make the same card again.</span>
                   <button type="button" onClick={() => window.location.assign('/builder')}>Start a new card</button>
                 </>
               )}

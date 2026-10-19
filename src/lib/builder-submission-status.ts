@@ -1,50 +1,49 @@
 /**
- * Recovery after an interrupted submit (save and resume).
+ * Interrupted-submit recovery for save and resume.
  *
- * When a parent's order submit is interrupted (lost connection, closed tab)
- * the builder cannot know whether the order reached the server. Its draft
- * keeps the submission id it was using, and on return asks this before
- * allowing another submit:
+ * The builder keeps its draft until the server confirms an order. Before any
+ * upload it records the submission id in the draft; if the page is closed or
+ * the network fails mid-submit, the restored draft asks this question before
+ * sending is allowed again: did that submission place an order?
  *
- *   - 'placed'      an order exists for that submission (orders.submission_key
- *                   is unique) — nothing to resend; the draft is cleared.
- *   - 'not_placed'  no order, and the old submission can no longer create one
- *                   (an unused submission is revoked here first, then checked
- *                   once more) — the parent continues with their work intact
- *                   under a fresh submission.
- *   - 'in_progress' the old submission is mid-way (finalising) or in an
- *                   unexpected state — sending stays paused; ask again later.
+ *   placed      — an order exists for the submission. Nothing is resent.
+ *   not_placed  — no order, and the submission can no longer create one
+ *                 (revoked, expired, or never issued). Safe to send again
+ *                 under a fresh submission.
+ *   in_progress — a request is mid-way through creating the order. Sending
+ *                 stays paused; the parent can check again.
  *
- * This never creates, changes or reveals an order: the only write is
- * revoking an unused submission capability, and the only answer is one of
- * the three words above.
+ * Why this cannot produce a duplicate order: /api/order-enquiry only creates
+ * an order after begin_builder_submission_finalising moves the capability
+ * from 'active' to 'finalising'. revokeIfUnused is an atomic compare-and-set
+ * of 'active' -> 'revoked', so once it succeeds no request — even one still
+ * in flight from the old tab — can create an order under that id. It never
+ * touches a capability that is already finalising.
  */
 export type SubmissionStatus = 'placed' | 'not_placed' | 'in_progress';
 
 export type SubmissionStatusDeps = {
   orderExists(submissionId: string): Promise<boolean>;
   capabilityState(submissionId: string): Promise<string | null>;
-  revoke(submissionId: string): Promise<void>;
-  wait(ms: number): Promise<void>;
+  /** Atomically 'active' -> 'revoked'. True only if this call revoked it. */
+  revokeIfUnused(submissionId: string): Promise<boolean>;
 };
 
-/** Pause before the final re-check, so a request already on its way lands first. */
-export const LATE_REQUEST_GRACE_MS = 1500;
-
-export async function resolveSubmissionStatus(submissionId: string, deps: SubmissionStatusDeps): Promise<SubmissionStatus> {
+export async function resolveSubmissionStatus(
+  submissionId: string,
+  deps: SubmissionStatusDeps,
+): Promise<SubmissionStatus> {
   if (await deps.orderExists(submissionId)) return 'placed';
-  const state = await deps.capabilityState(submissionId);
-  if (state === 'finalising') return 'in_progress';
-  if (state === 'active') {
-    // Unused: revoke it, so a delayed request from the interrupted page can
-    // no longer create an order, then look once more.
-    await deps.revoke(submissionId);
-    await deps.wait(LATE_REQUEST_GRACE_MS);
-    if (await deps.orderExists(submissionId)) return 'placed';
-    return (await deps.capabilityState(submissionId)) === 'finalising' ? 'in_progress' : 'not_placed';
+  // Two attempts: a finalising request that fails is put back to 'active',
+  // so the state can move under us once.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (await deps.revokeIfUnused(submissionId)) return 'not_placed';
+    const state = await deps.capabilityState(submissionId);
+    if (state === 'finalising') return 'in_progress';
+    if (state === 'submitted') return (await deps.orderExists(submissionId)) ? 'placed' : 'in_progress';
+    if (state !== 'active') return 'not_placed'; // revoked, expired or never issued: can never create an order
   }
-  // 'submitted' with no order should not happen; never guess — keep sending paused.
-  if (state === 'submitted') return 'in_progress';
-  // revoked, expired or unknown: it can never create an order now.
-  return 'not_placed';
+  // Still 'active' after two revoke attempts: never guess. The route answers
+  // 503 and the builder keeps sending paused.
+  throw new Error('submission could not be settled');
 }

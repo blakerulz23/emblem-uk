@@ -126,7 +126,7 @@ export default function PrivacyPage() {
         and see the saved card, including the child&rsquo;s photo. On a shared, family or public
         device, choose &ldquo;Discard&rdquo; when you finish, or use a private browsing window.
         If sending was interrupted, the builder keeps your card and checks with us whether the
-        order already reached us before letting you send it again, so it is never placed twice.
+        order already reached us before letting you send it again, so the builder never sends the same order twice.
       </p>
 
       <h3 style={SUBSECTION_TITLE}>Once a card is claimed — Player OS</h3>

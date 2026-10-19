@@ -2,11 +2,6 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { randomBytes } from 'crypto';
 
-const mockRevoke = vi.fn();
-vi.mock('@/lib/builder-submission-capability', () => ({
-  revokeBuilderSubmissionCapability: (...args: unknown[]) => mockRevoke(...args),
-}));
-
 const mockRateLimit = vi.fn();
 vi.mock('@/lib/anonymous-request-rate-limit', () => ({
   consumeAnonymousRequestRateLimit: (...args: unknown[]) => mockRateLimit(...args),
@@ -15,6 +10,9 @@ vi.mock('@/lib/anonymous-request-rate-limit', () => ({
 let orderRows: Array<{ id: string }> | null = [];
 let capability: { state: string } | null = null;
 let dbError: { message: string } | null = null;
+// Records the guarded update the route sends: .update(values).eq(col, v)...select()
+let updates: Array<{ values: unknown; filters: Array<[string, unknown]> }> = [];
+let revokeTakes = false;
 vi.mock('@/lib/supabase/server', () => ({
   createServiceRoleClient: () => ({
     from: (table: string) => {
@@ -22,17 +20,27 @@ vi.mock('@/lib/supabase/server', () => ({
         return { select: () => ({ eq: () => ({ limit: async () => ({ data: orderRows, error: dbError }) }) }) };
       }
       if (table === 'builder_submission_capabilities') {
-        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: capability, error: dbError }) }) }) };
+        return {
+          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: capability, error: dbError }) }) }),
+          update: (values: unknown) => {
+            const call = { values, filters: [] as Array<[string, unknown]> };
+            updates.push(call);
+            const chain = {
+              eq: (col: string, v: unknown) => { call.filters.push([col, v]); return chain; },
+              select: async () => {
+                if (dbError) return { data: null, error: dbError };
+                if (revokeTakes && capability?.state === 'active') { capability = { state: 'revoked' }; return { data: [{ id: ID }], error: null }; }
+                return { data: [], error: null };
+              },
+            };
+            return chain;
+          },
+        };
       }
       throw new Error(`unexpected table ${table}`);
     },
   }),
 }));
-
-vi.mock('@/lib/builder-submission-status', async (orig) => {
-  const actual = await orig<typeof import('@/lib/builder-submission-status')>();
-  return { ...actual, LATE_REQUEST_GRACE_MS: 0 };
-});
 
 import { POST } from './route';
 
@@ -52,7 +60,8 @@ function post(body: unknown, csrf = true) {
 }
 
 beforeEach(() => {
-  mockRevoke.mockReset().mockResolvedValue(undefined);
+  updates = [];
+  revokeTakes = false;
   mockRateLimit.mockReset().mockResolvedValue(true);
   orderRows = [];
   capability = null;
@@ -85,17 +94,20 @@ describe('POST /api/builder-submissions/status', () => {
     expect(JSON.stringify(body)).not.toContain('order-uuid-secret');
   });
 
-  it('not_placed: an unused submission is revoked first, so a late request can no longer create an order', async () => {
+  it('not_placed: an unused submission is revoked with a guarded active-only update, so a late request can no longer create an order', async () => {
     capability = { state: 'active' };
+    revokeTakes = true;
     const res = await post({ submissionKey: ID });
     expect(await res.json()).toEqual({ status: 'not_placed' });
-    expect(mockRevoke).toHaveBeenCalledWith(ID);
+    expect(updates[0].values).toMatchObject({ state: 'revoked' });
+    expect(updates[0].filters).toEqual([['id', ID], ['state', 'active']]);
   });
 
-  it('in_progress: a submission that is finalising is never revoked', async () => {
+  it('in_progress: a submission that is finalising is never revoked (the guarded update matches nothing)', async () => {
     capability = { state: 'finalising' };
     expect(await (await post({ submissionKey: ID })).json()).toEqual({ status: 'in_progress' });
-    expect(mockRevoke).not.toHaveBeenCalled();
+    expect(capability).toEqual({ state: 'finalising' });
+    expect(updates.every((u) => u.filters.some(([c, v]) => c === 'state' && v === 'active'))).toBe(true);
   });
 
   it('a database error answers 503 (the builder keeps sending paused)', async () => {

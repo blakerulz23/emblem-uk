@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { hasValidBuilderCsrf } from '@/lib/builder-request-security';
 import { consumeAnonymousRequestRateLimit } from '@/lib/anonymous-request-rate-limit';
-import { revokeBuilderSubmissionCapability } from '@/lib/builder-submission-capability';
 import { resolveSubmissionStatus } from '@/lib/builder-submission-status';
 
 export const runtime = 'nodejs';
@@ -40,8 +39,19 @@ export async function POST(req: NextRequest) {
         if (error) throw new Error(error.message);
         return (data as { state?: string } | null)?.state ?? null;
       },
-      revoke: revokeBuilderSubmissionCapability,
-      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      // Compare-and-set 'active' -> 'revoked' only. Deliberately not the
+      // revoke_builder_submission_capability RPC, which would also revoke a
+      // capability that is mid-way through finalising an order.
+      revokeIfUnused: async (id) => {
+        const { data, error } = await service
+          .from('builder_submission_capabilities')
+          .update({ state: 'revoked', revoked_at: new Date().toISOString() })
+          .eq('id', id)
+          .eq('state', 'active')
+          .select('id');
+        if (error) throw new Error(error.message);
+        return Boolean(data && data.length > 0);
+      },
     });
     return NextResponse.json({ status });
   } catch (e: unknown) {

@@ -572,9 +572,13 @@ Does not change the overall recommendation below.**
   page is closed or the network fails, the restored draft is checked via
   `POST /api/builder-submissions/status` (CSRF-protected, rate-limited,
   returns only `placed` / `not_placed` / `in_progress`, never an order id or
-  any personal data). An unused submission capability is revoked before
-  `not_placed` is reported, so a late in-flight request cannot then create
-  an order. Sending stays paused while the outcome is unknown.
+  any personal data). Before `not_placed` is reported, the unused
+  submission capability is revoked by an atomic `active` → `revoked`
+  update. Orders are only created after a capability moves from `active`
+  to `finalising`, so once that update succeeds no request, including one
+  still in flight from the old tab, can create an order under that id. A
+  capability already finalising is never touched, and the answer is
+  `in_progress`. Sending stays paused while the outcome is unknown.
 
 **New risk recorded — shared devices (R-new, provisional rating: medium
 likelihood × moderate impact).** Anyone using the same browser profile on
@@ -590,12 +594,12 @@ account). **REQUIRES SPECIALIST REVIEW:** whether default-on device saving
 is proportionate for a children's-photo service under the Children's Code
 "default settings" standard, or should become opt-in.
 
-**Residual risk — duplicate unpaid order record.** If a submit request is
-still in flight at the moment the status check runs and passes the server's
-finalising step after the 1.5 s grace re-check, a second, unpaid order
-record is theoretically possible. It cannot cause a duplicate charge:
-payment is a separate, explicit Shopify checkout per order. Staff would see
-two orders with the same content for the same contact.
+**Residual risk — a parent re-making the card by hand.** The recovery check
+prevents the builder from resending a placed order. It cannot stop a parent
+from discarding the draft and building the same card again from scratch.
+That would create a second, unpaid order record, and the "placed" message
+asks them not to. It cannot cause a duplicate charge, because payment is a
+separate, explicit Shopify checkout per order.
 
 **Not verified in this release.** No full staging payment checkout was
 performed (no Shopify development store, no Preview S3 credentials,
