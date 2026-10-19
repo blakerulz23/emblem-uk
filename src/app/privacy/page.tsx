@@ -124,7 +124,10 @@ export default function PrivacyPage() {
         <strong style={{ color: 'var(--ink)' }}>Shared or public devices:</strong> anyone who
         uses the same browser on the same device within those 3 days could reopen the builder
         and see the saved card, including the child&rsquo;s photo. On a shared, family or public
-        device, choose &ldquo;Discard&rdquo; when you finish, or use a private browsing window.
+        device, tick &ldquo;Don&rsquo;t save on this device&rdquo; on the photo step: nothing is saved
+        while it&rsquo;s ticked, and anything already saved by the builder on that device is deleted
+        straight away. You can also choose &ldquo;Discard&rdquo; when you finish, or use a private
+        browsing window.
         If sending was interrupted, the builder keeps your card and checks with us whether the
         order already reached us before letting you send it again, so the builder never sends the same order twice.
       </p>

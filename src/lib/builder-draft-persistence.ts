@@ -120,8 +120,43 @@ async function dropBlobs(env: DraftEnvironment, scope: DraftScope, keep: Readonl
   }
 }
 
+// "Don't save on this device" (shared or public devices). A device-wide
+// flag holding no personal data; while it is set nothing is saved, and
+// turning it on deletes every builder draft and photo already on the device.
+// Outside KEY_PREFIX, so the expiry purge never treats it as a draft.
+const DEVICE_SAVE_OFF_KEY = 'emblem.uk.builder.no-device-save';
+
+export function isDeviceSaveOffWith(env: DraftEnvironment): boolean {
+  try {
+    return env.kv?.getItem(DEVICE_SAVE_OFF_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Every builder draft (any scope) and every saved photo, gone. */
+export async function clearAllDraftsWith(env: DraftEnvironment): Promise<void> {
+  for (const key of env.kv?.keys() ?? []) {
+    if (!key.startsWith(KEY_PREFIX)) continue;
+    try { env.kv?.removeItem(key); } catch { /* ignore */ }
+  }
+  if (!env.blobs) return;
+  for (const key of await env.blobs.keys().catch(() => [] as string[])) await env.blobs.delete(key).catch(() => undefined);
+}
+
+export async function setDeviceSaveOffWith(env: DraftEnvironment, off: boolean): Promise<void> {
+  try {
+    if (off) env.kv?.setItem(DEVICE_SAVE_OFF_KEY, '1');
+    else env.kv?.removeItem(DEVICE_SAVE_OFF_KEY);
+  } catch {
+    /* blocked storage: nothing can be saved anyway */
+  }
+  if (off) await clearAllDraftsWith(env);
+}
+
 export async function saveDraftWith<TData>(env: DraftEnvironment, scope: DraftScope, data: TData): Promise<void> {
   if (!env.kv) return;
+  if (isDeviceSaveOffWith(env)) return;
   const urls = collectBlobUrls(data);
   const keep = new Set<string>();
   // Photo bytes go in BEFORE the snapshot that points at them, so a refresh
@@ -143,6 +178,8 @@ export async function saveDraftWith<TData>(env: DraftEnvironment, scope: DraftSc
   }
   // Photos no longer in the draft (replaced or removed) are deleted on every save.
   await dropBlobs(env, scope, keep);
+  // Saving was switched off while this save was in flight: undo it.
+  if (isDeviceSaveOffWith(env)) await clearDraftWith(env, scope);
 }
 
 export async function loadDraftWith<TData>(env: DraftEnvironment, scope: DraftScope): Promise<BuilderDraftSnapshot<TData> | null> {
@@ -302,4 +339,19 @@ export function clearBuilderDraft(scope: DraftScope): Promise<void> {
 export function purgeExpiredBuilderDrafts(): Promise<void> {
   if (typeof window === 'undefined') return Promise.resolve();
   return purgeExpiredDraftsWith(browserEnv());
+}
+
+export function isBuilderDeviceSaveOff(): boolean {
+  if (typeof window === 'undefined') return false;
+  return isDeviceSaveOffWith(browserEnv());
+}
+
+export function setBuilderDeviceSaveOff(off: boolean): Promise<void> {
+  if (typeof window === 'undefined') return Promise.resolve();
+  return setDeviceSaveOffWith(browserEnv(), off);
+}
+
+export function clearAllBuilderDrafts(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.resolve();
+  return clearAllDraftsWith(browserEnv());
 }
