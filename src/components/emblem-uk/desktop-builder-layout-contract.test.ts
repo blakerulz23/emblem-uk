@@ -8,7 +8,10 @@ const desktopCss = css.slice(css.indexOf('/* ── Desktop builder (>=1180px)')
 
 describe('desktop builder layout (adapted from Emblem Canada)', () => {
   it('the stage renders the existing PlayerCard from the existing state — no second preview or state', () => {
-    expect(stage).toContain('<PlayerCard order={order} player={selectedPlayer} side={cardSide} />');
+    expect(stage).toContain('<PlayerCard order={order} player={stagePlayer} side={cardSide} />');
+    // stagePlayer is selectedPlayer, except on the background step where only
+    // the highlighted photo is swapped in for display.
+    expect(builder).toMatch(/const stagePlayer = activeStepId === 'bg-removal' && bgPreviewPhoto && selectedPlayer\?\.photo\s*\? \{ \.\.\.selectedPlayer, photo: \{ \.\.\.selectedPlayer\.photo, srcUrl: bgPreviewPhoto, hiResUrl: bgPreviewPhoto \} \}\s*: selectedPlayer;/);
     expect(stage).toContain("onClick={() => setCardSide('front')}");
     expect(stage).toContain("onClick={() => setCardSide('back')}");
     expect(stage).not.toMatch(/useState|useReducer|useEffect/);

@@ -334,6 +334,7 @@ export default function ProductionBuilder({
   const squadInviteDeclarationRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [selectedId, setSelectedId] = useState(order.players[0]?.id || '');
   const [cardSide, setCardSide] = useState<CardSide>('front');
+  const [bgPreviewPhoto, setBgPreviewPhoto] = useState<string | null>(null);
   const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>('idle');
   // Adult Permission step (migration 0071) — set once record_builder_authority_declaration
   // has genuinely succeeded server-side, never just because the three
@@ -1919,6 +1920,11 @@ export default function ProductionBuilder({
   // the SAME PlayerCard fills the right. Below 1180px the ukd-* elements are
   // display:none and the mobile builder is unchanged.
   const exitBuilder = () => (draftDone ? router.push('/') : setExitPrompt(true));
+  // On the background step the stage previews the version currently
+  // highlighted there (display only; the card itself changes on Continue).
+  const stagePlayer = activeStepId === 'bg-removal' && bgPreviewPhoto && selectedPlayer?.photo
+    ? { ...selectedPlayer, photo: { ...selectedPlayer.photo, srcUrl: bgPreviewPhoto, hiResUrl: bgPreviewPhoto } }
+    : selectedPlayer;
   const deskTitle = squadInviteContext
     ? `Squad Invite${squadInviteContext.campaignClubName ? ` · ${squadInviteContext.campaignClubName}` : ''}`
     : order.type === 'single' ? 'Your player card' : 'Team cards';
@@ -2277,6 +2283,7 @@ export default function ProductionBuilder({
               onNext={() => selectAdjacentPlayer(1)}
               onPatchPlayer={patchPlayer}
               onContinue={handleBgRemovalContinue}
+              onPreviewPhoto={setBgPreviewPhoto}
             />
           )}
 
@@ -3066,7 +3073,7 @@ export default function ProductionBuilder({
         <div className="ukd-stage-card">
           {selectedPlayer && (
             selectedPlayer.photo?.srcUrl || cardSide === 'back' || draftDone ? (
-              <PlayerCard order={order} player={selectedPlayer} side={cardSide} />
+              <PlayerCard order={order} player={stagePlayer} side={cardSide} />
             ) : (
               <label className="ukd-drop">
                 <strong>Upload photo</strong>

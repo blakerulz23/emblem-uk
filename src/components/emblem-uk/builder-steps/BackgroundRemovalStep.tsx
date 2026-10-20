@@ -42,6 +42,7 @@ export default function BackgroundRemovalStep({
   onNext,
   onPatchPlayer,
   onContinue,
+  onPreviewPhoto,
 }: {
   player: PlayerDraft;
   isSquad: boolean;
@@ -53,6 +54,10 @@ export default function BackgroundRemovalStep({
   onNext: () => void;
   onPatchPlayer: (id: string, patch: Partial<PlayerDraft>) => void;
   onContinue: () => void;
+  /** Desktop live preview: the version currently highlighted (null when
+   *  there's no choice on screen). Display only — nothing is committed to
+   *  the card until Continue, exactly as before. */
+  onPreviewPhoto?: (url: string | null) => void;
 }) {
   const [status, setStatus] = useState<Status>('processing');
   const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
@@ -173,6 +178,14 @@ export default function BackgroundRemovalStep({
       photo: { srcUrl: url, hiResUrl: url, crop: { x: 0, y: 0, scale: 1 }, bgRemoved: false, fileName: file.name },
     });
   };
+
+  // Tell the builder which version is highlighted, so the desktop preview
+  // shows the photo this step says will be used rather than the old one.
+  useEffect(() => {
+    if (!onPreviewPhoto) return;
+    onPreviewPhoto(status === 'ready' ? (choice === 'cutout' ? cutoutUrl : originalSrc) ?? null : null);
+  }, [onPreviewPhoto, status, choice, cutoutUrl, originalSrc]);
+  useEffect(() => () => onPreviewPhoto?.(null), [onPreviewPhoto]);
 
   const busy = status === 'downloading' || status === 'processing';
   const percent = progress && progress.total > 0 ? Math.min(100, Math.round((progress.loaded / progress.total) * 100)) : null;
