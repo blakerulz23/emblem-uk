@@ -54,9 +54,9 @@ export default function AboutPage() {
         className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3"
       >
         {[
-          { val: '350gsm', label: 'Print quality', sub: 'Casino-grade, premium feel' },
+          { val: 'Premium', label: 'Print quality', sub: 'Personalised football trading card' },
           { val: 'NFC', label: 'Tap-to-share', sub: 'Stats, video, socials in one tap' },
-          { val: '3–5d', label: 'Shipping', sub: 'Printed and shipped from the US' },
+          { val: 'UK', label: 'Made to order', sub: 'Printed in the UK' },
         ].map((s) => (
           <div
             key={s.label}
