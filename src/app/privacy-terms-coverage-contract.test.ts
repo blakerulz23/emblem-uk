@@ -94,7 +94,7 @@ describe('Privacy Policy and Terms — DPIA-required topic coverage stays presen
     // value can't ship; change only from the official register.
     for (const page of [PRIVACY, TERMS]) {
       const source = read(page).replace(/\s+/g, ' ');
-      expect(source).toContain('Emblem is a trading name of Lauda Cartoons Studio Ltd');
+      expect(source).toContain('Emblem is a trading name of LAUDA CARTOONS STUDIO LTD');
       expect(source).toContain('company number 16063577');
       expect(source).toContain('registered in England and Wales');
       expect(source).toContain('344 Oldham Road, Ashton-under-Lyne, OL7 9PS');
