@@ -40,7 +40,7 @@ export default function TermsPage() {
         Terms of Service
       </h1>
       <p style={{ ...BODY, marginTop: 8, fontSize: 13.5, color: 'var(--ink-faint)' }}>
-        Last updated [DATE]
+        Last updated 20 October 2026
       </p>
 
       <p style={{ ...BODY, marginTop: 20 }}>

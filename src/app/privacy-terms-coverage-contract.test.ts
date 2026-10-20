@@ -87,6 +87,14 @@ describe('Privacy Policy and Terms — DPIA-required topic coverage stays presen
     expect(source).toContain('Squad Invite organisers');
   });
 
+  it('both pages show a real "Last updated" date, never a placeholder', () => {
+    for (const page of [PRIVACY, TERMS]) {
+      const source = read(page);
+      expect(source).not.toMatch(/\[(DATE|CONFIRM|CURRENCY)\b/);
+      expect(source).toMatch(/Last updated \d{1,2} (January|February|March|April|May|June|July|August|September|October|November|December) 20\d\d/);
+    }
+  });
+
   it('both pages identify the seller exactly as Companies House records it', () => {
     // Verified 20 Oct 2026 on Companies House: LAUDA CARTOONS STUDIO LTD,
     // company 16063577 (England and Wales), registered office 344 Oldham
