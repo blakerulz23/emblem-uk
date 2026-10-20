@@ -11360,3 +11360,7 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 @media (min-width: 1600px) {
   .uk-wizard-shell.ukd { --ukd-panel: 520px; }
 }
+
+/* Privacy page: analytics on/off for this device. */
+.emh-analytics-choice { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface, #f7f6f9); }
+.emh-analytics-choice button { justify-self: start; min-height: 44px; padding: 0 18px; border: 1px solid var(--ink); border-radius: 12px; background: transparent; color: var(--ink); font-weight: 700; cursor: pointer; }

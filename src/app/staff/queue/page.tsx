@@ -501,6 +501,7 @@ export default async function StaffQueuePage({
 
       <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
         {squadInviteEnabled && <Link href="/staff/squad-invites" style={{ padding:'9px 14px',borderRadius:10,background:'var(--accent-tint)',color:'var(--accent)',fontWeight:700 }}>Squad Invites</Link>}
+        <Link href="/staff/reports/weekly" style={{ padding:'9px 14px',borderRadius:10,background:'var(--surface)',color:'var(--ink-soft)',fontWeight:700,fontSize:13.5 }}>Weekly orders report</Link>
         <Link
           href="/staff/deletion-requests"
           style={{

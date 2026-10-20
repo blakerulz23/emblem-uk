@@ -27,6 +27,7 @@ const columns = [
       { href: '/faq', label: 'FAQ' },
       { href: '/trust-and-safeguarding', label: 'Trust & safeguarding' },
       { href: '/privacy', label: 'Privacy' },
+      { href: '/privacy#analytics', label: 'Analytics choices' },
       { href: '/terms', label: 'Terms' },
     ],
   },

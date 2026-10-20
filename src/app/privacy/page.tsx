@@ -1,3 +1,4 @@
+import AnalyticsChoice from '@/components/marketing/AnalyticsChoice';
 const SECTION_TITLE = {
   fontFamily: 'var(--font-sora), system-ui',
   fontWeight: 700,
@@ -212,12 +213,50 @@ export default function PrivacyPage() {
         sign-in) but could reach a public profile if one was enabled for that child.
       </p>
 
+      <h2 id="analytics" style={SECTION_TITLE}>Website analytics</h2>
+      <p style={BODY}>
+        We use Vercel Web Analytics to count how people use our public pages and the card builder,
+        so we can see which pages help families and where the builder needs improving. It sets no
+        cookies and stores nothing on your device. The results we see are totals only (for example,
+        how many visits a page had and how many people reached each builder step); we can&rsquo;t
+        see who you are and we don&rsquo;t use it to profile anyone or make decisions about you.
+      </p>
+      <p style={{ ...BODY, marginTop: 10 }}>
+        <strong style={{ color: 'var(--ink)' }}>What is collected:</strong> the page address with
+        any personal parts removed (only campaign tags such as <code>utm_source</code> are kept),
+        the referring site, broad device, browser and country information, and a small number of
+        builder events: a builder step being reached, a card being started or completed, and
+        checkout being opened. These events carry only fixed labels, such as the step name, the
+        type of order and a broad traffic source (search, social, direct or other). Vercel uses
+        your IP address and browser details briefly to count unique visits for the day; it
+        doesn&rsquo;t store them in your browser or link them with anything else.
+      </p>
+      <p style={{ ...BODY, marginTop: 10 }}>
+        <strong style={{ color: 'var(--ink)' }}>What is never sent:</strong> children&rsquo;s or
+        guardians&rsquo; names, photos, email addresses or phone numbers, anything typed into a
+        form, card contents, verification codes, payment details, order or invitation references,
+        and private links. No analytics runs on the Player OS, card or player pages, staff pages,
+        approval links, or any Squad Invite page other than the public start page. Payments are
+        counted from our own order records, never from analytics.
+      </p>
+      <p style={{ ...BODY, marginTop: 10 }}>
+        Vercel acts on our behalf and only to help us improve the website. We rely on our
+        legitimate interest in understanding, in aggregate, how the site is used, and on the
+        UK exception for statistics used to improve a website. You can object at any time,
+        free of charge, below; we also treat a Global Privacy Control signal from your browser
+        as an objection. Your choice is remembered on this device only and changes nothing
+        else on the site.
+      </p>
+      <div style={{ ...BODY, marginTop: 12 }}>
+        <AnalyticsChoice />
+      </div>
+
       <h2 style={SECTION_TITLE}>Who we share data with</h2>
       <ul style={{ ...BODY, paddingLeft: 20, display: 'grid', gap: 8 }}>
         <li><strong style={{ color: 'var(--ink)' }}>Shopify</strong> — processes orders, payment and shipping details under their own privacy policy.</li>
         <li><strong style={{ color: 'var(--ink)' }}>Supabase</strong> — hosts our database and handles sign-in (including one-time email codes).</li>
         <li><strong style={{ color: 'var(--ink)' }}>Amazon Web Services (S3)</strong> — stores photos and print files privately; access is signed and time-limited.</li>
-        <li><strong style={{ color: 'var(--ink)' }}>Vercel</strong> — hosts the website and app.</li>
+        <li><strong style={{ color: 'var(--ink)' }}>Vercel</strong> — hosts the website and app, and provides our cookieless website analytics (see &ldquo;Website analytics&rdquo; above).</li>
         <li><strong style={{ color: 'var(--ink)' }}>Google (Gemini)</strong> — not used for photos in the current card builder, where background removal runs on your device. Earlier versions of the builder sent a photo to Gemini when AI background removal was chosen for that upload; a non-AI option was always available.</li>
         <li><strong style={{ color: 'var(--ink)' }}>Resend</strong> — sends transactional email (sign-in codes, order and account notifications) on our behalf.</li>
       </ul>
