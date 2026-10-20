@@ -1,6 +1,6 @@
 'use client';
 
-import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CardFace } from '@/lib/card-definition';
@@ -13,6 +13,7 @@ import { isHollinwoodTemplateId } from '@/lib/hollinwood-manifest';
 import { templateHasApprovedBack } from '@/lib/card-face-registry';
 import { captureElementToPng, renderPrintFile, BUILDER_CSRF_HEADER, readBuilderCsrfCookie } from '@/lib/print-capture';
 import { autoFitPatchForPhoto } from '@/lib/card-photo-auto-fit';
+import { usePhotoGestures } from './usePhotoGestures';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { POSITION_OPTIONS, positionCardLabel, resolveCanonicalPosition } from '@/lib/player-position';
 import {
@@ -283,6 +284,9 @@ async function uploadOrderAsset(sourceUrl: string, meta: { orderId: string; play
   }
   return result as UploadedOrderAsset;
 }
+
+/** Remembers, per device, that the "Drag to move / Pinch to zoom" coach mark has been seen. */
+const PHOTO_COACH_KEY = 'emblem.uk.builder.photoCoachSeen';
 
 export default function ProductionBuilder({
   squadInviteEnabled = false,
@@ -1951,6 +1955,120 @@ export default function ProductionBuilder({
     ? `Squad Invite${squadInviteContext.campaignClubName ? ` · ${squadInviteContext.campaignClubName}` : ''}`
     : order.type === 'single' ? 'Your player card' : 'Team cards';
 
+  /**
+   * Move and zoom the photo on the card itself (adapted from Emblem Canada):
+   * the phone/tablet preview on Personalise, and the desktop stage on the
+   * same step. Front only, and only on designs that draw the saved position
+   * (cardPositionsPhoto). The sliders stay as the precise, keyboard path;
+   * both write the same photo.crop.
+   */
+  const photoEditable = Boolean(
+    activeStepId === 'personalise' && cardSide === 'front' && selectedPlayer?.photo?.srcUrl && cardPositionsPhoto(order, selectedPlayer),
+  );
+  const [previewFrameEl, setPreviewFrameEl] = useState<HTMLDivElement | null>(null);
+  const [stageFrameEl, setStageFrameEl] = useState<HTMLDivElement | null>(null);
+
+  // The coach mark ("Drag to move / Pinch to zoom") over the card the first
+  // time a touch screen sees it: there is no cursor to hint that the photo
+  // can be dragged. Gone on the first touch, and remembered per device.
+  const [showPhotoCoach, setShowPhotoCoach] = useState(false);
+  useEffect(() => {
+    try {
+      if (!window.matchMedia('(pointer: coarse)').matches) return;
+      if (window.localStorage.getItem(PHOTO_COACH_KEY)) return;
+    } catch {
+      return;
+    }
+    setShowPhotoCoach(true);
+  }, []);
+  const dismissPhotoCoach = useCallback(() => {
+    setShowPhotoCoach((visible) => {
+      if (!visible) return visible;
+      try { window.localStorage.setItem(PHOTO_COACH_KEY, '1'); } catch { /* storage blocked: fine */ }
+      return false;
+    });
+  }, []);
+
+  const photoGestures = usePhotoGestures({
+    frames: [previewFrameEl, stageFrameEl],
+    enabled: photoEditable,
+    photo: selectedPlayer?.photo,
+    onChange: (crop) => {
+      const photo = selectedPlayer?.photo;
+      if (!photo || !selectedPlayer) return;
+      patchPlayer(selectedPlayer.id, { photo: { ...photo, crop } });
+    },
+    onInteract: dismissPhotoCoach,
+    onBlocked: () => setPhotoBlockedHint(true),
+  });
+  // Said briefly when a drag couldn't move the photo: at Auto-fit's framing
+  // the card already shows the whole photo, and the renderer never moves an
+  // axis past the photo's own edge, so the way to get room is to zoom in.
+  const [photoBlockedHint, setPhotoBlockedHint] = useState(false);
+  useEffect(() => {
+    if (!photoBlockedHint) return undefined;
+    const timer = setTimeout(() => setPhotoBlockedHint(false), 3500);
+    return () => clearTimeout(timer);
+  }, [photoBlockedHint]);
+  const photoHint = photoEditable && photoBlockedHint ? (
+    <div className="uk-photo-hint" role="status">The whole photo is showing. Zoom in to move it.</div>
+  ) : null;
+  /** Arrow keys move, +/- zoom, 0 restores the suggested framing, when the card has focus. */
+  const onPhotoKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!photoEditable || !selectedPlayer) return;
+    const step = event.shiftKey ? 0.05 : 0.01;
+    const keys: Record<string, () => void> = {
+      ArrowLeft: () => photoGestures.panBy(-step, 0),
+      ArrowRight: () => photoGestures.panBy(step, 0),
+      ArrowUp: () => photoGestures.panBy(0, -step),
+      ArrowDown: () => photoGestures.panBy(0, step),
+      '+': () => photoGestures.zoomBy(1.08),
+      '=': () => photoGestures.zoomBy(1.08),
+      '-': () => photoGestures.zoomBy(1 / 1.08),
+      '0': () => resetPlayerPhotoToSuggested(selectedPlayer.id),
+    };
+    const action = keys[event.key];
+    if (!action) return;
+    event.preventDefault();
+    dismissPhotoCoach();
+    action();
+  };
+  const photoFrameProps = photoEditable
+    ? {
+        tabIndex: 0,
+        role: 'group' as const,
+        'aria-label': 'Player photo. Drag to move, pinch or scroll to zoom. Keyboard: arrow keys move, plus and minus zoom, 0 resets.',
+        onKeyDown: onPhotoKeyDown,
+        onDoubleClick: () => selectedPlayer && resetPlayerPhotoToSuggested(selectedPlayer.id),
+      }
+    : {};
+  const photoTools = photoEditable && selectedPlayer?.photo ? (
+    <div className="uk-photo-tools" role="group" aria-label="Photo zoom">
+      <button type="button" onClick={() => photoGestures.zoomBy(1 / 1.12)} aria-label="Zoom out">−</button>
+      <span aria-live="polite">{Math.round(selectedPlayer.photo.crop.scale * 100)}%</span>
+      <button type="button" onClick={() => photoGestures.zoomBy(1.12)} aria-label="Zoom in">+</button>
+      {selectedPlayer.photo.suggestedCrop && (
+        <button type="button" className="uk-photo-tools-reset" onClick={() => resetPlayerPhotoToSuggested(selectedPlayer.id)}>Reset</button>
+      )}
+    </div>
+  ) : null;
+  const photoCoach = photoEditable && showPhotoCoach ? (
+    // No handler of its own: pointer-events:none lets the first touch reach
+    // the card, whose own touchstart clears it, so one touch both dismisses
+    // it and starts the drag.
+    <div className="uk-crop-coach" aria-hidden="true">
+      <div className="uk-crop-coach-body">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M12 3v18M3 12h18" />
+          <path d="M8.5 6.5 12 3l3.5 3.5M8.5 17.5 12 21l3.5-3.5M6.5 8.5 3 12l3.5 3.5M17.5 8.5 21 12l-3.5 3.5" />
+        </svg>
+        <strong>Drag to move</strong>
+        <span>Pinch to zoom in and out</span>
+      </div>
+      <small>Tap to start</small>
+    </div>
+  ) : null;
+
   return (
     <div className="uk-builder-shell uk-wizard-shell ukd">
       {captureMode && (
@@ -2403,9 +2521,16 @@ export default function ProductionBuilder({
                   </button>
                 </div>
               </div>
-              <div className="uk-edit-preview">
+              <div
+                ref={setPreviewFrameEl}
+                className={`uk-edit-preview${photoEditable ? ' uk-photo-draggable' : ''}${photoGestures.dragging ? ' is-dragging' : ''}`}
+                {...photoFrameProps}
+              >
                 <PlayerCard order={order} player={selectedPlayer} side={cardSide} />
+                {photoCoach}
+                {photoHint}
               </div>
+              {photoTools && <div className="uk-photo-tools-row">{photoTools}</div>}
               {cardSide === 'front' ? (
                 selectedPlayer.photo ? (
                   <div className="uk-crop-controls">
@@ -2436,7 +2561,7 @@ export default function ProductionBuilder({
                       />
                     </label>
                     <label>
-                      Horizontal <b>{selectedPlayer.photo.crop.x}</b>
+                      Horizontal <b>{Math.round(selectedPlayer.photo.crop.x)}</b>
                       <input
                         type="range"
                         min={-40}
@@ -2447,7 +2572,7 @@ export default function ProductionBuilder({
                       />
                     </label>
                     <label>
-                      Vertical <b>{selectedPlayer.photo.crop.y}</b>
+                      Vertical <b>{Math.round(selectedPlayer.photo.crop.y)}</b>
                       <input
                         type="range"
                         min={-40}
@@ -3087,12 +3212,20 @@ export default function ProductionBuilder({
             Live preview
             {order.players.length > 1 && selectedIndex >= 0 ? ` · Card ${selectedIndex + 1} of ${order.players.length}` : ''}
           </span>
+          {/* In the bar, not under the card: the card's size is fitted to
+              the window height (PR #119), so a row below it would push it
+              out of view. */}
+          {photoTools}
           <div className="ukd-side-toggle" role="group" aria-label="Card side">
             <button type="button" aria-pressed={cardSide === 'front'} onClick={() => setCardSide('front')}>Front</button>
             <button type="button" aria-pressed={cardSide === 'back'} onClick={() => setCardSide('back')}>Back</button>
           </div>
         </div>
-        <div className="ukd-stage-card">
+        <div
+          ref={setStageFrameEl}
+          className={`ukd-stage-card${photoEditable ? ' uk-photo-draggable' : ''}${photoGestures.dragging ? ' is-dragging' : ''}`}
+          {...photoFrameProps}
+        >
           {selectedPlayer && (
             selectedPlayer.photo?.srcUrl || cardSide === 'back' || draftDone ? (
               <PlayerCard order={order} player={stagePlayer} side={cardSide} />
@@ -3104,6 +3237,7 @@ export default function ProductionBuilder({
               </label>
             )
           )}
+          {photoHint}
         </div>
         {order.players.length > 1 && (
           <div className="ukd-roster" role="group" aria-label="Choose a card to preview">
@@ -3416,6 +3550,20 @@ function orderPlayerToFaceData(order: OrderDraft, player: PlayerDraft): CardFace
   };
 }
 
+/**
+ * Whether this player's card design draws the photo with its saved position
+ * and zoom (the CardArt families). The older generic design shows the photo
+ * un-cropped, so moving it there would do nothing, and the on-card
+ * drag/pinch is switched off for it.
+ */
+function cardPositionsPhoto(order: OrderDraft, player: PlayerDraft): boolean {
+  const template = selectedTemplate(order, player);
+  return (
+    (order.collectionType === 'official' && (template.id === 'emjfl-official' || isHollinwoodTemplateId(template.id))) ||
+    (order.collectionType === 'custom' && isCustomCollectionTemplateId(template.id))
+  );
+}
+
 function PlayerCard({
   order,
   player,
@@ -3428,9 +3576,7 @@ function PlayerCard({
   side?: CardSide;
 }) {
   const template = selectedTemplate(order, player);
-  const useRealBuilderArt =
-    (order.collectionType === 'official' && (template.id === 'emjfl-official' || isHollinwoodTemplateId(template.id))) ||
-    (order.collectionType === 'custom' && isCustomCollectionTemplateId(template.id));
+  const useRealBuilderArt = cardPositionsPhoto(order, player);
 
   if (useRealBuilderArt) {
     return (

@@ -11367,3 +11367,139 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 
 /* Player name over the card limit (e.g. restored from an older draft). */
 .uk-field-hint.uk-field-hint-error { color: #b42318; font-weight: 700; }
+
+/* ------------------------------------------------------------------
+   Move and zoom the photo on the card (Project B, adapted from Emblem
+   Canada). See usePhotoGestures.ts / photo-gestures.ts.
+   ------------------------------------------------------------------ */
+
+/* The card is the control. grab/grabbing is the affordance with a mouse;
+   the coach mark carries it on a touch screen. touch-action:none so the
+   browser doesn't claim a drag on the card for scrolling the page (or a
+   pinch for zooming it) before the card sees it. The rest of the page
+   still scrolls normally, and the card only takes gestures while it is
+   editable (Personalise, front, a design that positions the photo). */
+.uk-photo-draggable {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Only the card itself: a touch beside it (the preview row is wider than
+   the card on a tablet) scrolls the page as usual. */
+.uk-photo-draggable .uk-real-card {
+  cursor: grab;
+  touch-action: none;
+}
+.uk-photo-draggable.is-dragging .uk-real-card { cursor: grabbing; }
+
+/* A drag that couldn't move the photo (see usePhotoGestures onBlocked). */
+.ukd-stage-card { position: relative; }
+.uk-photo-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 4;
+  max-width: min(300px, calc(100% - 24px));
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: rgba(17, 14, 12, 0.86);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  pointer-events: none;
+  animation: ukCropCoachIn 0.18s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .uk-photo-hint { animation: none; }
+}
+.uk-photo-draggable img { -webkit-user-drag: none; }
+.uk-photo-draggable:focus { outline: none; }
+.uk-photo-draggable:focus-visible .uk-real-card {
+  outline: 3px solid #e97435;
+  outline-offset: 4px;
+  border-radius: 14px;
+}
+
+/* The coach mark sits on the card, so the preview is its containing block. */
+.uk-edit-preview { position: relative; }
+
+.uk-crop-coach {
+  position: absolute;
+  inset: 0;
+  width: min(340px, 100%);
+  margin: 0 auto;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 18px;
+  text-align: center;
+  color: #fff;
+  background: rgba(17, 14, 12, 0.62);
+  backdrop-filter: blur(2px);
+  border-radius: 14px;
+  /* An instruction, not a control: the touch goes through it to the card,
+     so the same touch that dismisses it starts the drag. */
+  pointer-events: none;
+  animation: ukCropCoachIn 0.22s ease-out both;
+}
+@keyframes ukCropCoachIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.uk-crop-coach-body { display: grid; justify-items: center; gap: 6px; }
+.uk-crop-coach svg { width: 34px; height: 34px; opacity: 0.9; }
+.uk-crop-coach strong { font-family: var(--font-sora), system-ui, sans-serif; font-size: 17px; font-weight: 800; }
+.uk-crop-coach span { font-size: 13px; opacity: 0.85; }
+.uk-crop-coach small { font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.7; }
+@media (prefers-reduced-motion: reduce) {
+  .uk-crop-coach { animation: none; }
+}
+
+/* Zoom buttons: the non-gesture way to zoom (and the accessible one). */
+.uk-photo-tools-row { display: flex; justify-content: center; margin: -6px 0 14px; }
+.uk-photo-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(21, 19, 15, 0.06);
+}
+.uk-photo-tools button {
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #15130f;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.uk-photo-tools button.uk-photo-tools-reset { font-size: 13px; }
+.uk-photo-tools button:focus-visible { outline: 3px solid #e97435; outline-offset: 2px; }
+.uk-photo-tools span {
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+@media (min-width: 1180px) {
+  /* In the dark stage bar, beside Front/Back. */
+  .ukd .ukd-stage-bar .uk-photo-tools { margin-left: auto; margin-right: 12px; background: rgba(255, 255, 255, 0.09); }
+  .ukd .ukd-stage-bar .uk-photo-tools button { min-width: 36px; min-height: 36px; background: rgba(255, 255, 255, 0.12); color: #fff; box-shadow: none; }
+  .ukd .ukd-stage-bar .uk-photo-tools span { color: rgba(255, 255, 255, 0.8); }
+  .ukd .uk-photo-tools-row { display: none; }
+}
