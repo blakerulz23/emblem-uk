@@ -5,7 +5,7 @@ import type { CSSProperties } from 'react';
 import { getCustomCollectionVariant } from '@/lib/custom-collection-manifest';
 import { getHollinwoodVariant } from '@/lib/hollinwood-manifest';
 import { templateHasApprovedBack } from '@/lib/card-face-registry';
-import { computeAdaptivePositionAnchor, computeCustomCollectionGroupAnchor, EMJFL_NAME_TOP_PCT, nameFitScale, nameplateNumberLayers, nameplateSlotStyle, type NameplateNumberGeometry, type NameplateSlotGeometry } from '@/lib/nameplate-typography';
+import { computeAdaptivePositionAnchor, computeCustomCollectionGroupAnchor, customBackNameFontSize, EMJFL_NAME_TOP_PCT, NAMEPLATE_FONT_FAMILY, NAMEPLATE_FONT_WEIGHT, nameplateNumberLayers, nameplateSlotStyle, type NameplateNumberGeometry, type NameplateSlotGeometry } from '@/lib/nameplate-typography';
 import { computePhotoGeometry } from '@/lib/photo-geometry';
 import { positionCardLabel } from '@/lib/player-position';
 import { SPORT_STATS, type CardTemplate, type Details, type Family, type SportId } from './data';
@@ -2056,9 +2056,12 @@ function CustomCollectionCardBack({
             zIndex: 3,
             transform: 'translate(-50%, -50%)',
             color: nameBox.color || '#fff',
-            fontFamily: 'var(--font-oswald), var(--font-barlow-condensed), "Arial Narrow", sans-serif',
-            fontWeight: 900,
-            fontSize: W * (nameBox.fontSize ? Number(nameBox.fontSize) : 0.098) * 0.9 * nameFitScale(playerName, 12),
+            // Antonio Bold, sized from measured width so the name always fits
+            // one line in the back's name area — on screen and in the print
+            // file alike (see customBackNameFontSize).
+            fontFamily: NAMEPLATE_FONT_FAMILY,
+            fontWeight: NAMEPLATE_FONT_WEIGHT,
+            fontSize: customBackNameFontSize(playerName, W, W * (nameBox.fontSize ? Number(nameBox.fontSize) : 0.098) * 0.9),
             lineHeight: 1,
             letterSpacing: 0,
             textTransform: 'uppercase',
