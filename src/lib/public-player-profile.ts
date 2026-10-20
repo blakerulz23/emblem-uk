@@ -131,7 +131,7 @@ export async function getPublicPlayerProfile(publicPlayerId: string): Promise<Pu
       .maybeSingle<{ template_id: string; logo: string | null; photo: { storageKey?: string } | null; stats: Record<string, string> | null }>(),
     serviceRole
       .from('moments')
-      .select('id, title, occurred_on, note, verification_status, moment_media ( id, s3_key, kind )')
+      .select('id, title, occurred_on, note, trust, verification_status, moment_media ( id, s3_key, kind )')
       .eq('player_id', player.id)
       .eq('visibility', 'public')
       // Public eligibility is decided from the moment's own stored
@@ -160,6 +160,7 @@ export async function getPublicPlayerProfile(publicPlayerId: string): Promise<Pu
       title: string;
       occurred_on: string | null;
       note: string | null;
+      trust: string;
       verification_status: PublicMomentStatus;
       moment_media: { id: string; s3_key: string; kind: string }[];
     }>) ?? [];
@@ -171,7 +172,10 @@ export async function getPublicPlayerProfile(publicPlayerId: string): Promise<Pu
       // PublicMoment's own doc comment.
       title: m.title,
       occurredOn: m.occurred_on,
-      note: m.note,
+      // Only a guardian's own words (trust 'parent') may appear publicly. A
+      // coach's recognition message was written for the family, and a
+      // guardian publishing the moment doesn't make the coach's words public.
+      note: m.trust === 'parent' ? m.note : null,
       status: m.verification_status,
       // A photo/video whose signing fails is dropped from this moment's
       // media list rather than crashing the whole profile — same

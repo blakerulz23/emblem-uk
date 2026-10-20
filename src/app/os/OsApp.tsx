@@ -37,6 +37,7 @@ import CollectibleViewer from './overlays/CollectibleViewer';
 import AddMomentFlow from './overlays/AddMomentFlow';
 import CelebrateSheet from './overlays/CelebrateSheet';
 import StoryUpdates from './overlays/StoryUpdates';
+import { sendRecognitionFlow, submitRecognition } from './recognition-submit';
 
 import PlayerHome from './screens/PlayerHome';
 import DemoCollection from './screens/DemoCollection';
@@ -187,6 +188,8 @@ export default function OsApp({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const sentTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  /** True while a real-account recognition is in flight — see sendRecognitionFlow. */
+  const recognitionInFlightRef = useRef(false);
   /** False until the ?screen= URL-sync effect has run once — see that effect further down. */
   const tabSyncedOnceRef = useRef(false);
   /** The actual #os-scroll DOM node — pull-to-refresh (useOsRefresh) attaches its touch listeners directly to this, not to a synthetic React handler. */
@@ -463,25 +466,26 @@ export default function OsApp({
       if (f) { URL.revokeObjectURL(f.url); objectUrlsRef.current.delete(f.url); }
       return { files: s.files.filter((x) => x.id !== id) };
     }),
-    openCeleb: (name) => patch({ celeb: name, award: null, coachMsg: '' }),
-    closeCeleb: () => patch({ celeb: null, award: null }),
+    openCeleb: (name) => patch({ celeb: name, award: null, coachMsg: '', celebError: false }),
+    closeCeleb: () => patch({ celeb: null, award: null, celebError: false }),
     setCoachMsg: (e) => patch({ coachMsg: e.target.value }),
     pickAward: (a) => patch({ award: a }),
     sendRecognition: () => {
-      if (!state.award) return;
-      // state.celeb is the player's display name, not a DB id — SQUAD is
-      // still demo data (see osData.ts) with no stable player id to send
-      // here yet. Once a real coach's squad is wired through, this becomes
-      // a real players.id and the celebrate route's RLS check starts doing
-      // real work instead of just rejecting the request.
-      fetch('/api/os/celebrate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ playerId: state.celeb, award: state.award, message: state.coachMsg }),
-      }).catch(() => {});
-      patch({ celeb: null, award: null, coachMsg: '', sent: true });
-      clearTimeout(sentTimerRef.current);
-      sentTimerRef.current = setTimeout(() => patch({ sent: false }), 2600);
+      // Demo squad ids are fixtures, not players.id values, so demo keeps
+      // the instant celebration. Real accounts: state.celeb is a real
+      // players.id (see CelebrateSheet), and "Recognition added" only shows
+      // once the server has saved it — see sendRecognitionFlow.
+      void sendRecognitionFlow(state, {
+        isDemo: (initialData ?? fallbackData).mode === 'demo',
+        submit: (payload) => submitRecognition(fetch, payload),
+        patch,
+        inFlight: recognitionInFlightRef,
+        onSent: () => {
+          clearTimeout(sentTimerRef.current);
+          sentTimerRef.current = setTimeout(() => patch({ sent: false }), 2600);
+        },
+        onSaved: () => router.refresh(),
+      });
     },
     goCoachVerify: () => patch({ tab: 'verify', moment: null, coachPlayerId: null, highlightMomentId: null }),
     goCoachCelebrate: () => patch({ tab: 'celebrate', moment: null, coachPlayerId: null, highlightMomentId: null }),
