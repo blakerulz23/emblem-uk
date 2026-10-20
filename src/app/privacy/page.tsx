@@ -240,12 +240,12 @@ export default function PrivacyPage() {
         counted from our own order records, never from analytics.
       </p>
       <p style={{ ...BODY, marginTop: 10 }}>
-        Vercel acts on our behalf and only to help us improve the website. We rely on our
-        legitimate interest in understanding, in aggregate, how the site is used, and on the
-        UK exception for statistics used to improve a website. You can object at any time,
-        free of charge, below; we also treat a Global Privacy Control signal from your browser
-        as an objection. Your choice is remembered on this device only and changes nothing
-        else on the site.
+        Vercel provides this service under its Data Processing Addendum and privacy notice,
+        which also set out how data is protected when it is handled outside the UK. We use the
+        results only to understand, in aggregate, how the site is used and to improve it, which
+        is our legitimate interest. You can object at any time, free of charge, below; we also
+        treat a Global Privacy Control signal from your browser as an objection. Your choice is
+        remembered on this device only and changes nothing else on the site.
       </p>
       <div style={{ ...BODY, marginTop: 12 }}>
         <AnalyticsChoice />

@@ -56,6 +56,9 @@ describe('Privacy Policy and Terms — DPIA-required topic coverage stays presen
     expect(source).toMatch(/You can object at any time/);
     expect(source).toMatch(/Global Privacy Control/);
     expect(source).toContain('<AnalyticsChoice />');
+    // Vercel's role for Web Analytics data isn't confirmed (doc 29 §10): never claim it acts only on our behalf.
+    expect(source).not.toMatch(/Vercel acts on our behalf/);
+    expect(source).toMatch(/under its Data Processing Addendum and privacy notice/);
     expect(source).toMatch(/Vercel<\/strong> — hosts the website and app, and provides our cookieless website analytics/);
   });
 
