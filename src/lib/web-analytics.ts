@@ -7,13 +7,13 @@ import { isAnalyticsBlockedPath } from './analytics-paths';
  * it does receive the page URL. Card codes, claim/approval tokens and player
  * ids can appear in URLs, so:
  *  - private surfaces (player app, card taps, card-share, player profiles,
- *    staff, approval links, squad-invite management) are never reported;
+ *    staff, approval links, every Squad Invite page except the public
+ *    /squad-invite/start landing page) are never reported;
  *  - every other URL is reduced to its path plus an allow-list of harmless
  *    query parameters (campaign tags and the builder mode).
  */
 export const WEB_ANALYTICS_ALLOWED_QUERY = ['utm_source', 'utm_medium', 'utm_campaign', 'mode'] as const;
 
-const EXTRA_BLOCKED = ['/squad-invite'];
 
 /**
  * The literal `process.env.NEXT_PUBLIC_VERCEL_WEB_ANALYTICS` default must stay
@@ -36,7 +36,7 @@ export function sanitizeAnalyticsUrl(rawUrl: string): string | null {
   const path = url.pathname;
   // The public demo holds only sample data: count visits, never its query string.
   if (path === '/os/demo') return `${url.origin}${path}`;
-  if (isAnalyticsBlockedPath(path) || EXTRA_BLOCKED.some((p) => path === p || path.startsWith(`${p}/`))) return null;
+  if (isAnalyticsBlockedPath(path)) return null;
   const kept = new URLSearchParams();
   for (const key of WEB_ANALYTICS_ALLOWED_QUERY) {
     const value = url.searchParams.get(key);

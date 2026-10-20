@@ -54,7 +54,7 @@ import {
   selectCoachCardTeam,
   type CoachCardDraft,
 } from '@/lib/coach-card-draft';
-import { track } from '@/lib/analytics';
+import { referrerSource, track } from '@/lib/analytics';
 import { warmOnDeviceBackgroundRemoval } from '@/components/builder/emblem/bgRemovalOnDevice';
 import { clearAllBuilderDrafts, clearBuilderDraft, draftScopeFor, isBuilderDeviceSaveOff, loadBuilderDraft, purgeExpiredBuilderDrafts, saveBuilderDraft, setBuilderDeviceSaveOff } from '@/lib/builder-draft-persistence';
 
@@ -522,6 +522,25 @@ export default function ProductionBuilder({
   const stepOrder = useMemo(() => (squadInviteContext ? SQUAD_INVITE_STEP_ORDER : stepsFor(order.type)), [order.type, squadInviteContext]);
   const activeIndex = stepOrder.indexOf(activeStepId);
   const summary = useMemo(() => summarizeOrder(order), [order]);
+  // Journey analytics (fixed vocabulary only: the order mode and a traffic-
+  // source category — never names, photos, card text, emails or URLs). Each
+  // fires at most once per builder visit. A no-op when analytics is off or
+  // the visitor has objected (see analytics.ts).
+  const analyticsMode = squadInviteContext ? 'squad_invite' : order.type;
+  const builderStartedRef = useRef(false);
+  const noteBuilderStarted = () => {
+    if (builderStartedRef.current) return;
+    builderStartedRef.current = true;
+    track('builder_started', { mode: analyticsMode, source: referrerSource(document.referrer, window.location.host) });
+  };
+  const cardCompletedRef = useRef(false);
+  const cardIsComplete = summary.counts.approved > 0 || (Boolean(squadInviteContext) && summary.counts.ready > 0);
+  useEffect(() => {
+    if (cardCompletedRef.current || activeStepId !== 'review' || !cardIsComplete) return;
+    cardCompletedRef.current = true;
+    track('card_completed', { mode: analyticsMode });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStepId, cardIsComplete]);
   // Authoritative pricing — server-only. paidPlayerCount/totalPrintQuantity
   // are the only two values sent (see useOrderPricingQuote/fetchPricingQuote);
   // tier, unit price, subtotal and coach-card eligibility all come back from
@@ -1001,6 +1020,7 @@ export default function ProductionBuilder({
 
   const assignPhoto = (id: string, file?: File) => {
     if (!file) return;
+    noteBuilderStarted();
     // Start fetching the on-device background engine now, not on page open:
     // a parent who never picks a photo never downloads it.
     warmOnDeviceBackgroundRemoval();
@@ -1114,6 +1134,7 @@ export default function ProductionBuilder({
       .slice(0, Math.max(0, emptyPhotoSlots + remainingSlots));
 
     if (imageFiles.length === 0) return;
+    noteBuilderStarted();
     warmOnDeviceBackgroundRemoval();
 
     const photoAssets = imageFiles.map((file) => ({

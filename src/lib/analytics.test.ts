@@ -94,7 +94,7 @@ describe('track()', () => {
   });
 
   it('covers every event type', () => {
-    const events: AnalyticsEvent[] = ['cta_click', 'builder_step', 'checkout_handoff', 'faq_open'];
+    const events: AnalyticsEvent[] = ['cta_click', 'builder_step', 'builder_started', 'card_completed', 'checkout_handoff', 'faq_open'];
     expect(Object.keys(VERCEL_EVENT_PROPERTIES).sort()).toEqual([...events].sort());
   });
 });

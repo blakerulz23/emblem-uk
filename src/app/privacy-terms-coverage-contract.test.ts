@@ -45,6 +45,23 @@ describe('Privacy Policy and Terms — DPIA-required topic coverage stays presen
     expect(source).toMatch(/never save adult permission or consent answers/);
   });
 
+  it('privacy policy explains website analytics: what is collected, why, what is excluded, and how to object', () => {
+    const source = read(PRIVACY);
+    expect(source).toContain('id="analytics"');
+    expect(source).toMatch(/Vercel Web Analytics/);
+    expect(source).toMatch(/sets no\s+cookies and stores nothing on your device/);
+    expect(source).toMatch(/What is collected:/);
+    expect(source).toMatch(/What is never sent:/);
+    expect(source).toMatch(/names, photos, email addresses[\s\S]{0,120}verification codes, payment details/);
+    expect(source).toMatch(/You can object at any time/);
+    expect(source).toMatch(/Global Privacy Control/);
+    expect(source).toContain('<AnalyticsChoice />');
+    // Vercel's role for Web Analytics data isn't confirmed (doc 29 §10): never claim it acts only on our behalf.
+    expect(source).not.toMatch(/Vercel acts on our behalf/);
+    expect(source).toMatch(/under its Data Processing Addendum and privacy notice/);
+    expect(source).toMatch(/Vercel<\/strong> — hosts the website and app, and provides our cookieless website analytics/);
+  });
+
   it('privacy policy names every current supplier — never silently drops one', () => {
     const source = read(PRIVACY);
     for (const supplier of ['Shopify', 'Supabase', 'Amazon Web Services', 'Vercel', 'Google', 'Resend']) {
