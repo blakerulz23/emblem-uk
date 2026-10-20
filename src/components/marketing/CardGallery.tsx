@@ -24,7 +24,7 @@ export default function CardGallery({ heading = 'Pick their design.', eyebrow = 
       <div className="emh-gallery-head">
         <p className="emh-eyebrow">{eyebrow}</p>
         <h2 id="emh-gallery-heading">{heading}</h2>
-        <p>Every design is printed on premium 400gsm stock with their photo, name, number and club. Swipe to see more.</p>
+        <p>Every design is a premium personalised football trading card with their photo, name, number and club. Swipe to see more.</p>
       </div>
       <ul className="emh-gallery-strip">
         {DESIGNS.map((d) => (

@@ -120,7 +120,7 @@ export default function Home() {
             <div className="emh-hero-proof">
               <div className="emh-hero-proof-item">
                 <img className="emh-hero-proof-icon" src="/assets/hero-proof/premium-stock.svg" width={44} height={44} alt="" aria-hidden="true" />
-                400GSM premium stock
+                Premium trading card
               </div>
               <div className="emh-hero-proof-item">
                 <img className="emh-hero-proof-icon" src="/assets/hero-proof/built-in-nfc.svg" width={44} height={44} alt="" aria-hidden="true" />
