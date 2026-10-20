@@ -87,12 +87,18 @@ describe('Privacy Policy and Terms — DPIA-required topic coverage stays presen
     expect(source).toContain('Squad Invite organisers');
   });
 
-  it('neither page silently drops the honest company-registration placeholder', () => {
-    // Deliberately left as a real unknown, not fabricated — see the pages'
-    // own comments. This test guards against someone inventing a company
-    // registration number instead of leaving it genuinely marked TBD.
+  it('both pages identify the seller exactly as Companies House records it', () => {
+    // Verified 20 Oct 2026 on Companies House: LAUDA CARTOONS STUDIO LTD,
+    // company 16063577 (England and Wales), registered office 344 Oldham
+    // Road, Ashton-under-Lyne, OL7 9PS. Pinned so a mistyped or invented
+    // value can't ship; change only from the official register.
     for (const page of [PRIVACY, TERMS]) {
-      expect(read(page)).toMatch(/formal company registration details will be added here once\s+finalised/);
+      const source = read(page).replace(/\s+/g, ' ');
+      expect(source).toContain('Emblem is a trading name of Lauda Cartoons Studio Ltd');
+      expect(source).toContain('company number 16063577');
+      expect(source).toContain('registered in England and Wales');
+      expect(source).toContain('344 Oldham Road, Ashton-under-Lyne, OL7 9PS');
+      expect(source).not.toMatch(/formal company registration details will be added/);
     }
   });
 });

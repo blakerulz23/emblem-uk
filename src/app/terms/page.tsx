@@ -45,9 +45,10 @@ export default function TermsPage() {
 
       <p style={{ ...BODY, marginTop: 20 }}>
         These terms govern your use of emblem.cards and any order, account, or feature on it —
-        including Player OS, Coach OS and Squad Invite — operated by Emblem. Emblem is currently
-        operated as a trading name; formal company registration details will be added here once
-        finalised.
+        including Player OS, Coach OS and Squad Invite — operated by Emblem.
+        Emblem is a trading name of Lauda Cartoons Studio Ltd, a company registered in England and Wales
+        (company number 16063577), registered office 344 Oldham Road, Ashton-under-Lyne, OL7 9PS.
+        Contact: hello@emblem.cards.
       </p>
 
       <h2 style={SECTION_TITLE}>Accounts and who you say you are</h2>
