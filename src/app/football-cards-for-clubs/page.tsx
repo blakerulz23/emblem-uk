@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 };
 
 const playerGets = [
-  { title: 'A card they’ll keep', body: 'Their photo, name, number and club on a premium 400gsm football card, printed in the UK.' },
+  { title: 'A card they’ll keep', body: 'Their photo, name, number and club on a premium personalised football trading card, printed in the UK.' },
   { title: 'A profile that grows', body: 'Tap the card to a phone and their private player profile opens, with appearances, goals and season moments.' },
   { title: 'Recognition from their coach', body: 'Coaches can verify the moments families share and award recognition, so effort is celebrated as well as goals.' },
   { title: 'No app to download', body: 'The profile opens straight from the card. Families manage it from their phone.' },

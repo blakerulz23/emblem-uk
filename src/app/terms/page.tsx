@@ -83,8 +83,12 @@ export default function TermsPage() {
         By submitting a Squad Invite request, you confirm you are authorised to organise this for
         the named team, and that your delivery recipient has agreed to receive and distribute the
         completed order. Requests are reviewed and approved by Emblem staff before parents can
-        join — approval is not guaranteed and may be declined or require changes. During the
-        controlled pilot, no payment is collected or requested through Squad Invite.
+        join — approval is not guaranteed and may be declined or require changes. Families don&rsquo;t
+        pay when they join. At the team&rsquo;s deadline the price per card is set by the number of
+        families who have committed to a card (1 family &pound;24.99; 2&ndash;9 families &pound;21.99;
+        10 or more families &pound;18.99). Each family then receives a payment link and pays for their
+        own card through Shopify&rsquo;s secure checkout within the time shown in the email. The
+        organiser and the club don&rsquo;t pay for families&rsquo; cards.
       </p>
 
       <h2 style={SECTION_TITLE}>Content standards</h2>
@@ -118,15 +122,16 @@ export default function TermsPage() {
       <p style={BODY}>
         Orders placed through the standard builder are processed and paid for through Shopify. By
         placing an order, you agree to Shopify&rsquo;s terms in addition to these. Prices are shown
-        in [CURRENCY] and are subject to change without notice; the price at checkout is the price
-        charged. Squad Invite does not currently collect payment — see above.
+        in pounds sterling (GBP) and are subject to change without notice; the price at checkout is
+        the price charged. Squad Invite payments are made by each family as described above.
       </p>
 
       <h2 style={SECTION_TITLE}>Production and shipping</h2>
       <p style={BODY}>
-        Orders are produced to order after checkout (or, for Squad Invite, after a parent
-        completes their child&rsquo;s card and the organiser&rsquo;s delivery setup is complete).
-        Standard production and shipping is 3–5 business days unless otherwise stated. Shipping
+        Orders are produced to order after checkout. Standard production and shipping is 3–5
+        business days unless otherwise stated. Squad Invite cards are printed once the team&rsquo;s
+        payment window has closed, and paid cards are delivered together to the organiser&rsquo;s
+        chosen contact; delivery details are confirmed with the organiser during setup. Shipping
         timeframes are estimates, not guarantees, and we&rsquo;re not responsible for courier
         delays once an order has shipped.
       </p>
