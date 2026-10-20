@@ -62,15 +62,16 @@ export default function PrivacyPage() {
         Privacy Policy
       </h1>
       <p style={{ ...BODY, marginTop: 8, fontSize: 13.5, color: 'var(--ink-faint)' }}>
-        Last updated [DATE]
+        Last updated 20 October 2026
       </p>
 
       <p style={{ ...BODY, marginTop: 20 }}>
         Emblem (&ldquo;we&rdquo;, &ldquo;us&rdquo;) operates emblem.cards, including the Player OS,
         Coach OS and Squad Invite features described below. This policy explains what we collect
-        across the whole product — not just the shop — and what we do with it. Emblem is currently
-        operated as a trading name; formal company registration details will be added here once
-        finalised.
+        across the whole product — not just the shop — and what we do with it.
+        Emblem is a trading name of LAUDA CARTOONS STUDIO LTD, a company registered in England and Wales
+        (company number 16063577), registered office 344 Oldham Road, Ashton-under-Lyne, OL7 9PS.
+        Contact: hello@emblem.cards.
       </p>
 
       <div style={SUMMARY_BOX}>
