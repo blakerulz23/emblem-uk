@@ -334,6 +334,7 @@ export default function ProductionBuilder({
   const squadInviteDeclarationRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [selectedId, setSelectedId] = useState(order.players[0]?.id || '');
   const [cardSide, setCardSide] = useState<CardSide>('front');
+  const [bgPreviewPhoto, setBgPreviewPhoto] = useState<string | null>(null);
   const [enquiryStatus, setEnquiryStatus] = useState<EnquiryStatus>('idle');
   // Adult Permission step (migration 0071) — set once record_builder_authority_declaration
   // has genuinely succeeded server-side, never just because the three
@@ -1913,8 +1914,23 @@ export default function ProductionBuilder({
     });
   }, [order, selectedPlayer]);
 
+  // Desktop split layout (>=1180px, adapted from Emblem Canada's "ukd"
+  // builder): the same steps, state and handlers; on desktop the phone column
+  // becomes a fixed-width step panel on the left and a live preview stage of
+  // the SAME PlayerCard fills the right. Below 1180px the ukd-* elements are
+  // display:none and the mobile builder is unchanged.
+  const exitBuilder = () => (draftDone ? router.push('/') : setExitPrompt(true));
+  // On the background step the stage previews the version currently
+  // highlighted there (display only; the card itself changes on Continue).
+  const stagePlayer = activeStepId === 'bg-removal' && bgPreviewPhoto && selectedPlayer?.photo
+    ? { ...selectedPlayer, photo: { ...selectedPlayer.photo, srcUrl: bgPreviewPhoto, hiResUrl: bgPreviewPhoto } }
+    : selectedPlayer;
+  const deskTitle = squadInviteContext
+    ? `Squad Invite${squadInviteContext.campaignClubName ? ` · ${squadInviteContext.campaignClubName}` : ''}`
+    : order.type === 'single' ? 'Your player card' : 'Team cards';
+
   return (
-    <div className="uk-builder-shell uk-wizard-shell">
+    <div className="uk-builder-shell uk-wizard-shell ukd">
       {captureMode && (
         <div aria-hidden style={{ position: 'fixed', left: -10000, top: 0, pointerEvents: 'none' }}>
           {summary.approvedPlayers.map((player) => (
@@ -1974,7 +1990,27 @@ export default function ProductionBuilder({
           </div>
         </div>
       )}
+      <header className="ukd-header" aria-label="Builder">
+        <button type="button" className="ukd-logo" onClick={exitBuilder} aria-label="Leave the builder">
+          <img src="/builder-emblem-logo.png" alt="Emblem" />
+        </button>
+        <span className="ukd-divider" aria-hidden="true" />
+        <div className="ukd-title">
+          <small>{String(activeIndex + 1).padStart(2, '0')} / {String(stepOrder.length).padStart(2, '0')} &middot; {STEP_LABEL[activeStepId]}</small>
+          <strong>{deskTitle}</strong>
+        </div>
+        <div className="ukd-total">
+          <small>{order.players.length} card{order.players.length === 1 ? '' : 's'}</small>
+          <strong>{quoteState.status === 'ready' && summary.approvedPlayers.length > 0 ? quoteSubtotalLabel(quoteState) : '—'}</strong>
+        </div>
+        <button type="button" className="ukd-exit" onClick={exitBuilder}>{deviceSaveOff || draftDone ? 'Exit' : 'Save & exit'}</button>
+      </header>
       <div className={`uk-wizard-phone${activeStepId === 'review' && squadInviteContext ? ' uk-wizard-phone--squad-review' : ''}`}>
+        <div className="ukd-progress" aria-hidden="true">
+          {stepOrder.map((step, index) => (
+            <span key={step} data-state={index === activeIndex ? 'current' : index < activeIndex ? 'visited' : 'locked'} />
+          ))}
+        </div>
         <header className="uk-wizard-header">
           <div className="uk-wizard-topbar">
             <button type="button" className="uk-icon-button" onClick={goBack} aria-label="Back" disabled={activeIndex === 0}>
@@ -2247,6 +2283,7 @@ export default function ProductionBuilder({
               onNext={() => selectAdjacentPlayer(1)}
               onPatchPlayer={patchPlayer}
               onContinue={handleBgRemovalContinue}
+              onPreviewPhoto={setBgPreviewPhoto}
             />
           )}
 
@@ -3017,7 +3054,55 @@ export default function ProductionBuilder({
             </section>
           )}
         </main>
+        <footer className="ukd-footer">
+          <button type="button" className="ukd-back" onClick={goBack} disabled={activeIndex === 0}>Previous</button>
+        </footer>
       </div>
+
+      <section className="ukd-stage" aria-label="Live preview">
+        <div className="ukd-stage-bar">
+          <span>
+            Live preview
+            {order.players.length > 1 && selectedIndex >= 0 ? ` · Card ${selectedIndex + 1} of ${order.players.length}` : ''}
+          </span>
+          <div className="ukd-side-toggle" role="group" aria-label="Card side">
+            <button type="button" aria-pressed={cardSide === 'front'} onClick={() => setCardSide('front')}>Front</button>
+            <button type="button" aria-pressed={cardSide === 'back'} onClick={() => setCardSide('back')}>Back</button>
+          </div>
+        </div>
+        <div className="ukd-stage-card">
+          {selectedPlayer && (
+            selectedPlayer.photo?.srcUrl || cardSide === 'back' || draftDone ? (
+              <PlayerCard order={order} player={stagePlayer} side={cardSide} />
+            ) : (
+              <label className="ukd-drop">
+                <strong>Upload photo</strong>
+                <small>Click to choose an image</small>
+                <input type="file" accept="image/*" hidden onChange={(event) => assignPhoto(selectedPlayer.id, event.target.files?.[0])} />
+              </label>
+            )
+          )}
+        </div>
+        {order.players.length > 1 && (
+          <div className="ukd-roster" role="group" aria-label="Choose a card to preview">
+            {order.players.map((player, index) => (
+              <button
+                key={player.id}
+                type="button"
+                className={`ukd-chip${player.id === selectedPlayer?.id ? ' active' : ''}`}
+                aria-pressed={player.id === selectedPlayer?.id}
+                onClick={() => setSelectedId(player.id)}
+              >
+                <span className="ukd-chip-photo">{player.photo?.srcUrl ? <img src={player.photo.srcUrl} alt="" /> : null}</span>
+                <span>
+                  <b>{player.kitNo ? `#${player.kitNo} ` : ''}{player.name || `Player ${index + 1}`}</b>
+                  <small data-needs={player.photo?.srcUrl ? undefined : 'photo'}>{player.photo?.srcUrl ? 'Photo added' : 'Needs photo'}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

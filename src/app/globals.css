@@ -11081,3 +11081,282 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 .uk-gate3-pay-later { margin: 4px 0 0; color: var(--wizard-soft); font-size: 13px; line-height: 1.45; }
 .uk-gate3-pay-later a,
 .uk-recovery-note a { color: var(--wizard-accent); font-weight: 800; }
+
+/* ── Desktop builder (>=1180px) — adapted from Emblem Canada's "ukd" split ──
+   Same ProductionBuilder, steps, state and handlers. On desktop the phone
+   column becomes a fixed-width step panel on the left (forms never grow
+   wider than ~480-520px), a live preview stage of the same PlayerCard fills
+   the right, and a header runs across both. UK typography and accent are
+   kept. Below 1180px none of this applies and the mobile builder is as it
+   was. */
+.ukd-header,
+.ukd-progress,
+.ukd-footer,
+.ukd-stage {
+  display: none;
+}
+
+@media (min-width: 1180px) {
+  .uk-wizard-shell.ukd {
+    --ukd-ink: var(--wizard-ink);
+    --ukd-page: #f4f3f6;
+    --ukd-border: var(--wizard-line);
+    --ukd-border-strong: #cfcad6;
+    --ukd-muted: var(--wizard-soft);
+    --ukd-accent: var(--wizard-accent);
+    --ukd-panel: 480px;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 640px;
+    display: grid;
+    grid-template-columns: var(--ukd-panel) minmax(0, 1fr);
+    grid-template-rows: 68px minmax(0, 1fr);
+    justify-items: stretch;
+    overflow: hidden;
+    background: var(--ukd-page);
+  }
+
+  /* header */
+  .ukd .ukd-header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 0 24px;
+    background: #fff;
+    border-bottom: 1px solid var(--ukd-border);
+    color: var(--ukd-ink);
+  }
+  .ukd .ukd-logo {
+    display: inline-flex;
+    align-items: center;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+  .ukd .ukd-logo img { display: block; height: 40px; width: auto; }
+  .ukd .ukd-divider { width: 1px; height: 32px; background: var(--ukd-border); }
+  .ukd .ukd-title { display: grid; gap: 3px; line-height: 1.1; min-width: 0; }
+  .ukd .ukd-title small {
+    font-family: var(--font-jbmono), ui-monospace, monospace;
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ukd-muted);
+  }
+  .ukd .ukd-title strong {
+    font-family: var(--font-sora), system-ui, sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ukd .ukd-total { margin-left: auto; display: grid; justify-items: end; line-height: 1.1; }
+  .ukd .ukd-total small { font-size: 12px; color: var(--ukd-muted); }
+  .ukd .ukd-total strong { font-family: var(--font-sora), system-ui, sans-serif; font-size: 20px; font-weight: 900; }
+  .ukd .ukd-exit {
+    height: 42px;
+    padding: 0 16px;
+    border: 1px solid var(--ukd-border);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--ukd-ink);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .ukd .ukd-exit:hover { border-color: var(--ukd-border-strong); }
+
+  /* step panel: the mobile phone column, re-seated */
+  .ukd .uk-wizard-phone {
+    grid-column: 1;
+    grid-row: 2;
+    width: auto;
+    max-width: none;
+    min-height: 0;
+    height: 100%;
+    padding-bottom: 84px; /* the footer bar */
+    box-shadow: none;
+    border-right: 1px solid var(--ukd-border);
+    position: relative;
+    overflow: hidden;
+  }
+  .ukd .uk-wizard-phone--squad-review { max-width: none; }
+  .ukd .uk-wizard-header { display: none; }
+  .ukd .ukd-progress {
+    display: flex;
+    gap: 4px;
+    padding: 18px 32px 12px;
+    border-bottom: 1px solid var(--ukd-border);
+  }
+  .ukd .ukd-progress span { flex: 1; height: 5px; border-radius: 3px; background: var(--ukd-border); }
+  .ukd .ukd-progress span[data-state="visited"] { background: var(--ukd-ink); }
+  .ukd .ukd-progress span[data-state="current"] { background: var(--ukd-accent); }
+  .ukd .uk-wizard-screen { padding-bottom: 16px; }
+  .ukd .uk-wizard-panel { min-height: 0; padding: 26px 32px 24px; }
+
+  /* Each step's own primary action is lifted into the panel's footer bar
+     (positioned against .uk-wizard-phone), so it never scrolls out of reach
+     on a long form. Same buttons, same handlers, same disabled rules. */
+  .ukd .uk-wizard-panel > .uk-wizard-primary,
+  .ukd .uk-wizard-row-actions > .uk-wizard-primary,
+  .ukd .uk-bgremove-actions > .uk-wizard-primary,
+  .ukd .uk-wizard-panel form > .uk-wizard-primary {
+    position: absolute;
+    right: 32px;
+    bottom: 16px;
+    z-index: 3;
+    width: auto;
+    min-width: 180px;
+    max-width: calc(var(--ukd-panel) - 200px);
+    min-height: 52px;
+    margin: 0;
+    padding: 0 26px;
+    border-radius: 14px;
+    box-shadow: none;
+    font-size: 16px;
+  }
+  .ukd .uk-wizard-primary:disabled { background: #cfcad6; opacity: 1; cursor: default; }
+  .ukd .ukd-footer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    height: 84px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 32px;
+    background: #fff;
+    border-top: 1px solid var(--ukd-border);
+  }
+  .ukd .ukd-back {
+    height: 52px;
+    padding: 0 22px;
+    border: 1px solid var(--ukd-border);
+    border-radius: 14px;
+    background: #fff;
+    color: var(--ukd-ink);
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .ukd .ukd-back:disabled { opacity: 0.4; cursor: default; }
+
+  /* The stage shows the card, so the panel's own inline previews and side
+     toggles go (style-picker thumbnails and the background-removal
+     comparison stay). */
+  .ukd .uk-wizard-panel .uk-edit-preview,
+  .ukd .uk-wizard-panel .uk-card-side-toggle {
+    display: none;
+  }
+  .ukd .uk-squad-review-grid { display: block; }
+
+  /* preview stage */
+  .ukd .ukd-stage {
+    grid-column: 2;
+    grid-row: 2;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 24px 28px 20px;
+    background: radial-gradient(ellipse 46% 52% at 50% 46%, rgba(242, 97, 50, 0.22), transparent 70%), #111114;
+    color: #fff;
+    overflow: hidden;
+  }
+  .ukd .ukd-stage-bar { display: flex; align-items: center; justify-content: space-between; }
+  .ukd .ukd-stage-bar > span {
+    font-family: var(--font-jbmono), ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.62);
+  }
+  .ukd .ukd-side-toggle { display: flex; padding: 4px; border-radius: 999px; background: rgba(255, 255, 255, 0.09); }
+  .ukd .ukd-side-toggle button {
+    min-height: 36px;
+    padding: 0 18px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .ukd .ukd-side-toggle button[aria-pressed="true"] { background: #fff; color: var(--ukd-ink); }
+  .ukd .ukd-stage-card {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    place-items: center;
+    padding: 12px 0;
+  }
+  /* Card height follows the window so it is always fully visible: the stage
+     is the viewport minus header (68), stage padding and bar (~90), roster. */
+  .ukd .ukd-stage-card > .uk-real-card,
+  .ukd .ukd-stage-card > .uk-player-card {
+    width: min(560px, calc((100dvh - 200px) * 0.7));
+    filter: drop-shadow(0 40px 50px rgba(0, 0, 0, 0.55));
+  }
+  /* CardArt lays itself out at a literal 340px with inline pixel sizes, so
+     it is scaled to the stage width the same way the share sheet does it
+     (.uk-card-share-preview .uk-real-card): a query container plus
+     scale(100cqw / 340px). CardArt's own DOM is untouched (print capture
+     renders its own off-screen copy at native size). */
+  .ukd .ukd-stage-card > .uk-real-card {
+    aspect-ratio: 340 / 476;
+    position: relative;
+    container-type: inline-size;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ukd .ukd-stage-card > .uk-real-card > div {
+    transform-origin: top left;
+    transform: scale(calc(100cqw / 340px));
+  }
+  .ukd .ukd-drop {
+    width: min(380px, calc((100dvh - 220px) * 0.7));
+    aspect-ratio: 3.5 / 5;
+    display: grid;
+    place-content: center;
+    gap: 6px;
+    border: 1.5px dashed rgba(255, 255, 255, 0.35);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.03);
+    text-align: center;
+    cursor: pointer;
+  }
+  .ukd .ukd-drop strong { font-family: var(--font-sora), system-ui, sans-serif; font-size: 20px; font-weight: 800; }
+  .ukd .ukd-drop small { color: rgba(255, 255, 255, 0.6); }
+  .ukd .ukd-roster { display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 2px; scrollbar-width: thin; }
+  .ukd .ukd-chip {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px 6px 6px;
+    border: 1.5px solid rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+    text-align: left;
+    cursor: pointer;
+  }
+  .ukd .ukd-chip.active { border-color: var(--ukd-accent); }
+  .ukd .ukd-chip-photo { flex: 0 0 auto; display: block; width: 30px; height: 40px; border-radius: 6px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+  .ukd .ukd-chip-photo img { width: 100%; height: 100%; object-fit: cover; }
+  .ukd .ukd-chip b { display: block; font-size: 13px; }
+  .ukd .ukd-chip small { font-size: 12px; color: rgba(255, 255, 255, 0.6); }
+  .ukd .ukd-chip small[data-needs] { color: #ff8a4a; }
+}
+
+/* Large screens: a little more room for the form, never a stretched one. */
+@media (min-width: 1600px) {
+  .uk-wizard-shell.ukd { --ukd-panel: 520px; }
+}
