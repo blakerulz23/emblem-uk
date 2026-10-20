@@ -178,15 +178,16 @@ export default function OSBottomNavigation({ items, activeKey, onSelect, central
                   background: on ? OS_ACCENT : 'transparent',
                 }}
               />
+              {/* The highlight covers the whole item, icon and label together
+                  (from the Canadian demo). It was a 34px square behind the
+                  icon only, so the label sat outside it. */}
               <span
                 aria-hidden="true"
                 style={{
                   position: 'absolute',
-                  top: 2,
-                  width: 34,
-                  height: 34,
-                  borderRadius: 12,
-                  background: on ? 'rgba(233,116,53,.14)' : 'transparent',
+                  inset: '-2px 3px',
+                  borderRadius: 16,
+                  background: on ? 'rgba(233,116,53,.13)' : 'transparent',
                 }}
               />
               <span style={{ position: 'relative' }}>{ICN[item.icon](color)}</span>

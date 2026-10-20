@@ -18,6 +18,9 @@ import type {
 const assetPath = '/assets/emblem-os';
 export const osAssetPath = assetPath;
 
+/** The demo player's photo. The demo profile carries photoUrl: null (only real mode reads that field), so screens fall back to this rather than to an initial. */
+export const DEMO_PLAYER_PHOTO = `${assetPath}/player-ollie.png`;
+
 export const ICN: Record<string, (color: string) => React.ReactElement> = {
   home: (c) => (
     <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round">
@@ -131,9 +134,9 @@ export const CELEBRATE_CATS: CelebrateGroup[] = [
 ];
 
 export const VERIFY_QUEUE: VerifyItem[] = [
-  { id: 'v1', player: 'Ollie Harrison', playerId: 'ollie', moment: 'First Goal', thumb: `${assetPath}/jn-firstgoal.png`, by: 'Rebecca Penny (Parent)', date: '12 March 2026', note: 'His first goal of the season — top corner from the edge of the box!', mediaKind: 'photo' },
-  { id: 'v2', player: 'Jack Bennett', playerId: 'jack', moment: 'Tournament Winner', thumb: `${assetPath}/jn-trophy.png`, by: 'Mark Bennett (Parent)', date: '7 June 2026', note: null, mediaKind: 'photo' },
-  { id: 'v3', player: 'Leo Marsh', playerId: 'leo', moment: 'Team Photo', thumb: `${assetPath}/jn-teamphoto.png`, by: 'Sara Marsh (Parent)', date: '22 April 2026', note: 'Whole squad after the cup win.', mediaKind: 'photo' },
+  { id: 'v1', player: 'Ollie Harrison', playerId: 'ollie', moment: 'First Goal', thumb: `${assetPath}/jn-firstgoal-photo.jpg`, by: 'Rebecca Penny (Parent)', date: '12 March 2025', note: 'His first goal — arrived late in the box and finished low into the corner!', mediaKind: 'photo' },
+  { id: 'v2', player: 'Jack Bennett', playerId: 'jack', moment: 'Tournament Winner', thumb: `${assetPath}/jn-tournament-photo.jpg`, by: 'Mark Bennett (Parent)', date: '7 June 2026', note: null, mediaKind: 'photo' },
+  { id: 'v3', player: 'Leo Marsh', playerId: 'leo', moment: 'Team Photo', thumb: `${assetPath}/jn-team-photo.jpg`, by: 'Sara Marsh (Parent)', date: '22 April 2026', note: 'Whole squad after the cup win.', mediaKind: 'photo' },
 ];
 
 export const COACH_ACTIVITY: CoachActivityItem[] = [
@@ -231,19 +234,28 @@ export const ADD_ACH: AddAchievement[] = [
 // Rarity is hand-assigned per the same real taxonomy RealCollection.tsx
 // computes automatically (Milestone 1): 'milestone' = a genuine first for
 // this player, 'recognized' = coach-verified but not a first, 'standard' =
-// everything else. e1-e6 are honestly all firsts (a small early collection
+// everything else. Most are honestly firsts (a small early collection
 // naturally is mostly milestones) — e7/e8 are deliberately repeat titles
 // (a second Team Photo, a second Player of the Match) so the demo actually
 // demonstrates all three tiers, the same way a real family's collection
 // only starts showing 'recognized'/'standard' moments once repeats occur.
 // careerOrdinal mirrors RealMoment.careerOrdinal — a real, ever-counting
 // position, never a fraction of a fixed total.
+//
+// One storyline for one player: Ollie is a central midfielder (#7, as on
+// PLAYER_PROFILE and in every photo), across three seasons from U8 to this
+// season's U10, matching DEVELOPMENT_SEASONS (24/25, 25/26, 26/27). `year`
+// is the season label, so Collection's chapters and Home's "This season"
+// agree. The *-photo.jpg / -clip.mp4 files are crops of the original jn-*
+// artwork with its mock app controls trimmed off, so the pictures sit in
+// the app's own frames without a second, fake UI baked into them.
 export const MOMENTS: Record<string, Moment> = {
   e1: {
-    id: 'e1', year: '2026', title: 'First Goal', date: '12 March 2026', ic: 'ball',
-    thumb: `${assetPath}/jn-firstgoal.png`, video: `${assetPath}/jn-firstgoal.mp4`,
+    id: 'e1', year: '2024/25', ageGroup: 'U8', title: 'First Goal', date: '12 March 2025', occurredOn: '2025-03-12', ic: 'ball',
+    thumb: `${assetPath}/jn-firstgoal-photo.jpg`, video: `${assetPath}/jn-firstgoal-clip.mp4`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'Left-foot finish from the edge of the box — his first competitive goal.', media: true,
+    note: 'Arrived late in the box and finished low into the corner — his first competitive goal.', media: true,
+    match: { competition: 'U8 League', opponent: 'Hyde United', score: '3 – 1', venue: 'Home' },
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
       rank: 'milestone', sub: 'Goal Scorer',
@@ -252,12 +264,12 @@ export const MOMENTS: Record<string, Moment> = {
         { ic: 'star', label: 'Goal Counter', sub: '1 Goal', lit: true },
         { ic: 'shield', label: 'Milestone Badge', sub: 'Unlocked', lit: true },
       ],
-      careerOrdinal: 1, season: '2026',
+      careerOrdinal: 1, season: '2024/25',
     },
   },
   e2: {
-    id: 'e2', year: '2026', title: 'Team Photo', date: '22 April 2026', ic: 'camera',
-    thumb: `${assetPath}/jn-teamphoto.png`,
+    id: 'e2', year: '2024/25', ageGroup: 'U8', title: 'Team Photo', date: '26 April 2025', occurredOn: '2025-04-26', ic: 'camera',
+    thumb: `${assetPath}/jn-team-photo.jpg`,
     trust: 'coach', source: 'Curzon Ashton Juniors', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
     note: 'End-of-season squad photo on the home pitch.', media: true,
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
@@ -267,37 +279,15 @@ export const MOMENTS: Record<string, Moment> = {
         { ic: 'camera', label: 'Team Memory', sub: 'Photo added', lit: true },
         { ic: 'star', label: 'Season Gallery', sub: '+1 photo', lit: true },
       ],
-      careerOrdinal: 2, season: '2026',
-    },
-  },
-  e3: {
-    id: 'e3', year: '2026', title: 'Tournament Winner', date: '7 June 2026', ic: 'trophy',
-    thumb: `${assetPath}/jn-trophy.png`,
-    trust: 'club', source: 'Curzon Ashton Juniors', uploadedBy: 'Rebecca Penny', verifiedBy: 'Curzon Ashton Juniors',
-    note: 'Lifted the summer cup after a 2-1 final.', media: true,
-    rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
-    reward: {
-      rank: 'milestone', sub: 'Summer Shield Final',
-      rewards: [
-        { ic: 'trophy', label: 'Trophy', sub: 'Added', lit: true },
-        { ic: 'camera', label: 'Team Photo', sub: 'Added', lit: true },
-        { ic: 'star', label: 'Milestone', sub: 'Unlocked', lit: true },
-        { ic: 'shield', label: 'Official Club', sub: 'Verified', lit: true },
-      ],
-      careerOrdinal: 3, season: '2026',
-      story: 'Curzon Ashton lifted the Summer Shield after a 3-1 victory in the final. Ollie kept a clean sheet in the semi final to help the team reach the final.',
-      coach: 'Ollie was outstanding throughout the tournament. Calm, composed and commanding at the back.',
-      coachName: 'Coach James Walker',
-      score: '3 – 1', opp: 'Hyde United',
-      facts: [['Clean Sheets', '2'], ['Round', 'Final'], ['Competition', 'Summer Shield'], ['Venue', 'Curzon Ashton FC'], ['Attendance', '248']],
-      key: [['12′', 'Ollie save from close range', 'star'], ['34′', 'Curzon Ashton goal', 'ball'], ['56′', 'Hyde United goal', 'ball'], ['78′', 'Curzon Ashton goal', 'ball'], ['90′', 'Full time', 'shield']],
+      careerOrdinal: 2, season: '2024/25',
     },
   },
   e4: {
-    id: 'e4', year: '2026', title: 'Player of the Match', date: '18 June 2026', ic: 'star',
+    id: 'e4', year: '2025/26', ageGroup: 'U9', title: 'Player of the Match', date: '19 October 2025', occurredOn: '2025-10-19', ic: 'star',
     thumb: `${assetPath}/jn-potm.png`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'Awarded for a commanding performance in goal.', media: false,
+    note: 'Ran the midfield — won the ball back and kept the team moving all game.', media: false,
+    match: { competition: 'U9 League', opponent: 'Hyde United', score: '2 – 2', venue: 'Away' },
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
       rank: 'milestone', sub: 'Player of the Match',
@@ -305,28 +295,28 @@ export const MOMENTS: Record<string, Moment> = {
         { ic: 'star', label: 'Award Cabinet', sub: '+1 award', lit: true },
         { ic: 'trophy', label: 'First Award', sub: 'Unlocked', lit: true },
       ],
-      careerOrdinal: 4, season: '2026',
+      careerOrdinal: 3, season: '2025/26',
     },
   },
   e7: {
-    id: 'e7', year: '2027', title: 'Team Photo', date: '10 April 2027', ic: 'camera',
-    thumb: `${assetPath}/jn-teamphoto.png`,
+    id: 'e7', year: '2025/26', ageGroup: 'U9', title: 'Team Photo', date: '18 April 2026', occurredOn: '2026-04-18', ic: 'camera',
+    thumb: `${assetPath}/jn-team-photo.jpg`,
     trust: 'parent', source: 'Rebecca Penny', uploadedBy: 'Rebecca Penny', verifiedBy: 'Rebecca Penny',
-    note: 'Pre-season squad photo — his second year with the team.', media: true,
+    note: 'End-of-season squad photo — his second year with the team.', media: true,
     rarity: { label: 'STANDARD', color: '#8A8378', tier: 'standard' },
     reward: {
       rank: 'standard', sub: 'Team Memory',
       rewards: [
         { ic: 'camera', label: 'Team Memory', sub: 'Photo added', lit: true },
       ],
-      careerOrdinal: 5, season: '2027',
+      careerOrdinal: 4, season: '2025/26',
     },
   },
   e5: {
-    id: 'e5', year: '2027', title: 'Captain', date: '15 September 2027', ic: 'captain',
-    thumb: `${assetPath}/jn-captain.png`,
+    id: 'e5', year: '2026/27', ageGroup: 'U10', title: 'Captain', date: '6 September 2026', occurredOn: '2026-09-06', ic: 'captain',
+    thumb: `${assetPath}/jn-captain-photo.jpg`,
     trust: 'club', source: 'Curzon Ashton Juniors', uploadedBy: 'Coach Danny', verifiedBy: 'Curzon Ashton Juniors',
-    note: 'Named team captain for the new season.', media: false,
+    note: 'Handed the armband before the first league game of the season.', media: true,
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
       rank: 'milestone', sub: 'Leadership Unlocked',
@@ -334,25 +324,50 @@ export const MOMENTS: Record<string, Moment> = {
         { ic: 'captain', label: 'Captain Badge', sub: 'Unlocked', lit: true },
         { ic: 'star', label: 'Leadership', sub: 'Unlocked', lit: true },
       ],
-      careerOrdinal: 6, season: '2027',
+      careerOrdinal: 5, season: '2026/27',
+    },
+  },
+  e3: {
+    id: 'e3', year: '2026/27', ageGroup: 'U10', title: 'Tournament Winner', date: '4 October 2026', occurredOn: '2026-10-04', ic: 'trophy',
+    thumb: `${assetPath}/jn-tournament-photo.jpg`,
+    trust: 'club', source: 'Curzon Ashton Juniors', uploadedBy: 'Rebecca Penny', verifiedBy: 'Curzon Ashton Juniors',
+    note: 'Lifted the U10 Champions Cup as captain after a 3-1 final.', media: true,
+    match: { competition: 'U10 Champions Cup', opponent: 'Hyde United', score: '3 – 1', venue: 'Curzon Ashton FC' },
+    rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
+    reward: {
+      rank: 'milestone', sub: 'Champions Cup Final',
+      rewards: [
+        { ic: 'trophy', label: 'Trophy', sub: 'Added', lit: true },
+        { ic: 'camera', label: 'Team Photo', sub: 'Added', lit: true },
+        { ic: 'star', label: 'Milestone', sub: 'Unlocked', lit: true },
+        { ic: 'shield', label: 'Official Club', sub: 'Verified', lit: true },
+      ],
+      careerOrdinal: 6, season: '2026/27',
+      story: 'Curzon Ashton lifted the U10 Champions Cup after a 3-1 win in the final. Ollie set up the opener and scored the third, wearing the captain’s armband.',
+      coach: 'Ollie was outstanding all tournament. He ran the midfield, kept the ball moving and led by example.',
+      coachName: 'Coach James Walker',
+      score: '3 – 1', opp: 'Hyde United',
+      facts: [['Goals', '1'], ['Assists', '1'], ['Round', 'Final'], ['Competition', 'U10 Champions Cup'], ['Venue', 'Curzon Ashton FC']],
+      key: [['12′', 'Ollie assist — through ball for the opener', 'star'], ['34′', 'Hyde United goal', 'ball'], ['56′', 'Curzon Ashton goal', 'ball'], ['78′', 'Ollie goal from the edge of the box', 'ball'], ['90′', 'Full time', 'shield']],
     },
   },
   e8: {
-    id: 'e8', year: '2027', title: 'Player of the Match', date: '2 November 2027', ic: 'star',
+    id: 'e8', year: '2026/27', ageGroup: 'U10', title: 'Player of the Match', date: '11 October 2026', occurredOn: '2026-10-11', ic: 'star',
     thumb: `${assetPath}/jn-potm.png`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'A second Player of the Match award, this time in midfield.', media: false,
+    note: 'A second Player of the Match award — two assists from central midfield.', media: false,
+    match: { competition: 'U10 League', opponent: 'Hyde United', score: '4 – 2', venue: 'Home' },
     rarity: { label: 'RECOGNIZED', color: '#E97435', tier: 'metallic' },
     reward: {
       rank: 'recognized', sub: 'Player of the Match',
       rewards: [
         { ic: 'star', label: 'Award Cabinet', sub: '+1 award', lit: true },
       ],
-      careerOrdinal: 7, season: '2027',
+      careerOrdinal: 7, season: '2026/27',
     },
   },
   e6: {
-    id: 'e6', year: '2028', title: 'County Selection', date: '3 May 2028', ic: 'shield',
+    id: 'e6', year: '2026/27', ageGroup: 'U10', title: 'County Selection', date: '17 October 2026', occurredOn: '2026-10-17', ic: 'shield',
     thumb: `${assetPath}/jn-county.png`,
     trust: 'league', source: 'Greater Manchester FA', uploadedBy: 'Rebecca Penny', verifiedBy: 'Greater Manchester FA',
     note: 'Selected for the county development squad.', media: false,
@@ -363,12 +378,12 @@ export const MOMENTS: Record<string, Moment> = {
         { ic: 'shield', label: 'Elite Badge', sub: 'Unlocked', lit: true },
         { ic: 'trophy', label: 'County Collection', sub: 'Unlocked', lit: true },
       ],
-      careerOrdinal: 8, season: '2028',
+      careerOrdinal: 8, season: '2026/27',
     },
   },
 };
 
-export const MOMENT_ORDER: string[] = ['e1', 'e2', 'e3', 'e4', 'e7', 'e5', 'e8', 'e6'];
+export const MOMENT_ORDER: string[] = ['e1', 'e2', 'e4', 'e7', 'e5', 'e3', 'e8', 'e6'];
 
 /** Looks up the rarity treatment for an Add-Moment achievement's linked moment id (e.g. ADD_ACH[n].rank). */
 export function RARITY_BY_ACH(momentId: string): { label: string; color: string; tier: 'foil' | 'metallic' | 'standard' } {

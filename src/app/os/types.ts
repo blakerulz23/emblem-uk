@@ -26,9 +26,16 @@ export type Reward = { ic: string; label: string; sub: string; lit: boolean };
 /** A single normalized "collected moment" — merges the source's EVENTS / RARITY / RW tables (all keyed by the same e1-e6 ids) into one record. */
 export type Moment = {
   id: MomentId;
+  /** The season this moment belongs to, e.g. '2026/27' — Collection's chapter heading. */
   year: string;
+  /** The player's age group in that season, e.g. 'U8' — older chapters aren't the current one. */
+  ageGroup?: string;
   title: string;
   date: string;
+  /** `date` as an ISO day (YYYY-MM-DD), for the public demo's real-shaped moments (osData.ts). */
+  occurredOn?: string;
+  /** Present only for a moment that happened in a match — the viewer shows Match Details only then. */
+  match?: { competition: string; opponent: string; score: string; venue: string };
   ic: string;
   thumb: string;
   video?: string;

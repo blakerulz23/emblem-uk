@@ -321,10 +321,85 @@ body.emblem-os-active {
   transform: scale(.97);
 }
 
+/* Foil tiles: a light travelling around the gold frame, not across the
+   picture (from the Canadian demo). The white bar that used to sweep the
+   full width of the tile passed straight over the photograph and read as
+   glare on glass; with several foil tiles on screen the grid flickered.
+
+   The angle is a registered custom property so the browser can interpolate
+   it. Where @property is unsupported the rule simply sits still, as a soft
+   highlight at the top of the frame. */
+@property --col-foil-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes colFoilOrbit {
+  to { --col-foil-angle: 360deg; }
+}
+
+@keyframes colFoilBreathe {
+  0%, 100% { opacity: .55; }
+  50% { opacity: 1; }
+}
+
+/* The frame light, masked to the 3px gold border and nothing inside it:
+   two mask layers, the inner subtracted from the outer. */
+.emblem-os .col-card-foil::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 3px;
+  background: conic-gradient(
+    from var(--col-foil-angle),
+    #FFF6DA 0deg,
+    rgba(255, 246, 218, .5) 26deg,
+    rgba(255, 246, 218, 0) 70deg,
+    rgba(255, 246, 218, 0) 360deg
+  );
+  mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  mask-clip: content-box, border-box;
+  mask-composite: exclude;
+  -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  -webkit-mask-clip: content-box, border-box;
+  -webkit-mask-composite: xor;
+  filter:
+    drop-shadow(0 0 3px rgba(255, 246, 218, .9))
+    drop-shadow(0 0 9px rgba(233, 177, 76, .55));
+  animation: colFoilOrbit 4.5s linear infinite;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* A dim standing glow on the same band, so a foil tile looks lit even when
+   the head of the light is on the far side. */
+.emblem-os .col-card-foil::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 3px;
+  background: rgba(255, 246, 218, .22);
+  mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  mask-clip: content-box, border-box;
+  mask-composite: exclude;
+  -webkit-mask-image: linear-gradient(#000 0 0), linear-gradient(#000 0 0);
+  -webkit-mask-clip: content-box, border-box;
+  -webkit-mask-composite: xor;
+  filter: drop-shadow(0 0 6px rgba(233, 177, 76, .38));
+  animation: colFoilBreathe 4.5s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 4;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .emblem-os .ember,
   .emblem-os .conf,
   .emblem-os .col-card,
+  .emblem-os .col-card-foil::after,
+  .emblem-os .col-card-foil::before,
   .emblem-os .os-refresh-spin {
     animation: none !important;
   }
@@ -357,4 +432,43 @@ body.emblem-os-active {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+/**
+ * Phones: the app fills the screen (from the Canadian demo). The desk
+ * padding around the centred column is for wider screens, where the column
+ * is narrower than the window; on a phone it only framed the app in a grey
+ * border and pushed the first screen down by 28px. The top keeps the
+ * safe-area inset so the DEMO strip clears a notch in standalone mode.
+ */
+@media (max-width: 519px) {
+  .emblem-os {
+    padding: env(safe-area-inset-top, 0px) 0 0;
+  }
+  .emblem-os-shell {
+    min-height: calc(100vh - env(safe-area-inset-top, 0px));
+    min-height: calc(100dvh - env(safe-area-inset-top, 0px));
+  }
+}
+
+/**
+ * The demo strip's Build my card button (from the Canadian demo). A slow
+ * pulse on the glow only, never on the button's size or position, so it
+ * never moves under a finger mid-tap and nothing around it reflows.
+ */
+.os-demo-cta {
+  box-shadow: 0 0 0 0 rgba(233, 116, 53, 0.55), 0 4px 14px -4px rgba(233, 116, 53, 0.6);
+  animation: osDemoCtaGlow 2.6s ease-out infinite;
+}
+
+@keyframes osDemoCtaGlow {
+  0% { box-shadow: 0 0 0 0 rgba(233, 116, 53, 0.55), 0 4px 14px -4px rgba(233, 116, 53, 0.6); }
+  70% { box-shadow: 0 0 0 9px rgba(233, 116, 53, 0), 0 4px 18px -4px rgba(233, 116, 53, 0.75); }
+  100% { box-shadow: 0 0 0 0 rgba(233, 116, 53, 0), 0 4px 14px -4px rgba(233, 116, 53, 0.6); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .os-demo-cta {
+    animation: none;
+  }
 }

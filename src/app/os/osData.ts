@@ -1,4 +1,4 @@
-import { SQUAD, VERIFY_QUEUE, COACH_ACTIVITY, DEMO_SEASON_FOCUS, DEMO_STRENGTHS, DEMO_ASSESSMENTS } from './data';
+import { SQUAD, VERIFY_QUEUE, COACH_ACTIVITY, DEMO_SEASON_FOCUS, DEMO_STRENGTHS, DEMO_ASSESSMENTS, MOMENTS, MOMENT_ORDER } from './data';
 import { PLAYER_PROFILE, SKILL_CATEGORIES, DEVELOPMENT_SEASONS, COACH_SUMMARY } from './playerProfile';
 import type { PlayerProfile, SkillCategory, DevelopmentSeason, CoachSummary, SeasonTarget } from './playerProfile';
 import type { SquadPlayer, VerifyItem, CoachActivityItem, SeasonFocusEntry, StrengthEntry, AssessmentEntry } from './types';
@@ -210,10 +210,13 @@ export type OsData = {
 };
 
 /** Demo-mode goals, moved here from Profile.tsx so DEMO_OS_DATA is the one source of truth for demo content. */
+// Ollie is a central midfielder, so these are a midfielder's goals (they
+// were a goalkeeper's — clean sheets, distribution). The tournament is the
+// U10 Champions Cup in the demo Collection (data.tsx, e3).
 const DEMO_GOALS: SeasonTarget[] = [
-  { label: 'Keep 8 clean sheets', current: 6, target: 8, unit: 'clean sheets', status: 'in-progress' },
-  { label: 'Play 20 matches', current: 14, target: 20, unit: 'matches', status: 'in-progress' },
-  { label: 'Improve distribution', current: 45, target: 100, status: 'in-progress' },
+  { label: 'Register 8 assists', current: 6, target: 8, unit: 'assists', status: 'in-progress' },
+  { label: 'Play 20 matches', current: 8, target: 20, unit: 'matches', status: 'in-progress' },
+  { label: 'Improve weak-foot passing', current: 45, target: 100, status: 'in-progress' },
   { label: 'Win a tournament', current: 1, target: 1, status: 'completed' },
 ];
 
@@ -250,4 +253,62 @@ export const DEMO_OS_DATA: OsData = {
   cardPhotoUrl: null,
   storyUpdates: [],
   unreadStoryUpdateCount: 0,
+};
+
+/**
+ * The public /os/demo's moments, as real-shaped RealMoment rows (adapted from
+ * the Canadian demo's PUBLIC_DEMO_OS_DATA).
+ *
+ * DEMO_OS_DATA keeps `moments: []` on purpose: it is also the fallback when
+ * no real data came back, and a real account must never be shown made-up
+ * moments. But Home reads real-shaped moments, so the public demo opened on
+ * "No moments yet" while its own Collection showed eight.
+ *
+ * Built from the same fixtures the demo Collection shows (data.tsx MOMENTS),
+ * newest first as real moments arrive, so Home and Collection tell one story:
+ * same titles, dates, seasons, rarity and Career Moment numbers.
+ */
+function publicDemoMoments(): RealMoment[] {
+  const ordered = [...MOMENT_ORDER].reverse().map((id) => MOMENTS[id]).filter(Boolean);
+  const seasonCounts = new Map<string, number>();
+  for (const m of ordered) seasonCounts.set(m.year, (seasonCounts.get(m.year) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  return ordered.map((m) => {
+    const day = m.occurredOn ?? null;
+    const n = (seen.get(m.year) ?? 0) + 1;
+    seen.set(m.year, n);
+    return {
+      id: `demo-${m.id}`,
+      title: m.title,
+      occurredOn: day,
+      createdAt: day ? `${day}T18:00:00.000Z` : new Date(0).toISOString(),
+      trust: m.trust,
+      // Real moments only have these states; a family upload stays a family
+      // memory, anything a coach, club or league confirmed reads as verified.
+      status: m.trust === 'parent' ? ('family_memory' as const) : ('coach_verified' as const),
+      note: m.note,
+      media: m.media
+        ? [{ id: `demo-${m.id}-media`, kind: m.video ? ('video' as const) : ('photo' as const), url: m.video ?? m.thumb }]
+        : [],
+      seasonLabel: m.year,
+      seasonStatus: m.year === PLAYER_PROFILE.season ? ('active' as const) : ('closed' as const),
+      rarity: m.reward.rank,
+      careerOrdinal: m.reward.careerOrdinal,
+      // Newest first, so this season's newest moment has the highest number.
+      seasonOrdinal: (seasonCounts.get(m.year) ?? 0) - n + 1,
+      cardDefinition: null,
+      cardPhotoUrl: null,
+      visibility: 'private' as const,
+    };
+  });
+}
+
+/**
+ * The public /os/demo only (OsApp's `demo` prop). Never a fallback for a real
+ * or signed-in session — those keep DEMO_OS_DATA and its empty moments.
+ */
+export const PUBLIC_DEMO_OS_DATA: OsData = {
+  ...DEMO_OS_DATA,
+  moments: publicDemoMoments(),
+  currentSeasonStatus: 'active',
 };

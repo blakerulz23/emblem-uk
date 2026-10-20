@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useOsData, useRefreshOsData } from '../OsDataContext';
 import { onActivateKey } from '../a11y';
-import { ICN, MOMENT_STATUS_BADGE } from '../data';
+import { DEMO_PLAYER_PHOTO, ICN, MOMENT_STATUS_BADGE } from '../data';
 import { CardFace } from '@/lib/card-definition';
 import { useLiveContent, useJustUpdatedFlag } from '../useLiveContent';
 import { formatRelativeTime } from '../overlays/StoryUpdateCard';
@@ -44,11 +44,14 @@ function formatMomentDate(iso: string): string {
 }
 
 /** Reused from Profile.tsx's identity card — an established decorative brand mark, not a conditional verification state. */
+// A plain disc with a tick (from the Canadian demo): the twelve-lobed
+// scalloped badge's lobes are about a pixel across at 16px, too fine to
+// resolve, so it read as a half-drawn shape rather than a seal.
 function VerifiedBadge() {
   return (
-    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="#E97435">
-      <path d="M12 1l2.5 2.2 3.3-.4 1 3.2 3 1.5-1.2 3.1 1.2 3.1-3 1.5-1 3.2-3.3-.4L12 23l-2.5-2.2-3.3.4-1-3.2-3-1.5 1.2-3.1L2.2 10l3-1.5 1-3.2 3.3.4z" />
-      <path d="M9.5 12.5l1.8 1.8 3.5-3.8" stroke="#fff" strokeWidth={1.6} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11" fill="#E97435" />
+      <path d="M7.6 12.3l3 3 5.8-6.2" stroke="#fff" strokeWidth={2.4} fill="none" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -119,7 +122,10 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
 
   // "Player profile photo first, then card photo, then a plain initial" — deliberately the reverse
   // priority from the Card-tab glance link, per this build's explicit spec.
-  const heroPhotoUrl = playerProfile.photoUrl ?? cardPhotoUrl ?? null;
+  // The demo has neither of the first two (its profile carries photoUrl: null,
+  // since only real mode reads that field), so it fell through to a letter
+  // where a visitor is being shown what their player's app looks like.
+  const heroPhotoUrl = playerProfile.photoUrl ?? cardPhotoUrl ?? (isReal ? null : DEMO_PLAYER_PHOTO);
 
   // View-only media viewer for the Latest Moment card's photo/video — kept
   // entirely local to this screen (own state, own render at the bottom),

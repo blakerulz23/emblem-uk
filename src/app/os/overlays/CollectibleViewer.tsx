@@ -12,13 +12,18 @@ export default function CollectibleViewer({ state, actions }: { state: OsState; 
   const ordinalNo = String(cv.reward.careerOrdinal).padStart(3, '0');
   const rc = cv.reward;
 
-  const matchDetails: [string, string][] = [
-    ['Competition', 'EMJFL U10 Division One'],
-    ['Opponent', rc.opp || 'Hyde United'],
-    ['Score', rc.score || '3 – 1'],
-    ['Date', cv.date],
-    ['Venue', 'Curzon Ashton'],
-  ];
+  // Only a moment that happened in a match gets match details. Every
+  // moment used to show the same league fixture, so a team photo or a
+  // captaincy came with a scoreline it never had.
+  const matchDetails: [string, string][] = cv.match
+    ? [
+        ['Competition', cv.match.competition],
+        ['Opponent', rc.opp || cv.match.opponent],
+        ['Score', rc.score || cv.match.score],
+        ['Date', cv.date],
+        ['Venue', cv.match.venue],
+      ]
+    : [];
   const collector: [string, string][] = [
     ['Season', `${cv.year}`],
     ['Career Moment', `#${ordinalNo}`],
@@ -54,15 +59,19 @@ export default function CollectibleViewer({ state, actions }: { state: OsState; 
       </div>
 
       <div style={{ padding: '24px 24px 40px' }}>
-        <div style={{ letterSpacing: '.18em', fontSize: 11.5, fontWeight: 800, color: '#E97435', margin: '2px 0 10px' }}>MATCH SUMMARY</div>
+        <div style={{ letterSpacing: '.18em', fontSize: 11.5, fontWeight: 800, color: '#E97435', margin: '2px 0 10px' }}>{cv.match ? 'MATCH SUMMARY' : 'THE MOMENT'}</div>
         <p style={{ fontSize: 15, lineHeight: 1.62, color: '#CFC7B8', margin: '0 0 28px' }}>{cv.note}</p>
 
-        <div style={{ letterSpacing: '.18em', fontSize: 11.5, fontWeight: 800, color: '#E97435', margin: '0 0 12px' }}>MATCH DETAILS</div>
-        <div style={{ background: '#141210', border: '1px solid rgba(255,255,255,.06)', borderRadius: 16, padding: '4px 16px', marginBottom: 28 }}>
-          {matchDetails.map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}><span style={{ fontSize: 12.5, letterSpacing: '.05em', color: '#9C948A', textTransform: 'uppercase' }}>{k}</span><span style={{ fontWeight: 700, fontSize: 13.5, color: '#F4F1EC', textAlign: 'right' }}>{v}</span></div>
-          ))}
-        </div>
+        {matchDetails.length > 0 && (
+          <>
+            <div style={{ letterSpacing: '.18em', fontSize: 11.5, fontWeight: 800, color: '#E97435', margin: '0 0 12px' }}>MATCH DETAILS</div>
+            <div style={{ background: '#141210', border: '1px solid rgba(255,255,255,.06)', borderRadius: 16, padding: '4px 16px', marginBottom: 28 }}>
+              {matchDetails.map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(255,255,255,.06)' }}><span style={{ fontSize: 12.5, letterSpacing: '.05em', color: '#9C948A', textTransform: 'uppercase' }}>{k}</span><span style={{ fontWeight: 700, fontSize: 13.5, color: '#F4F1EC', textAlign: 'right' }}>{v}</span></div>
+              ))}
+            </div>
+          </>
+        )}
 
         <div style={{ letterSpacing: '.18em', fontSize: 11.5, fontWeight: 800, color: '#E97435', margin: '0 0 12px' }}>VERIFICATION</div>
         <div style={{ background: '#141210', border: '1px solid rgba(46,158,91,.28)', borderRadius: 16, padding: 16, marginBottom: 28, display: 'flex', alignItems: 'center', gap: 14 }}>

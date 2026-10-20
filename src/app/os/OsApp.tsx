@@ -8,6 +8,8 @@ import { onActivateKey } from './a11y';
 import { initialOsState } from './types';
 import type { OsState, Tab } from './types';
 import { OsDataProvider, DEMO_OS_DATA } from './OsDataContext';
+import { PUBLIC_DEMO_OS_DATA } from './osData';
+import { useOverlayHistory } from './useOverlayHistory';
 import type { OsData } from './OsDataContext';
 import type { StoryUpdate } from './osData';
 import { useStoryUpdates } from './useStoryUpdates';
@@ -137,6 +139,10 @@ export default function OsApp({
 }: OsAppProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // No real data: the public demo gets its sample moments too; every other
+  // case (no Supabase, no linked player) keeps the moment-free DEMO_OS_DATA,
+  // so a real account is never shown made-up moments.
+  const fallbackData = demo ? PUBLIC_DEMO_OS_DATA : DEMO_OS_DATA;
   // A coach landing here right after redeeming a direct-connection invite
   // (ActivationGate's AuthenticatedCoachInviteResolve / post-auth resolve
   // effect) arrives as /os?openPlayer=<id> — jump straight to that
@@ -246,7 +252,7 @@ export default function OsApp({
     // Instant local preview above is the UX; this upload happens in the
     // background so submitMoment() has real S3 keys ready by the time the
     // user actually hits submit.
-    const osData = initialData ?? DEMO_OS_DATA;
+    const osData = initialData ?? fallbackData;
     const uploadPlayerId = osData.mode === 'demo' ? state.aPlayer : osData.playerId;
     arr.forEach((entry, i) => {
       const form = new FormData();
@@ -265,7 +271,7 @@ export default function OsApp({
           }));
         });
     });
-  }, [patch, state.aPlayer, initialData]);
+  }, [patch, state.aPlayer, initialData, fallbackData]);
 
   const closeFlow = useCallback(() => {
     state.files.forEach((f) => { URL.revokeObjectURL(f.url); objectUrlsRef.current.delete(f.url); });
@@ -277,7 +283,7 @@ export default function OsApp({
   // their own dedicated subscription (filtered to this viewer), entirely
   // separate from OsDataContext's refreshOsData() — an update landing here
   // never needs the rest of OsData to also refresh.
-  const osData = initialData ?? DEMO_OS_DATA;
+  const osData = initialData ?? fallbackData;
   // Seeded from osData (the initialData prop) like before, but kept live
   // afterwards by OsRefreshBridge's onStoryUpdatesChange — osData itself
   // never changes except on a genuine new navigation (it's a plain prop),
@@ -377,7 +383,7 @@ export default function OsApp({
       const media = state.files
         .filter((f) => f.uploadStatus === 'done' && f.s3Key)
         .map((f) => ({ key: f.s3Key as string, kind: (f.isVideo ? 'video' : 'photo') as 'video' | 'photo' }));
-      const osData = initialData ?? DEMO_OS_DATA;
+      const osData = initialData ?? fallbackData;
       const isRealSession = osData.mode !== 'demo';
       const playerIdToSubmit = isRealSession ? osData.playerId : state.aPlayer;
 
@@ -510,7 +516,17 @@ export default function OsApp({
     // Home's Latest Moment card deep-links straight into Collection with
     // the same scroll+highlight mechanism as a Story Update's
     // recognition/moment_verified branch above — reused, not reinvented.
-    openLatestMoment: (momentId) => patch({ tab: 'journey', moment: null, coachPlayerId: null, highlightMomentId: momentId, storyUpdatesOpen: false }),
+    // The public demo's moments are fixtures (osData.ts PUBLIC_DEMO_OS_DATA),
+    // which the demo Collection doesn't highlight, so the card opens that
+    // same moment's collectible view instead of landing on the grid.
+    openLatestMoment: (momentId) => {
+      const fixtureId = demo && momentId.startsWith('demo-') ? momentId.slice('demo-'.length) : null;
+      if (fixtureId && MOMENT_ORDER.includes(fixtureId)) {
+        patch({ collectible: fixtureId as OsState['collectible'], storyUpdatesOpen: false });
+        return;
+      }
+      patch({ tab: 'journey', moment: null, coachPlayerId: null, highlightMomentId: momentId, storyUpdatesOpen: false });
+    },
   };
 
   const isCoach = state.role === 'coach';
@@ -566,6 +582,27 @@ export default function OsApp({
    * tap across the whole app (a transparent box still hit-tests), so it
    * must not exist in the DOM at all when nothing inside it is showing. */
   const anyContentOverlayOpen = anyOverlayOpen && state.activated;
+
+  /**
+   * The overlays currently stacked, outermost first, so the browser's Back
+   * (a phone's back-swipe) closes them one at a time instead of leaving the
+   * page underneath an open moment — adapted from the Canadian demo.
+   * Public demo only for now; a real session keeps today's behaviour until
+   * it's been reviewed there too. ActivationGate is left out on purpose: it
+   * is the gate, not an overlay over a screen.
+   */
+  const overlayStack: { key: string; close: () => void }[] = [
+    state.storyUpdatesOpen ? { key: 'story', close: actions.closeStoryUpdates } : null,
+    state.celeb ? { key: 'celeb', close: actions.closeCeleb } : null,
+    state.addOpen || state.addStep > 0 || state.addUnlock ? { key: 'add', close: actions.closeAdd } : null,
+    state.moment ? { key: 'moment', close: actions.closeMoment } : null,
+    state.collectible ? { key: 'collectible', close: actions.closeCollectible } : null,
+  ].filter((entry): entry is { key: string; close: () => void } => entry !== null);
+
+  useOverlayHistory(
+    demo && state.activated ? overlayStack.length : 0,
+    () => overlayStack[overlayStack.length - 1]?.close(),
+  );
 
   // Pull-to-refresh is disabled whenever anyOverlayOpen is true (covers
   // AddMomentFlow/MomentStage/CollectibleViewer/CelebrateSheet/
@@ -648,7 +685,7 @@ export default function OsApp({
   }, []);
 
   return (
-    <OsDataProvider value={initialData ?? DEMO_OS_DATA}>
+    <OsDataProvider value={initialData ?? fallbackData}>
     <OsRefreshBridge scrollRef={scrollRef} disabled={osRefreshDisabled} onChange={setOsRefresh} onStoryUpdatesChange={handleStoryUpdatesChange} />
     <div className={`emblem-os${state.dark ? ' os-dark' : ''}`}>
       <div className="emblem-os-shell">
@@ -677,24 +714,38 @@ export default function OsApp({
           {/* Public /os/demo only: Exit back to the site, DEMO label, parent/coach switch and Build my card. */}
           {demo && <DemoBanner isCoach={isCoach} onToggleRole={actions.toggleRole} />}
 
-          {/* top bar */}
-          <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px 12px' }}>
+          {/* top bar — a three-column grid (from the Canadian demo), not
+              space-between: the right-hand cluster is wider than the back
+              button on the left, so with space-between the logo and every
+              screen title sat left of centre. Equal 1fr side columns centre
+              the middle element whatever the sides contain. */}
+          <div style={{ flex: '0 0 auto', display: 'grid', gridTemplateColumns: 'minmax(34px, 1fr) minmax(0, auto) minmax(34px, 1fr)', alignItems: 'center', gap: 10, padding: '18px 20px 12px' }}>
             {showBack ? (
-              <div onClick={showCoachPlayerDetail ? actions.closeCoachPlayer : actions.flipCard} style={{ width: 34, height: 34, borderRadius: '50%', border: '1px solid var(--os-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              // Filled, not a hairline outline, which nearly disappeared on
+              // the dark theme; and a real button for keyboards and screen
+              // readers.
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label={showCoachPlayerDetail ? 'Back to the team' : 'Back to the card'}
+                onKeyDown={onActivateKey(showCoachPlayerDetail ? actions.closeCoachPlayer : actions.flipCard)}
+                onClick={showCoachPlayerDetail ? actions.closeCoachPlayer : actions.flipCard}
+                style={{ width: 34, height: 34, borderRadius: '50%', background: 'var(--os-card)', border: '1px solid var(--os-border)', boxShadow: '0 2px 8px -4px rgba(0,0,0,.35)', color: 'var(--os-ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+              >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M15 5l-7 7 7 7" /></svg>
               </div>
-            ) : <div style={{ width: 34 }} />}
+            ) : <div style={{ width: 34, height: 34 }} aria-hidden="true" />}
             {showLogo ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, minWidth: 0 }}>
                 {!state.dark
                   ? <img src={`${osAssetPath}/emblem-wordmark.png`} alt="Emblem" style={{ height: 33, width: 'auto', objectFit: 'contain' }} />
                   : <img src={`${osAssetPath}/emblem-logo-light.png`} alt="Emblem" style={{ height: 40, width: 'auto', objectFit: 'contain' }} />}
               </div>
             ) : (
-              <span style={{ fontFamily: 'Roboto', fontWeight: 800, letterSpacing: '.14em', fontSize: 15, color: 'var(--os-ink)' }}>{currentTitle}</span>
+              <span style={{ fontFamily: 'Roboto', fontWeight: 800, letterSpacing: '.14em', fontSize: 15, color: 'var(--os-ink)', whiteSpace: 'nowrap' }}>{currentTitle}</span>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, color: 'var(--os-ink)' }}>
-              <div onClick={actions.toggleDark} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 21, height: 21 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14, color: 'var(--os-ink)', minWidth: 0 }}>
+              <div onClick={actions.toggleDark} role="button" tabIndex={0} aria-label={state.dark ? 'Switch to light mode' : 'Switch to dark mode'} onKeyDown={onActivateKey(actions.toggleDark)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 21, height: 21 }}>
                 {state.dark
                   ? <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="4.2" /><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8" /></svg>
                   : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>}
@@ -862,7 +913,14 @@ export default function OsApp({
               an empty fixed box never sits over the page intercepting taps
               when none of the five are actually open. */}
           {anyContentOverlayOpen && (
-            <div style={{ position: 'fixed', inset: 0, zIndex: 40 }}>
+            // Held to the app column, not the window (from the Canadian
+            // demo): these overlays are screens of the app, and stretching a
+            // moment across a 1440px desktop broke the phone frame the rest
+            // of the app sits in. Full width below the column's max, so
+            // phones are unchanged. Centred with auto margins, not a
+            // transform: a transform would become the containing block for
+            // the full-screen media lightbox opened inside it.
+            <div style={{ position: 'fixed', inset: 0, width: '100%', maxWidth: 'var(--os-app-max-width)', margin: '0 auto', zIndex: 40 }}>
               {state.moment && <MomentStage state={state} actions={actions} />}
               {state.collectible && <CollectibleViewer state={state} actions={actions} />}
 
