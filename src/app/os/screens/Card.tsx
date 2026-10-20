@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { osAssetPath } from '../data';
+import { DEMO_PLAYER_PHOTO, osAssetPath } from '../data';
 import { useOsData, useRefreshOsData } from '../OsDataContext';
 import { CardFace } from '@/lib/card-definition';
 import { onActivateKey } from '../a11y';
@@ -46,6 +46,8 @@ function TargetIcon(c: string) {
 export default function CardScreen({ state, actions }: { state: OsState; actions: OsActions }) {
   const { mode, playerId, playerProfile: PLAYER_PROFILE, cardDefinition, cardPhotoUrl, seasonFocus, strengths, assessments } = useOsData();
   const isReal = mode !== 'demo';
+  /** The demo profile has no photoUrl of its own, so fall back to its sample player photo rather than to a pair of initials. */
+  const aboutPhotoUrl = PLAYER_PROFILE.photoUrl ?? (isReal ? null : DEMO_PLAYER_PHOTO);
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { status: photoStatus, error: photoError, uploadPhoto } = useOsPhotoUpload(playerId);
@@ -151,9 +153,18 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
             />
           </div>
         )}
-        <div onClick={actions.flipCard} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 6, padding: 12, borderRadius: 12, background: '#15130F', color: '#F4F1EC', fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.09em', fontSize: 11, textTransform: 'uppercase', cursor: 'pointer' }}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F4F1EC" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /><path d="M3 21v-5h5" /></svg>
-          Tap to flip the card
+        {/* Labelled for what it does (from the Canadian demo): it said "Tap
+            to flip the card" with a rotate icon, but it opens the player
+            details panel, not the card's reverse. */}
+        <div
+          onClick={actions.flipCard}
+          role="button"
+          tabIndex={0}
+          onKeyDown={onActivateKey(actions.flipCard)}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 6, padding: 12, borderRadius: 12, background: '#15130F', color: '#F4F1EC', fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.09em', fontSize: 11, textTransform: 'uppercase', cursor: 'pointer' }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#F4F1EC" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v5" /><path d="M12 8h.01" /></svg>
+          Tap for player details
         </div>
       </div>
     );
@@ -172,9 +183,9 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
           second, independent image. */}
       <div style={{ background: 'var(--os-card)', borderRadius: 22, padding: 20, boxShadow: '0 12px 30px -14px rgba(0,0,0,.2)', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
-          <div style={{ width: 66, height: 84, borderRadius: 16, flex: '0 0 auto', position: 'relative', overflow: 'hidden', background: PLAYER_PROFILE.photoUrl ? '#00000010' : 'linear-gradient(150deg,#E9C46A,#C98B3A)' }}>
-            {PLAYER_PROFILE.photoUrl ? (
-              <img src={PLAYER_PROFILE.photoUrl} alt={PLAYER_PROFILE.name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
+          <div style={{ width: 66, height: 84, borderRadius: 16, flex: '0 0 auto', position: 'relative', overflow: 'hidden', background: aboutPhotoUrl ? '#00000010' : 'linear-gradient(150deg,#E9C46A,#C98B3A)' }}>
+            {aboutPhotoUrl ? (
+              <img src={aboutPhotoUrl} alt={PLAYER_PROFILE.name} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
             ) : (
               <span aria-hidden="true" style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Roboto', fontWeight: 900, fontSize: 20, color: '#fff' }}>
                 {firstName[0]}{lastName[0] ?? ''}

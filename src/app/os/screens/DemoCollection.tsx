@@ -60,13 +60,20 @@ export default function DemoCollection({ actions }: { actions: OsActions }) {
                 const num = `#${String(MOMENT_ORDER.indexOf(m.id) + 1).padStart(3, '0')}`;
                 const isLatest = m.id === latestId;
                 const openThis = () => (isLatest ? actions.openLatest() : actions.openCollectible(m.id));
+                // foil adds .col-card-foil, whose frame light (os.css, from the
+                // Canadian demo) replaced the white bar that used to sweep
+                // across the photograph itself.
                 return (
-                  <div key={m.id} className="col-card" onClick={openThis} role="button" tabIndex={0} aria-label={m.title} onKeyDown={onActivateKey(openThis)} style={{ position: 'relative', borderRadius: 15, cursor: 'pointer', background: fr.bg.replace('__C__', m.rarity.color), padding: fr.pad, boxShadow: fr.shadow }}>
-                    {foil && <div style={{ position: 'absolute', top: '-20%', bottom: '-20%', width: '38%', left: 0, background: 'linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)', animation: 'foilSweep 3.6s ease-in-out infinite', pointerEvents: 'none', mixBlendMode: 'overlay', zIndex: 5 }} />}
+                  <div key={m.id} className={`col-card${foil ? ' col-card-foil' : ''}`} onClick={openThis} role="button" tabIndex={0} aria-label={m.title} onKeyDown={onActivateKey(openThis)} style={{ position: 'relative', borderRadius: 15, cursor: 'pointer', background: fr.bg.replace('__C__', m.rarity.color), padding: fr.pad, boxShadow: fr.shadow }}>
                     <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#100E0C' }}>
                       <div style={{ position: 'relative', height: 122 }}>
                         <img src={m.thumb} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
                         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg,rgba(0,0,0,.04) 28%,rgba(0,0,0,.68))' }} />
+                        {m.video && (
+                          <span aria-hidden="true" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 34, height: 34, borderRadius: '50%', background: 'rgba(0,0,0,.5)', backdropFilter: 'blur(3px)', border: '1px solid rgba(255,255,255,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4 }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M8 5.5v13l11-6.5z" /></svg>
+                          </span>
+                        )}
                         {isLatest && (
                           <span style={{ position: 'absolute', top: 9, left: '50%', transform: 'translateX(-50%)', padding: '2px 9px', borderRadius: 999, background: '#E97435', fontFamily: 'Barlow Condensed', fontWeight: 800, fontSize: 9, letterSpacing: '.12em', color: '#fff', zIndex: 4 }}>NEW</span>
                         )}
@@ -85,7 +92,7 @@ export default function DemoCollection({ actions }: { actions: OsActions }) {
                         {/* Career Moment — supporting metadata, a real ever-counting position, never a fraction of a fixed total. */}
                         <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10.5, color: 'rgba(255,255,255,.65)', marginTop: 3 }}>Career Moment {num}</div>
                         {/* Season context — tertiary. */}
-                        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 500, fontSize: 9.5, color: 'rgba(255,255,255,.4)', marginTop: 2 }}>{PLAYER_PROFILE.footballAgeGroup} • {m.date}</div>
+                        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 500, fontSize: 9.5, color: 'rgba(255,255,255,.4)', marginTop: 2 }}>{m.ageGroup ?? PLAYER_PROFILE.footballAgeGroup} • {m.date}</div>
                       </div>
                     </div>
                   </div>

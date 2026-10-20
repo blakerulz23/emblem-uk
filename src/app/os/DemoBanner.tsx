@@ -115,6 +115,7 @@ export default function DemoBanner({ isCoach, onToggleRole }: { isCoach: boolean
         <Link
           href="/builder?mode=single"
           data-track="demo_build"
+          className="os-demo-cta"
           style={{
             flex: '0 0 auto',
             display: 'flex',
