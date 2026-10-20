@@ -29,4 +29,17 @@ describe('customer-facing pages describe Squad Invite as it actually works', () 
   it('the club page makes no card-weight claim until the stock is confirmed', () => {
     expect(read('src/app/football-cards-for-clubs/page.tsx')).not.toMatch(/\d{3}\s?gsm/i);
   });
+
+  it('no other marketing surface claims a card weight (homepage, gallery, structured data, Merchant feed, about)', () => {
+    for (const file of [
+      'src/app/page.tsx',
+      'src/components/marketing/CardGallery.tsx',
+      'src/lib/marketing/structured-data.ts',
+      'src/lib/marketing/merchant-feed.ts',
+      'src/app/about/page.tsx',
+    ]) {
+      expect(read(file), file).not.toMatch(/\d{3}\s?gsm/i);
+    }
+    expect(read('src/app/about/page.tsx')).not.toContain('shipped from the US');
+  });
 });
