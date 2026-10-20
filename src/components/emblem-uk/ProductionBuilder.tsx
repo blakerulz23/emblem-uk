@@ -55,6 +55,7 @@ import {
   type CoachCardDraft,
 } from '@/lib/coach-card-draft';
 import { referrerSource, track } from '@/lib/analytics';
+import { PLAYER_NAME_MAX_CHARS, PLAYER_NAME_TOO_LONG_MESSAGE, playerNameLength, playerNameTooLong } from '@/lib/player-name';
 import { warmOnDeviceBackgroundRemoval } from '@/components/builder/emblem/bgRemovalOnDevice';
 import { clearAllBuilderDrafts, clearBuilderDraft, draftScopeFor, isBuilderDeviceSaveOff, loadBuilderDraft, purgeExpiredBuilderDrafts, saveBuilderDraft, setBuilderDeviceSaveOff } from '@/lib/builder-draft-persistence';
 
@@ -3198,7 +3199,7 @@ function SquadUploadQueue({
               <div className="uk-squad-roster-fields">
                 <label>
                   Name
-                  <input value={player.name} placeholder={`Player ${index + 1}`} onChange={(event) => onPatch(player.id, { name: event.target.value })} />
+                  <input value={player.name} placeholder={`Player ${index + 1}`} maxLength={PLAYER_NAME_MAX_CHARS} onChange={(event) => onPatch(player.id, { name: event.target.value })} />
                 </label>
                 <label>
                   Position
@@ -3353,7 +3354,12 @@ function PlayerEditor({
       <div className="uk-field-stack">
         <label>
           Name
-          <input value={player.name} onChange={(event) => onPatch(player.id, { name: event.target.value })} />
+          <input value={player.name} maxLength={PLAYER_NAME_MAX_CHARS} aria-describedby={`uk-name-hint-${player.id}`} onChange={(event) => onPatch(player.id, { name: event.target.value })} />
+          <small id={`uk-name-hint-${player.id}`} className={`uk-field-hint${playerNameTooLong(player.name) ? ' uk-field-hint-error' : ''}`} role={playerNameTooLong(player.name) ? 'alert' : undefined}>
+            {playerNameTooLong(player.name)
+              ? `${PLAYER_NAME_TOO_LONG_MESSAGE} Please shorten it (${playerNameLength(player.name)}/${PLAYER_NAME_MAX_CHARS}).`
+              : `As it appears on the card, up to ${PLAYER_NAME_MAX_CHARS} characters (${playerNameLength(player.name)}/${PLAYER_NAME_MAX_CHARS}).`}
+          </small>
         </label>
         <label>
           Position

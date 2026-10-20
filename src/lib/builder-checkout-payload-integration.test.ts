@@ -82,3 +82,36 @@ describe('builder payload → server validation (direct checkout)', () => {
     expect(bad.ok).toBe(false);
   });
 });
+
+describe('24-character card name limit (server validation)', () => {
+  // The name is set on the payload itself: the builder already refuses to
+  // approve an over-long card, so this proves the server check on its own.
+  const withName = (name: string) => {
+    const p = productionPayload(approvedOrder(), null);
+    p.players[0] = { ...p.players[0], name };
+    return validateOrderEnquiry({
+      contact: { name: 'Jamie Parent', email: 'jamie@example.test' },
+      submissionKey: SUBMISSION_KEY,
+      orderRef: 'emblem-11111111-test',
+      printFiles: [{ playerId: p.players[0].id, playerName: name, key: PRINT_KEY }],
+      ...p,
+    } as never, { fingerprint: (s: string) => `fp-${s.length}`, now: () => 1_760_000_000_000 });
+  };
+
+  it('accepts names up to 24 characters, including spaces, hyphens, apostrophes and accents', () => {
+    for (const name of ['Alexander-Christopherson', 'Mary Jane Montgomery-Wai', "Siobhán O'Donoghue-Kerr", 'José María', 'Zoë']) {
+      expect(withName(name).ok, name).toBe(true);
+    }
+  });
+
+  it('counts an accent as one character whether typed precomposed or combined', () => {
+    const combined = 'Zoe\u0308 Montgomery-Willia'; // 'Zoë' with a combining diaeresis: 24 characters
+    expect(withName(combined).ok).toBe(true);
+  });
+
+  it('rejects a 25-character name with a clear message', () => {
+    const res = withName('Alexander-Christophersons');
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(JSON.stringify(res)).toMatch(/up to 24 characters/);
+  });
+});

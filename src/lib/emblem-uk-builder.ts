@@ -1,3 +1,4 @@
+import { playerNameTooLong } from './player-name';
 import { clubBadgePath } from '@/lib/emjfl-clubs';
 import { CUSTOM_COLLECTION_VARIANTS, type CustomCollectionTemplateId } from '@/lib/custom-collection-manifest';
 import { HOLLINWOOD_VARIANTS, type HollinwoodTemplateId } from '@/lib/hollinwood-manifest';
@@ -248,6 +249,9 @@ export function isPlayerDirty(player: PlayerDraft) {
 }
 
 export function derivePlayerStatus(player: PlayerDraft): PlayerStatus {
+  // Checked before 'approved': a card approved in an older draft with a name
+  // over the print limit must be edited before it can be ordered.
+  if (playerNameTooLong(player.name)) return player.photo?.srcUrl ? 'needs-details' : 'needs-photo';
   if (player.approvedAt && !isPlayerDirty(player)) return 'approved';
   if (!player.photo?.srcUrl) return 'needs-photo';
   if (!player.name.trim() || !player.position.trim() || !player.kitNo.trim()) return 'needs-details';

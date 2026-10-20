@@ -213,3 +213,18 @@ describe('POST /api/squad-invite-participations/[id]/commit — early preview em
     expect(source).not.toContain('sendSquadInviteEarlyPreviewEmail');
   });
 });
+
+describe('POST /api/squad-invite-participations/[id]/commit — 24-character card name limit', () => {
+  it('accepts a first name of exactly 24 characters', async () => {
+    const res = await commit({ ...VALID_BODY, displayFirstName: 'Alexander-Christopherson' });
+    expect(res.status).not.toBe(400);
+  });
+
+  it('rejects a 25-character first name before any upload check or database write', async () => {
+    const res = await commit({ ...VALID_BODY, displayFirstName: 'Alexander-Christophersons' });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/up to 24 characters/);
+    expect(mockRpc).not.toHaveBeenCalledWith('commit_squad_invite_participation', expect.anything());
+    expect(mockHeadObject).not.toHaveBeenCalled();
+  });
+});

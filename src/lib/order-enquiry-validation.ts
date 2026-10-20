@@ -1,3 +1,4 @@
+import { PLAYER_NAME_TOO_LONG_MESSAGE, playerNameTooLong } from './player-name';
 import { priceOrder } from './pricing-engine';
 import { templates } from './emblem-uk-builder';
 import { EMJFL_CLUBS } from './emjfl-clubs';
@@ -283,6 +284,7 @@ export function validateOrderEnquiry(
     seenIds.add(id);
 
     if (!playerName) return fail(400, 'Every player requires a name');
+    if (playerNameTooLong(playerName)) return fail(400, PLAYER_NAME_TOO_LONG_MESSAGE);
     if (!Number.isInteger(prints) || (prints as number) < 1 || (prints as number) > MAX_PRINTS_PER_PLAYER) {
       return fail(400, `Invalid print quantity for player ${id}`);
     }

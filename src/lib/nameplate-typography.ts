@@ -680,3 +680,54 @@ export function nameplateSlotStyle(
     ...extra,
   };
 }
+
+// ── Custom Collection card back: player name ─────────────────────────────
+//
+// The Solar / Galaxy / Comic backs print the player's name once, centred on
+// one line above "SIGNATURE COLLECTION". It used to be set in
+// var(--font-oswald) — a system-font stack ending in sans-serif, so each
+// customer's device (and therefore each print file, which is captured in the
+// customer's own browser) used whatever it had installed — and only shrank
+// past 12 characters by count. Long names ran off the card edge in print.
+//
+// Now: Antonio Bold (NAMEPLATE_FONT_FAMILY, loaded for every visitor and
+// already used on the card fronts), sized from its measured per-letter
+// widths (CHAR_ADVANCE_WIDTH) so the name always fits BACK_NAME_SAFE_WIDTH
+// of the card, and never larger than BACK_NAME_HEIGHT_CAP of the old size so
+// Antonio's taller capitals stay clear of "SIGNATURE COLLECTION".
+// Names are limited to PLAYER_NAME_MAX_CHARS (24) at input and on the server.
+
+/** Share of the card's width the back name may occupy — clear of the frame panels. */
+export const BACK_NAME_SAFE_WIDTH = 0.62;
+/** Cap relative to the previous base size, so the name never reaches the subtitle below it. */
+export const BACK_NAME_HEIGHT_CAP = 0.85;
+
+/**
+ * Width of a name in Antonio Bold, in em, as the back renders it (uppercase).
+ * Accented letters are measured as their base letter (É → E: the accent sits
+ * above, it doesn't widen the glyph); anything unmeasured uses the
+ * conservative fallback. Kept separate from estimateTextWidthCss so the
+ * card fronts' existing measurements are unchanged.
+ */
+export function backNameWidthEm(name: string | undefined): number {
+  const upper = (name || '').trim().toUpperCase();
+  let sum = 0;
+  for (const ch of upper) {
+    const base = ch.normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const key = base.length === 1 ? base : ch;
+    sum += CHAR_ADVANCE_WIDTH[key] ?? CHAR_ADVANCE_WIDTH_FALLBACK;
+  }
+  return sum;
+}
+
+/**
+ * Font size (CSS px) for the Custom Collection back name on a card W px wide:
+ * the previous base size capped at BACK_NAME_HEIGHT_CAP, and small enough that
+ * the measured name width fits BACK_NAME_SAFE_WIDTH of the card.
+ */
+export function customBackNameFontSize(name: string | undefined, W: number, baseFontSizePx: number): number {
+  const cap = baseFontSizePx * BACK_NAME_HEIGHT_CAP;
+  const em = backNameWidthEm(name);
+  if (em <= 0) return cap;
+  return Math.min(cap, (W * BACK_NAME_SAFE_WIDTH) / em);
+}

@@ -1,3 +1,4 @@
+import { PLAYER_NAME_TOO_LONG_MESSAGE, playerNameTooLong } from '@/lib/player-name';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient, createClient } from '@/lib/supabase/server';
 import { hashBuilderToken } from '@/lib/squad-invite';
@@ -58,6 +59,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
   if (!body.templateId || !body.displayFirstName || !body.displaySurnameInitial || !body.printQuantity) {
     return NextResponse.json({ error: 'Missing required card details' }, { status: 400 });
+  }
+  if (playerNameTooLong(body.displayFirstName)) {
+    return NextResponse.json({ error: PLAYER_NAME_TOO_LONG_MESSAGE }, { status: 400 });
   }
   if (!body.photo?.storageKey) {
     return NextResponse.json({ error: 'A photo is required before this can be saved' }, { status: 400 });
