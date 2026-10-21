@@ -32,8 +32,10 @@ export async function GET() {
 }
 
 /**
- * Creates or reuses a season by label — the client-facing entry point
- * for the coach self-onboarding flow (CreateTeamOnboarding.tsx). seasons
+ * Creates or reuses a season by label. Its only client caller was the coach
+ * self-onboarding flow, retired with migration 0088 (coaches now request a
+ * team and staff approve it, resolving the season server-side); no app code
+ * calls this now, and retiring it is a recorded follow-up. seasons
  * has no authenticated insert policy at all (matches cards' "secure by
  * default" convention), so this uses the service-role client, after its
  * own auth check — resolveOrCreateSeason itself does no authentication

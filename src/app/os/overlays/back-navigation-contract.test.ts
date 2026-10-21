@@ -19,7 +19,7 @@ const SCREENS = [
   'RecoverByEmail.tsx',
   'TeamInviteConfirm.tsx',
   'CoachInviteConfirm.tsx',
-  'CreateTeamOnboarding.tsx',
+  'TeamRequestOnboarding.tsx',
   '../screens/RoleSelect.tsx',
 ];
 

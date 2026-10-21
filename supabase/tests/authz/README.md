@@ -170,6 +170,44 @@ and checks:
   (the 0083 list plus one). The rollback restores the 0083 list; delete
   any such rows first.
 
+## Application compatibility (Phase 3)
+
+```powershell
+$env:EMBLEM_AUTHZ_PGLITE_DIR = 'C:\Users\blake\OneDrive\Desktop\vscode-demo\_tooling\emblem-authz-pglite'
+node --no-warnings supabase/tests/authz/app_flows_test.mjs
+```
+
+`app_flows_test.mjs` runs the SQL the app's routes issue twice: once after
+0088, and once after 0088 plus `EXPECTED_0089`. `EXPECTED_0089` is the set of
+grant and policy changes FIX-PLAN §2.1/§2.2 assigns to 0089, written as a
+test-local expectation (it isn't 0089). The flows it covers:
+
+- sign-up and display-name edits;
+- order approval;
+- card claim and guardian invite;
+- team and coach invites;
+- the team-request lifecycle;
+- staff approve and end;
+- the account read behind the Parent/Coach views.
+
+It checks:
+
+- parent only, coach only, neither, and dual role in both orders;
+- that switching view keeps both relationships;
+- that ended and expired coaches lose the Coach view, and that a valid team
+  invite reactivates them;
+- that claims and invites never overwrite an existing role.
+
+View resolution uses the app's own `src/lib/os-view.ts` and
+`src/lib/coach-assignment.ts` (Node strips their types). Phase 4 replaces
+`EXPECTED_0089` with the real migration.
+
+**Deployment order changes to 0088 → app → 0089.** The app now calls
+`ensure_profile_role`, `activate_coach_assignment` and the request functions,
+which exist only from 0088. Deploying this app before 0088 would make every
+claim and invite fail. 0088 is additive, so the current app keeps working on
+it. This differs from FIX-PLAN §6, which put the app first.
+
 ## Duplicate migration numbers
 
 `node scripts/check-migration-numbers.mjs [dir]` exits 1 and names the files

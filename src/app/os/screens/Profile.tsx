@@ -855,6 +855,19 @@ export default function Profile({ actions }: { actions: OsActions }) {
           <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--os-ink)' }}>Account Settings</span>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
         </div>
+        {actions.openTeamRequest && (
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label="Coach a team? Request a team"
+            onClick={actions.openTeamRequest}
+            onKeyDown={onActivateKey(actions.openTeamRequest)}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', cursor: 'pointer', borderTop: '1px solid var(--os-border)' }}
+          >
+            <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--os-ink)' }}>Coach a team? Request a team</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
+          </div>
+        )}
       </div>
 
       {showAccountSettings && isReal && playerId && (

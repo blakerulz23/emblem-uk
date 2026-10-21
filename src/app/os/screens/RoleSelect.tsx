@@ -1,47 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { osAssetPath } from '../data';
-import { createClient } from '@/lib/supabase/client';
 import BackLink from '../overlays/BackLink';
 
 /**
- * Shown once, right after first sign-in, before a profile has a role.
- * Writes profiles.role then refreshes the server-rendered page so
- * src/app/os/page.tsx re-fetches with the role now set.
+ * Shown to a signed-in person with no guardian or coach relationship yet,
+ * who hasn't said which they are. Writes nothing: "Parent" goes on to card
+ * or invite claiming, "Coach" to a team request. The role is set later, by
+ * the server, only when a claim, an invite or an approved request actually
+ * creates the relationship.
  */
-export default function RoleSelect() {
-  const router = useRouter();
-  const [saving, setSaving] = useState<'parent' | 'coach' | null>(null);
-  const [errorMsg, setErrorMsg] = useState('');
-
-  const choose = async (role: 'parent' | 'coach') => {
-    if (saving) return;
-    setSaving(role);
-    setErrorMsg('');
-
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setErrorMsg('Your session expired — refresh and sign in again.');
-      setSaving(null);
-      return;
-    }
-
-    const { error } = await supabase.from('profiles').upsert({ id: user.id, role });
-
-    if (error) {
-      setErrorMsg(error.message);
-      setSaving(null);
-      return;
-    }
-
-    router.refresh();
-  };
+export default function RoleSelect({ onChoose }: { onChoose: (role: 'parent' | 'coach') => void }) {
 
   return (
     <div
@@ -81,8 +50,7 @@ export default function RoleSelect() {
           <button
             key={opt.role}
             type="button"
-            onClick={() => choose(opt.role)}
-            disabled={saving !== null}
+            onClick={() => onChoose(opt.role)}
             style={{
               display: 'flex',
               flexDirection: 'column',
@@ -91,27 +59,19 @@ export default function RoleSelect() {
               width: '100%',
               minHeight: 60,
               textAlign: 'left',
-              background: saving === opt.role ? 'rgba(233,116,53,.22)' : 'rgba(255,255,255,.04)',
+              background: 'rgba(255,255,255,.04)',
               border: '1px solid rgba(233,116,53,.35)',
               borderRadius: 14,
               padding: '12px 18px',
-              cursor: saving ? 'default' : 'pointer',
+              cursor: 'pointer',
               color: '#F4F1EC',
             }}
           >
-            <span style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15 }}>
-              {saving === opt.role ? 'Saving…' : opt.label}
-            </span>
+            <span style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15 }}>{opt.label}</span>
             <span style={{ fontSize: 12, color: '#B8AE9F' }}>{opt.sub}</span>
           </button>
         ))}
       </div>
-
-      {errorMsg && (
-        <p role="alert" style={{ fontSize: 13, color: '#E9745C', marginTop: 16, maxWidth: 280 }}>
-          {errorMsg}
-        </p>
-      )}
     </div>
   );
 }

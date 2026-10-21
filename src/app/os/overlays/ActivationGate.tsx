@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { osAssetPath } from '../data';
-import { createClient } from '@/lib/supabase/client';
 import SignIn from './SignIn';
 import RoleSelect from '../screens/RoleSelect';
 import RoleFork from './RoleFork';
@@ -11,20 +10,24 @@ import ClaimCodeEntry from './ClaimCodeEntry';
 import ClaimConfirm from './ClaimConfirm';
 import VerifyIntendedEmail from './VerifyIntendedEmail';
 import RecoverByEmail from './RecoverByEmail';
-import CreateTeamOnboarding from './CreateTeamOnboarding';
+import TeamRequestOnboarding from './TeamRequestOnboarding';
 import TeamInviteConfirm from './TeamInviteConfirm';
 import CoachInviteConfirm from './CoachInviteConfirm';
 import type { ClaimLookupResult } from './ClaimCodeEntry';
 import type { ClaimConfirmFields } from './ClaimConfirm';
 import type { TeamInviteLookupResult, TeamInviteConfirmFields } from './TeamInviteConfirm';
 import type { CoachInviteLookupResult, CoachInviteConfirmFields } from './CoachInviteConfirm';
+import type { OsView, TeamRequestSummary } from '@/lib/os-view';
 
 export type ActivationGateProps = {
   onActivate: () => void;
   hasSession: boolean;
-  profileRole: 'parent' | 'coach' | null;
-  hasClaimedPlayer: boolean;
-  hasTeam: boolean;
+  /** profiles.role: only an onboarding hint here, never access. */
+  profileRole: OsView | null;
+  /** The server-resolved view. Null: no guardian or coach relationship yet. */
+  view: OsView | null;
+  /** The person's latest team request, if any. */
+  teamRequest: TeamRequestSummary | null;
   /** True only when src/app/os/page.tsx already resolved this exact
    * ?card= claim_token server-side as a match for the current guardian —
    * suppresses the authenticated ?card= re-check below so it doesn't
@@ -40,6 +43,9 @@ const INTENT_KEY = 'emblem_pending_intent';
 type PendingIntent =
   | { kind: 'claim'; source: 'card' | 'invite'; code: string; displayName: string; relationship: string }
   | { kind: 'coach' }
+  // Chosen on RoleSelect by a signed-in person with no relationship yet;
+  // only steers which onboarding screen shows. Nothing is written.
+  | { kind: 'parent' }
   | { kind: 'recover' }
   | { kind: 'teamInvite'; code: string; displayName: string }
   | { kind: 'coachInvite'; code: string; displayName: string };
@@ -71,7 +77,7 @@ function clearIntent() {
  * cross-origin redirect to preserve anything across). Once authenticated,
  * ActivationGate's branching is purely server-known facts, same as before.
  */
-export default function ActivationGate({ onActivate, hasSession, profileRole, hasClaimedPlayer, hasTeam, cardAlreadyResolved = false }: ActivationGateProps) {
+export default function ActivationGate({ onActivate, hasSession, profileRole, view, teamRequest, cardAlreadyResolved = false }: ActivationGateProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // A post-approval or coach-invite email links here as /os?invite=CODE.
@@ -123,6 +129,14 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   const [resolvedCoachInviteCode, setResolvedCoachInviteCode] = useState<string | null>(null);
 
   const intent = readIntent();
+  // Which onboarding a person with no relationship picked on RoleSelect (or
+  // on the request screen's "I'm a parent instead") in this tab.
+  const [chosenPath, setChosenPath] = useState<OsView | null>(null);
+  const choosePath = (path: OsView | null) => {
+    if (path) storeIntent({ kind: path });
+    else clearIntent();
+    setChosenPath(path);
+  };
 
   // Pre-auth team-invite lookup — mirrors ClaimCodeEntry's internal
   // ?invite= auto-lookup effect, kept here instead since team invites
@@ -180,23 +194,12 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
             return;
           }
         }
-      } else if (intent.kind === 'coach') {
-        // Only ever promotes a brand-new profile (no role yet) to coach —
-        // never overwrites an existing role. A 'coach' intent can linger
-        // in sessionStorage from an earlier, abandoned RoleFork pick in
-        // the same tab; without this check, a later, unrelated sign-in in
-        // that same tab (e.g. a parent recovering a different card) would
-        // silently flip an already-set-up parent account to coach.
-        if (!profileRole) {
-          const supabase = createClient();
-          const {
-            data: { user },
-          } = await supabase.auth.getUser();
-          if (user) {
-            await supabase.from('profiles').upsert({ id: user.id, role: 'coach' });
-          }
-        }
-        clearIntent();
+      } else if (intent.kind === 'coach' || intent.kind === 'parent') {
+        // Nothing to finalize and nothing to write: the intent stays in
+        // sessionStorage only to pick the onboarding screen below (team
+        // request, or card claiming) for a person with no relationship yet.
+        // A coach is never made a coach by choosing it; staff approval or a
+        // team invite does that, server-side.
       } else if (intent.kind === 'teamInvite') {
         await fetch('/api/os/team-invites/redeem', {
           method: 'POST',
@@ -394,27 +397,25 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, ha
   }
 
   // Authenticated from here on — branching is purely server-known facts.
-  if (!profileRole) {
+  // Any guardian or coach relationship (a resolved view) opens the app;
+  // only someone with neither sees onboarding, whatever profiles.role says.
+  if (!view) {
     if (intent?.kind === 'recover') {
       return <RecoverByEmail hasSession />;
     }
-    if (intent) {
+    if (intent && intent.kind !== 'coach' && intent.kind !== 'parent') {
       return <ResolvingScreen />;
     }
-    return <RoleSelect />;
-  }
-
-  if (profileRole === 'coach' && !hasTeam) {
-    return <CreateTeamOnboarding />;
-  }
-  if (profileRole === 'parent' && !hasClaimedPlayer) {
-    if (intent?.kind === 'recover') {
-      return <RecoverByEmail hasSession />;
+    const openRequest = teamRequest && (teamRequest.status === 'pending' || teamRequest.status === 'rejected');
+    const path: OsView | null =
+      chosenPath ?? (openRequest ? 'coach' : null) ?? (intent?.kind === 'coach' || intent?.kind === 'parent' ? intent.kind : null) ?? profileRole;
+    if (path === 'coach') {
+      return <TeamRequestOnboarding request={teamRequest} onChooseParent={() => choosePath('parent')} />;
     }
-    if (intent?.kind === 'claim') {
-      return <ResolvingScreen />;
+    if (path === 'parent') {
+      return <ClaimCodeEntryResume onBack={() => choosePath(null)} />;
     }
-    return <ClaimCodeEntryResume />;
+    return <RoleSelect onChoose={choosePath} />;
   }
 
   return (
@@ -458,12 +459,12 @@ function ResolvingScreen() {
  * same code-entry/confirm UI as the pre-auth path, just without the
  * sign-in sub-step since a session already exists.
  */
-function ClaimCodeEntryResume() {
+function ClaimCodeEntryResume({ onBack }: { onBack?: () => void }) {
   const router = useRouter();
   const [result, setResult] = useState<ClaimLookupResult | null>(null);
 
   if (!result) {
-    return <ClaimCodeEntry onFound={setResult} />;
+    return <ClaimCodeEntry onFound={setResult} onBack={onBack} />;
   }
 
   if (result.alreadyClaimed) {

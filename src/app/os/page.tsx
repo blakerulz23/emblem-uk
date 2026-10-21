@@ -89,7 +89,7 @@ export default async function OsPage({
 
   // A guardian who just tapped their own card always lands in the Parent view.
   const requested = cardAlreadyResolved ? 'parent' : requestedOsView(searchParams?.view, cookies().get(OS_VIEW_COOKIE)?.value);
-  const { session, profileRole, hasClaimedPlayer, hasTeam, view, availableViews, teamRequest } = await getOsAccount(requested);
+  const { session, profileRole, view, availableViews, teamRequest } = await getOsAccount(requested);
   const initialData = await getOsData(session?.userId ?? null, view, requestedPlayerId);
 
   return (
@@ -97,8 +97,6 @@ export default async function OsPage({
       initialData={initialData}
       hasSession={!!session}
       profileRole={profileRole}
-      hasClaimedPlayer={hasClaimedPlayer}
-      hasTeam={hasTeam}
       view={view}
       availableViews={availableViews}
       teamRequest={teamRequest}

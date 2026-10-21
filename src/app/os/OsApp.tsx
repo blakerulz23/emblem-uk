@@ -30,6 +30,7 @@ function resolveTabFromSearchParams(searchParams: { get(key: string): string | n
 }
 
 import ActivationGate from './overlays/ActivationGate';
+import TeamRequestOnboarding from './overlays/TeamRequestOnboarding';
 import DemoBanner from './DemoBanner';
 import MomentStage from './overlays/MomentStage';
 import CollectibleViewer from './overlays/CollectibleViewer';
@@ -58,6 +59,8 @@ export type OsActions = {
   goCollection: () => void;
   goCard: () => void;
   toggleRole: () => void;
+  /** Set only for a signed-in parent with no coach access yet: opens the team-request screen. */
+  openTeamRequest?: () => void;
   flipCard: () => void;
   openLatest: (e?: SyntheticEvent) => void;
   openMoment: (id: string) => void;
@@ -112,10 +115,6 @@ export type OsAppProps = {
   hasSession?: boolean;
   /** The signed-in user's profiles.role: a view preference only, never authorization. */
   profileRole?: OsView | null;
-  /** Parent: has at least one guardians row (a real player claimed). */
-  hasClaimedPlayer?: boolean;
-  /** Coach: has an active coach assignment or a direct coach connection. */
-  hasTeam?: boolean;
   /** The view the server rendered data for (src/lib/os-view.ts). Null: no relationship yet. */
   view?: OsView | null;
   /** Views this person has a relationship for. Both: the Parent/Coach switch is shown. */
@@ -140,8 +139,6 @@ export default function OsApp({
   initialData,
   hasSession = false,
   profileRole = null,
-  hasClaimedPlayer = false,
-  hasTeam = false,
   view = null,
   availableViews = [],
   teamRequest = null,
@@ -179,6 +176,7 @@ export default function OsApp({
     role: view === 'coach' ? 'coach' : 'owner',
     tab: resolveTabFromSearchParams(searchParams) ?? initialOsState.tab,
   }));
+  const [showTeamRequest, setShowTeamRequest] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<Set<string>>(new Set());
   const sentTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -325,7 +323,18 @@ export default function OsApp({
     osData.viewerId
   );
 
+  // Parent ↔ Coach for someone with both relationships. The server renders
+  // the chosen view's data (?view=, remembered in a cookie); it's a
+  // preference only, and every read behind either view is still RLS-scoped.
+  const canSwitchView = hasSession && !demo && availableViews.includes('parent') && availableViews.includes('coach');
+  const switchView = (next: OsView) => {
+    if (next === view) return;
+    rememberOsView(next);
+    router.push(`/os?view=${next}`);
+  };
+
   const actions: OsActions = {
+    openTeamRequest: hasSession && !demo && view === 'parent' && !availableViews.includes('coach') ? () => setShowTeamRequest(true) : undefined,
     activate: () => patch({ activated: true }),
     toggleDark: () => patch((s) => ({ dark: !s.dark })),
     setTab: (t) => patch({ tab: t, moment: null, coachPlayerId: null, highlightMomentId: null }),
@@ -716,10 +725,17 @@ export default function OsApp({
                 onActivate={actions.activate}
                 hasSession={hasSession}
                 profileRole={profileRole}
-                hasClaimedPlayer={hasClaimedPlayer}
-                hasTeam={hasTeam}
+                view={view}
+                teamRequest={teamRequest}
                 cardAlreadyResolved={cardAlreadyResolved}
               />
+            </div>
+          )}
+
+          {/* A signed-in parent asking to coach a team too (Profile → Account management). */}
+          {showTeamRequest && (
+            <div style={{ position: 'fixed', inset: 0, zIndex: 90 }}>
+              <TeamRequestOnboarding request={teamRequest} onClose={() => setShowTeamRequest(false)} />
             </div>
           )}
 
@@ -805,7 +821,7 @@ export default function OsApp({
                 )}
               </div>
               {/* Demo-preview only — a real, authenticated session's nav is
-                  determined entirely by the server-known profileRole; this
+                  determined entirely by the server-resolved view; this
                   manual toggle exists so a signed-out visitor can preview
                   both experiences, never for a real account to peek at the
                   other role's (empty) shell. */}
@@ -817,6 +833,31 @@ export default function OsApp({
               )}
             </div>
           </div>
+
+          {/* Parent ↔ Coach, for someone with both relationships. Its own row
+              (like the child switcher) rather than in the top bar, which has
+              no room for it beside the logo on a phone. */}
+          {canSwitchView && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '0 0 10px' }}>
+              <div role="group" aria-label="Switch between your parent and coach views" style={{ display: 'flex', background: 'var(--os-card)', border: '1px solid var(--os-border)', borderRadius: 20, padding: 2 }}>
+                {(['parent', 'coach'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={view === v}
+                    onClick={() => switchView(v)}
+                    style={{
+                      border: 'none', borderRadius: 18, padding: '5px 16px', cursor: view === v ? 'default' : 'pointer',
+                      background: view === v ? '#E97435' : 'transparent', color: view === v ? '#0B0A09' : 'var(--os-ink)',
+                      fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.08em', fontSize: 11.5, textTransform: 'uppercase',
+                    }}
+                  >
+                    {v === 'parent' ? 'Parent view' : 'Coach view'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {showChildSwitcher && (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '0 0 10px' }}>
