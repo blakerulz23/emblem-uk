@@ -15,6 +15,12 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `harness.mjs` | `createDatabase()`: platform stand-ins plus production default privileges. `applyMigrations(db, { through })`: applies `supabase/migrations` in filename order. `readOnly(db, fn)`: runs `fn` in a read-only transaction that is rolled back. |
 | `evidence.mjs` | Reads the saved production catalog exports from `EMBLEM_AUTHZ_EVIDENCE_DIR`. Each file's sha256 is pinned here; the files themselves are private and never committed. |
 | `production_parity_test.mjs` | Gate 0. Applies 0001–0087 and checks the result against the evidence. |
+| `catalog.mjs` | Whole-`public` catalog snapshot (relations and their ACLs, columns and column ACLs, constraints, indexes, policies, functions with ACL and body, triggers, publication membership) and a diff. |
+| `migration_0088_test.mjs` | Migration 0088 and its rollback, on a fresh 0087 database with fictional rows. |
+
+Related: `supabase/rollback/0088_rollback.sql`, `src/lib/migration-0088-contract.test.ts`
+(structural, runs with `npm test`), and `scripts/check-migration-numbers.mjs`
+(duplicate migration numbers).
 
 ## One-time setup (isolated tooling folder)
 
@@ -91,9 +97,75 @@ expressions, and the output says if it was ever needed).
 - The production PostgreSQL minor version. P7's `MAINTAIN` privilege
   implies PostgreSQL 17; PGlite 0.3.16 is 17.5 (32-bit WASM).
 
+## Migration 0088 (additive foundation)
+
+```powershell
+$env:EMBLEM_AUTHZ_PGLITE_DIR = 'C:\Users\blake\OneDrive\Desktop\vscode-demo\_tooling\emblem-authz-pglite'
+node supabase/tests/authz/migration_0088_test.mjs
+node scripts/check-migration-numbers.mjs
+npx vitest run src/lib/migration-0088-contract.test.ts scripts/check-migration-numbers.test.ts
+```
+
+`migration_0088_test.mjs` builds 0001–0087, seeds fictional pre-existing
+coach and guardian rows, applies 0088 alone (`applyMigrations(db, { from: '0088', through: '0088' })`)
+and checks:
+
+- **Additive only.** Every 0087 catalog entry is still present. The only
+  redefined entries are `is_authorized_coach_for_player` and
+  `is_guardian_of_team_player`: search_path `public` → `''`, with the same
+  logic, owner and ACL. Every 0087 policy is unchanged.
+- **New objects** exist with their intended grants and RLS.
+- **History is not invented.** Pre-existing rows are unchanged, every new
+  column on them is NULL, and the legacy coach row is active.
+- **Active rule** `coach_assignment_is_active(ended_at, expires_at)` covers
+  legacy, expiring, expired and ended. No existing policy or helper uses it
+  yet, so access doesn't change until 0089.
+- **Team requests.** Submission defaults, one pending per person, column
+  grants, visibility, cancellation, staff approve (new team, existing team,
+  expiry, reactivation), reject, and that decided requests are final.
+- **Audit attribution.** A named staff operation, a signed-in identity, an
+  account carried on a service-role row, and an unattributed write are each
+  recorded distinctly. The table is append-only, even for the owner.
+- **Rollback** returns the whole catalog to its exact 0087 state, keeps the
+  pre-existing rows, and 0088 re-applies afterwards.
+
+### Design notes for later phases
+
+- **Attribution order** (see the 0088 header): trusted function marker →
+  `auth.uid()` → the row's `created_by`/`ended_by` → `unattributed`. The
+  service-role app paths in Phase 3 should set `created_via` and
+  `created_by` on every `coach_team`/`guardians` write, so their audit rows
+  name the real account.
+- **Until 0089**, `authenticated` keeps its table-level grants on
+  `coach_team` and `guardians`. Those grants cover the new columns too, so
+  any insert the existing policies allow can set `created_via` or
+  `created_by` to any value. Treat those two columns as trustworthy only
+  after 0089. The audit row's `auth_uid` and `db_role` are always recorded
+  independently of the row.
+- **Deferred to 0089 by decision:** revoking `anon` EXECUTE on the two
+  helpers, and adding the active-assignment check to the helpers, the coach
+  policies and `update_player_coach_fields` / `update_secondary_position` /
+  `create_season_focus`. 0089 should use `coach_assignment_is_active` and
+  grant its EXECUTE to `authenticated` when policies start calling it.
+- `approve_coach_team_request` takes an extra trailing `p_season_id` (not in
+  FIX-PLAN's signature). The season rule lives in app code
+  (`currentUkFootballSeason`, `resolveOrCreateSeason`), so the staff route
+  resolves it, as order approval does. Approval sets `role = 'coach'` only
+  when the person has no role yet (HANDOFF: never overwrite a valid role).
+- `created_via = 'legacy'` is allowed by the checks but nothing sets it:
+  legacy rows stay NULL.
+
+## Duplicate migration numbers
+
+`node scripts/check-migration-numbers.mjs [dir]` exits 1 and names the files
+when two migrations share a number, or a file isn't `NNNN_name.sql`.
+`scripts/check-migration-numbers.test.ts` runs it against the real folder
+and against synthetic temporary folders. There is no CI workflow in this
+repository yet. Running it on every push and pull request is a follow-up.
+
 ## Later phases
 
 Gate 0 always rebuilds 0001–0087 and must stay green: it's the proof that
 later tests start from production's state. New migrations are applied on
-top of that baseline (`applyMigrations(db, { through: '0089' })`) by
-separate test files, and each phase adds its own expectations there.
+top of that baseline by separate test files, and each phase adds its own
+expectations there.

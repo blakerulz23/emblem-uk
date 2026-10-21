@@ -86,10 +86,12 @@ export async function createDatabase() {
   return db;
 }
 
-// Applies migrations in filename order, up to and including `through`.
-export async function applyMigrations(db, { through }) {
+// Applies migrations in filename order, from `from` (default: the first)
+// up to and including `through`.
+export async function applyMigrations(db, { from = '0000', through }) {
   const applied = [];
   for (const m of listMigrations()) {
+    if (m.version < from) continue;
     if (m.version > through) break;
     const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, m.file), 'utf8');
     try {
