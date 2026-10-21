@@ -6,6 +6,8 @@ import { claimPlayerForCard } from '@/lib/claim-player';
 import { ensurePublicPlayerId } from '@/lib/public-player-id';
 import { resolveCardCode } from '@/lib/card-lookup';
 import { generateStoryUpdate } from '@/lib/story-updates';
+import { ensureProfileRole } from '@/lib/relationship-writes';
+import { activeCoachAssignments, COACH_ASSIGNMENT_STATE_COLUMNS } from '@/lib/coach-assignment';
 
 export const runtime = 'nodejs';
 
@@ -104,13 +106,13 @@ export async function POST(request: NextRequest) {
   }
 
   // guardians.profile_id is a foreign key into profiles — a brand-new
-  // account has no profiles row yet, so this upsert must happen before
-  // claimPlayerForCard's guardians insert, not after.
-  const profileUpsert: Record<string, unknown> = { id: user.id, role: 'parent' };
-  if (displayName?.trim()) profileUpsert.display_name = displayName.trim();
-  const { error: roleError } = await supabase.from('profiles').upsert(profileUpsert);
-  if (roleError) {
-    return NextResponse.json({ error: roleError.message }, { status: 500 });
+  // account has no profiles row yet, so this must happen before
+  // claimPlayerForCard's guardians insert, not after. Sets 'parent' only
+  // when the profile has no role: a coach claiming their own child keeps
+  // their coach view and gains the parent one.
+  const profile = await ensureProfileRole(serviceRole, user.id, 'parent', displayName);
+  if (!profile.ok) {
+    return NextResponse.json({ error: profile.error }, { status: 500 });
   }
 
   const result = await claimPlayerForCard(serviceRole, card, user.id, relationship?.trim() || null);
@@ -136,12 +138,15 @@ export async function POST(request: NextRequest) {
     serviceRole.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
   ]);
   if (player?.team_id) {
-    const { data: coachRows } = await serviceRole.from('coach_team').select('profile_id').eq('team_id', player.team_id);
+    const { data: coachRows } = await serviceRole
+      .from('coach_team')
+      .select(`profile_id, ${COACH_ASSIGNMENT_STATE_COLUMNS}`)
+      .eq('team_id', player.team_id);
     await generateStoryUpdate({
       eventType: 'guardian_connected',
       playerId: result.playerId,
       actorProfileId: user.id,
-      recipients: (coachRows ?? []).map((c) => ({ profileId: c.profile_id, presenceScope: `coach-player:${result.playerId}` })),
+      recipients: activeCoachAssignments(coachRows).map((c) => ({ profileId: c.profile_id, presenceScope: `coach-player:${result.playerId}` })),
       title: 'Guardian Connected',
       body: `${actor?.display_name ?? 'A guardian'} is now connected to ${player?.name ?? 'your player'}.`,
     });

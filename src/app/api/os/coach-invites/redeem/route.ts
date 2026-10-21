@@ -3,6 +3,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { normalizeClaimCode } from '@/lib/claim-code';
 import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 import { generateStoryUpdate } from '@/lib/story-updates';
+import { ensureProfileRole } from '@/lib/relationship-writes';
 
 export const runtime = 'nodejs';
 
@@ -155,13 +156,11 @@ export async function POST(request: NextRequest) {
   // in this codebase (claim, invites/redeem, team-invites/redeem).
   // displayName is optional and only ever supplied on a brand-new coach's
   // first sign-up through this exact flow (mirrors team-invites/redeem's
-  // identical shape) — never overwrites an existing name on a repeat or
-  // already-authenticated redemption.
-  const profileUpsert: Record<string, unknown> = { id: user.id, role: 'coach' };
-  if (displayName?.trim()) profileUpsert.display_name = displayName.trim();
-  const { error: roleError } = await supabase.from('profiles').upsert(profileUpsert);
-  if (roleError) {
-    return NextResponse.json({ error: roleError.message }, { status: 500 });
+  // identical shape). 'coach' is set only when the profile has no role
+  // yet: a parent who is also this child's coach keeps the parent view.
+  const profile = await ensureProfileRole(serviceRole, user.id, 'coach', displayName);
+  if (!profile.ok) {
+    return NextResponse.json({ error: profile.error }, { status: 500 });
   }
 
   const { error: connectionError } = await serviceRole.from('coach_players').insert({

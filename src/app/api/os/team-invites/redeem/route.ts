@@ -3,6 +3,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { normalizeClaimCode } from '@/lib/claim-code';
 import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 import { generateStoryUpdate } from '@/lib/story-updates';
+import { activateCoachAssignment, ensureProfileRole } from '@/lib/relationship-writes';
 
 export const runtime = 'nodejs';
 
@@ -87,27 +88,28 @@ export async function POST(request: NextRequest) {
   }
 
   // coach_team.profile_id is a foreign key into profiles — must exist
-  // before the coach_team insert below, same reasoning as the guardian
-  // invite/claim routes. Forces role to 'coach' — see the plan's
-  // known-limitation note: a profile that's already a guardian on the
-  // same account will stop seeing its parent view, since profiles has
-  // only one role today. Pre-existing limitation, not introduced here.
-  const profileUpsert: Record<string, unknown> = { id: user.id, role: 'coach' };
-  if (displayName?.trim()) profileUpsert.display_name = displayName.trim();
-  const { error: roleError } = await supabase.from('profiles').upsert(profileUpsert);
-  if (roleError) {
-    return NextResponse.json({ error: roleError.message }, { status: 500 });
+  // before the assignment below, same reasoning as the guardian
+  // invite/claim routes. 'coach' is set only when the profile has no role
+  // yet: a parent accepting a team invite keeps the parent view and gains
+  // the coach one (access comes from the relationships, not the role).
+  const profile = await ensureProfileRole(serviceRole, user.id, 'coach', displayName);
+  if (!profile.ok) {
+    return NextResponse.json({ error: profile.error }, { status: 500 });
   }
 
-  const { error: coachTeamError } = await serviceRole
-    .from('coach_team')
-    .insert({ team_id: invite.team_id, profile_id: user.id });
-
-  if (coachTeamError) {
-    if (coachTeamError.code === '23505') {
-      return NextResponse.json({ error: "You're already managing this team" }, { status: 409 });
-    }
-    return NextResponse.json({ error: coachTeamError.message }, { status: 500 });
+  // Creates the assignment, or reactivates an ended/expired one for the
+  // same team: a valid invite is staff's decision to (re)admit this coach.
+  const assignment = await activateCoachAssignment(serviceRole, {
+    teamId: invite.team_id,
+    profileId: user.id,
+    createdVia: 'team_invite',
+    actorProfileId: user.id,
+  });
+  if (!assignment.ok) {
+    return NextResponse.json({ error: assignment.error }, { status: 500 });
+  }
+  if (!assignment.changed) {
+    return NextResponse.json({ error: "You're already managing this team" }, { status: 409 });
   }
 
   const { error: inviteUpdateError } = await serviceRole

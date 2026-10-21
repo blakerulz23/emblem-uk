@@ -8,6 +8,10 @@ import type { CardDefinitionRow, CardFaceData } from '@/lib/card-definition';
 import { getSignedDownloadUrl, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC } from '@/lib/s3-client';
 import { resolveCardDefinitionLogo } from '@/lib/card-definition-logo';
 import type { SquadPlayer, VerifyItem, GuardianStatus, SeasonFocusEntry, StrengthEntry, AssessmentEntry } from '@/app/os/types';
+import { activeCoachAssignments, COACH_ASSIGNMENT_STATE_COLUMNS } from '@/lib/coach-assignment';
+import type { CoachAssignmentState } from '@/lib/coach-assignment';
+import { parseOsView, resolveOsView } from '@/lib/os-view';
+import type { OsView, TeamRequestSummary } from '@/lib/os-view';
 
 type CardDefinitionDbRow = {
   id: string;
@@ -179,61 +183,91 @@ export type OsSession = {
 
 export type OsAccount = {
   session: OsSession | null;
-  profileRole: 'parent' | 'coach' | null;
-  /** Parent: has at least one guardians row. */
+  /** profiles.role: a view preference and onboarding hint only, never authorization. */
+  profileRole: OsView | null;
+  /** Has at least one guardians row: the Parent view is available. */
   hasClaimedPlayer: boolean;
-  /** Coach: has at least one coach_team row. */
+  /** Has an active coach assignment or a direct coach connection: the Coach view is available. */
   hasTeam: boolean;
+  /** The view to render (null: no relationship yet, onboarding decides). */
+  view: OsView | null;
+  availableViews: OsView[];
+  /** The person's most recent team request, or null (none, or 0088 not applied). */
+  teamRequest: TeamRequestSummary | null;
 };
 
 const SUPABASE_CONFIGURED = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-/** Reads the current Supabase session + profile role + claim/team state. Everything false/null when Supabase isn't configured or the visitor hasn't signed in yet. */
-export async function getOsAccount(): Promise<OsAccount> {
-  if (!SUPABASE_CONFIGURED) {
-    return { session: null, profileRole: null, hasClaimedPlayer: false, hasTeam: false };
-  }
+const SIGNED_OUT: OsAccount = {
+  session: null,
+  profileRole: null,
+  hasClaimedPlayer: false,
+  hasTeam: false,
+  view: null,
+  availableViews: [],
+  teamRequest: null,
+};
+
+/**
+ * Reads the session, the person's relationships, and which view to show.
+ * Parent access is decided by guardians rows and coach access by active
+ * coach assignments or direct coach connections, all read through the
+ * person's own session (RLS). profiles.role only breaks the tie when both
+ * are available and nothing was requested. Everything false/null when
+ * Supabase isn't configured or nobody is signed in.
+ */
+export async function getOsAccount(requestedView: OsView | null = null): Promise<OsAccount> {
+  if (!SUPABASE_CONFIGURED) return SIGNED_OUT;
 
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return { session: null, profileRole: null, hasClaimedPlayer: false, hasTeam: false };
+  if (!user) return SIGNED_OUT;
 
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
-  const profileRole = (profile?.role as 'parent' | 'coach' | undefined) ?? null;
-
-  let hasClaimedPlayer = false;
-  let hasTeam = false;
-
-  if (profileRole === 'parent') {
-    const { count } = await supabase
-      .from('guardians')
-      .select('player_id', { count: 'exact', head: true })
-      .eq('profile_id', user.id);
-    hasClaimedPlayer = (count ?? 0) > 0;
-  } else if (profileRole === 'coach') {
-    // Despite its name (kept to avoid a rename ripple across
-    // ActivationGate/page.tsx/OsApp — its only consumer is the single
-    // "coach with no coaching access yet -> CreateTeamOnboarding" check),
-    // this now means "has any real coaching access, team or direct" —
-    // a coach reachable only via coach_players (Milestone 2's direct
-    // connection) must still reach Coach OS and see Individual Players,
-    // not get stuck at team-creation onboarding for a team they were
-    // never going to need.
-    const [{ count: teamCount }, { count: directCount }] = await Promise.all([
-      supabase.from('coach_team').select('team_id', { count: 'exact', head: true }).eq('profile_id', user.id),
+  const [{ data: profile }, { count: guardianCount }, { data: teamLinks }, { count: directCount }, { data: requestRows, error: requestError }] =
+    await Promise.all([
+      supabase.from('profiles').select('role').eq('id', user.id).maybeSingle(),
+      supabase.from('guardians').select('player_id', { count: 'exact', head: true }).eq('profile_id', user.id),
+      supabase.from('coach_team').select(`team_id, ${COACH_ASSIGNMENT_STATE_COLUMNS}`).eq('profile_id', user.id),
+      // A coach reachable only via coach_players (a direct connection)
+      // must still reach Coach OS and see Individual Players.
       supabase.from('coach_players').select('player_id', { count: 'exact', head: true }).eq('profile_id', user.id),
+      supabase
+        .from('coach_team_requests')
+        .select('id, status, club_name, team_name, age_group, decision_note, created_at')
+        .eq('requester_profile_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1),
     ]);
-    hasTeam = (teamCount ?? 0) > 0 || (directCount ?? 0) > 0;
-  }
+
+  const profileRole = parseOsView(profile?.role);
+  const hasClaimedPlayer = (guardianCount ?? 0) > 0;
+  const hasTeam = activeCoachAssignments(teamLinks).length > 0 || (directCount ?? 0) > 0;
+  const { view, availableViews } = resolveOsView({ isGuardian: hasClaimedPlayer, isCoach: hasTeam, profileRole, requested: requestedView });
+
+  const latest = requestError ? null : requestRows?.[0];
+  const teamRequest: TeamRequestSummary | null = latest
+    ? {
+        id: latest.id,
+        status: latest.status,
+        clubName: latest.club_name,
+        teamName: latest.team_name,
+        ageGroup: latest.age_group,
+        decisionNote: latest.decision_note,
+        createdAt: latest.created_at,
+      }
+    : null;
 
   return {
     session: { userId: user.id, email: user.email ?? null },
     profileRole,
     hasClaimedPlayer,
     hasTeam,
+    view,
+    availableViews,
+    teamRequest,
   };
 }
 
@@ -248,7 +282,7 @@ export async function getOsAccount(): Promise<OsAccount> {
  */
 export async function getOsData(
   userId: string | null,
-  profileRole: 'parent' | 'coach' | null,
+  view: OsView | null,
   requestedPlayerId?: string | null
 ): Promise<OsData> {
   if (!userId || !SUPABASE_CONFIGURED) {
@@ -283,7 +317,7 @@ export async function getOsData(
   const unreadStoryUpdateCount = storyUpdates.filter((u) => !u.readAt).length;
 
   const base =
-    profileRole === 'coach'
+    view === 'coach'
       ? await getCoachOsData(supabase, userId)
       : await getParentOsData(supabase, userId, requestedPlayerId ?? undefined);
 
@@ -554,7 +588,7 @@ async function getParentOsData(
   const { data: coachRows } = player.team_id
     ? await supabase
         .from('coach_team')
-        .select('profile_id, profiles ( display_name )')
+        .select(`profile_id, ${COACH_ASSIGNMENT_STATE_COLUMNS}, profiles ( display_name )`)
         .eq('team_id', player.team_id)
     : { data: [] as never[] };
 
@@ -582,7 +616,8 @@ async function getParentOsData(
   // wrong inferred type rather than indexing [0] into something that was
   // never really a list.
   type ProfileNameRow = { profile_id: string; profiles: { display_name: string | null } | null };
-  const teamCoachRows = (coachRows ?? []) as unknown as ProfileNameRow[];
+  // An ended or expired coach is no longer shown to the family as a coach.
+  const teamCoachRows = activeCoachAssignments((coachRows ?? []) as unknown as (ProfileNameRow & CoachAssignmentState)[]);
   const teamCoachProfileIds = new Set(teamCoachRows.map((c) => c.profile_id));
   // Club + team name joined (e.g. "Ashton FC U11") — null when the player
   // has no team at all, which is the only time every coach on this list
@@ -781,11 +816,13 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
     assessments: [] as AssessmentEntry[],
   };
 
-  const { data: teamLinks } = await supabase
+  const { data: allTeamLinks } = await supabase
     .from('coach_team')
-    .select('team_id, teams ( name, clubs ( name, badge_url ) )')
+    .select(`team_id, ${COACH_ASSIGNMENT_STATE_COLUMNS}, teams ( name, clubs ( name, badge_url ) )`)
     .eq('profile_id', userId);
-  const teamIds = (teamLinks ?? []).map((t) => t.team_id);
+  // Only active assignments: an ended or expired team drops out of Coach OS.
+  const teamLinks = activeCoachAssignments(allTeamLinks);
+  const teamIds = teamLinks.map((t) => t.team_id);
 
   // Direct (team-independent) connections — coach_players.profile_id is
   // scoped to exactly this coach's own rows by RLS ("coach_players: a

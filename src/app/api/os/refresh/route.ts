@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getOsAccount, getOsData } from '@/lib/os-data';
+import { OS_VIEW_COOKIE, requestedOsView } from '@/lib/os-view';
 
 export const runtime = 'nodejs';
 // Explicit, not implicit: getOsAccount()'s cookies()-based session read
@@ -21,11 +22,13 @@ export const dynamic = 'force-dynamic';
  * SSR path — never a second, drifting source of truth.
  */
 export async function GET(request: NextRequest) {
-  const { session, profileRole } = await getOsAccount();
+  const { session, view } = await getOsAccount(
+    requestedOsView(request.nextUrl.searchParams.get('view'), request.cookies.get(OS_VIEW_COOKIE)?.value)
+  );
   if (!session) {
     return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
   }
   const requestedPlayerId = request.nextUrl.searchParams.get('player');
-  const data = await getOsData(session.userId, profileRole, requestedPlayerId);
+  const data = await getOsData(session.userId, view, requestedPlayerId);
   return NextResponse.json(data);
 }

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
+import { OS_VIEW_COOKIE, requestedOsView } from '@/lib/os-view';
 import OsApp from './OsApp';
 import { getOsAccount, getOsData } from '@/lib/os-data';
 import { normalizeClaimCode } from '@/lib/claim-code';
@@ -86,8 +87,10 @@ export default async function OsPage({
     // (neutral message) takes it from here, exactly as before.
   }
 
-  const { session, profileRole, hasClaimedPlayer, hasTeam } = await getOsAccount();
-  const initialData = await getOsData(session?.userId ?? null, profileRole, requestedPlayerId);
+  // A guardian who just tapped their own card always lands in the Parent view.
+  const requested = cardAlreadyResolved ? 'parent' : requestedOsView(searchParams?.view, cookies().get(OS_VIEW_COOKIE)?.value);
+  const { session, profileRole, hasClaimedPlayer, hasTeam, view, availableViews, teamRequest } = await getOsAccount(requested);
+  const initialData = await getOsData(session?.userId ?? null, view, requestedPlayerId);
 
   return (
     <OsApp
@@ -96,6 +99,9 @@ export default async function OsPage({
       profileRole={profileRole}
       hasClaimedPlayer={hasClaimedPlayer}
       hasTeam={hasTeam}
+      view={view}
+      availableViews={availableViews}
+      teamRequest={teamRequest}
       cardAlreadyResolved={cardAlreadyResolved}
     />
   );

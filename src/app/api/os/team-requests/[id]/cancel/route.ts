@@ -1,0 +1,33 @@
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+
+export const runtime = 'nodejs';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Cancels the caller's own pending team request. The database function
+ * (cancel_own_coach_team_request) only ever touches a pending request whose
+ * requester is auth.uid(), so another person's id simply isn't found.
+ */
+export async function POST(_request: Request, { params }: { params: { id: string } }) {
+  if (!UUID_RE.test(params.id)) {
+    return NextResponse.json({ error: 'Team request not found' }, { status: 404 });
+  }
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
+  }
+
+  const { error } = await supabase.rpc('cancel_own_coach_team_request', { p_request_id: params.id });
+  if (error) {
+    if (error.message.includes('No pending team request')) {
+      return NextResponse.json({ error: 'Team request not found' }, { status: 404 });
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true });
+}

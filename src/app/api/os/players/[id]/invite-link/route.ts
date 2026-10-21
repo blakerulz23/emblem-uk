@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { activeCoachAssignments, COACH_ASSIGNMENT_STATE_COLUMNS } from '@/lib/coach-assignment';
 
 export const runtime = 'nodejs';
 
@@ -24,8 +25,8 @@ export async function GET(_request: Request, { params }: { params: { id: string 
     return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
   }
 
-  const { data: teamLinks } = await supabase.from('coach_team').select('team_id').eq('profile_id', user.id);
-  const teamIds = (teamLinks ?? []).map((t) => t.team_id as string);
+  const { data: teamLinks } = await supabase.from('coach_team').select(`team_id, ${COACH_ASSIGNMENT_STATE_COLUMNS}`).eq('profile_id', user.id);
+  const teamIds = activeCoachAssignments(teamLinks).map((t) => t.team_id as string);
   if (!teamIds.length) {
     return NextResponse.json({ error: 'Not authorized for this player' }, { status: 403 });
   }

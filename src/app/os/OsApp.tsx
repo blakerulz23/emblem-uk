@@ -48,6 +48,8 @@ import CoachPlayerDetail from './screens/CoachPlayerDetail';
 import CoachCelebrate from './screens/CoachCelebrate';
 import CoachVerify from './screens/CoachVerify';
 import CoachProfile from './screens/CoachProfile';
+import { rememberOsView } from '@/lib/os-view';
+import type { OsView, TeamRequestSummary } from '@/lib/os-view';
 
 export type OsActions = {
   activate: () => void;
@@ -108,12 +110,18 @@ export type OsAppProps = {
   initialData?: OsData;
   /** Whether src/app/os/page.tsx found a Supabase session. */
   hasSession?: boolean;
-  /** The signed-in user's profiles.role. Null until RoleSelect has run once. */
-  profileRole?: 'parent' | 'coach' | null;
+  /** The signed-in user's profiles.role: a view preference only, never authorization. */
+  profileRole?: OsView | null;
   /** Parent: has at least one guardians row (a real player claimed). */
   hasClaimedPlayer?: boolean;
-  /** Coach: has at least one coach_team row (a real team created). */
+  /** Coach: has an active coach assignment or a direct coach connection. */
   hasTeam?: boolean;
+  /** The view the server rendered data for (src/lib/os-view.ts). Null: no relationship yet. */
+  view?: OsView | null;
+  /** Views this person has a relationship for. Both: the Parent/Coach switch is shown. */
+  availableViews?: OsView[];
+  /** The person's latest team request, for the coach onboarding screen. */
+  teamRequest?: TeamRequestSummary | null;
   /** True only when src/app/os/page.tsx has already resolved a ?card=
    * claim_token server-side and confirmed the current session is that
    * player's guardian — tells ActivationGate not to re-run its own
@@ -134,6 +142,9 @@ export default function OsApp({
   profileRole = null,
   hasClaimedPlayer = false,
   hasTeam = false,
+  view = null,
+  availableViews = [],
+  teamRequest = null,
   cardAlreadyResolved = false,
   demo = false,
 }: OsAppProps) {
@@ -165,7 +176,7 @@ export default function OsApp({
   const [state, setState] = useState<OsState>(() => ({
     ...initialOsState,
     activated: demo || initialOsState.activated,
-    role: profileRole === 'coach' ? 'coach' : 'owner',
+    role: view === 'coach' ? 'coach' : 'owner',
     tab: resolveTabFromSearchParams(searchParams) ?? initialOsState.tab,
   }));
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -190,16 +201,17 @@ export default function OsApp({
   }, []);
 
   // The initial useState above only runs on first mount, which can happen
-  // before sign-in (profileRole still null). Later transitions — signing
-  // in, creating a team — go through router.refresh() rather than a full
-  // remount, so without this the view stays stuck on whatever role was
-  // true at that first, pre-auth mount. Re-sync whenever the server-known
-  // role changes; the manual toggle below still works for demo preview.
+  // before sign-in (no view yet). Later transitions — signing in, a claim,
+  // an approved team request, switching view — go through router.refresh()
+  // rather than a full remount, so re-sync whenever the server-rendered
+  // view changes, and remember it so pull-to-refresh renders the same one.
+  // The manual toggle below still works for demo preview.
   useEffect(() => {
-    if (profileRole) {
-      setState((s) => ({ ...s, role: profileRole === 'coach' ? 'coach' : 'owner' }));
+    if (view) {
+      setState((s) => ({ ...s, role: view === 'coach' ? 'coach' : 'owner' }));
+      rememberOsView(view);
     }
-  }, [profileRole]);
+  }, [view]);
 
   // Reacts to ?openPlayer= however it arrives — a genuinely fresh mount
   // (e.g. AuthenticatedCoachInviteResolve's window.location-style hard
@@ -210,11 +222,11 @@ export default function OsApp({
   // otherwise a refreshed/shared/bookmarked URL would carry a
   // now-meaningless player id forever.
   useEffect(() => {
-    if (profileRole === 'coach' && openPlayerId) {
+    if (view === 'coach' && openPlayerId) {
       patch({ tab: 'team', coachPlayerId: openPlayerId });
       router.replace('/os');
     }
-  }, [profileRole, openPlayerId, patch, router]);
+  }, [view, openPlayerId, patch, router]);
 
   // Browser Back/Forward changes the URL without React ever calling
   // setTab — this is what makes the active tab survive Back/Forward

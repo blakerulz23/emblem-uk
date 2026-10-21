@@ -6,6 +6,7 @@ import { maskEmail } from '@/lib/mask-email';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { ensurePublicPlayerId } from '@/lib/public-player-id';
 import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
+import { ensureProfileRole } from '@/lib/relationship-writes';
 
 export const runtime = 'nodejs';
 
@@ -117,16 +118,19 @@ export async function POST(request: NextRequest) {
 
   // guardians.profile_id is a foreign key into profiles — must exist
   // before the guardians insert below, same reasoning as /api/os/claim.
-  const profileUpsert: Record<string, unknown> = { id: user.id, role: 'parent' };
-  if (displayName?.trim()) profileUpsert.display_name = displayName.trim();
-  const { error: roleError } = await supabase.from('profiles').upsert(profileUpsert);
-  if (roleError) {
-    return NextResponse.json({ error: roleError.message }, { status: 500 });
+  // 'parent' is set only when the profile has no role yet.
+  const profile = await ensureProfileRole(serviceRole, user.id, 'parent', displayName);
+  if (!profile.ok) {
+    return NextResponse.json({ error: profile.error }, { status: 500 });
   }
 
-  const { error: guardianError } = await serviceRole
-    .from('guardians')
-    .insert({ player_id: invite.player_id, profile_id: user.id, relationship: relationship?.trim() || null });
+  const { error: guardianError } = await serviceRole.from('guardians').insert({
+    player_id: invite.player_id,
+    profile_id: user.id,
+    relationship: relationship?.trim() || null,
+    created_via: 'guardian_invite',
+    created_by: user.id,
+  });
 
   if (guardianError) {
     if (guardianError.code === '23505') {

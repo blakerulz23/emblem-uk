@@ -26,6 +26,7 @@ const EVENT_LABELS: Record<string, string> = {
   organiser_notification_failed: 'An organiser-facing email failed to send',
   upload_sweep_errors: 'Upload cleanup sweep had errors',
   squad_invite_ready_to_finalise: 'Squad Invite ready to finalise pricing',
+  new_coach_team_request: 'A coach has asked for a team',
 };
 
 export async function sendStaffNotificationEmail(params: {

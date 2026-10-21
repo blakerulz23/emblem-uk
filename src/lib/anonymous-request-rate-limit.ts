@@ -71,7 +71,11 @@ export type AnonymousRequestAction =
   | 'card-share-public-page-view'
   // UK partner programme application (/partners/apply) — anonymous, so
   // IP-keyed, plus the applicant's email as subject.
-  | 'partner-application';
+  | 'partner-application'
+  // A signed-in person asking staff for a team (migration 0088). The
+  // database already allows only one pending request per person; this
+  // keeps submit/cancel/resubmit loops from flooding staff notifications.
+  | 'coach-team-request';
 
 const LIMITS: Record<
   | 'builder-submission-status'
@@ -90,7 +94,8 @@ const LIMITS: Record<
   | 'card-share-photo'
   | 'card-share-public-page-create'
   | 'card-share-public-page-view'
-  | 'partner-application',
+  | 'partner-application'
+  | 'coach-team-request',
   { ip: number; subject?: number }
 > = {
   // One check per restored, interrupted submit, plus "Check again" taps.
@@ -140,6 +145,7 @@ const LIMITS: Record<
   'card-share-public-page-view': { ip: 120 },
   // One real application per creator; room for a typo-and-resubmit.
   'partner-application': { ip: 5, subject: 3 },
+  'coach-team-request': { ip: 10, subject: 3 },
 };
 
 /**

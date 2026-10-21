@@ -27,7 +27,7 @@ export async function claimPlayerForCard(
 
   const { error: guardianError } = await serviceRole
     .from('guardians')
-    .insert({ player_id: card.player_id, profile_id: userId, relationship });
+    .insert({ player_id: card.player_id, profile_id: userId, relationship, created_via: 'card_claim', created_by: userId });
 
   if (guardianError) {
     if (guardianError.code === '23505') {

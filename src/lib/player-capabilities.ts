@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { activeCoachAssignments, COACH_ASSIGNMENT_STATE_COLUMNS, isActiveCoachAssignment } from '@/lib/coach-assignment';
 
 export type PlayerCapabilities = {
   isGuardian: boolean;
@@ -40,14 +41,20 @@ export async function resolvePlayerCapabilities(
   const [{ data: guardianRow }, coachTeamRow, coachDirectRow] = await Promise.all([
     serviceRole.from('guardians').select('player_id').eq('player_id', playerId).eq('profile_id', userId).maybeSingle(),
     player?.team_id
-      ? serviceRole.from('coach_team').select('team_id').eq('team_id', player.team_id).eq('profile_id', userId).maybeSingle()
+      ? serviceRole
+          .from('coach_team')
+          .select(`team_id, ${COACH_ASSIGNMENT_STATE_COLUMNS}`)
+          .eq('team_id', player.team_id)
+          .eq('profile_id', userId)
+          .maybeSingle()
       : Promise.resolve({ data: null }),
     serviceRole.from('coach_players').select('player_id').eq('player_id', playerId).eq('profile_id', userId).maybeSingle(),
   ]);
 
   return {
     isGuardian: !!guardianRow,
-    isCoach: !!coachTeamRow.data || !!coachDirectRow.data,
+    // An ended or expired team assignment grants nothing (migration 0088).
+    isCoach: (!!coachTeamRow.data && isActiveCoachAssignment(coachTeamRow.data)) || !!coachDirectRow.data,
   };
 }
 
@@ -73,13 +80,15 @@ export async function getEligibleCoachProfileIds(client: SupabaseClient, playerI
 
   const [teamCoachRows, directCoachRows] = await Promise.all([
     player?.team_id
-      ? client.from('coach_team').select('profile_id').eq('team_id', player.team_id)
+      ? client.from('coach_team').select(`profile_id, ${COACH_ASSIGNMENT_STATE_COLUMNS}`).eq('team_id', player.team_id)
       : Promise.resolve({ data: [] as { profile_id: string }[] }),
     client.from('coach_players').select('profile_id').eq('player_id', playerId),
   ]);
 
   const ids = new Set<string>();
-  (teamCoachRows.data ?? []).forEach((r) => ids.add(r.profile_id as string));
+  activeCoachAssignments(teamCoachRows.data as { profile_id: string; ended_at?: string | null; expires_at?: string | null }[] | null).forEach((r) =>
+    ids.add(r.profile_id)
+  );
   (directCoachRows.data ?? []).forEach((r) => ids.add(r.profile_id as string));
   return Array.from(ids);
 }

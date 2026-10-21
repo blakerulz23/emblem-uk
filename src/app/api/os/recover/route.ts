@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { claimPlayerForCard } from '@/lib/claim-player';
 import { createGuardianInvite } from '@/lib/create-guardian-invite';
+import { ensureProfileRole } from '@/lib/relationship-writes';
 
 export const runtime = 'nodejs';
 
@@ -155,7 +156,8 @@ export async function POST(request: NextRequest) {
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
-    await supabase.from('profiles').upsert({ id: user.id, role: 'parent' });
+    // 'parent' only when the profile has no role yet.
+    await ensureProfileRole(serviceRole, user.id, 'parent');
     return NextResponse.json({ ok: true, playerId: result.playerId });
   }
 
