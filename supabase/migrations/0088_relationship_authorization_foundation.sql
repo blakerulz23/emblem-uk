@@ -25,6 +25,15 @@
 --   7. is_authorized_coach_for_player / is_guardian_of_team_player:
 --      search_path = '' with schema-qualified names. Same result, same
 --      grants (CREATE OR REPLACE keeps the existing ACL).
+--   8. Trusted writes for the application (service_role only), because
+--      service_role holds no INSERT/UPDATE on profiles and no UPDATE on
+--      coach_team (0037), and 0089 removes the signed-in user's:
+--        ensure_profile_role: create the profile if missing, set the role
+--          only when it is empty, never overwrite one;
+--        activate_coach_assignment: insert, or reactivate an ended/expired
+--          assignment, attributed to the initiating account.
+--   9. staff_notification_outbox: event type 'new_coach_team_request'
+--      (the existing list plus one; nothing removed).
 --
 -- Attribution. The audit trigger resolves the actor in this order:
 --   trusted_function  a SECURITY DEFINER function in this file set
@@ -467,6 +476,103 @@ $$;
 alter function public.end_coach_assignment(uuid, uuid, uuid, text) owner to postgres;
 revoke all on function public.end_coach_assignment(uuid, uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.end_coach_assignment(uuid, uuid, uuid, text) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 8. Trusted writes for the application
+-- ---------------------------------------------------------------------------
+
+-- Returns the profile's role after the call. A role is only ever set on a
+-- profile that has none: a claim never turns a coach into a parent, and an
+-- invite never turns a parent into a coach. The role is a view preference;
+-- access comes from guardian and coach relationships.
+create function public.ensure_profile_role(p_profile_id uuid, p_role text, p_display_name text default null)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_role text;
+begin
+  if p_profile_id is null then
+    raise exception 'A profile id is required';
+  end if;
+  if p_role is null or p_role not in ('parent', 'coach') then
+    raise exception 'Unsupported role: %', p_role;
+  end if;
+
+  insert into public.profiles (id, role, display_name)
+  values (p_profile_id, p_role, nullif(btrim(p_display_name), ''))
+  on conflict (id) do update
+    set role = coalesce(public.profiles.role, excluded.role),
+        display_name = coalesce(excluded.display_name, public.profiles.display_name)
+  returning role into v_role;
+
+  return v_role;
+end;
+$$;
+alter function public.ensure_profile_role(uuid, text, text) owner to postgres;
+revoke all on function public.ensure_profile_role(uuid, text, text) from public, anon, authenticated;
+grant execute on function public.ensure_profile_role(uuid, text, text) to service_role;
+
+-- Makes (team, profile) an active assignment. A new row records its
+-- creation; an existing ended or expired row is reactivated (its unknown
+-- creation details stay as they are); an already-active row is untouched.
+-- Returns true when a row was created or reactivated.
+create function public.activate_coach_assignment(p_team_id uuid, p_profile_id uuid, p_created_via text, p_actor_profile_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_changed boolean;
+begin
+  if p_created_via is null or p_created_via not in ('team_invite', 'staff') then
+    raise exception 'Unsupported created_via: %', p_created_via;
+  end if;
+
+  perform set_config('emblem.trusted_operation', 'activate_coach_assignment:' || p_created_via, true);
+  perform set_config('emblem.actor_profile_id', coalesce(p_actor_profile_id::text, ''), true);
+
+  insert into public.coach_team (team_id, profile_id, created_at, created_via, created_by)
+  values (p_team_id, p_profile_id, now(), p_created_via, p_actor_profile_id)
+  on conflict (team_id, profile_id) do update
+    set ended_at = null, ended_by = null, end_reason = null,
+        expires_at = case when public.coach_team.expires_at <= now() then null else public.coach_team.expires_at end
+    where not public.coach_assignment_is_active(public.coach_team.ended_at, public.coach_team.expires_at);
+  v_changed := found;
+
+  perform set_config('emblem.trusted_operation', '', true);
+  perform set_config('emblem.actor_profile_id', '', true);
+
+  return v_changed;
+end;
+$$;
+alter function public.activate_coach_assignment(uuid, uuid, text, uuid) owner to postgres;
+revoke all on function public.activate_coach_assignment(uuid, uuid, text, uuid) from public, anon, authenticated;
+grant execute on function public.activate_coach_assignment(uuid, uuid, text, uuid) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 9. Staff notification for a new team request
+-- ---------------------------------------------------------------------------
+alter table public.staff_notification_outbox
+  drop constraint staff_notification_outbox_event_type_check,
+  add constraint staff_notification_outbox_event_type_check check (event_type in (
+    'new_squad_invite_request',
+    'deletion_request_filed',
+    'auth_deletion_stuck',
+    'new_order_pending_approval',
+    'payment_verification_failed',
+    'finalise_pricing_issues',
+    'organiser_concern_flagged',
+    'coach_card_submitted',
+    'squad_invite_payments_overdue',
+    'organiser_notification_failed',
+    'upload_sweep_errors',
+    'squad_invite_ready_to_finalise',
+    'new_coach_team_request'
+  ));
 
 -- ---------------------------------------------------------------------------
 -- 7. Existing helpers: empty search_path, same logic, same grants

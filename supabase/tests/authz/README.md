@@ -154,6 +154,21 @@ and checks:
   when the person has no role yet (HANDOFF: never overwrite a valid role).
 - `created_via = 'legacy'` is allowed by the checks but nothing sets it:
   legacy rows stay NULL.
+- **Trusted writes for the app.** Production's `service_role` has no
+  INSERT/UPDATE on `profiles` and no UPDATE on `coach_team` (0037), so 0088
+  adds two `service_role`-only functions:
+  - `ensure_profile_role(profile, role, display_name)`: creates the profile
+    if it's missing, sets the role only when it's empty, and returns the
+    effective role;
+  - `activate_coach_assignment(team, profile, created_via, actor)`: inserts
+    a new assignment, or reactivates an ended or expired one, attributed as
+    `activate_coach_assignment:<created_via>`.
+
+  The claim, recovery and invite routes use these instead of writing as
+  the signed-in user.
+- **Outbox.** `staff_notification_outbox` accepts `new_coach_team_request`
+  (the 0083 list plus one). The rollback restores the 0083 list; delete
+  any such rows first.
 
 ## Duplicate migration numbers
 

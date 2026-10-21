@@ -117,13 +117,20 @@ const catalog0088 = await snapshotCatalog(db);
 // Additive only: nothing that existed at 0087 is removed or redefined
 // ---------------------------------------------------------------------------
 const HELPERS = ['function:is_authorized_coach_for_player(check_player_id uuid)', 'function:is_guardian_of_team_player(check_team_id uuid)'];
+const OUTBOX_CHECK = 'constraint:staff_notification_outbox.staff_notification_outbox_event_type_check';
 const forward = diffCatalog(catalog0087, catalog0088);
 check('0088 removes no catalog entry (policy, grant, column, constraint, index, function, trigger)', forward.removed.length === 0, forward.removed.join(', '));
 check(
-  'the only redefined 0087 entries are the two helpers',
-  forward.changed.length === HELPERS.length && HELPERS.every((h) => forward.changed.includes(h)),
+  'the only redefined 0087 entries are the two helpers and the outbox event-type check',
+  forward.changed.length === HELPERS.length + 1 && [...HELPERS, OUTBOX_CHECK].every((h) => forward.changed.includes(h)),
   forward.changed.join(', ')
 );
+const eventTypes = (def) => [...def.matchAll(/'([a-z_]+)'::text/g)].map((m) => m[1]);
+const typesBefore = eventTypes(catalog0087.get(OUTBOX_CHECK));
+const typesAfter = eventTypes(catalog0088.get(OUTBOX_CHECK));
+check('outbox event-type check only widens: every 0087 type kept, plus new_coach_team_request',
+  typesBefore.length === 12 && typesBefore.every((t) => typesAfter.includes(t)) &&
+  JSON.stringify(typesAfter.filter((t) => !typesBefore.includes(t))) === '["new_coach_team_request"]', typesAfter.join(','));
 for (const h of HELPERS) {
   const [secdefB, volB, ownerB, configB, aclB] = catalog0087.get(h).split(' | ');
   const [secdefA, volA, ownerA, configA, aclA] = catalog0088.get(h).split(' | ');
@@ -171,6 +178,8 @@ const expectedAdded = [
   'function:reject_coach_team_request(p_request_id uuid, p_staff_profile_id uuid, p_reason text)',
   'function:cancel_own_coach_team_request(p_request_id uuid)',
   'function:end_coach_assignment(p_team_id uuid, p_profile_id uuid, p_staff_profile_id uuid, p_reason text)',
+  'function:ensure_profile_role(p_profile_id uuid, p_role text, p_display_name text)',
+  'function:activate_coach_assignment(p_team_id uuid, p_profile_id uuid, p_created_via text, p_actor_profile_id uuid)',
 ];
 const missingNew = expectedAdded.filter((k) => !catalog0088.has(k));
 check('every expected new column, constraint, index, policy, trigger and function exists', missingNew.length === 0, missingNew.join(', '));
@@ -196,6 +205,8 @@ for (const [sig, secdef, auth, service] of [
   ['public.reject_coach_team_request(uuid,uuid,text)', true, false, true],
   ['public.end_coach_assignment(uuid,uuid,uuid,text)', true, false, true],
   ['public.cancel_own_coach_team_request(uuid)', true, true, true],
+  ['public.ensure_profile_role(uuid,text,text)', true, false, true],
+  ['public.activate_coach_assignment(uuid,uuid,text,uuid)', true, false, true],
   ['public.coach_assignment_is_active(timestamptz,timestamptz)', false, false, true],
   ['public.record_relationship_audit_event()', true, false, false],
   ['public.enforce_coach_team_request_transition()', false, false, false],
@@ -386,6 +397,63 @@ const sessionAudit = (await auditFor(ids.bystander)).rows.filter((r) => r.table_
 check('audit: the initiating account (auth.uid) is distinguished from a trusted operation',
   sessionAudit.length === 1 && sessionAudit[0].actor_source === 'session' && sessionAudit[0].actor_profile_id === ids.claimant && sessionAudit[0].auth_uid === ids.claimant, JSON.stringify(sessionAudit));
 
+// ensure_profile_role: create if missing, set only when empty, never overwrite.
+const newcomer = id();
+await db.query(`insert into auth.users (id, email) values ($1, 'newcomer@example.test')`, [newcomer]);
+await expectError('ensure_profile_role is not executable by a signed-in user', () =>
+  as('authenticated', newcomer, () => db.query(`select public.ensure_profile_role($1, 'coach')`, [newcomer])), 'permission denied');
+await expectOk('ensure_profile_role creates a missing profile with the role and display name', () =>
+  asService(`select public.ensure_profile_role($1, 'parent', '  Fictional Newcomer ') as role`, [newcomer]), (r) => r.rows[0].role === 'parent');
+check('the created profile has the trimmed display name', (await one(`select display_name from profiles where id = $1`, [newcomer])).display_name === 'Fictional Newcomer');
+await expectOk('ensure_profile_role keeps the display name when none is given', () =>
+  asService(`select public.ensure_profile_role($1, 'parent')`, [newcomer]));
+check('display name unchanged without a new one', (await one(`select display_name from profiles where id = $1`, [newcomer])).display_name === 'Fictional Newcomer');
+await expectOk('ensure_profile_role fills an empty role', () =>
+  asService(`select public.ensure_profile_role($1, 'parent') as role`, [ids.bystander]), (r) => r.rows[0].role === 'parent');
+await expectOk('ensure_profile_role never turns a coach into a parent', () =>
+  asService(`select public.ensure_profile_role($1, 'parent', 'Renamed Coach') as role`, [ids.legacyCoach]), (r) => r.rows[0].role === 'coach');
+check('…but still applies a given display name', (await one(`select display_name from profiles where id = $1`, [ids.legacyCoach])).display_name === 'Renamed Coach');
+await expectOk('ensure_profile_role never turns a parent into a coach', () =>
+  asService(`select public.ensure_profile_role($1, 'coach') as role`, [ids.legacyGuardian]), (r) => r.rows[0].role === 'parent');
+await expectError('ensure_profile_role rejects an unsupported role', () => asService(`select public.ensure_profile_role($1, 'staff')`, [newcomer]), 'Unsupported role');
+
+// activate_coach_assignment: insert, no-op when active, reactivate when not.
+await expectError('activate_coach_assignment is not executable by a signed-in user', () =>
+  as('authenticated', ids.legacyGuardian, () => db.query(`select public.activate_coach_assignment($1, $2, 'team_invite', $2)`, [ids.otherTeam, ids.legacyGuardian])), 'permission denied');
+await expectError('activate_coach_assignment rejects an unsupported created_via', () =>
+  asService(`select public.activate_coach_assignment($1, $2, 'self', $2)`, [ids.otherTeam, ids.legacyGuardian]), 'Unsupported created_via');
+await expectOk('activate_coach_assignment creates a new assignment (a parent redeeming a team invite)', () =>
+  asService(`select public.activate_coach_assignment($1, $2, 'team_invite', $2) as changed`, [ids.otherTeam, ids.legacyGuardian]), (r) => r.rows[0].changed === true);
+const invited = await one(`select created_at, created_via, created_by, public.coach_assignment_is_active(ended_at, expires_at) as active
+  from coach_team where team_id = $1 and profile_id = $2`, [ids.otherTeam, ids.legacyGuardian]);
+check('the invited assignment records team_invite, the redeeming account and a creation time',
+  invited.created_via === 'team_invite' && invited.created_by === ids.legacyGuardian && invited.created_at !== null && invited.active === true);
+const inviteAudit = (await auditFor(ids.legacyGuardian)).rows.filter((r) => r.table_name === 'coach_team');
+check('audit: invite redemption is attributed to the redeeming account as a named trusted operation',
+  inviteAudit.length === 1 && inviteAudit[0].actor_source === 'trusted_function' && inviteAudit[0].actor_profile_id === ids.legacyGuardian &&
+  inviteAudit[0].operation === 'activate_coach_assignment:team_invite', JSON.stringify(inviteAudit));
+await expectOk('activate_coach_assignment leaves an already-active assignment untouched', () =>
+  asService(`select public.activate_coach_assignment($1, $2, 'team_invite', $2) as changed`, [ids.otherTeam, ids.legacyGuardian]), (r) => r.rows[0].changed === false);
+check('…and writes no audit event for it', (await auditFor(ids.legacyGuardian)).rows.filter((r) => r.table_name === 'coach_team').length === 1);
+await asService(`select public.end_coach_assignment($1, $2, $3, 'Season over')`, [ids.otherTeam, ids.legacyGuardian, ids.staff]);
+await expectOk('activate_coach_assignment reactivates an ended assignment', () =>
+  asService(`select public.activate_coach_assignment($1, $2, 'team_invite', $2) as changed`, [ids.otherTeam, ids.legacyGuardian]), (r) => r.rows[0].changed === true);
+const reinvited = await one(`select ended_at, end_reason, created_via, public.coach_assignment_is_active(ended_at, expires_at) as active
+  from coach_team where team_id = $1 and profile_id = $2`, [ids.otherTeam, ids.legacyGuardian]);
+check('the reactivated assignment is active with its end cleared and its creation details kept',
+  reinvited.active === true && reinvited.ended_at === null && reinvited.end_reason === null && reinvited.created_via === 'team_invite');
+await db.query(`update coach_team set created_at = now() - interval '2 days', expires_at = now() - interval '1 day' where team_id = $1 and profile_id = $2`, [ids.otherTeam, ids.legacyGuardian]);
+await expectOk('activate_coach_assignment reactivates an expired assignment', () =>
+  asService(`select public.activate_coach_assignment($1, $2, 'team_invite', $2) as changed`, [ids.otherTeam, ids.legacyGuardian]), (r) => r.rows[0].changed === true);
+check('the reactivated expired assignment has no expiry and is active',
+  (await one(`select expires_at, public.coach_assignment_is_active(ended_at, expires_at) as active from coach_team where team_id = $1 and profile_id = $2`,
+    [ids.otherTeam, ids.legacyGuardian])).active === true);
+
+// The team-request notification type is accepted by the outbox.
+await expectOk('the outbox accepts a new_coach_team_request notification', () =>
+  asService(`select public.enqueue_staff_notification('new_coach_team_request', 'new_coach_team_request:test', null, 'all_staff', '{}'::jsonb, '/staff/team-requests') as id`),
+  (r) => r.rows[0].id !== null);
+
 // Append-only.
 await expectError('audit events cannot be updated, even by the owner', () => db.query(`update relationship_audit_events set operation = 'x'`), 'append-only');
 await expectError('audit events cannot be deleted, even by the owner', () => db.query(`delete from relationship_audit_events`), 'append-only');
@@ -397,7 +465,8 @@ await expectError('a signed-in user cannot read audit events', () =>
 // ---------------------------------------------------------------------------
 // Rollback: back to the exact 0087 catalog, pre-existing rows intact
 // ---------------------------------------------------------------------------
-await db.exec(`delete from coach_team where profile_id <> '${ids.legacyCoach}'; delete from guardians where profile_id <> '${ids.legacyGuardian}';`);
+await db.exec(`delete from coach_team where profile_id <> '${ids.legacyCoach}' or team_id <> '${ids.team}'; delete from guardians where profile_id <> '${ids.legacyGuardian}';
+  delete from staff_notification_outbox where event_type = 'new_coach_team_request';`);
 await expectOk('0088 rollback applies', () => db.exec(fs.readFileSync(ROLLBACK_FILE, 'utf8')));
 const afterRollback = diffCatalog(catalog0087, await snapshotCatalog(db));
 check('after rollback the public catalog equals 0087 exactly (no entry added, removed or changed)',

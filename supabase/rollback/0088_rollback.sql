@@ -21,6 +21,27 @@ drop function if exists public.approve_coach_team_request(uuid, uuid, uuid, time
 drop function if exists public.reject_coach_team_request(uuid, uuid, text);
 drop function if exists public.cancel_own_coach_team_request(uuid);
 drop function if exists public.end_coach_assignment(uuid, uuid, uuid, text);
+drop function if exists public.ensure_profile_role(uuid, text, text);
+drop function if exists public.activate_coach_assignment(uuid, uuid, text, uuid);
+
+-- Fails if a 'new_coach_team_request' notification exists; delete those
+-- rows first (they refer to team requests this script discards anyway).
+alter table public.staff_notification_outbox
+  drop constraint staff_notification_outbox_event_type_check,
+  add constraint staff_notification_outbox_event_type_check check (event_type in (
+    'new_squad_invite_request',
+    'deletion_request_filed',
+    'auth_deletion_stuck',
+    'new_order_pending_approval',
+    'payment_verification_failed',
+    'finalise_pricing_issues',
+    'organiser_concern_flagged',
+    'coach_card_submitted',
+    'squad_invite_payments_overdue',
+    'organiser_notification_failed',
+    'upload_sweep_errors',
+    'squad_invite_ready_to_finalise'
+  ));
 
 drop table if exists public.relationship_audit_events;
 drop table if exists public.coach_team_requests;

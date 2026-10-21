@@ -21,12 +21,16 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
   });
 
   it('drops nothing and revokes nothing on an existing object', () => {
-    expect(code).not.toMatch(/\bdrop\s+(policy|table|column|function|trigger|index|constraint)\b/i);
+    expect(code).not.toMatch(/\bdrop\s+(policy|table|column|function|trigger|index)\b/i);
+    // The one constraint replaced is the outbox event-type check, widened by one type.
+    const droppedConstraints = code.match(/drop\s+constraint\s+\w+/gi) ?? [];
+    expect(droppedConstraints).toEqual(['drop constraint staff_notification_outbox_event_type_check']);
     const revokes = code.match(/revoke[^;]+;/gi) ?? [];
     const newObjects = [
       'coach_assignment_is_active', 'coach_team_requests', 'enforce_coach_team_request_transition',
       'relationship_audit_events', 'reject_relationship_audit_mutation', 'record_relationship_audit_event',
       'approve_coach_team_request', 'reject_coach_team_request', 'cancel_own_coach_team_request', 'end_coach_assignment',
+      'ensure_profile_role', 'activate_coach_assignment',
     ];
     for (const r of revokes) expect(newObjects.some((o) => r.includes(`public.${o}`))).toBe(true);
   });
@@ -52,15 +56,24 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
     expect(code).toContain('revoke all on public.relationship_audit_events from public, anon, authenticated, service_role;');
   });
 
-  it('keeps staff functions off the signed-in role', () => {
-    for (const f of ['approve_coach_team_request', 'reject_coach_team_request', 'end_coach_assignment']) {
+  it('keeps staff and trusted-write functions off the signed-in role', () => {
+    for (const f of ['approve_coach_team_request', 'reject_coach_team_request', 'end_coach_assignment', 'ensure_profile_role', 'activate_coach_assignment']) {
       const grant = code.match(new RegExp(`grant execute on function public\\.${f}\\([^)]*\\) to ([^;]+);`))!;
       expect(grant[1].trim()).toBe('service_role');
     }
   });
 
-  it('never overwrites an existing role on approval', () => {
+  it('never overwrites an existing role on approval or in ensure_profile_role', () => {
     expect(code).toContain("update public.profiles set role = 'coach' where id = v_request.requester_profile_id and role is null;");
+    expect(code).toContain('set role = coalesce(public.profiles.role, excluded.role),');
+  });
+
+  it('widens the outbox event-type check without removing a type', () => {
+    const [before] = readFileSync('supabase/migrations/0083_squad_invite_ready_to_finalise_notification.sql', 'utf8')
+      .match(/staff_notification_outbox_event_type_check check \(event_type in \(([\s\S]*?)\)\);/)!.slice(1);
+    const [after] = code.match(/add constraint staff_notification_outbox_event_type_check check \(event_type in \(([\s\S]*?)\)\);/)!.slice(1);
+    const list = (s: string) => s.split(',').map((t) => t.trim()).filter(Boolean);
+    expect(list(after)).toEqual([...list(before), "'new_coach_team_request'"]);
   });
 
   it('the rollback undoes every new object and restores the helpers with search_path public', () => {
