@@ -166,6 +166,7 @@ and checks:
 
   The claim, recovery and invite routes use these instead of writing as
   the signed-in user.
+- **Release readiness.** See "Release readiness (Phase 4A)" below.
 - **Outbox.** `staff_notification_outbox` accepts `new_coach_team_request`
   (the 0083 list plus one). The rollback restores the 0083 list; delete
   any such rows first.
@@ -207,6 +208,67 @@ View resolution uses the app's own `src/lib/os-view.ts` and
 which exist only from 0088. Deploying this app before 0088 would make every
 claim and invite fail. 0088 is additive, so the current app keeps working on
 it. This differs from FIX-PLAN §6, which put the app first.
+
+## Release readiness (Phase 4A)
+
+0089 must not run until the compatible application is deployed and
+verified. That fact is recorded rather than assumed.
+
+**Database (0088 §10).**
+- `release_readiness_confirmations` holds one row per contract. The only
+  allowed contract is `authorization_relationships_v1`.
+- Each row holds:
+  - the deployed commit (7–40 hex characters);
+  - the confirming staff account;
+  - the confirmation time, which the database stamps itself;
+  - six named booleans, all of which must be true: `check_card_claim`,
+    `check_guardian_invite`, `check_team_invite`, `check_coach_invite`,
+    `check_dual_view`, `check_team_request_flow`.
+- It holds no child, player, parent or coach data.
+- Access:
+  - `anon` and `authenticated` have none.
+  - `service_role` can SELECT only.
+  - Writes go only through `confirm_release_readiness`, a SECURITY DEFINER
+    function executable only by `service_role`.
+- The function refuses:
+  - an unknown contract;
+  - a non-staff account;
+  - an empty or non-commit value;
+  - any check that is missing or false;
+  - a second confirmation. There's no upsert or replacement, and the unique
+    contract column backs this up.
+- Triggers block UPDATE, DELETE and TRUNCATE, even for the owner.
+
+**Application.**
+- `src/lib/release-readiness.ts` holds the shared constant
+  `AUTHORIZATION_RELATIONSHIPS_CONTRACT` and the six check names.
+- `POST /api/staff/release-readiness` is staff-only:
+  - the confirming account comes from the server session (`requireStaff`);
+  - the commit comes from the deployment environment
+    (`VERCEL_GIT_COMMIT_SHA`), never from the browser;
+  - the body must send `checks: { cardClaim, guardianInvite, teamInvite,
+    coachInvite, dualView, teamRequestFlow }`, each literally `true`;
+  - any staff id or commit in the body is ignored.
+- Only this release has the endpoint, so an older application can't create
+  the record through the approved workflow.
+- There's no UI. Phase 5 documents the operator's smoke checks and the call.
+
+**Deployment sequence.**
+1. Apply 0088.
+2. Deploy the compatible application.
+3. Verify card claims, guardian, team and coach invitations, parent/coach
+   view switching, and the team request with a staff decision.
+4. A staff member records readiness through `POST /api/staff/release-readiness`.
+5. Apply 0089.
+
+**0089 precondition (documented here, implemented in 0089).** 0089 will
+abort, changing nothing, unless all of the following hold:
+- every required 0088 table, column, function and function signature exists;
+- exactly one `release_readiness_confirmations` row exists for
+  `authorization_relationships_v1`;
+- all six checks on it are true;
+- its `app_commit` is non-empty;
+- its `confirmed_by` is still in `staff_accounts`.
 
 ## Duplicate migration numbers
 

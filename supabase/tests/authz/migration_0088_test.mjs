@@ -180,11 +180,21 @@ const expectedAdded = [
   'function:end_coach_assignment(p_team_id uuid, p_profile_id uuid, p_staff_profile_id uuid, p_reason text)',
   'function:ensure_profile_role(p_profile_id uuid, p_role text, p_display_name text)',
   'function:activate_coach_assignment(p_team_id uuid, p_profile_id uuid, p_created_via text, p_actor_profile_id uuid)',
+  'relation:release_readiness_confirmations',
+  'relation:release_readiness_confirmations_id_seq',
+  'index:release_readiness_confirmations_pkey',
+  'index:release_readiness_confirmations_contract_key',
+  'trigger:release_readiness_confirmations.release_readiness_stamp',
+  'trigger:release_readiness_confirmations.release_readiness_append_only',
+  'trigger:release_readiness_confirmations.release_readiness_no_truncate',
+  'function:stamp_release_readiness_confirmation()',
+  'function:reject_release_readiness_mutation()',
+  'function:confirm_release_readiness(p_contract text, p_app_commit text, p_confirmed_by uuid, p_card_claim boolean, p_guardian_invite boolean, p_team_invite boolean, p_coach_invite boolean, p_dual_view boolean, p_team_request_flow boolean)',
 ];
 const missingNew = expectedAdded.filter((k) => !catalog0088.has(k));
 check('every expected new column, constraint, index, policy, trigger and function exists', missingNew.length === 0, missingNew.join(', '));
-const unexpectedNew = forward.added.filter((k) => !expectedAdded.includes(k) && !k.startsWith('column:coach_team_requests.') &&
-  !k.startsWith('column:relationship_audit_events.') && !k.startsWith('constraint:coach_team_requests') && !k.startsWith('constraint:relationship_audit_events'));
+const unexpectedNew = forward.added.filter((k) => !expectedAdded.includes(k) &&
+  !/^(column|constraint):(coach_team_requests|relationship_audit_events|release_readiness_confirmations)[._]/.test(k));
 check('0088 adds nothing beyond the expected objects', unexpectedNew.length === 0, unexpectedNew.join(', '));
 
 const tableAcl = async (t) => (await one(`select relrowsecurity as rls, relacl::text as acl from pg_class where oid = $1::regclass`, [`public.${t}`]));
@@ -194,6 +204,9 @@ check('coach_team_requests: RLS on; authenticated SELECT only at table level; se
 const insertCols = (await db.query(`select string_agg(column_name, ',' order by column_name) c from information_schema.column_privileges
   where table_schema = 'public' and table_name = 'coach_team_requests' and grantee = 'authenticated' and privilege_type = 'INSERT'`)).rows[0].c;
 check('coach_team_requests: authenticated may INSERT only age_group, club_name, note, team_name', insertCols === 'age_group,club_name,note,team_name', insertCols);
+const readinessAcl = await tableAcl('release_readiness_confirmations');
+check('release_readiness_confirmations: RLS on; only service_role, SELECT only (writes go through confirm_release_readiness)',
+  readinessAcl.rls && readinessAcl.acl === '{postgres=arwdDxtm/postgres,service_role=r/postgres}', readinessAcl.acl);
 const auditAcl = await tableAcl('relationship_audit_events');
 check('relationship_audit_events: RLS on; only service_role, SELECT only', auditAcl.rls && auditAcl.acl === '{postgres=arwdDxtm/postgres,service_role=r/postgres}', auditAcl.acl);
 
@@ -207,6 +220,9 @@ for (const [sig, secdef, auth, service] of [
   ['public.cancel_own_coach_team_request(uuid)', true, true, true],
   ['public.ensure_profile_role(uuid,text,text)', true, false, true],
   ['public.activate_coach_assignment(uuid,uuid,text,uuid)', true, false, true],
+  ['public.confirm_release_readiness(text,text,uuid,boolean,boolean,boolean,boolean,boolean,boolean)', true, false, true],
+  ['public.stamp_release_readiness_confirmation()', false, false, false],
+  ['public.reject_release_readiness_mutation()', false, false, false],
   ['public.coach_assignment_is_active(timestamptz,timestamptz)', false, false, true],
   ['public.record_relationship_audit_event()', true, false, false],
   ['public.enforce_coach_team_request_transition()', false, false, false],
@@ -453,6 +469,68 @@ check('the reactivated expired assignment has no expiry and is active',
 await expectOk('the outbox accepts a new_coach_team_request notification', () =>
   asService(`select public.enqueue_staff_notification('new_coach_team_request', 'new_coach_team_request:test', null, 'all_staff', '{}'::jsonb, '/staff/team-requests') as id`),
   (r) => r.rows[0].id !== null);
+
+// ---------------------------------------------------------------------------
+// Release readiness (the precondition 0089 will check)
+// ---------------------------------------------------------------------------
+const CONTRACT = 'authorization_relationships_v1';
+const COMMIT = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+const confirm = (by, { commit = COMMIT, contract = CONTRACT, checks = [true, true, true, true, true, true] } = {}) =>
+  asService(`select public.confirm_release_readiness($1, $2, $3, $4, $5, $6, $7, $8, $9) as confirmed_at`, [contract, commit, by, ...checks]);
+
+for (const [role, uid] of [['authenticated', ids.requester], ['anon', null]]) {
+  await expectError(`${role}: cannot read readiness records`, () =>
+    as(role, uid, () => db.query(`select * from release_readiness_confirmations`)), 'permission denied');
+  await expectError(`${role}: cannot insert a readiness record directly`, () =>
+    as(role, uid, () => db.query(`insert into release_readiness_confirmations (contract, app_commit, confirmed_by, check_card_claim, check_guardian_invite, check_team_invite, check_coach_invite, check_dual_view, check_team_request_flow)
+      values ($1, $2, $3, true, true, true, true, true, true)`, [CONTRACT, COMMIT, ids.staff])), 'permission denied');
+  await expectError(`${role}: cannot call confirm_release_readiness`, () =>
+    as(role, uid, () => db.query(`select public.confirm_release_readiness($1, $2, $3, true, true, true, true, true, true)`, [CONTRACT, COMMIT, ids.staff])), 'permission denied');
+}
+await expectError('service_role cannot insert a readiness record directly (only through the function)', () =>
+  asService(`insert into release_readiness_confirmations (contract, app_commit, confirmed_by, check_card_claim, check_guardian_invite, check_team_invite, check_coach_invite, check_dual_view, check_team_request_flow)
+    values ($1, $2, $3, true, true, true, true, true, true)`, [CONTRACT, COMMIT, ids.staff]), 'permission denied');
+await expectError('a non-staff account cannot confirm readiness', () => confirm(ids.bystander), 'staff only');
+for (let i = 0; i < 6; i++) {
+  const checks = [true, true, true, true, true, true];
+  checks[i] = false;
+  await expectError(`smoke check #${i + 1} false is refused`, () => confirm(ids.staff, { checks }), 'Every smoke check');
+  checks[i] = null;
+  await expectError(`smoke check #${i + 1} missing is refused`, () => confirm(ids.staff, { checks }), 'Every smoke check');
+}
+await expectError('an empty application commit is refused', () => confirm(ids.staff, { commit: '   ' }), 'commit is required');
+await expectError('a non-commit value is refused', () => confirm(ids.staff, { commit: 'main' }), 'git commit id');
+await expectError('an unknown contract is refused', () => confirm(ids.staff, { contract: 'something_else' }), 'Unknown release contract');
+check('no readiness record exists after refused attempts', (await one(`select count(*)::int n from release_readiness_confirmations`)).n === 0);
+
+await expectOk('a staff member confirms readiness once', () => confirm(ids.staff, { commit: `  ${COMMIT.toUpperCase()} ` }), (r) => r.rows[0].confirmed_at !== null);
+const readiness = await asService(`select contract, app_commit, confirmed_by, confirmed_at,
+    check_card_claim and check_guardian_invite and check_team_invite and check_coach_invite and check_dual_view and check_team_request_flow as all_checks
+  from release_readiness_confirmations`);
+check('the record holds the contract, normalised commit, confirming staff account, a time and all six checks',
+  readiness.rows.length === 1 && readiness.rows[0].contract === CONTRACT && readiness.rows[0].app_commit === COMMIT &&
+  readiness.rows[0].confirmed_by === ids.staff && readiness.rows[0].confirmed_at !== null && readiness.rows[0].all_checks === true,
+  JSON.stringify(readiness.rows));
+await expectError('a second confirmation is refused (no replacement)', () => confirm(ids.staff, { commit: 'ffffffffffffffffffffffffffffffffffffffff' }), 'already confirmed');
+await expectError('the record cannot be updated, even by the owner', () => db.query(`update release_readiness_confirmations set app_commit = 'ffffffff'`), 'append-only');
+await expectError('the record cannot be deleted, even by the owner', () => db.query(`delete from release_readiness_confirmations`), 'append-only');
+await expectError('the record cannot be truncated, even by the owner', () => db.query(`truncate release_readiness_confirmations`), 'append-only');
+await expectError('service_role cannot update or delete it', () => asService(`delete from release_readiness_confirmations`), 'permission denied');
+await expectError('a second row for the contract is impossible even for the owner (unique contract)', () =>
+  db.query(`insert into release_readiness_confirmations (contract, app_commit, confirmed_by, confirmed_at, check_card_claim, check_guardian_invite, check_team_invite, check_coach_invite, check_dual_view, check_team_request_flow)
+    values ($1, $2, $3, '2000-01-01', true, true, true, true, true, true)`, [CONTRACT, COMMIT, ids.staff]), 'release_readiness_confirmations_contract_key');
+check('still exactly one readiness record', (await one(`select count(*)::int n from release_readiness_confirmations`)).n === 1);
+check('the confirmation time is the database clock at insert (a supplied time is overwritten)', await (async () => {
+  await db.exec('begin;');
+  try {
+    await db.exec(`alter table release_readiness_confirmations drop constraint release_readiness_confirmations_contract_key;`);
+    const r = await db.query(`insert into release_readiness_confirmations (contract, app_commit, confirmed_by, confirmed_at, check_card_claim, check_guardian_invite, check_team_invite, check_coach_invite, check_dual_view, check_team_request_flow)
+      values ($1, $2, $3, '2000-01-01', true, true, true, true, true, true) returning confirmed_at > now() - interval '1 minute' as stamped_now`, [CONTRACT, COMMIT, ids.staff]);
+    return r.rows[0].stamped_now === true;
+  } finally {
+    await db.exec('rollback;');
+  }
+})());
 
 // Append-only.
 await expectError('audit events cannot be updated, even by the owner', () => db.query(`update relationship_audit_events set operation = 'x'`), 'append-only');

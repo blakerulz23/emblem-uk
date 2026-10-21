@@ -34,6 +34,12 @@
 --          assignment, attributed to the initiating account.
 --   9. staff_notification_outbox: event type 'new_coach_team_request'
 --      (the existing list plus one; nothing removed).
+--  10. release_readiness_confirmations: an append-only record that a staff
+--      member confirmed the compatible application is deployed and its
+--      smoke checks passed, for contract 'authorization_relationships_v1'.
+--      Written only by confirm_release_readiness (service_role), which the
+--      compatible app's staff endpoint calls. 0089 will refuse to run
+--      without it. Holds no child, player, parent or coach data.
 --
 -- Attribution. The audit trigger resolves the actor in this order:
 --   trusted_function  a SECURITY DEFINER function in this file set
@@ -573,6 +579,131 @@ alter table public.staff_notification_outbox
     'squad_invite_ready_to_finalise',
     'new_coach_team_request'
   ));
+
+-- ---------------------------------------------------------------------------
+-- 10. Release readiness (the precondition 0089 checks)
+-- ---------------------------------------------------------------------------
+create table public.release_readiness_confirmations (
+  id bigint generated always as identity primary key,
+  -- One row per contract, ever: confirmation is never replaced.
+  contract text not null unique check (contract in ('authorization_relationships_v1')),
+  -- The deployed application's git commit, from the deployment environment.
+  app_commit text not null check (app_commit ~ '^[0-9a-f]{7,40}$'),
+  -- The staff account that confirmed. No foreign key: the record must
+  -- outlive the account. 0089 re-checks it is still staff.
+  confirmed_by uuid not null,
+  confirmed_at timestamptz not null default now(),
+  check_card_claim boolean not null,
+  check_guardian_invite boolean not null,
+  check_team_invite boolean not null,
+  check_coach_invite boolean not null,
+  check_dual_view boolean not null,
+  check_team_request_flow boolean not null,
+  constraint release_readiness_all_checks_passed check (
+    check_card_claim and check_guardian_invite and check_team_invite
+    and check_coach_invite and check_dual_view and check_team_request_flow
+  )
+);
+
+comment on table public.release_readiness_confirmations is
+  'Append-only. A staff member''s confirmation that the application compatible with a database contract is deployed and its smoke checks passed. Written only by confirm_release_readiness. No child, player, parent or coach data.';
+
+-- The confirmation time is always the database's own clock at insert.
+create function public.stamp_release_readiness_confirmation()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.confirmed_at := now();
+  return new;
+end;
+$$;
+alter function public.stamp_release_readiness_confirmation() owner to postgres;
+revoke all on function public.stamp_release_readiness_confirmation() from public, anon, authenticated;
+
+create function public.reject_release_readiness_mutation()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'release_readiness_confirmations is append-only';
+end;
+$$;
+alter function public.reject_release_readiness_mutation() owner to postgres;
+revoke all on function public.reject_release_readiness_mutation() from public, anon, authenticated;
+
+create trigger release_readiness_stamp
+  before insert on public.release_readiness_confirmations
+  for each row execute function public.stamp_release_readiness_confirmation();
+create trigger release_readiness_append_only
+  before update or delete on public.release_readiness_confirmations
+  for each row execute function public.reject_release_readiness_mutation();
+create trigger release_readiness_no_truncate
+  before truncate on public.release_readiness_confirmations
+  for each statement execute function public.reject_release_readiness_mutation();
+
+alter table public.release_readiness_confirmations enable row level security;
+-- No policies. Reads: service_role only. Writes: confirm_release_readiness only.
+revoke all on public.release_readiness_confirmations from public, anon, authenticated, service_role;
+grant select on public.release_readiness_confirmations to service_role;
+
+create function public.confirm_release_readiness(
+  p_contract text,
+  p_app_commit text,
+  p_confirmed_by uuid,
+  p_card_claim boolean,
+  p_guardian_invite boolean,
+  p_team_invite boolean,
+  p_coach_invite boolean,
+  p_dual_view boolean,
+  p_team_request_flow boolean
+)
+returns timestamptz
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_commit text := lower(btrim(coalesce(p_app_commit, '')));
+  v_confirmed_at timestamptz;
+begin
+  if p_contract is distinct from 'authorization_relationships_v1' then
+    raise exception 'Unknown release contract: %', p_contract;
+  end if;
+  if p_confirmed_by is null or not exists (select 1 from public.staff_accounts where profile_id = p_confirmed_by) then
+    raise exception 'Not authorized: staff only';
+  end if;
+  if v_commit = '' then
+    raise exception 'The deployed application commit is required';
+  end if;
+  if v_commit !~ '^[0-9a-f]{7,40}$' then
+    raise exception 'The deployed application commit must be a git commit id';
+  end if;
+  if not (coalesce(p_card_claim, false) and coalesce(p_guardian_invite, false) and coalesce(p_team_invite, false)
+          and coalesce(p_coach_invite, false) and coalesce(p_dual_view, false) and coalesce(p_team_request_flow, false)) then
+    raise exception 'Every smoke check must be confirmed as passed';
+  end if;
+  if exists (select 1 from public.release_readiness_confirmations where contract = p_contract) then
+    raise exception 'Release readiness for % is already confirmed', p_contract;
+  end if;
+
+  insert into public.release_readiness_confirmations (
+    contract, app_commit, confirmed_by,
+    check_card_claim, check_guardian_invite, check_team_invite, check_coach_invite, check_dual_view, check_team_request_flow
+  ) values (
+    p_contract, v_commit, p_confirmed_by,
+    true, true, true, true, true, true
+  )
+  returning confirmed_at into v_confirmed_at;
+
+  return v_confirmed_at;
+end;
+$$;
+alter function public.confirm_release_readiness(text, text, uuid, boolean, boolean, boolean, boolean, boolean, boolean) owner to postgres;
+revoke all on function public.confirm_release_readiness(text, text, uuid, boolean, boolean, boolean, boolean, boolean, boolean) from public, anon, authenticated;
+grant execute on function public.confirm_release_readiness(text, text, uuid, boolean, boolean, boolean, boolean, boolean, boolean) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 7. Existing helpers: empty search_path, same logic, same grants

@@ -31,6 +31,7 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
       'relationship_audit_events', 'reject_relationship_audit_mutation', 'record_relationship_audit_event',
       'approve_coach_team_request', 'reject_coach_team_request', 'cancel_own_coach_team_request', 'end_coach_assignment',
       'ensure_profile_role', 'activate_coach_assignment',
+      'release_readiness_confirmations', 'stamp_release_readiness_confirmation', 'reject_release_readiness_mutation', 'confirm_release_readiness',
     ];
     for (const r of revokes) expect(newObjects.some((o) => r.includes(`public.${o}`))).toBe(true);
   });
@@ -54,6 +55,17 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
   it('gives every new table explicit grants instead of relying on project defaults', () => {
     expect(code).toContain('revoke all on public.coach_team_requests from public, anon, authenticated, service_role;');
     expect(code).toContain('revoke all on public.relationship_audit_events from public, anon, authenticated, service_role;');
+    expect(code).toContain('revoke all on public.release_readiness_confirmations from public, anon, authenticated, service_role;');
+    expect(code).toContain('grant select on public.release_readiness_confirmations to service_role;');
+  });
+
+  it('release readiness is written only through the staff-checked function, once, and never changed', () => {
+    expect(code).toMatch(/grant execute on function public\.confirm_release_readiness\([^)]*\) to service_role;/);
+    expect(code).not.toMatch(/grant (insert|update|delete)[^;]*release_readiness_confirmations/);
+    expect(code).toContain('contract text not null unique');
+    expect(code).not.toMatch(/release_readiness_confirmations[\s\S]{0,200}on conflict/);
+    expect(code).toContain('before update or delete on public.release_readiness_confirmations');
+    expect(code).toContain('before truncate on public.release_readiness_confirmations');
   });
 
   it('keeps staff and trusted-write functions off the signed-in role', () => {

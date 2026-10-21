@@ -9,8 +9,9 @@
 --
 -- It is lossless for every pre-0088 row (coach_team and guardians keep all
 -- their original columns). It permanently DISCARDS what was created since
--- 0088: team requests, relationship audit events, and the creation, expiry
--- and ending details on coach_team/guardians rows. Export them first if
+-- 0088: team requests, relationship audit events, the release-readiness
+-- confirmation, and the creation, expiry and ending details on
+-- coach_team/guardians rows. Export them first if
 -- they're needed.
 begin;
 
@@ -21,6 +22,10 @@ drop function if exists public.approve_coach_team_request(uuid, uuid, uuid, time
 drop function if exists public.reject_coach_team_request(uuid, uuid, text);
 drop function if exists public.cancel_own_coach_team_request(uuid);
 drop function if exists public.end_coach_assignment(uuid, uuid, uuid, text);
+drop function if exists public.confirm_release_readiness(text, text, uuid, boolean, boolean, boolean, boolean, boolean, boolean);
+drop table if exists public.release_readiness_confirmations;
+drop function if exists public.stamp_release_readiness_confirmation();
+drop function if exists public.reject_release_readiness_mutation();
 drop function if exists public.ensure_profile_role(uuid, text, text);
 drop function if exists public.activate_coach_assignment(uuid, uuid, text, uuid);
 
