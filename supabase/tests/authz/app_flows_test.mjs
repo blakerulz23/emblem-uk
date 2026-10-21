@@ -131,9 +131,16 @@ async function runMode(mode) {
   const redeemTeamInvite = (uid, teamId) =>
     service(`select public.ensure_profile_role($1, 'coach')`, [uid]).then(() =>
       service(`select public.activate_coach_assignment($1, $2, 'team_invite', $2) as changed`, [teamId, uid]));
-  const redeemCoachInvite = (uid, playerId) =>
-    service(`select public.ensure_profile_role($1, 'coach')`, [uid]).then(() =>
-      service(`insert into public.coach_players (player_id, profile_id, created_via, created_by) values ($1, $2, 'guardian_invite', $3)`, [playerId, uid, people.inviter]));
+  // A current guardian of the player creates the coach invite (their own
+  // session, as the app does); the coach redeems it through the atomic
+  // redeem_coach_invite, exactly as the redeem route does.
+  const redeemCoachInvite = async (uid, playerId, guardianId) => {
+    const code = `COACH-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    await user(guardianId, `insert into public.coach_invites (player_id, code, created_by) values ($1, $2, $3)`, [playerId, code, guardianId]);
+    const r = await service(`select status, player_id from public.redeem_coach_invite($1, $2)`, [code, uid]);
+    if (r.rows[0]?.status !== 'redeemed') throw new Error(`coach invite not redeemed: ${JSON.stringify(r.rows)}`);
+    return r;
+  };
 
   // --- Parent only, coach only, neither ------------------------------------
   await ok('card claim links a parent', () => claimCard(people.parent, player));
@@ -157,7 +164,7 @@ async function runMode(mode) {
   }, (r) => r.squad === 1 && r.child === 1);
 
   await ok('parent first: claims a card', () => claimCard(people.parentFirst, player2));
-  await ok('…then accepts a coach invite for a player', () => redeemCoachInvite(people.parentFirst, player));
+  await ok('…then accepts a coach invite for a player', () => redeemCoachInvite(people.parentFirst, player, people.parent));
   await ok('parent-then-coach keeps the parent role and has both views (default parent)', () => account(people.parentFirst),
     (a) => a.role === 'parent' && a.availableViews.join() === 'parent,coach' && a.view === 'parent');
   await ok('…switching to Coach keeps Parent available', () => account(people.parentFirst, 'coach'), (a) => a.view === 'coach' && a.availableViews.join() === 'parent,coach');

@@ -330,14 +330,69 @@ covers four cases:
 - **Not yet run anywhere real.** H5 has not been run on production or
   staging. It must be run and reviewed before production 0089.
 
-**Known unresolved issue: simultaneous coach-invite redemption.**
-- **How redemption works today.** It creates the direct link first and then
-  marks the invite used. The update doesn't atomically confirm the invite
-  is still unused.
-- **The risk.** Two concurrent requests for the same invite could both
-  succeed.
-- **Status.** This commit doesn't change it. It must be fixed with an
-  atomic database operation before 0089.
+**Atomic coach-invite redemption (`redeem_coach_invite`, 0088).**
+
+*The old race.* The route used to:
+1. read the invite;
+2. check it;
+3. set the coach role;
+4. insert the direct link;
+5. mark the invite used, with an update that didn't re-check the invite
+   was still unused.
+
+Two coaches redeeming the same code at once could both pass the check and
+both get a link. A failure between steps could leave a link with no
+consumed invite.
+
+*The atomic boundary.* Redemption is now one call to
+`redeem_coach_invite(code, coach, display_name)`. It's `service_role`-only
+and SECURITY DEFINER, with an empty `search_path`. In a single
+transaction it:
+- claims the invite with one conditional `UPDATE`. The invite must be
+  unused (`used_at IS NULL`), unexpired, and created by someone still a
+  guardian of the player;
+- ensures the coach's profile, setting the `coach` role only if the profile
+  has none;
+- creates the direct link (`guardian_invite`, created by the inviting
+  guardian, audited as `row_attribution`);
+- records `used_by` on the row it has just claimed.
+
+If anything fails after the claim, the whole call rolls back: the invite
+stays unused, and no link, profile, role change or audit event remains. If
+the coach is already directly connected to that player, the claim is
+undone and the invite stays unused. The route passes only the session's
+own coach id and writes nothing itself.
+
+*Results.*
+- `redeemed` returns the player. The route notifies the family once.
+- `already_redeemed_by_you` means the same coach consumed this invite
+  earlier and the link still exists. It's an idempotent retry: nothing
+  changes and nobody is notified.
+- `already_connected` gives 409.
+- `invalid` covers unknown, expired, consumed by anyone else (including a
+  since-deleted redeemer), or created by someone no longer a guardian. It
+  gives the generic "isn't valid or has expired" error and no player
+  information.
+- A consumed invite never recreates a link that was later removed.
+
+*What the local harness proves.* PGlite is a single embedded connection,
+so two truly simultaneous transactions can't run here.
+- `coach_invite_redemption_test.mjs` proves the sequential consequences:
+  - two coaches redeeming one invite get exactly one winner, one link and
+    one audit event;
+  - retries;
+  - invalid cases with no writes;
+  - a forced failure after the claim rolls everything back;
+  - permissions.
+- The 0088 contract test proves structurally that the only statement which
+  consumes an invite is that single conditional `UPDATE`. Under real
+  concurrency, PostgreSQL row locking makes a second redemption re-check
+  the condition and find the invite consumed. That's standard PostgreSQL
+  behaviour, but it isn't executed here.
+
+```powershell
+node supabase/tests/authz/coach_invite_redemption_test.mjs
+```
 
 **Release readiness** The existing `coachInvite` smoke check covers the
 whole direct-link path:

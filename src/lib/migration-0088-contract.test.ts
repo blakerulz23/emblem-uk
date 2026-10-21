@@ -39,7 +39,7 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
       'coach_assignment_is_active', 'coach_team_requests', 'enforce_coach_team_request_transition',
       'relationship_audit_events', 'reject_relationship_audit_mutation', 'record_relationship_audit_event',
       'approve_coach_team_request', 'reject_coach_team_request', 'cancel_own_coach_team_request', 'end_coach_assignment',
-      'ensure_profile_role', 'activate_coach_assignment', 'remove_direct_coach_link',
+      'ensure_profile_role', 'activate_coach_assignment', 'remove_direct_coach_link', 'redeem_coach_invite',
       'release_readiness_confirmations', 'stamp_release_readiness_confirmation', 'reject_release_readiness_mutation', 'confirm_release_readiness',
     ];
     for (const r of revokes) expect(newObjects.some((o) => r.includes(`public.${o}`))).toBe(true);
@@ -78,7 +78,7 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
   });
 
   it('keeps staff and trusted-write functions off the signed-in role', () => {
-    for (const f of ['approve_coach_team_request', 'reject_coach_team_request', 'end_coach_assignment', 'ensure_profile_role', 'activate_coach_assignment', 'remove_direct_coach_link']) {
+    for (const f of ['approve_coach_team_request', 'reject_coach_team_request', 'end_coach_assignment', 'ensure_profile_role', 'activate_coach_assignment', 'remove_direct_coach_link', 'redeem_coach_invite']) {
       const grant = code.match(new RegExp(`grant execute on function public\\.${f}\\([^)]*\\) to ([^;]+);`))!;
       expect(grant[1].trim()).toBe('service_role');
     }
@@ -87,6 +87,26 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
   it('never overwrites an existing role on approval or in ensure_profile_role', () => {
     expect(code).toContain("update public.profiles set role = 'coach' where id = v_request.requester_profile_id and role is null;");
     expect(code).toContain('set role = coalesce(public.profiles.role, excluded.role),');
+  });
+
+  it('coach-invite redemption consumes an invite only through one conditional claim', () => {
+    // Structural half of the concurrency proof (PGlite can't run two
+    // simultaneous transactions): every statement in 0088 that sets
+    // coach_invites.used_at is a single UPDATE whose WHERE requires the
+    // invite to be unused and unexpired, so PostgreSQL row locking lets only
+    // one of several simultaneous redemptions succeed.
+    const fn = code.match(/create function public\.redeem_coach_invite\([\s\S]*?\n\$\$;/)![0];
+    const inviteUpdates = code.match(/update public\.coach_invites[\s\S]*?;/g) ?? [];
+    const consumes = inviteUpdates.filter((u) => /set\s+used_at\s*=/.test(u));
+    expect(consumes).toHaveLength(1);
+    expect(consumes[0]).toMatch(/where ci\.code = p_code\s+and ci\.used_at is null\s+and ci\.expires_at > now\(\)/);
+    expect(consumes[0]).toContain('exists (select 1 from public.guardians g where g.player_id = ci.player_id and g.profile_id = ci.created_by)');
+    expect(fn).toContain(consumes[0]);
+    // used_by is filled in only on the row this call has just claimed.
+    expect(fn).toContain('update public.coach_invites ci set used_by = p_coach_profile_id where ci.code = p_code and ci.used_by is null;');
+    // The link is created in the same function; a pre-existing link undoes the claim.
+    expect(fn).toContain('on conflict on constraint coach_players_pkey do nothing;');
+    expect(fn).toContain("exception when sqlstate 'EM409' then");
   });
 
   it('widens the outbox event-type check without removing a type', () => {

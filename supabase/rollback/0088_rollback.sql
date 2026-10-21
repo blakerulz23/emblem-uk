@@ -56,6 +56,7 @@ drop function if exists public.confirm_release_readiness(text, text, uuid, boole
 drop table if exists public.release_readiness_confirmations;
 drop function if exists public.stamp_release_readiness_confirmation();
 drop function if exists public.reject_release_readiness_mutation();
+drop function if exists public.redeem_coach_invite(text, uuid, text);
 drop function if exists public.ensure_profile_role(uuid, text, text);
 drop function if exists public.activate_coach_assignment(uuid, uuid, text, uuid);
 

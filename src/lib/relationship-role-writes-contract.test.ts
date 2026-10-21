@@ -44,11 +44,18 @@ describe('relationship writes', () => {
     expect(offenders.map((f) => f.file)).toEqual([]);
   });
 
-  it('direct coach links are never updated or deleted directly; removal goes through remove_direct_coach_link', () => {
-    const offenders = files.filter((f) => /from\(\s*['"]coach_players['"]\s*\)\s*\.(update|upsert|delete)\(/.test(code(f.text)));
-    expect(offenders.map((f) => f.file)).toEqual([]);
-    const inserts = files.filter((f) => /from\(\s*['"]coach_players['"]\s*\)\s*\.insert\(/.test(code(f.text))).map((f) => f.file);
-    expect(inserts).toEqual(['src/app/api/os/coach-invites/redeem/route.ts']);
+  it('direct coach links and coach invites are never written directly by app code', () => {
+    // Creation goes only through redeem_coach_invite (atomic claim + link),
+    // removal only through remove_direct_coach_link.
+    const linkWrites = files.filter((f) => /from\(\s*['"]coach_players['"]\s*\)\s*\.(insert|update|upsert|delete)\(/.test(code(f.text)));
+    expect(linkWrites.map((f) => f.file)).toEqual([]);
+    // Coach invites are created by a guardian's own session (RLS); nothing
+    // consumes or edits one except redeem_coach_invite.
+    const inviteEdits = files.filter((f) => /from\(\s*['"]coach_invites['"]\s*\)\s*\.(update|upsert|delete)\(/.test(code(f.text)));
+    expect(inviteEdits.map((f) => f.file)).toEqual([]);
+    const redeem = readFileSync('src/app/api/os/coach-invites/redeem/route.ts', 'utf8');
+    expect(code(redeem)).toContain("rpc('redeem_coach_invite'");
+    expect(code(redeem)).not.toMatch(/ensureProfileRole|ensure_profile_role/);
   });
 
   it('every guardians insert records where it came from', () => {

@@ -3,7 +3,6 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { normalizeClaimCode } from '@/lib/claim-code';
 import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 import { generateStoryUpdate } from '@/lib/story-updates';
-import { ensureProfileRole } from '@/lib/relationship-writes';
 
 export const runtime = 'nodejs';
 
@@ -115,13 +114,20 @@ export async function GET(request: NextRequest) {
  * inconsistent security model for one invite type, not a hardening of
  * an existing one.
  *
+ * Atomic (migration 0088): the whole redemption is one database call,
+ * redeem_coach_invite. It claims the invite with a single conditional
+ * update (unused, unexpired, creator still a guardian), then ensures the
+ * coach's profile and role and creates the direct link, all in one
+ * transaction, so one invite can create at most one link and a failure
+ * leaves the invite unused. This route writes nothing itself.
+ *
  * Idempotency: if this exact invite was already used by this exact
- * signed-in coach (e.g. a double-submitted redemption), redemption
- * succeeds again without error — same relationship, same actor, nothing
- * to reject. If it was used by a *different* account, or has expired,
- * it's rejected as invalid. A genuinely new connection that collides
- * with an existing coach_players row (the coach already has a separate,
- * still-valid route to this same player) returns 409.
+ * signed-in coach and their link still exists (e.g. a double-submitted
+ * redemption), it succeeds again without changing anything or notifying
+ * anyone. Every other unusable invite (unknown, expired, used by anyone
+ * else, or created by someone no longer a guardian) gets the same generic
+ * error. A coach already directly connected to this player by another
+ * route gets 409, and the invite stays unused.
  */
 export async function POST(request: NextRequest) {
   const supabase = createClient();
@@ -139,82 +145,37 @@ export async function POST(request: NextRequest) {
   }
   const code = normalizeClaimCode(inviteCode);
 
+  // One atomic database call: claim, profile/role (set to 'coach' only if
+  // the profile has none, so a parent keeps the parent view), and the
+  // direct link. The coach is always the session's own account.
   const serviceRole = createServiceRoleClient();
-  const { data: invite } = await serviceRole
-    .from('coach_invites')
-    .select('id, used_at, used_by, expires_at, player_id, created_by')
-    .eq('code', code)
-    .maybeSingle();
-
-  if (!invite || new Date(invite.expires_at) <= new Date()) {
-    return NextResponse.json({ error: "This invite isn't valid or has expired" }, { status: 400 });
-  }
-
-  if (invite.used_at) {
-    if (invite.used_by === user.id) {
-      // Idempotent re-redemption by the same coach — confirm the
-      // connection still exists rather than erroring on an action this
-      // account already completed.
-      const { data: existingConnection } = await serviceRole
-        .from('coach_players')
-        .select('player_id')
-        .eq('player_id', invite.player_id)
-        .eq('profile_id', user.id)
-        .maybeSingle();
-      if (existingConnection) {
-        return NextResponse.json({ ok: true, playerId: invite.player_id, alreadyConnected: true });
-      }
-    }
-    return NextResponse.json({ error: "This invite isn't valid or has expired" }, { status: 400 });
-  }
-
-  // coach_players.profile_id is a foreign key into profiles — must exist
-  // before the insert below, same reasoning as every other redeem route
-  // in this codebase (claim, invites/redeem, team-invites/redeem).
-  // displayName is optional and only ever supplied on a brand-new coach's
-  // first sign-up through this exact flow (mirrors team-invites/redeem's
-  // identical shape). 'coach' is set only when the profile has no role
-  // yet: a parent who is also this child's coach keeps the parent view.
-  // A direct link is a guardian's decision: the person who created this
-  // invite must still be a guardian of the player when it's redeemed.
-  // Checked before anything is written, so a refused redemption leaves the
-  // invite unused, creates no link and changes no role.
-  if (!(await inviterIsCurrentGuardian(serviceRole, invite))) {
-    return NextResponse.json({ error: "This invite is no longer valid — ask the player's family for a new one" }, { status: 400 });
-  }
-
-  const profile = await ensureProfileRole(serviceRole, user.id, 'coach', displayName);
-  if (!profile.ok) {
-    return NextResponse.json({ error: profile.error }, { status: 500 });
-  }
-
-  const { error: connectionError } = await serviceRole.from('coach_players').insert({
-    player_id: invite.player_id,
-    profile_id: user.id,
-    created_via: 'guardian_invite',
-    created_by: invite.created_by,
+  const { data: rows, error } = await serviceRole.rpc('redeem_coach_invite', {
+    p_code: code,
+    p_coach_profile_id: user.id,
+    p_display_name: displayName?.trim() || null,
   });
-
-  if (connectionError) {
-    if (connectionError.code === '23505') {
-      return NextResponse.json({ error: "You're already connected to this player" }, { status: 409 });
-    }
-    return NextResponse.json({ error: connectionError.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json({ error: 'Could not redeem this invite — try again' }, { status: 500 });
   }
+  const result = (Array.isArray(rows) ? rows[0] : rows) as { status: string; player_id: string | null } | undefined;
 
-  const { error: inviteUpdateError } = await serviceRole
-    .from('coach_invites')
-    .update({ used_at: new Date().toISOString(), used_by: user.id })
-    .eq('id', invite.id);
-  if (inviteUpdateError) {
-    return NextResponse.json({ error: inviteUpdateError.message }, { status: 500 });
+  if (result?.status === 'already_redeemed_by_you' && result.player_id) {
+    // A retry of a redemption this coach already completed: nothing changed.
+    return NextResponse.json({ ok: true, playerId: result.player_id, alreadyConnected: true });
   }
+  if (result?.status === 'already_connected') {
+    return NextResponse.json({ error: "You're already connected to this player" }, { status: 409 });
+  }
+  if (result?.status !== 'redeemed' || !result.player_id) {
+    return NextResponse.json({ error: "This invite isn't valid or has expired" }, { status: 400 });
+  }
+  const invite = { player_id: result.player_id };
 
   // Reuses the existing coach_connected event type as-is (already used
-  // by team-invites/redeem for the team path) — only fired here, after
-  // the coach_players insert and the invite's used_at update have both
-  // genuinely succeeded, never for the idempotent alreadyConnected
-  // return above (nothing changed there to report).
+  // by team-invites/redeem for the team path) — only fired for a new
+  // 'redeemed' result, after the database has committed the claim and the
+  // link, never for the idempotent alreadyConnected return above (nothing
+  // changed there to report). One invite can be 'redeemed' only once.
   const [{ data: guardianRows }, { data: player }, { data: actor }] = await Promise.all([
     serviceRole.from('guardians').select('profile_id').eq('player_id', invite.player_id),
     serviceRole.from('players').select('name').eq('id', invite.player_id).maybeSingle(),

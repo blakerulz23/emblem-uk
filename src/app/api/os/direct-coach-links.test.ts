@@ -108,7 +108,11 @@ describe('coach-invite redemption re-checks the invite creator', () => {
         if (c.table === 'profiles') return { data: { display_name: 'Fictional Coach' } };
         return {};
       },
-      rpc: (fn) => (fn === 'ensure_profile_role' ? { data: 'coach' } : {}),
+      // redeem_coach_invite re-checks the creator inside its atomic claim
+      // (proven in supabase/tests/authz/coach_invite_redemption_test.mjs);
+      // a creator who is no longer a guardian makes it return 'invalid'.
+      rpc: (fn) =>
+        fn === 'redeem_coach_invite' ? { data: [inviterIsGuardian ? { status: 'redeemed', player_id: PLAYER } : { status: 'invalid', player_id: null }] } : {},
     });
   }
   const redeem = () => redeemCoachInvite(new NextRequest('http://localhost/api/os/coach-invites/redeem', { method: 'POST', body: JSON.stringify({ inviteCode: 'COACH-1234' }) }));
@@ -117,12 +121,12 @@ describe('coach-invite redemption re-checks the invite creator', () => {
   it.each([
     ['is no longer a guardian of the player', { inviterIsGuardian: false }],
     ['deleted their account', { inviterIsGuardian: false, createdBy: null }],
-  ])('refuses when the creator %s: invite unused, no link, no role change', async (_label, opts) => {
+  ])('refuses when the creator %s: generic error, no direct writes', async (_label, opts) => {
     setup(opts);
     const res = await redeem();
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("This invite is no longer valid — ask the player's family for a new one");
-    expect(service.rpcCalls).toHaveLength(0);
+    expect((await res.json()).error).toBe("This invite isn't valid or has expired");
+    expect(service.rpcCalls.map((c) => c.fn)).toEqual(['redeem_coach_invite']);
     expect(wroteTable(service.calls, 'coach_players')).toBe(false);
     expect(wroteTable(service.calls, 'coach_invites')).toBe(false);
     expect(wroteTable(session.calls, 'profiles')).toBe(false);
@@ -133,14 +137,13 @@ describe('coach-invite redemption re-checks the invite creator', () => {
     expect(await (await lookup()).json()).toEqual({ found: false });
   });
 
-  it('a valid invite from a current guardian still redeems', async () => {
+  it('a valid invite from a current guardian still redeems, in one atomic call', async () => {
     setup({ inviterIsGuardian: true });
     const res = await redeem();
     expect(res.status).toBe(200);
-    expect(service.rpcCalls.map((c) => c.fn)).toEqual(['ensure_profile_role']);
-    const insert = service.calls.find((c) => c.table === 'coach_players' && c.op === 'insert');
-    expect(insert?.payload).toMatchObject({ player_id: PLAYER, profile_id: COACH, created_via: 'guardian_invite', created_by: INVITER });
-    expect(service.calls.some((c) => c.table === 'coach_invites' && c.op === 'update')).toBe(true);
+    expect(service.rpcCalls).toEqual([{ fn: 'redeem_coach_invite', args: { p_code: 'COACH-1234', p_coach_profile_id: COACH, p_display_name: null } }]);
+    expect(wroteTable(service.calls, 'coach_players')).toBe(false);
+    expect(wroteTable(service.calls, 'coach_invites')).toBe(false);
     expect((await (await lookup()).json()).found).toBe(true);
   });
 });

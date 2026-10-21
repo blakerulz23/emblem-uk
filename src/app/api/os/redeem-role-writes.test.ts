@@ -51,7 +51,11 @@ function setupService(existingRole: 'parent' | 'coach' | null) {
       }
       return {};
     },
-    rpc: (fn) => (fn === 'ensure_profile_role' ? { data: existingRole } : {}),
+    rpc: (fn) => {
+      if (fn === 'ensure_profile_role') return { data: existingRole };
+      if (fn === 'redeem_coach_invite') return { data: [{ status: 'redeemed', player_id: PLAYER }] };
+      return {};
+    },
   });
 }
 
@@ -97,13 +101,14 @@ describe('guardian invite (POST /api/os/invites/redeem)', () => {
 });
 
 describe('coach invite (POST /api/os/coach-invites/redeem)', () => {
-  it('asks for the coach role through the trusted function (a parent keeps parent) and never writes profiles as the user', async () => {
+  it('redeems through the atomic function (which sets the role only if empty) and never writes profiles or links as the user or directly', async () => {
     setupService('parent');
     const res = await redeemCoachInvite(req('/api/os/coach-invites/redeem', { inviteCode: 'COACH-1234' }));
     expect(res.status).toBe(200);
-    expect(service.rpcCalls).toContainEqual({ fn: 'ensure_profile_role', args: { p_profile_id: USER, p_role: 'coach', p_display_name: null } });
+    expect(service.rpcCalls).toEqual([{ fn: 'redeem_coach_invite', args: { p_code: 'COACH-1234', p_coach_profile_id: USER, p_display_name: null } }]);
     expect(wroteTable(session.calls, 'profiles')).toBe(false);
-    expect(service.calls.some((c) => c.table === 'coach_players' && c.op === 'insert')).toBe(true);
+    expect(wroteTable(service.calls, 'coach_players')).toBe(false);
+    expect(wroteTable(service.calls, 'coach_invites')).toBe(false);
   });
 });
 

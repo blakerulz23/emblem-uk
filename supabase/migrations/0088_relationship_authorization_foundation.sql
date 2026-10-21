@@ -33,7 +33,9 @@
 --        ensure_profile_role: create the profile if missing, set the role
 --          only when it is empty, never overwrite one;
 --        activate_coach_assignment: insert, or reactivate an ended/expired
---          assignment, attributed to the initiating account.
+--          assignment, attributed to the initiating account;
+--        redeem_coach_invite: claim a coach invite and create its direct
+--          coach link atomically (one invite, at most one link).
 --   9. staff_notification_outbox: event type 'new_coach_team_request'
 --      (the existing list plus one; nothing removed).
 --  10. release_readiness_confirmations: an append-only record that a staff
@@ -645,6 +647,90 @@ $$;
 alter function public.activate_coach_assignment(uuid, uuid, text, uuid) owner to postgres;
 revoke all on function public.activate_coach_assignment(uuid, uuid, text, uuid) from public, anon, authenticated;
 grant execute on function public.activate_coach_assignment(uuid, uuid, text, uuid) to service_role;
+
+-- Redeems a coach invite in one transaction: claim the invite, ensure the
+-- coach's profile and role, create the direct coach link. The claim is a
+-- single conditional UPDATE (unused, unexpired, creator still a guardian
+-- of the player), so of any number of simultaneous redemptions of one code
+-- exactly one can succeed; the others see a consumed invite. Everything
+-- after the claim runs in a sub-block: if the coach is already directly
+-- connected to this player the claim, role and profile changes are undone
+-- and 'already_connected' is returned; any other failure aborts the whole
+-- call, so the invite is never left consumed without its link.
+-- Statuses: 'redeemed' | 'already_redeemed_by_you' (this coach consumed it
+-- earlier and the link still exists; nothing changes) | 'already_connected'
+-- | 'invalid' (unknown, expired, consumed by anyone else or by an account
+-- since deleted, or created by someone no longer a guardian). player_id is
+-- returned only for 'redeemed' and 'already_redeemed_by_you'.
+create function public.redeem_coach_invite(p_code text, p_coach_profile_id uuid, p_display_name text default null)
+returns table (status text, player_id uuid)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_player_id uuid;
+  v_created_by uuid;
+begin
+  if p_code is null or p_coach_profile_id is null then
+    return query select 'invalid'::text, null::uuid;
+    return;
+  end if;
+
+  begin
+    -- The claim: the one conditional statement that consumes the invite and
+    -- row-locks it for the rest of this transaction. used_by is filled in
+    -- below, once the coach's profile is sure to exist (foreign key).
+    update public.coach_invites ci
+      set used_at = now()
+      where ci.code = p_code
+        and ci.used_at is null
+        and ci.expires_at > now()
+        and ci.created_by is not null
+        and exists (select 1 from public.guardians g where g.player_id = ci.player_id and g.profile_id = ci.created_by)
+      returning ci.player_id, ci.created_by into v_player_id, v_created_by;
+
+    if v_player_id is null then
+      -- Not claimable. The only non-invalid case: this same coach already
+      -- consumed it and their link still exists (a retry). A consumed invite
+      -- is never used to recreate a missing link.
+      select ci.player_id into v_player_id
+        from public.coach_invites ci
+        where ci.code = p_code and ci.used_at is not null and ci.used_by = p_coach_profile_id
+          and exists (select 1 from public.coach_players cp where cp.player_id = ci.player_id and cp.profile_id = p_coach_profile_id);
+      if v_player_id is not null then
+        return query select 'already_redeemed_by_you'::text, v_player_id;
+      else
+        return query select 'invalid'::text, null::uuid;
+      end if;
+      return;
+    end if;
+
+    -- The profile must exist before the link (foreign key). 'coach' is set
+    -- only if the profile has no role yet.
+    perform public.ensure_profile_role(p_coach_profile_id, 'coach', p_display_name);
+
+    insert into public.coach_players (player_id, profile_id, created_via, created_by)
+      values (v_player_id, p_coach_profile_id, 'guardian_invite', v_created_by)
+      on conflict on constraint coach_players_pkey do nothing;
+    if not found then
+      raise exception using errcode = 'EM409', message = 'coach already directly connected to this player';
+    end if;
+
+    -- Same row, already claimed and locked by this transaction.
+    update public.coach_invites ci set used_by = p_coach_profile_id where ci.code = p_code and ci.used_by is null;
+  exception when sqlstate 'EM409' then
+    -- Undoes the claim, profile and role changes made in this block.
+    return query select 'already_connected'::text, null::uuid;
+    return;
+  end;
+
+  return query select 'redeemed'::text, v_player_id;
+end;
+$$;
+alter function public.redeem_coach_invite(text, uuid, text) owner to postgres;
+revoke all on function public.redeem_coach_invite(text, uuid, text) from public, anon, authenticated;
+grant execute on function public.redeem_coach_invite(text, uuid, text) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 9. Staff notification for a new team request
