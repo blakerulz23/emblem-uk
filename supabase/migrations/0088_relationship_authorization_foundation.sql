@@ -16,7 +16,9 @@
 --      definition of an active assignment. Nothing uses it for access yet.
 --   4. coach_team_requests: a coach asks staff for a team; at most one
 --      pending request per person; decided requests are final.
---   5. relationship_audit_events + trigger on coach_team and guardians:
+--   5. relationship_audit_events + trigger on coach_team, guardians and
+--      coach_players (direct coach links; removed only via
+--      remove_direct_coach_link, which records the actor and reason):
 --      append-only, records the initiating account or named trusted
 --      operation, not just the database role (see "Attribution" below).
 --   6. Staff-only functions (service_role): approve/reject a request, end an
@@ -199,7 +201,7 @@ grant select, insert, update, delete on public.coach_team_requests to service_ro
 create table public.relationship_audit_events (
   id bigint generated always as identity primary key,
   occurred_at timestamptz not null default now(),
-  table_name text not null check (table_name in ('coach_team', 'guardians')),
+  table_name text not null check (table_name in ('coach_team', 'guardians', 'coach_players')),
   event text not null check (event in ('INSERT', 'UPDATE', 'DELETE')),
   -- No foreign keys: history must outlive the rows and profiles it names.
   team_id uuid,
@@ -208,6 +210,8 @@ create table public.relationship_audit_events (
   actor_profile_id uuid,
   actor_source text not null check (actor_source in ('trusted_function', 'session', 'row_attribution', 'unattributed')),
   operation text,
+  -- The reason a trusted operation gave (e.g. why a direct link was removed).
+  reason text check (reason is null or char_length(reason) <= 500),
   auth_uid uuid,
   db_role text not null,
   old_row jsonb,
@@ -217,7 +221,7 @@ create table public.relationship_audit_events (
 create index relationship_audit_events_profile_idx on public.relationship_audit_events (profile_id, occurred_at);
 
 comment on table public.relationship_audit_events is
-  'Append-only record of every insert, update and delete on coach_team and guardians from 0088 onwards. Rows before 0088 have no history. Service-role read only.';
+  'Append-only record of every insert, update and delete on coach_team, guardians and coach_players from 0088 onwards. Rows before 0088 have no history. Service-role read only.';
 
 create function public.reject_relationship_audit_mutation()
 returns trigger
@@ -257,6 +261,7 @@ declare
   v_row_actor uuid;
   v_actor uuid;
   v_source text;
+  v_reason text;
 begin
   if tg_op = 'INSERT' then
     v_row_actor := (v_row ->> 'created_by')::uuid;
@@ -267,6 +272,7 @@ begin
   if v_operation is not null then
     v_source := 'trusted_function';
     v_actor := v_trusted_actor;
+    v_reason := nullif(current_setting('emblem.trusted_reason', true), '');
   elsif v_auth_uid is not null then
     v_source := 'session';
     v_actor := v_auth_uid;
@@ -280,10 +286,10 @@ begin
 
   insert into public.relationship_audit_events (
     table_name, event, team_id, player_id, profile_id,
-    actor_profile_id, actor_source, operation, auth_uid, db_role, old_row, new_row
+    actor_profile_id, actor_source, operation, reason, auth_uid, db_role, old_row, new_row
   ) values (
     tg_table_name, tg_op, (v_row ->> 'team_id')::uuid, (v_row ->> 'player_id')::uuid, (v_row ->> 'profile_id')::uuid,
-    v_actor, v_source, v_operation, v_auth_uid,
+    v_actor, v_source, v_operation, v_reason, v_auth_uid,
     -- current_user is this function's owner here; the role GUC still holds
     -- the caller's SET ROLE (authenticated / service_role under PostgREST).
     coalesce(nullif(current_setting('role', true), 'none'), session_user),
@@ -301,6 +307,12 @@ create trigger relationship_audit
   for each row execute function public.record_relationship_audit_event();
 create trigger relationship_audit
   after insert or update or delete on public.guardians
+  for each row execute function public.record_relationship_audit_event();
+-- Direct coach links (0030): created by coach-invite redemption, removed only
+-- through remove_direct_coach_link below. Attached after the table already
+-- holds its existing rows, so they get no invented history.
+create trigger relationship_audit
+  after insert or update or delete on public.coach_players
   for each row execute function public.record_relationship_audit_event();
 
 -- ---------------------------------------------------------------------------
@@ -470,6 +482,7 @@ begin
 
   perform set_config('emblem.trusted_operation', 'end_coach_assignment', true);
   perform set_config('emblem.actor_profile_id', p_staff_profile_id::text, true);
+  perform set_config('emblem.trusted_reason', btrim(p_reason), true);
 
   update public.coach_team
     set ended_at = now(), ended_by = p_staff_profile_id, end_reason = btrim(p_reason)
@@ -477,11 +490,80 @@ begin
 
   perform set_config('emblem.trusted_operation', '', true);
   perform set_config('emblem.actor_profile_id', '', true);
+  perform set_config('emblem.trusted_reason', '', true);
 end;
 $$;
 alter function public.end_coach_assignment(uuid, uuid, uuid, text) owner to postgres;
 revoke all on function public.end_coach_assignment(uuid, uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.end_coach_assignment(uuid, uuid, uuid, text) to service_role;
+
+-- Removes one direct coach link (coach_players, 0030). A direct link is its
+-- own relationship: it never depends on a team assignment, so ending or
+-- expiring the coach's team assignment, or transferring the player, leaves it
+-- in place. It ends only here, and only for an actor who is the connected
+-- coach, a current guardian of the player, or staff. The row is deleted (no
+-- downstream table references it); the audit event keeps the history, with
+-- the actor and reason. Returns 'removed', or 'not_found' when there is no
+-- such link (already removed: a safe retry).
+create function public.remove_direct_coach_link(
+  p_player_id uuid,
+  p_coach_profile_id uuid,
+  p_actor_profile_id uuid,
+  p_reason text
+)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor_kind text;
+begin
+  if p_player_id is null or p_coach_profile_id is null then
+    raise exception 'A player and a coach are required';
+  end if;
+  if p_actor_profile_id is null then
+    raise exception 'An actor is required';
+  end if;
+  if p_reason is null or char_length(btrim(p_reason)) = 0 or char_length(btrim(p_reason)) > 500 then
+    raise exception 'A reason (up to 500 characters) is required';
+  end if;
+
+  if p_actor_profile_id = p_coach_profile_id then
+    v_actor_kind := 'coach';
+  elsif exists (select 1 from public.guardians where player_id = p_player_id and profile_id = p_actor_profile_id) then
+    v_actor_kind := 'guardian';
+  elsif exists (select 1 from public.staff_accounts where profile_id = p_actor_profile_id) then
+    v_actor_kind := 'staff';
+  else
+    raise exception 'Not authorized to remove this connection';
+  end if;
+
+  perform 1 from public.coach_players
+    where player_id = p_player_id and profile_id = p_coach_profile_id
+    for update;
+  if not found then
+    return 'not_found';
+  end if;
+
+  -- Transaction-local, and cleared below. If anything raises, the whole
+  -- transaction (or the caller's savepoint) rolls back these settings too.
+  perform set_config('emblem.trusted_operation', 'remove_direct_coach_link:' || v_actor_kind, true);
+  perform set_config('emblem.actor_profile_id', p_actor_profile_id::text, true);
+  perform set_config('emblem.trusted_reason', btrim(p_reason), true);
+
+  delete from public.coach_players where player_id = p_player_id and profile_id = p_coach_profile_id;
+
+  perform set_config('emblem.trusted_operation', '', true);
+  perform set_config('emblem.actor_profile_id', '', true);
+  perform set_config('emblem.trusted_reason', '', true);
+
+  return 'removed';
+end;
+$$;
+alter function public.remove_direct_coach_link(uuid, uuid, uuid, text) owner to postgres;
+revoke all on function public.remove_direct_coach_link(uuid, uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.remove_direct_coach_link(uuid, uuid, uuid, text) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 8. Trusted writes for the application

@@ -13,7 +13,8 @@ type CoachInviteLookupRow = {
   used_by: string | null;
   expires_at: string;
   player_id: string;
-  created_by: string;
+  // NULL once the creating guardian deletes their account.
+  created_by: string | null;
   players: {
     name: string;
     teams: {
@@ -23,6 +24,21 @@ type CoachInviteLookupRow = {
     } | null;
   } | null;
 };
+
+/** The invite's creator is still a guardian of its player (not removed, not a deleted account). */
+async function inviterIsCurrentGuardian(
+  serviceRole: ReturnType<typeof createServiceRoleClient>,
+  invite: { player_id: string; created_by: string | null }
+): Promise<boolean> {
+  if (!invite.created_by) return false;
+  const { data } = await serviceRole
+    .from('guardians')
+    .select('player_id')
+    .eq('player_id', invite.player_id)
+    .eq('profile_id', invite.created_by)
+    .maybeSingle();
+  return !!data;
+}
 
 /**
  * Public lookup for a coach invite code — the redeemer (a coach) has no
@@ -54,7 +70,8 @@ export async function GET(request: NextRequest) {
     .eq('code', code)
     .maybeSingle<CoachInviteLookupRow>();
 
-  const valid = !!data && !data.used_at && new Date(data.expires_at) > new Date();
+  const valid =
+    !!data && !data.used_at && new Date(data.expires_at) > new Date() && (await inviterIsCurrentGuardian(serviceRole, data));
   await logClaimAttempt(identifier, code, valid);
 
   // Invalid, expired, and already-used codes all collapse to the same
@@ -158,6 +175,14 @@ export async function POST(request: NextRequest) {
   // first sign-up through this exact flow (mirrors team-invites/redeem's
   // identical shape). 'coach' is set only when the profile has no role
   // yet: a parent who is also this child's coach keeps the parent view.
+  // A direct link is a guardian's decision: the person who created this
+  // invite must still be a guardian of the player when it's redeemed.
+  // Checked before anything is written, so a refused redemption leaves the
+  // invite unused, creates no link and changes no role.
+  if (!(await inviterIsCurrentGuardian(serviceRole, invite))) {
+    return NextResponse.json({ error: "This invite is no longer valid — ask the player's family for a new one" }, { status: 400 });
+  }
+
   const profile = await ensureProfileRole(serviceRole, user.id, 'coach', displayName);
   if (!profile.ok) {
     return NextResponse.json({ error: profile.error }, { status: 500 });

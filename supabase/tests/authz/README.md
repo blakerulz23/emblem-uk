@@ -209,6 +209,65 @@ which exist only from 0088. Deploying this app before 0088 would make every
 claim and invite fail. 0088 is additive, so the current app keeps working on
 it. This differs from FIX-PLAN §6, which put the app first.
 
+## Direct coach links (coach_players)
+
+```powershell
+$env:EMBLEM_AUTHZ_PGLITE_DIR = 'C:\Users\blake\OneDrive\Desktop\vscode-demo\_tooling\emblem-authz-pglite'
+node supabase/tests/authz/direct_coach_links_test.mjs
+```
+
+A direct link is a guardian connecting one coach to one player, through a
+coach invite. It's its own relationship and never depends on a team
+assignment.
+
+**What a link does**
+- It grants access to that one player only.
+- It survives the coach's team assignment ending or expiring, a team
+  transfer, and the team being deleted.
+
+**How a link is created**
+- Coach-invite redemption, run with the service role, is the only way.
+  Signed-in users have no INSERT, UPDATE or DELETE on `coach_players`.
+- Redemption now also requires the invite's creator to still be a guardian
+  of the player. Otherwise it refuses: the invite stays unused, no link is
+  created and no role changes.
+- Creation is audited as `INSERT` with `row_attribution`, naming the
+  inviting guardian and `guardian_invite`.
+
+**How a link ends**
+- Only through `remove_direct_coach_link(player, coach, actor, reason)`,
+  which is `service_role`-only.
+- The actor must be the connected coach, a current guardian of the player,
+  or staff.
+- It needs a non-empty reason (up to 500 characters).
+- It returns `'removed'`, or `'not_found'` for a link that no longer exists,
+  so a retry is safe.
+- It deletes only that one row. The audit event records `DELETE`, the
+  player, the coach, the actor, `remove_direct_coach_link:<coach|guardian|staff>`,
+  the reason (in the new `relationship_audit_events.reason` column) and the
+  database role.
+- `end_coach_assignment` now records its reason in that column too.
+
+**Callers**
+- The guardian or coach disconnect route,
+  `DELETE /api/os/players/[id]/coach-connections/[coachProfileId]`.
+- Staff, through `POST /api/staff/coach-player-links/remove`.
+  `/staff/coach-assignments` lists direct connections separately from team
+  assignments, showing the coach, the player's first name and last initial,
+  their team and the date.
+
+**History** Links that existed before 0088 get no audit events and no new
+timestamps or actors from applying it.
+
+**Release readiness** The existing `coachInvite` smoke check covers the
+whole direct-link path:
+- creating a coach invite as a guardian;
+- redeeming it as the coach;
+- confirming a removal path works (by the guardian or the coach), with its
+  audit event.
+
+No seventh readiness check is needed.
+
 ## Release readiness (Phase 4A)
 
 0089 must not run until the compatible application is deployed and

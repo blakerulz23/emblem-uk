@@ -30,7 +30,7 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
       'coach_assignment_is_active', 'coach_team_requests', 'enforce_coach_team_request_transition',
       'relationship_audit_events', 'reject_relationship_audit_mutation', 'record_relationship_audit_event',
       'approve_coach_team_request', 'reject_coach_team_request', 'cancel_own_coach_team_request', 'end_coach_assignment',
-      'ensure_profile_role', 'activate_coach_assignment',
+      'ensure_profile_role', 'activate_coach_assignment', 'remove_direct_coach_link',
       'release_readiness_confirmations', 'stamp_release_readiness_confirmation', 'reject_release_readiness_mutation', 'confirm_release_readiness',
     ];
     for (const r of revokes) expect(newObjects.some((o) => r.includes(`public.${o}`))).toBe(true);
@@ -69,7 +69,7 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
   });
 
   it('keeps staff and trusted-write functions off the signed-in role', () => {
-    for (const f of ['approve_coach_team_request', 'reject_coach_team_request', 'end_coach_assignment', 'ensure_profile_role', 'activate_coach_assignment']) {
+    for (const f of ['approve_coach_team_request', 'reject_coach_team_request', 'end_coach_assignment', 'ensure_profile_role', 'activate_coach_assignment', 'remove_direct_coach_link']) {
       const grant = code.match(new RegExp(`grant execute on function public\\.${f}\\([^)]*\\) to ([^;]+);`))!;
       expect(grant[1].trim()).toBe('service_role');
     }

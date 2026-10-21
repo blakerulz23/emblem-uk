@@ -45,7 +45,10 @@ function setupService(existingRole: 'parent' | 'coach' | null) {
           ],
         };
       }
-      if (c.table === 'guardians' && c.op === 'select') return { data: [] };
+      // The coach invite's creator ('guardian-1') is a current guardian; other guardian reads are lists.
+      if (c.table === 'guardians' && c.op === 'select') {
+        return c.filters.some(([, col, v]) => col === 'profile_id' && v === 'guardian-1') ? { data: { player_id: PLAYER } } : { data: [] };
+      }
       return {};
     },
     rpc: (fn) => (fn === 'ensure_profile_role' ? { data: existingRole } : {}),

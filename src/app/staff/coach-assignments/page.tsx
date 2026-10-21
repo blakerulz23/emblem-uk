@@ -4,6 +4,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { activeCoachAssignments, COACH_ASSIGNMENT_STATE_COLUMNS } from '@/lib/coach-assignment';
 import EndAssignmentButton from './EndAssignmentButton';
+import RemoveDirectLinkButton from './RemoveDirectLinkButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,10 +29,25 @@ type AssignmentRow = {
   teams: { name: string; clubs: { name: string } | null; seasons: { label: string } | null } | null;
 };
 
+type DirectLinkRow = {
+  player_id: string;
+  profile_id: string;
+  connected_at: string;
+  players: { name: string; teams: { name: string; clubs: { name: string } | null } | null } | null;
+};
+
+function shortPlayerName(name: string | undefined) {
+  const [first, ...rest] = (name ?? '').trim().split(/\s+/);
+  return [first || 'Unnamed player', rest.length ? `${rest[rest.length - 1][0]}.` : ''].filter(Boolean).join(' ');
+}
+
 /**
- * Every active coach assignment, by team, with an End action. Assignments
+ * Every active coach assignment, by team, with an End action; then every
+ * direct coach-player connection, with a Remove action. The two are separate:
+ * ending a team assignment never removes a direct connection. Assignments
  * made before 0088 show "before records": their creation details were never
- * stored, and none are invented. Nothing on this page shows child data.
+ * stored, and none are invented. Players appear only by first name and
+ * last initial.
  */
 export default async function StaffCoachAssignmentsPage() {
   const supabase = createClient();
@@ -46,7 +62,16 @@ export default async function StaffCoachAssignmentsPage() {
     .select(`team_id, profile_id, created_at, created_via, ${COACH_ASSIGNMENT_STATE_COLUMNS}, teams ( name, clubs ( name ), seasons ( label ) )`);
   const active = activeCoachAssignments((rows ?? []) as unknown as AssignmentRow[]);
 
-  const profileIds = Array.from(new Set(active.map((r) => r.profile_id)));
+  // Direct connections (coach_players): a guardian linked one coach to one
+  // player. Independent of team assignments. Only the minimum shown: the
+  // coach, the player's first name and last initial, their team, and when.
+  const { data: directRows } = await serviceRole
+    .from('coach_players')
+    .select('player_id, profile_id, connected_at, players ( name, teams ( name, clubs ( name ) ) )')
+    .order('connected_at', { ascending: false });
+  const direct = (directRows ?? []) as unknown as DirectLinkRow[];
+
+  const profileIds = Array.from(new Set([...active.map((r) => r.profile_id), ...direct.map((d) => d.profile_id)]));
   const { data: profiles } = profileIds.length
     ? await serviceRole.from('profiles').select('id, display_name').in('id', profileIds)
     : { data: [] as { id: string; display_name: string | null }[] };
@@ -76,7 +101,7 @@ export default async function StaffCoachAssignmentsPage() {
       </h1>
       <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 15, color: 'var(--ink-soft)', margin: '0 0 8px' }}>
         Everyone who currently coaches a team. Ending an assignment keeps the record and removes the coach&rsquo;s access to that
-        team. New coaches come from{' '}
+        team. It does not remove a direct player connection: those are listed separately below. New coaches come from{' '}
         <Link href="/staff/team-requests" style={{ color: 'var(--accent)', fontWeight: 700 }}>
           team requests
         </Link>{' '}
@@ -111,6 +136,38 @@ export default async function StaffCoachAssignmentsPage() {
               })}
             </div>
           ))}
+        </div>
+      )}
+
+      <h2 style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 18, color: 'var(--ink)', margin: '36px 0 6px' }}>
+        Direct player connections ({direct.length})
+      </h2>
+      <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 13.5, color: 'var(--ink-soft)', margin: '0 0 12px' }}>
+        A family connected one coach to one player. These don&rsquo;t depend on a team: they stay after a team assignment ends or
+        the player moves team, until the family, the coach or staff remove them.
+      </p>
+      {direct.length === 0 ? (
+        <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-soft)' }}>No direct connections.</p>
+      ) : (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: '4px 16px' }}>
+          {direct.map((d, i) => {
+            const coach = nameById.get(d.profile_id) ?? 'Unnamed coach';
+            const player = shortPlayerName(d.players?.name);
+            const team = [d.players?.teams?.clubs?.name, d.players?.teams?.name].filter(Boolean).join(' ');
+            return (
+              <div key={`${d.player_id}:${d.profile_id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap', padding: '10px 0', borderTop: i ? '1px solid var(--border)' : 'none' }}>
+                <div>
+                  <div style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>
+                    {coach} → {player}
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 12, color: 'var(--ink-soft)', marginTop: 2 }}>
+                    {team ? `${team} · ` : ''}Connected by the family on {formatDate(d.connected_at)}
+                  </div>
+                </div>
+                <RemoveDirectLinkButton playerId={d.player_id} coachProfileId={d.profile_id} label={coach} />
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

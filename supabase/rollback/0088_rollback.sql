@@ -17,6 +17,8 @@ begin;
 
 drop trigger if exists relationship_audit on public.coach_team;
 drop trigger if exists relationship_audit on public.guardians;
+drop trigger if exists relationship_audit on public.coach_players;
+drop function if exists public.remove_direct_coach_link(uuid, uuid, uuid, text);
 
 drop function if exists public.approve_coach_team_request(uuid, uuid, uuid, timestamptz, uuid);
 drop function if exists public.reject_coach_team_request(uuid, uuid, text);

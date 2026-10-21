@@ -44,6 +44,13 @@ describe('relationship writes', () => {
     expect(offenders.map((f) => f.file)).toEqual([]);
   });
 
+  it('direct coach links are never updated or deleted directly; removal goes through remove_direct_coach_link', () => {
+    const offenders = files.filter((f) => /from\(\s*['"]coach_players['"]\s*\)\s*\.(update|upsert|delete)\(/.test(code(f.text)));
+    expect(offenders.map((f) => f.file)).toEqual([]);
+    const inserts = files.filter((f) => /from\(\s*['"]coach_players['"]\s*\)\s*\.insert\(/.test(code(f.text))).map((f) => f.file);
+    expect(inserts).toEqual(['src/app/api/os/coach-invites/redeem/route.ts']);
+  });
+
   it('every guardians insert records where it came from', () => {
     const inserts = files.flatMap((f) =>
       Array.from(code(f.text).matchAll(/from\(\s*['"]guardians['"]\s*\)\s*\.insert\(([\s\S]*?)\);/g)).map((m) => ({ file: f.file, payload: m[1] }))

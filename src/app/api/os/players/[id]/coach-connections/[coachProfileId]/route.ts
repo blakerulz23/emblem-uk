@@ -6,16 +6,14 @@ export const runtime = 'nodejs';
 
 /**
  * Removes exactly one direct coach_players connection — either a guardian
- * revoking a coach, or a coach leaving their own connection. Same
- * "authenticated session, service-role does the write after an explicit
- * server-side authorization check" shape as
- * src/app/api/os/players/[id]/unpublish-all/route.ts. coach_players has
- * no delete grant or policy at all (0030_coach_players.sql) — this route
- * is the only place a row here can ever be removed, so there is exactly
- * one authorization check to keep correct, not one per caller.
+ * revoking a coach, or a coach leaving their own connection. The caller's
+ * authority is checked here first, then the removal goes through the
+ * service-role-only remove_direct_coach_link (migration 0088), which
+ * re-checks that authority, deletes just this link and records the actor
+ * and reason in the relationship audit trail. coach_players has no
+ * insert/update/delete grant or policy for signed-in users at all.
  *
- * Deletes only the (player_id, profile_id) row itself. Nothing in
- * player_assessments/player_strengths/moments/player_season_focus
+ * Nothing in player_assessments/player_strengths/moments/player_season_focus
  * references coach_players, so this can never cascade into historical
  * content — access ends, history remains, by construction.
  */
@@ -50,25 +48,28 @@ export async function DELETE(
     return NextResponse.json({ error: 'Only a guardian of this player, or the connected coach themselves, can do this' }, { status: 403 });
   }
 
-  const { data: deleted, error } = await serviceRole
-    .from('coach_players')
-    .delete()
-    .eq('player_id', playerId)
-    .eq('profile_id', coachProfileId)
-    .select('player_id');
-
+  const { data: result, error } = await serviceRole.rpc('remove_direct_coach_link', {
+    p_player_id: playerId,
+    p_coach_profile_id: coachProfileId,
+    p_actor_profile_id: user.id,
+    p_reason: isSelf ? 'The coach ended their own connection' : 'Removed by a guardian',
+  });
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error.message.includes('Not authorized')) {
+      return NextResponse.json({ error: 'Only a guardian of this player, or the connected coach themselves, can do this' }, { status: 403 });
+    }
+    return NextResponse.json({ error: 'Could not remove this connection' }, { status: 500 });
   }
-  if (!deleted || deleted.length === 0) {
+  if (result !== 'removed') {
+    // Already removed (or never existed): nothing changed, nothing to report.
     return NextResponse.json({ error: 'No direct connection found for this player and coach' }, { status: 404 });
   }
 
-  // Fired only now, after the delete has genuinely succeeded above — a
-  // 403/404 never reaches here. Distinguishes the two real actors this
-  // route already knows about (isSelf, computed for authorization) in
-  // the copy itself, without ever naming "coach_players"/"direct
-  // connection"/a profile id to the reader.
+  // Fired only now, after the removal is confirmed — a 403/404 never
+  // reaches here. Distinguishes the two real actors this route already
+  // knows about (isSelf, computed for authorization) in the copy itself,
+  // without ever naming "coach_players"/"direct connection"/a profile id
+  // to the reader.
   const [{ data: guardianRows }, { data: player }, { data: actor }] = await Promise.all([
     serviceRole.from('guardians').select('profile_id').eq('player_id', playerId),
     serviceRole.from('players').select('name').eq('id', playerId).maybeSingle(),
