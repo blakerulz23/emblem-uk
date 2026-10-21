@@ -15,6 +15,15 @@
 -- they're needed.
 begin;
 
+-- 0088 §11. Fails (and rolls back entirely) if any coach_invites row has a
+-- NULL created_by, i.e. a guardian with a coach invite has deleted their
+-- account since 0088: those rows have no creator to restore. Delete or
+-- reassign them first, deliberately.
+alter table public.coach_invites alter column created_by set not null;
+alter table public.coach_players
+  drop constraint coach_players_created_by_fkey,
+  add constraint coach_players_created_by_fkey foreign key (created_by) references public.profiles (id);
+
 drop trigger if exists relationship_audit on public.coach_team;
 drop trigger if exists relationship_audit on public.guardians;
 drop trigger if exists relationship_audit on public.coach_players;

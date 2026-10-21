@@ -42,6 +42,9 @@
 --      Written only by confirm_release_readiness (service_role), which the
 --      compatible app's staff endpoint calls. 0089 will refuse to run
 --      without it. Holds no child, player, parent or coach data.
+--  11. coach_players.created_by ON DELETE SET NULL, and coach_invites.created_by
+--      nullable, so a guardian who created a coach invite or direct link
+--      can delete their account (the invite and link remain).
 --
 -- Attribution. The audit trigger resolves the actor in this order:
 --   trusted_function  a SECURITY DEFINER function in this file set
@@ -786,6 +789,22 @@ $$;
 alter function public.confirm_release_readiness(text, text, uuid, boolean, boolean, boolean, boolean, boolean, boolean) owner to postgres;
 revoke all on function public.confirm_release_readiness(text, text, uuid, boolean, boolean, boolean, boolean, boolean, boolean) from public, anon, authenticated;
 grant execute on function public.confirm_release_readiness(text, text, uuid, boolean, boolean, boolean, boolean, boolean, boolean) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 11. Creators who delete their account
+-- ---------------------------------------------------------------------------
+-- A guardian who had created a coach invite, or whose invite was redeemed,
+-- could not delete their account (delete_own_guardian_account, 0076):
+--   - coach_players.created_by referenced profiles with no ON DELETE rule;
+--   - coach_invites.created_by is NOT NULL, yet that function sets it to
+--     NULL before deleting the profile.
+-- The link and the invite stay (they belong to the child's history and the
+-- coach's access); only the reference to the deleted account becomes NULL.
+alter table public.coach_players
+  drop constraint coach_players_created_by_fkey,
+  add constraint coach_players_created_by_fkey foreign key (created_by) references public.profiles (id) on delete set null;
+
+alter table public.coach_invites alter column created_by drop not null;
 
 -- ---------------------------------------------------------------------------
 -- 7. Existing helpers: empty search_path, same logic, same grants

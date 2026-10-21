@@ -22,9 +22,12 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
 
   it('drops nothing and revokes nothing on an existing object', () => {
     expect(code).not.toMatch(/\bdrop\s+(policy|table|column|function|trigger|index)\b/i);
-    // The one constraint replaced is the outbox event-type check, widened by one type.
+    // Constraints replaced: the outbox event-type check (widened by one type)
+    // and the coach_players creator key (now ON DELETE SET NULL).
     const droppedConstraints = code.match(/drop\s+constraint\s+\w+/gi) ?? [];
-    expect(droppedConstraints).toEqual(['drop constraint staff_notification_outbox_event_type_check']);
+    expect(droppedConstraints).toEqual(['drop constraint staff_notification_outbox_event_type_check', 'drop constraint coach_players_created_by_fkey']);
+    expect(code).toContain('add constraint coach_players_created_by_fkey foreign key (created_by) references public.profiles (id) on delete set null;');
+    expect(code).toContain('alter table public.coach_invites alter column created_by drop not null;');
     const revokes = code.match(/revoke[^;]+;/gi) ?? [];
     const newObjects = [
       'coach_assignment_is_active', 'coach_team_requests', 'enforce_coach_team_request_transition',

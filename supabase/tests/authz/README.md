@@ -259,6 +259,28 @@ assignment.
 **History** Links that existed before 0088 get no audit events and no new
 timestamps or actors from applying it.
 
+**Account deletion (0088 §11).** Before this fix, a guardian could not
+delete their account (`delete_own_guardian_account`) if they had ever
+created a coach invite (`coach_invites.created_by` was NOT NULL, yet the
+function sets it to NULL), or if a direct link named them as its creator
+(`coach_players.created_by` had no `ON DELETE` rule). Now:
+- `coach_invites.created_by` is nullable;
+- `coach_players.created_by` is `ON DELETE SET NULL`.
+
+The invite and the link remain; only the reference to the deleted account
+becomes NULL. An invite whose creator is gone can no longer be redeemed.
+`account_deletion_test.mjs` shows each failure at 0087 and the success at
+0088:
+
+```powershell
+node supabase/tests/authz/account_deletion_test.mjs
+```
+
+**Rollback** The 0088 rollback sets `coach_invites.created_by` back to NOT
+NULL. It therefore refuses, and changes nothing, once any creator has
+deleted their account since 0088. Those rows have no creator to restore, so
+they must be handled deliberately first.
+
 **Release readiness** The existing `coachInvite` smoke check covers the
 whole direct-link path:
 - creating a coach invite as a guardian;

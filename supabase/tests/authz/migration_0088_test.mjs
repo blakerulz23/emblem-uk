@@ -120,11 +120,19 @@ const HELPERS = ['function:is_authorized_coach_for_player(check_player_id uuid)'
 const OUTBOX_CHECK = 'constraint:staff_notification_outbox.staff_notification_outbox_event_type_check';
 const forward = diffCatalog(catalog0087, catalog0088);
 check('0088 removes no catalog entry (policy, grant, column, constraint, index, function, trigger)', forward.removed.length === 0, forward.removed.join(', '));
+const CREATOR_FK = 'constraint:coach_players.coach_players_created_by_fkey';
+const INVITE_CREATOR = 'column:coach_invites.created_by';
 check(
-  'the only redefined 0087 entries are the two helpers and the outbox event-type check',
-  forward.changed.length === HELPERS.length + 1 && [...HELPERS, OUTBOX_CHECK].every((h) => forward.changed.includes(h)),
+  'the only redefined 0087 entries are the two helpers, the outbox event-type check and the two creator references',
+  forward.changed.length === HELPERS.length + 3 && [...HELPERS, OUTBOX_CHECK, CREATOR_FK, INVITE_CREATOR].every((h) => forward.changed.includes(h)),
   forward.changed.join(', ')
 );
+check('coach_players.created_by now becomes NULL when the creator’s profile is deleted (nothing else about the key changes)',
+  catalog0087.get(CREATOR_FK) === 'FOREIGN KEY (created_by) REFERENCES profiles(id)' &&
+  catalog0088.get(CREATOR_FK) === 'FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL', catalog0088.get(CREATOR_FK));
+check('coach_invites.created_by only loses NOT NULL (type, default and grants unchanged)',
+  catalog0087.get(INVITE_CREATOR) === 'uuid | t | no-default |  | no-column-acl' &&
+  catalog0088.get(INVITE_CREATOR) === 'uuid | f | no-default |  | no-column-acl', catalog0088.get(INVITE_CREATOR));
 const eventTypes = (def) => [...def.matchAll(/'([a-z_]+)'::text/g)].map((m) => m[1]);
 const typesBefore = eventTypes(catalog0087.get(OUTBOX_CHECK));
 const typesAfter = eventTypes(catalog0088.get(OUTBOX_CHECK));
