@@ -61,6 +61,16 @@ describe('POST /api/os/team-requests', () => {
     expect(profileWrite?.options).toEqual({ onConflict: 'id', ignoreDuplicates: true });
   });
 
+  it('a given name is set by updating display_name only (never role, never a merge-upsert)', async () => {
+    await post({ clubName: 'Fictional FC', teamName: 'U10', displayName: ' Fictional Coach ' });
+    const profileCalls = session.calls.filter((c) => c.table === 'profiles');
+    expect(profileCalls.map((c) => c.op)).toEqual(['upsert', 'update']);
+    expect(profileCalls[0].payload).toEqual({ id: USER });
+    expect(profileCalls[0].options).toEqual({ onConflict: 'id', ignoreDuplicates: true });
+    expect(profileCalls[1].payload).toEqual({ display_name: 'Fictional Coach' });
+    expect(profileCalls[1].filters).toContainEqual(['eq', 'id', USER]);
+  });
+
   it('notifies staff (best effort) without child data', async () => {
     await post({ clubName: 'Fictional FC', teamName: 'U10' });
     expect(notifications).toEqual([

@@ -42,12 +42,19 @@ export async function POST(request: NextRequest) {
 
   // coach_team_requests.requester_profile_id references profiles. A brand-
   // new account may not have its row yet: create it with no role (the role
-  // is only set if staff approve), keeping any existing row as it is.
-  const { error: profileError } = displayName
-    ? await supabase.from('profiles').upsert({ id: user.id, display_name: displayName.slice(0, 80) })
-    : await supabase.from('profiles').upsert({ id: user.id }, { onConflict: 'id', ignoreDuplicates: true });
+  // is only set if staff approve), keeping any existing row as it is. Then
+  // set the name separately: from 0089 a signed-in user may insert only
+  // (id, display_name) and update only display_name, so a merge-upsert
+  // (which may also SET id) is avoided.
+  const { error: profileError } = await supabase.from('profiles').upsert({ id: user.id }, { onConflict: 'id', ignoreDuplicates: true });
   if (profileError) {
     return NextResponse.json({ error: profileError.message }, { status: 500 });
+  }
+  if (displayName) {
+    const { error: nameError } = await supabase.from('profiles').update({ display_name: displayName.slice(0, 80) }).eq('id', user.id);
+    if (nameError) {
+      return NextResponse.json({ error: nameError.message }, { status: 500 });
+    }
   }
 
   const { data: created, error } = await supabase

@@ -15,11 +15,13 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `harness.mjs` | `createDatabase()`: platform stand-ins plus production default privileges. `applyMigrations(db, { through })`: applies `supabase/migrations` in filename order. `readOnly(db, fn)`: runs `fn` in a read-only transaction that is rolled back. |
 | `evidence.mjs` | Reads the saved production catalog exports from `EMBLEM_AUTHZ_EVIDENCE_DIR`. Each file's sha256 is pinned here; the files themselves are private and never committed. |
 | `production_parity_test.mjs` | Gate 0. Applies 0001–0087 and checks the result against the evidence. |
-| `catalog.mjs` | Whole-`public` catalog snapshot (relations and their ACLs, columns and column ACLs, constraints, indexes, policies, functions with ACL and body, triggers, publication membership) and a diff. |
+| `catalog.mjs` | Whole-`public` catalog snapshot (relations and their ACLs, columns and column ACLs, constraints, indexes, policies, functions with ACL and body, triggers, publication membership) and a diff. ACLs are compared semantically: a NULL ACL is expanded with `acldefault`, and entries are sorted, so an ACL restored by GRANT/REVOKE to the same privileges compares equal to the original. |
 | `migration_0088_test.mjs` | Migration 0088 and its rollback, on a fresh 0087 database with fictional rows. |
+| `migration_0089_test.mjs` | Migration 0089 and its rollback, on fresh 0088 databases with fictional rows. |
 
-Related: `supabase/rollback/0088_rollback.sql`, `src/lib/migration-0088-contract.test.ts`
-(structural, runs with `npm test`), and `scripts/check-migration-numbers.mjs`
+Related: `supabase/rollback/0088_rollback.sql`, `supabase/rollback/0089_rollback.sql`,
+`src/lib/migration-0088-contract.test.ts` and `src/lib/migration-0089-contract.test.ts`
+(structural, run with `npm test`), and `scripts/check-migration-numbers.mjs`
 (duplicate migration numbers).
 
 ## One-time setup (isolated tooling folder)
@@ -147,6 +149,7 @@ and checks:
   policies and `update_player_coach_fields` / `update_secondary_position` /
   `create_season_focus`. 0089 should use `coach_assignment_is_active` and
   grant its EXECUTE to `authenticated` when policies start calling it.
+  (Done in 0089; see below.)
 - `approve_coach_team_request` takes an extra trailing `p_season_id` (not in
   FIX-PLAN's signature). The season rule lives in app code
   (`currentUkFootballSeason`, `resolveOrCreateSeason`), so the staff route
@@ -179,9 +182,9 @@ node --no-warnings supabase/tests/authz/app_flows_test.mjs
 ```
 
 `app_flows_test.mjs` runs the SQL the app's routes issue twice: once after
-0088, and once after 0088 plus `EXPECTED_0089`. `EXPECTED_0089` is the set of
-grant and policy changes FIX-PLAN §2.1/§2.2 assigns to 0089, written as a
-test-local expectation (it isn't 0089). The flows it covers:
+0088, and once after the real 0089 (applied after a fictional staff account
+records release readiness, as the precondition requires). The flows it
+covers:
 
 - sign-up and display-name edits;
 - order approval;
@@ -200,8 +203,14 @@ It checks:
 - that claims and invites never overwrite an existing role.
 
 View resolution uses the app's own `src/lib/os-view.ts` and
-`src/lib/coach-assignment.ts` (Node strips their types). Phase 4 replaces
-`EXPECTED_0089` with the real migration.
+`src/lib/coach-assignment.ts` (Node strips their types). The earlier
+test-local simulation of 0089 (`EXPECTED_0089`) has been replaced by the
+real migration.
+
+The team-request route now creates a missing profile with an insert that
+ignores an existing row, then sets the name with an update of
+`display_name` only. A PostgREST merge-upsert may also SET `id`, which the
+0089 column grants no longer allow.
 
 **Deployment order changes to 0088 → app → 0089.** The app now calls
 `ensure_profile_role`, `activate_coach_assignment` and the request functions,
@@ -455,14 +464,142 @@ verified. That fact is recorded rather than assumed.
 4. A staff member records readiness through `POST /api/staff/release-readiness`.
 5. Apply 0089.
 
-**0089 precondition (documented here, implemented in 0089).** 0089 will
-abort, changing nothing, unless all of the following hold:
-- every required 0088 table, column, function and function signature exists;
+**0089 precondition.** Implemented in 0089 and described in "Migration
+0089 (lockdown)" below.
+
+## Migration 0089 (lockdown)
+
+```powershell
+$env:EMBLEM_AUTHZ_PGLITE_DIR = 'C:\Users\blake\OneDrive\Desktop\vscode-demo\_tooling\emblem-authz-pglite'
+node supabase/tests/authz/migration_0089_test.mjs
+```
+
+0089 closes every path by which a signed-in account could give itself a
+role or a relationship, and makes team-coach access depend on an active
+assignment. It runs in one transaction.
+
+**Precondition (section 0, before any change).** 0089 raises
+`0089 refused: …` and changes nothing unless:
+- every required 0088 object is present: the three tables, the history
+  columns on `coach_team` and `guardians`, the one-pending-request index,
+  the enabled audit, transition and readiness triggers, and the eleven
+  0088 functions with their exact signatures, `SECURITY DEFINER`, empty
+  `search_path` and execute grants (no `anon`; trusted functions
+  `service_role` only);
 - exactly one `release_readiness_confirmations` row exists for
   `authorization_relationships_v1`;
-- all six checks on it are true;
-- its `app_commit` is non-empty;
+- all six of its checks are true;
+- its `app_commit` is 7–40 lowercase hex characters;
 - its `confirmed_by` is still in `staff_accounts`.
+
+`migration_0089_test.mjs` breaks each condition on its own (dropping a 0088
+constraint where needed to create the invalid state) and shows a full
+catalog snapshot and a full data snapshot are identical before and after
+the refusal.
+
+**Access model after 0089.**
+
+| Who | Players and their child data |
+|---|---|
+| anon | nothing (no table privileges at all) |
+| signed-in, no relationship (whatever the stored role) | nothing |
+| guardian | their own children |
+| active team coach | the players of that team |
+| ended or expired team coach | nothing through that team |
+| direct coach (`coach_players`) | that one player, whatever their team assignments |
+| guardian and coach | the union of both |
+| staff | through the staff routes (service role), unchanged |
+
+"Active" is `coach_assignment_is_active(ended_at, expires_at)`: not ended,
+and not past `expires_at`. It's required on all 24 coach-access policies,
+the two `coach_team` read policies, `is_authorized_coach_for_player`,
+`update_player_coach_fields`, `update_secondary_position` and
+`create_season_focus`. The direct-link (`coach_players`) branches in the
+same policies and functions are deliberately unchanged: a direct link is an
+independent relationship (see "Direct coach links").
+
+**What 0089 changes.**
+- `profiles`: signed-in users may insert only their own row with `id` and
+  `display_name` (the policy also requires `role IS NULL`), and update only
+  their own `display_name`. No DELETE. The role is set only by
+  `ensure_profile_role` and staff approval.
+- `coach_team`, `guardians`, `clubs`, `teams`: the policies
+  `a coach can attach themselves`, `a parent can link themselves` and the
+  two `coaches can create` are dropped, and signed-in INSERT, UPDATE and
+  DELETE are revoked. Reads are unchanged.
+- `coach_invites`: signed-in INSERT is limited to `player_id`, `code`,
+  `created_by` (RLS still forces it to the caller) and `invited_email`.
+  `used_at`, `used_by`, `expires_at`, `id` and `created_at` are always the
+  database's.
+- `is_authorized_coach_for_player` and `is_guardian_of_team_player`: no
+  longer executable by `anon` (or `PUBLIC`); `authenticated` keeps EXECUTE
+  because its policies call them. `coach_assignment_is_active` becomes
+  executable by `authenticated` for the same reason.
+- TRUNCATE, REFERENCES, TRIGGER and (on PostgreSQL 17) MAINTAIN are revoked
+  from `anon` and `authenticated` on the 27 public tables that had them.
+
+Exact catalog change against 0088, asserted by the test: nothing added; the
+four policies removed; 67 entries changed (27 table ACLs, 28 policies, 6
+functions, 6 column ACLs). No row in any table changes and no audit event is
+written.
+
+**Legitimate write paths after 0089** (all from 0088, all used by the
+compatible application): card claim and recovery, guardian invite, team
+invite, coach-invite redemption, the team-request lifecycle with staff
+approval or rejection, staff ending an assignment, direct-link removal by
+the guardian, the coach or staff, order approval, account deletion,
+display-name edits, and recording release readiness (once only).
+`app_flows_test.mjs` and `migration_0089_test.mjs` cover them on the real
+0089.
+
+**Not changed (by decision).**
+- **Decision B:** club and team read visibility.
+- **Decision C:** default privileges for future objects.
+- `service_role` grants.
+
+**Known follow-ups, not in 0089.**
+- `player_invites` still has a table-level signed-in INSERT, so a coach can
+  set `used_at` on an invite they create. That's hygiene, not escalation.
+- `POST /api/os/seasons` is unused but still lets any signed-in user create
+  a season.
+- `supabase/tests/full_migration_test` can't import PGlite without
+  repository dependency changes, so it isn't run here.
+
+**Rollback: emergency only.** `supabase/rollback/0089_rollback.sql` REOPENS
+the confirmed authorization vulnerability. Any signed-in account could again
+give itself a role, attach itself to any team, link itself as guardian of
+any child and create clubs and teams, and ended or expired coaches would
+regain team access. Prefer fixing forward. It refuses, changing nothing,
+unless the same session first runs:
+
+```sql
+select set_config('emblem.acknowledge_0089_rollback', 'REOPEN-AUTHORIZATION-VULNERABILITY', false);
+```
+
+With the acknowledgement it restores the exact 0088 catalog and changes no
+data. 0089 can then be re-applied, since its readiness record is still in
+place. The test proves the refusal, the exact restore, the unchanged data
+and the re-apply.
+
+**Local-test limits.** PGlite is one embedded PostgreSQL 17 connection.
+Concurrency, PostgREST, Supabase Auth and real JWTs aren't exercised (see
+"Not represented"). Signed-in calls are simulated with
+`set local role authenticated` and `request.jwt.claim.sub`.
+
+**Draft production sequence.** Nothing has been run on staging or
+production. Each step needs explicit approval.
+1. Apply 0088.
+2. Deploy the compatible application.
+3. Run the six smoke checks: card claim, guardian invite, team invite,
+   coach invite (with a removal), dual view, and a team request with a
+   staff decision.
+4. A staff member records readiness through `POST /api/staff/release-readiness`.
+5. Run H5 (direct-link review counts) read-only and review the results.
+6. Apply 0089. It refuses by itself if steps 1–4 are incomplete.
+7. Verify: repeat the smoke checks, and confirm that signed-in role and
+   relationship writes are refused.
+8. Rollback only in an emergency, with the acknowledgement above, and
+   re-apply 0089 as soon as possible.
 
 ## Duplicate migration numbers
 

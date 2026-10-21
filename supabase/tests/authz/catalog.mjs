@@ -2,18 +2,28 @@
 //
 // Each entry is "kind:identity" -> a string of everything that defines it,
 // including its ACL, so a revoked or narrowed grant shows up as a change.
+//
+// ACLs are compared by meaning, not storage: a never-granted object stores
+// NULL (PostgreSQL's built-in default), which GRANT/REVOKE can never set
+// back once changed. So a NULL ACL is expanded with acldefault(), and the
+// entries are sorted. Any real difference in who holds which privilege
+// still shows; only the storage form and entry order are ignored.
+
+const sortedAcl = (expr, kind, owner) =>
+  `(select string_agg(a::text, ',' order by a::text) from unnest(coalesce(${expr}, acldefault('${kind}', ${owner}))) a)`;
 
 const QUERIES = {
   relation: `
     select c.relname as id,
-           concat_ws(' | ', c.relkind, c.relrowsecurity, c.relforcerowsecurity, coalesce(c.relacl::text, 'default-acl')) as def
+           concat_ws(' | ', c.relkind, c.relrowsecurity, c.relforcerowsecurity,
+                     ${sortedAcl('c.relacl', 'r', 'c.relowner')}) as def
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm', 'S')`,
   column: `
     select c.relname || '.' || a.attname as id,
            concat_ws(' | ', format_type(a.atttypid, a.atttypmod), a.attnotnull,
                      coalesce(pg_get_expr(d.adbin, d.adrelid), 'no-default'), a.attidentity,
-                     coalesce(a.attacl::text, 'no-column-acl')) as def
+                     coalesce((select string_agg(x::text, ',' order by x::text) from unnest(a.attacl) x), 'no-column-acl')) as def
     from pg_attribute a
     join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace
     left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
@@ -32,7 +42,7 @@ const QUERIES = {
     select p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' as id,
            concat_ws(' | ', p.prosecdef, p.provolatile, pg_get_userbyid(p.proowner),
                      coalesce(array_to_string(p.proconfig, ','), 'no-config'),
-                     coalesce(p.proacl::text, 'default-acl'), p.prosrc) as def
+                     ${sortedAcl('p.proacl', 'f', 'p.proowner')}, p.prosrc) as def
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'`,
   trigger: `

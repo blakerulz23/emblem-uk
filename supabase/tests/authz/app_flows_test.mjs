@@ -6,10 +6,9 @@
 // Runs the same SQL the app's routes issue (sign-up, display name, order
 // approval, card claim, guardian/coach/team invites, team requests, staff
 // approve/end, and the account read behind the Parent/Coach views) twice:
-//   1. after 0088;
-//   2. after 0088 plus EXPECTED_0089: the grant and policy changes FIX-PLAN
-//      §2.1/§2.2 assigns to 0089. This is a test-local expectation, not
-//      0089 itself. Phase 4 replaces it with the real migration file.
+//   1. after 0088 (the compatible app must work before the lockdown);
+//   2. after the real 0089 lockdown, applied once release readiness has
+//      been recorded by a (fictional) staff account, as in production.
 // Every flow must work in both. View resolution uses the app's own
 // src/lib/os-view.ts and src/lib/coach-assignment.ts (Node strips types).
 import crypto from 'crypto';
@@ -17,18 +16,20 @@ import { applyMigrations, createDatabase } from './harness.mjs';
 import { resolveOsView, parseOsView } from '../../../src/lib/os-view.ts';
 import { activeCoachAssignments } from '../../../src/lib/coach-assignment.ts';
 
-const EXPECTED_0089 = `
-  drop policy "coach_team: a coach can attach themselves" on public.coach_team;
-  drop policy "guardians: a parent can link themselves" on public.guardians;
-  drop policy "clubs: coaches can create" on public.clubs;
-  drop policy "teams: coaches can create" on public.teams;
-  alter policy "profiles: insert own row on signup" on public.profiles with check (auth.uid() = id and role is null);
-  alter policy "profiles: update own row" on public.profiles using (auth.uid() = id) with check (auth.uid() = id);
-  revoke insert, update, delete on public.profiles from authenticated;
-  grant insert (id, display_name) on public.profiles to authenticated;
-  grant update (display_name) on public.profiles to authenticated;
-  revoke insert, update, delete on public.coach_team, public.guardians, public.clubs, public.teams from authenticated;
-`;
+const LOCKDOWN = 'after 0089';
+
+// Records release readiness (0088) with a fictional staff account, then
+// applies the real 0089, whose precondition requires it.
+async function applyLockdown(db) {
+  const staff = crypto.randomUUID();
+  await db.query(`insert into auth.users (id, email) values ($1, 'readiness-staff@example.test')`, [staff]);
+  await db.query(`insert into public.profiles (id, display_name) values ($1, 'Readiness Staff')`, [staff]);
+  await db.query(`insert into public.staff_accounts (profile_id) values ($1)`, [staff]);
+  await db.exec('begin; set local role service_role;');
+  await db.query(`select public.confirm_release_readiness('authorization_relationships_v1', 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0', $1, true, true, true, true, true, true)`, [staff]);
+  await db.exec('commit;');
+  await applyMigrations(db, { from: '0089', through: '0089' });
+}
 
 const results = [];
 function check(name, pass, detail) {
@@ -41,7 +42,7 @@ async function runMode(mode) {
   const label = (s) => `[${mode}] ${s}`;
   const db = await createDatabase();
   await applyMigrations(db, { through: '0088' });
-  if (mode === 'after 0088 + expected 0089') await db.exec(EXPECTED_0089);
+  if (mode === LOCKDOWN) await applyLockdown(db);
 
   async function as(role, uid, fn, { commit = true } = {}) {
     await db.exec('begin;');
@@ -98,13 +99,13 @@ async function runMode(mode) {
     user(people.parent, `insert into public.profiles (id, display_name) values ($1, 'Fictional Parent') on conflict (id) do update set display_name = excluded.display_name`, [people.parent]));
   await ok('a person edits their own display name', () =>
     user(people.parent, `update public.profiles set display_name = 'Fictional Parent B' where id = $1 returning id`, [people.parent]), (r) => r.rows.length === 1);
-  if (mode === 'after 0088 + expected 0089') {
-    // Proves this mode really runs under the expected grants.
+  if (mode === LOCKDOWN) {
+    // Proves this mode really runs under 0089.
     try {
       await user(people.neither, `update public.profiles set role = 'parent' where id = $1`, [people.neither]);
-      check(label('the expected 0089 grants are in force (role is not writable by the person)'), false, 'update succeeded');
+      check(label('0089 is in force (role is not writable by the person)'), false, 'update succeeded');
     } catch (e) {
-      check(label('the expected 0089 grants are in force (role is not writable by the person)'), e.message.includes('permission denied'), e.message);
+      check(label('0089 is in force (role is not writable by the person)'), e.message.includes('permission denied'), e.message);
     }
   }
   await ok('staff account exists', () => db.query(`insert into public.staff_accounts (profile_id) values ($1)`, [people.staff]));
@@ -202,7 +203,7 @@ async function runMode(mode) {
 }
 
 await runMode('after 0088');
-await runMode('after 0088 + expected 0089');
+await runMode(LOCKDOWN);
 
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} application-flow checks passed`);
