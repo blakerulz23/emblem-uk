@@ -15,14 +15,33 @@
 -- they're needed.
 begin;
 
--- 0088 §11. Fails (and rolls back entirely) if any coach_invites row has a
--- NULL created_by, i.e. a guardian with a coach invite has deleted their
--- account since 0088: those rows have no creator to restore. Delete or
--- reassign them first, deliberately.
+-- Precondition, checked before anything changes (0088 §11).
+-- coach_invites.created_by is NOT NULL at 0087. A NULL creator means a
+-- guardian who created a coach invite has deleted their account since
+-- 0088; the creator cannot be restored, so this rollback refuses rather
+-- than invent one. Delete or reassign those invites first, deliberately.
+do $$
+begin
+  if exists (select 1 from public.coach_invites where created_by is null) then
+    raise exception 'Rollback refused: % coach invite(s) have no creator (a guardian deleted their account after 0088). 0087 requires a creator and none can be reconstructed. Resolve these rows deliberately before rolling back.',
+      (select count(*) from public.coach_invites where created_by is null);
+  end if;
+end;
+$$;
+
+-- 0088 §11 reversed.
 alter table public.coach_invites alter column created_by set not null;
 alter table public.coach_players
   drop constraint coach_players_created_by_fkey,
   add constraint coach_players_created_by_fkey foreign key (created_by) references public.profiles (id);
+-- coach_invites.used_by needs no precondition: it is nullable at 0087 too,
+-- and 0076's delete_own_guardian_account already sets it to NULL for a
+-- deleted redeemer, so "used_at set, used_by NULL" is an ordinary 0087
+-- state. Nothing has to be reconstructed; used_at keeps such an invite
+-- consumed in both versions.
+alter table public.coach_invites
+  drop constraint coach_invites_used_by_fkey,
+  add constraint coach_invites_used_by_fkey foreign key (used_by) references public.profiles (id);
 
 drop trigger if exists relationship_audit on public.coach_team;
 drop trigger if exists relationship_audit on public.guardians;

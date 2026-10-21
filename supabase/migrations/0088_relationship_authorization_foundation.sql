@@ -42,9 +42,11 @@
 --      Written only by confirm_release_readiness (service_role), which the
 --      compatible app's staff endpoint calls. 0089 will refuse to run
 --      without it. Holds no child, player, parent or coach data.
---  11. coach_players.created_by ON DELETE SET NULL, and coach_invites.created_by
---      nullable, so a guardian who created a coach invite or direct link
---      can delete their account (the invite and link remain).
+--  11. coach_players.created_by and coach_invites.used_by ON DELETE SET NULL,
+--      and coach_invites.created_by nullable, so a guardian who created a
+--      coach invite or direct link, or a coach who redeemed one, can delete
+--      their account (the invite and link remain; used_at keeps an invite
+--      consumed).
 --
 -- Attribution. The audit trigger resolves the actor in this order:
 --   trusted_function  a SECURITY DEFINER function in this file set
@@ -805,6 +807,15 @@ alter table public.coach_players
   add constraint coach_players_created_by_fkey foreign key (created_by) references public.profiles (id) on delete set null;
 
 alter table public.coach_invites alter column created_by drop not null;
+
+-- The account that redeemed a coach invite: delete_own_guardian_account
+-- (0076) already clears used_by itself, but any other profile deletion (an
+-- auth user removed directly, cascading to profiles) was blocked by this
+-- key. used_at is the consumed marker and is untouched: an invite with
+-- used_at set stays consumed for good, whatever used_by holds.
+alter table public.coach_invites
+  drop constraint coach_invites_used_by_fkey,
+  add constraint coach_invites_used_by_fkey foreign key (used_by) references public.profiles (id) on delete set null;
 
 -- ---------------------------------------------------------------------------
 -- 7. Existing helpers: empty search_path, same logic, same grants

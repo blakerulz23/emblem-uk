@@ -281,6 +281,64 @@ NULL. It therefore refuses, and changes nothing, once any creator has
 deleted their account since 0088. Those rows have no creator to restore, so
 they must be handled deliberately first.
 
+**Redeemed coach-invite deletion (0088 §11).**
+- **The key.** 0088 makes `coach_invites.used_by` `ON DELETE SET NULL`.
+  `used_at` is unchanged.
+- **`used_at` is the authoritative consumed marker.** An invite with
+  `used_at` set stays used permanently, even after `used_by` becomes NULL
+  because the redeemer deleted their account. A deleted redeemer never
+  makes an invite redeemable again.
+- **The in-app deletion flow already worked.** 0076's
+  `delete_own_guardian_account` already clears `used_by` itself.
+- **What the key change adds.** It lets other deletion paths through,
+  such as deleting the auth user or the profile directly, which 0087's key
+  blocked.
+- **No application code change was needed.** Invite lookup and redemption
+  already decide on `used_at`.
+
+**Rollback with redeemed invites.**
+- **Deleted redeemers don't block it.** The rollback succeeds when a
+  consumed invite's redeemer has been deleted: `used_at` stays set and
+  `used_by` stays NULL. The restored 0087 key accepts that state, which
+  0076 already produces at 0087.
+- **Deleted creators do.** The rollback refuses, before changing anything,
+  when an invite's *creator* has deleted their account. 0087's
+  `created_by NOT NULL` can't be reconstructed.
+- **Resolving those rows deliberately** lets the rollback restore the 0087
+  catalog exactly.
+
+`migration_0088_test.mjs` and `account_deletion_test.mjs` cover both paths,
+the redeemer deletions at 0087 and 0088, and that applying 0088 leaves
+existing `used_at` and `used_by` values unchanged.
+
+**Route tests.** `src/app/api/os/coach-invites/redeem/consumed-and-expired.test.ts`
+covers four cases:
+- a consumed invite with `used_at` set and `used_by` NULL is neither found
+  nor redeemable;
+- an expired, unused invite is neither found nor redeemable;
+- neither case creates a relationship, changes a role or writes anything;
+- a valid, unused invite from a current guardian still redeems normally.
+
+**H5 (direct-link review counts).**
+- **Validated locally only.** H5 was validated on fictional PGlite data,
+  on both the 0087 and 0088 schemas: 95/95 checks passed. It returns one
+  counts-only aggregate row, and its read-only guard refused writes.
+- **Corrections made during validation:**
+  - consumed invites are now identified by `used_at`;
+  - unknown (deleted) creators are now counted separately from creators who
+    are known but no longer guardians.
+- **Not yet run anywhere real.** H5 has not been run on production or
+  staging. It must be run and reviewed before production 0089.
+
+**Known unresolved issue: simultaneous coach-invite redemption.**
+- **How redemption works today.** It creates the direct link first and then
+  marks the invite used. The update doesn't atomically confirm the invite
+  is still unused.
+- **The risk.** Two concurrent requests for the same invite could both
+  succeed.
+- **Status.** This commit doesn't change it. It must be fixed with an
+  atomic database operation before 0089.
+
 **Release readiness** The existing `coachInvite` smoke check covers the
 whole direct-link path:
 - creating a coach invite as a guardian;

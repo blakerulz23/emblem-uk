@@ -122,11 +122,15 @@ const forward = diffCatalog(catalog0087, catalog0088);
 check('0088 removes no catalog entry (policy, grant, column, constraint, index, function, trigger)', forward.removed.length === 0, forward.removed.join(', '));
 const CREATOR_FK = 'constraint:coach_players.coach_players_created_by_fkey';
 const INVITE_CREATOR = 'column:coach_invites.created_by';
+const INVITE_REDEEMER_FK = 'constraint:coach_invites.coach_invites_used_by_fkey';
 check(
-  'the only redefined 0087 entries are the two helpers, the outbox event-type check and the two creator references',
-  forward.changed.length === HELPERS.length + 3 && [...HELPERS, OUTBOX_CHECK, CREATOR_FK, INVITE_CREATOR].every((h) => forward.changed.includes(h)),
+  'the only redefined 0087 entries are the two helpers, the outbox event-type check and the three creator/redeemer references',
+  forward.changed.length === HELPERS.length + 4 && [...HELPERS, OUTBOX_CHECK, CREATOR_FK, INVITE_CREATOR, INVITE_REDEEMER_FK].every((h) => forward.changed.includes(h)),
   forward.changed.join(', ')
 );
+check('coach_invites.used_by now becomes NULL when the redeemer’s profile is deleted (nothing else about the key changes)',
+  catalog0087.get(INVITE_REDEEMER_FK) === 'FOREIGN KEY (used_by) REFERENCES profiles(id)' &&
+  catalog0088.get(INVITE_REDEEMER_FK) === 'FOREIGN KEY (used_by) REFERENCES profiles(id) ON DELETE SET NULL', catalog0088.get(INVITE_REDEEMER_FK));
 check('coach_players.created_by now becomes NULL when the creator’s profile is deleted (nothing else about the key changes)',
   catalog0087.get(CREATOR_FK) === 'FOREIGN KEY (created_by) REFERENCES profiles(id)' &&
   catalog0088.get(CREATOR_FK) === 'FOREIGN KEY (created_by) REFERENCES profiles(id) ON DELETE SET NULL', catalog0088.get(CREATOR_FK));
@@ -556,12 +560,20 @@ await expectError('a signed-in user cannot read audit events', () =>
 // ---------------------------------------------------------------------------
 await db.exec(`delete from coach_team where profile_id <> '${ids.legacyCoach}' or team_id <> '${ids.team}'; delete from guardians where profile_id <> '${ids.legacyGuardian}';
   delete from staff_notification_outbox where event_type = 'new_coach_team_request';`);
+// A consumed coach invite whose redeemer has gone (used_at set, used_by NULL):
+// an ordinary 0087 state too, so the rollback must not refuse because of it.
+await db.query(`insert into coach_invites (player_id, code, created_by, used_at, used_by) values ($1, 'COACH-RBK00001', $2, now() - interval '1 day', null)`,
+  [ids.player, ids.legacyGuardian]);
+const consumedBefore = await one(`select used_at from coach_invites where code = 'COACH-RBK00001'`);
 await expectOk('0088 rollback applies', () => db.exec(fs.readFileSync(ROLLBACK_FILE, 'utf8')));
 const afterRollback = diffCatalog(catalog0087, await snapshotCatalog(db));
 check('after rollback the public catalog equals 0087 exactly (no entry added, removed or changed)',
   afterRollback.added.length + afterRollback.removed.length + afterRollback.changed.length === 0,
   [...afterRollback.added.map((k) => `+${k}`), ...afterRollback.removed.map((k) => `-${k}`), ...afterRollback.changed.map((k) => `~${k}`)].join(', '));
 check('after rollback the pre-existing coach_team and guardians rows are intact', JSON.stringify(await legacyRows()) === JSON.stringify(legacyBefore));
+const consumedAfter = await one(`select used_at, used_by from coach_invites where code = 'COACH-RBK00001'`);
+check('rollback succeeds with a consumed invite whose redeemer is gone, keeping used_at and used_by = NULL',
+  consumedAfter.used_by === null && consumedAfter.used_at?.getTime() === consumedBefore.used_at?.getTime(), JSON.stringify(consumedAfter));
 await expectOk('0088 re-applies cleanly after its rollback', () => applyMigrations(db, { from: '0088', through: '0088' }), (r) => r.length === 1);
 
 await db.close();
