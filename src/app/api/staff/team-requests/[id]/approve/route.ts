@@ -3,6 +3,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { currentUkFootballSeason } from '@/lib/season';
 import { resolveOrCreateSeason } from '@/lib/resolve-season';
+import { logRouteFailure, raised } from '@/lib/route-failure';
 
 export const runtime = 'nodejs';
 
@@ -83,11 +84,17 @@ export async function POST(request: Request, { params }: { params: { id: string 
     p_expires_at: expiresAt,
     p_season_id: seasonId,
   });
+  // approve_coach_team_request's refusals map to fixed messages; its text
+  // is never returned.
   if (error) {
-    if (error.message.includes('already')) return NextResponse.json({ error: error.message }, { status: 409 });
-    if (error.message.includes('not found')) return NextResponse.json({ error: error.message }, { status: 404 });
-    if (error.message.includes('Not authorized')) return NextResponse.json({ error: error.message }, { status: 403 });
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    if (raised(error, 'Not authorized')) return NextResponse.json({ error: 'Staff access required' }, { status: 403 });
+    if (raised(error, 'Team request not found')) return NextResponse.json({ error: 'Team request not found' }, { status: 404 });
+    if (raised(error, 'Team not found')) return NextResponse.json({ error: 'Team not found' }, { status: 404 });
+    if (raised(error, 'already')) return NextResponse.json({ error: 'This team request has already been decided' }, { status: 409 });
+    if (raised(error, 'Expiry must be in the future')) return NextResponse.json({ error: 'The access end date must be in the future' }, { status: 400 });
+    if (raised(error, 'A season is required')) return NextResponse.json({ error: 'Choose a season for the new team' }, { status: 400 });
+    logRouteFailure('staff team request: approve', error);
+    return NextResponse.json({ error: 'Could not approve this team request. Please try again.' }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, teamId: resultingTeamId });

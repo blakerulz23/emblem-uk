@@ -1,4 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { logRouteFailure } from '@/lib/route-failure';
+
+const CLAIM_FAILED = 'Could not claim this player. Please try again.';
 
 type ClaimResult = { ok: true; playerId: string } | { ok: false; status: number; error: string };
 
@@ -33,7 +36,8 @@ export async function claimPlayerForCard(
     if (guardianError.code === '23505') {
       return { ok: false, status: 409, error: "You've already claimed this player" };
     }
-    return { ok: false, status: 500, error: guardianError.message };
+    logRouteFailure('claim: guardian link', guardianError);
+    return { ok: false, status: 500, error: CLAIM_FAILED };
   }
 
   const { error: cardUpdateError } = await serviceRole
@@ -41,7 +45,8 @@ export async function claimPlayerForCard(
     .update({ status: 'claimed' })
     .eq('id', card.id);
   if (cardUpdateError) {
-    return { ok: false, status: 500, error: cardUpdateError.message };
+    logRouteFailure('claim: card lock', cardUpdateError);
+    return { ok: false, status: 500, error: CLAIM_FAILED };
   }
 
   return { ok: true, playerId: card.player_id };

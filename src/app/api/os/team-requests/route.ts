@@ -3,10 +3,13 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { consumeAnonymousRequestRateLimit } from '@/lib/anonymous-request-rate-limit';
 import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 import { validateTeamRequestInput } from '@/lib/os-view';
+import { logRouteFailure } from '@/lib/route-failure';
+import { isPermissionDenied } from '@/lib/permission-denied';
 
 export const runtime = 'nodejs';
 
 const REQUEST_COLUMNS = 'id, status, club_name, team_name, age_group, decision_note, created_at';
+const TEAM_REQUEST_FAILED = 'Could not save your request. Please try again.';
 
 /** PostgREST/Postgres answers when coach_team_requests doesn't exist yet (0088 not applied). */
 function isMissingTable(code: string | undefined) {
@@ -48,12 +51,14 @@ export async function POST(request: NextRequest) {
   // (which may also SET id) is avoided.
   const { error: profileError } = await supabase.from('profiles').upsert({ id: user.id }, { onConflict: 'id', ignoreDuplicates: true });
   if (profileError) {
-    return NextResponse.json({ error: profileError.message }, { status: 500 });
+    logRouteFailure('team request: profile', profileError);
+    return NextResponse.json({ error: TEAM_REQUEST_FAILED }, { status: 500 });
   }
   if (displayName) {
     const { error: nameError } = await supabase.from('profiles').update({ display_name: displayName.slice(0, 80) }).eq('id', user.id);
     if (nameError) {
-      return NextResponse.json({ error: nameError.message }, { status: 500 });
+      logRouteFailure('team request: display name', nameError);
+      return NextResponse.json({ error: TEAM_REQUEST_FAILED }, { status: 500 });
     }
   }
 
@@ -75,7 +80,11 @@ export async function POST(request: NextRequest) {
     if (isMissingTable(error?.code)) {
       return NextResponse.json({ error: 'Team requests are temporarily unavailable' }, { status: 503 });
     }
-    return NextResponse.json({ error: error?.message ?? 'Could not save your request' }, { status: 500 });
+    if (isPermissionDenied(error)) {
+      return NextResponse.json({ error: "You don't have permission to submit a team request." }, { status: 403 });
+    }
+    logRouteFailure('team request: insert', error);
+    return NextResponse.json({ error: TEAM_REQUEST_FAILED }, { status: 500 });
   }
 
   // Best effort: the request is saved whatever happens here, and staff see
@@ -110,7 +119,8 @@ export async function GET() {
     .limit(1);
   if (error) {
     if (isMissingTable(error.code)) return NextResponse.json({ request: null, available: false });
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    logRouteFailure('team request: load', error);
+    return NextResponse.json({ error: 'Could not load your team request. Please try again.' }, { status: 500 });
   }
   return NextResponse.json({ request: data?.[0] ?? null, available: true });
 }

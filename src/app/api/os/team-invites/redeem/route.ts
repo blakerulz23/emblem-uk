@@ -4,6 +4,7 @@ import { normalizeClaimCode } from '@/lib/claim-code';
 import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { activateCoachAssignment, ensureProfileRole } from '@/lib/relationship-writes';
+import { logRouteFailure } from '@/lib/route-failure';
 
 export const runtime = 'nodejs';
 
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
   // the coach one (access comes from the relationships, not the role).
   const profile = await ensureProfileRole(serviceRole, user.id, 'coach', displayName);
   if (!profile.ok) {
-    return NextResponse.json({ error: profile.error }, { status: 500 });
+    return NextResponse.json({ error: 'Could not set up your account. Please try again.' }, { status: 500 });
   }
 
   // Creates the assignment, or reactivates an ended/expired one for the
@@ -106,7 +107,7 @@ export async function POST(request: NextRequest) {
     actorProfileId: user.id,
   });
   if (!assignment.ok) {
-    return NextResponse.json({ error: assignment.error }, { status: 500 });
+    return NextResponse.json({ error: 'Could not accept this invite. Please try again.' }, { status: 500 });
   }
   if (!assignment.changed) {
     return NextResponse.json({ error: "You're already managing this team" }, { status: 409 });
@@ -117,7 +118,8 @@ export async function POST(request: NextRequest) {
     .update({ used_at: new Date().toISOString(), used_by: user.id })
     .eq('id', invite.id);
   if (inviteUpdateError) {
-    return NextResponse.json({ error: inviteUpdateError.message }, { status: 500 });
+    logRouteFailure('team invite redeem: mark used', inviteUpdateError);
+    return NextResponse.json({ error: 'Could not accept this invite. Please try again.' }, { status: 500 });
   }
 
   // One story_updates row per player_id (the schema is per-player, not

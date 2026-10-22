@@ -7,6 +7,7 @@ import { generateStoryUpdate } from '@/lib/story-updates';
 import { ensurePublicPlayerId } from '@/lib/public-player-id';
 import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
 import { ensureProfileRole } from '@/lib/relationship-writes';
+import { logRouteFailure } from '@/lib/route-failure';
 
 export const runtime = 'nodejs';
 
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
   // 'parent' is set only when the profile has no role yet.
   const profile = await ensureProfileRole(serviceRole, user.id, 'parent', displayName);
   if (!profile.ok) {
-    return NextResponse.json({ error: profile.error }, { status: 500 });
+    return NextResponse.json({ error: 'Could not set up your account. Please try again.' }, { status: 500 });
   }
 
   const { error: guardianError } = await serviceRole.from('guardians').insert({
@@ -136,7 +137,8 @@ export async function POST(request: NextRequest) {
     if (guardianError.code === '23505') {
       return NextResponse.json({ error: "You've already got access to this player" }, { status: 409 });
     }
-    return NextResponse.json({ error: guardianError.message }, { status: 500 });
+    logRouteFailure('guardian invite redeem: guardian link', guardianError);
+    return NextResponse.json({ error: 'Could not accept this invite. Please try again.' }, { status: 500 });
   }
 
   const { error: inviteUpdateError } = await serviceRole
@@ -144,7 +146,8 @@ export async function POST(request: NextRequest) {
     .update({ used_at: new Date().toISOString(), used_by: user.id })
     .eq('id', invite.id);
   if (inviteUpdateError) {
-    return NextResponse.json({ error: inviteUpdateError.message }, { status: 500 });
+    logRouteFailure('guardian invite redeem: mark used', inviteUpdateError);
+    return NextResponse.json({ error: 'Could not accept this invite. Please try again.' }, { status: 500 });
   }
 
   // If this invite reached a card that was never independently claimed

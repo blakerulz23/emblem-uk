@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
+import { logRouteFailure, raised } from '@/lib/route-failure';
 
 export const runtime = 'nodejs';
 
@@ -35,11 +36,15 @@ export async function POST(request: Request) {
     p_staff_profile_id: staffCheck.userId,
     p_reason: reason,
   });
+  // end_coach_assignment's refusals map to fixed messages; its text is never
+  // returned.
   if (error) {
-    if (error.message.includes('already ended')) return NextResponse.json({ error: error.message }, { status: 409 });
-    if (error.message.includes('not found')) return NextResponse.json({ error: error.message }, { status: 404 });
-    if (error.message.includes('Not authorized')) return NextResponse.json({ error: error.message }, { status: 403 });
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    if (raised(error, 'Not authorized')) return NextResponse.json({ error: 'Staff access required' }, { status: 403 });
+    if (raised(error, 'Coach assignment not found')) return NextResponse.json({ error: 'Coach assignment not found' }, { status: 404 });
+    if (raised(error, 'already ended')) return NextResponse.json({ error: 'This coach assignment has already ended' }, { status: 409 });
+    if (raised(error, 'A reason is required')) return NextResponse.json({ error: 'A reason (up to 500 characters) is required' }, { status: 400 });
+    logRouteFailure('staff coach assignment: end', error);
+    return NextResponse.json({ error: 'Could not end this coach assignment. Please try again.' }, { status: 500 });
   }
   return NextResponse.json({ ok: true });
 }

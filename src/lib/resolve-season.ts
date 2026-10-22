@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { logRouteFailure } from '@/lib/route-failure';
 
 export type ResolveSeasonResult =
   | { ok: true; id: string; label: string }
@@ -67,7 +68,8 @@ export async function resolveOrCreateSeason(
         .maybeSingle();
       if (raced) return { ok: true, id: raced.id, label: raced.label };
     }
-    return { ok: false, status: 500, error: error.message };
+    logRouteFailure('season: create', error);
+    return { ok: false, status: 500, error: 'Could not set up the season. Please try again.' };
   }
 
   return { ok: true, id: created.id, label: created.label };

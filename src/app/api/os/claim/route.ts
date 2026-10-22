@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
   // their coach view and gains the parent one.
   const profile = await ensureProfileRole(serviceRole, user.id, 'parent', displayName);
   if (!profile.ok) {
-    return NextResponse.json({ error: profile.error }, { status: 500 });
+    return NextResponse.json({ error: 'Could not set up your account. Please try again.' }, { status: 500 });
   }
 
   const result = await claimPlayerForCard(serviceRole, card, user.id, relationship?.trim() || null);

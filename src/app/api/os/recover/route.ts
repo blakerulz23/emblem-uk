@@ -3,6 +3,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { claimPlayerForCard } from '@/lib/claim-player';
 import { createGuardianInvite } from '@/lib/create-guardian-invite';
 import { ensureProfileRole } from '@/lib/relationship-writes';
+import { logRouteFailure } from '@/lib/route-failure';
 
 export const runtime = 'nodejs';
 
@@ -40,7 +41,8 @@ export async function GET() {
     .eq('payment_status', 'fulfilled');
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    logRouteFailure('recover: list orders', error);
+    return NextResponse.json({ error: 'Could not load your orders. Please try again.' }, { status: 500 });
   }
   if (!orders?.length) {
     return NextResponse.json({ orders: [] });
