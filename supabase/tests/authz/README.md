@@ -226,6 +226,24 @@ which exist only from 0088. Deploying this app before 0088 would make every
 claim and invite fail. 0088 is additive, so the current app keeps working on
 it. (An earlier plan put the app first; that order is superseded.)
 
+## Roster additions after 0089
+
+```powershell
+$env:EMBLEM_AUTHZ_PGLITE_DIR = '<PGLITE_TOOLING_DIR>'
+node --no-warnings supabase/tests/authz/roster_add_test.mjs
+```
+
+`POST /api/os/players` reads the caller's own `coach_team` row for the team
+and answers 403 ("You no longer have permission to add players to this
+team.") unless the assignment is active. It then inserts the player as the
+signed-in user, so RLS still decides. A refusal there (SQLSTATE 42501) gets
+the same 403; any other failure is a generic 500 that logs only the error
+code. `roster_add_test.mjs` runs both statements on the real 0089 as an
+active, ended, expired, direct-link-only, role-only and unrelated account, a
+dual account on each of its teams, and a request for another team. Only the
+active assignments succeed. Coach OS shows "+ Add Player" only when its data
+carries an active-assignment team (`canAddRosterPlayers`).
+
 ## Direct coach links (coach_players)
 
 ```powershell

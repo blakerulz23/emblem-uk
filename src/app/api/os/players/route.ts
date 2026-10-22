@@ -2,14 +2,26 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { withUniqueCodeRetry } from '@/lib/claim-code';
 import { isCanonicalPosition } from '@/lib/player-position';
+import {
+  checkActiveTeamAssignment,
+  isPermissionDenied,
+  ROSTER_ADD_DENIED_MESSAGE,
+  ROSTER_ADD_FAILED_MESSAGE,
+} from '@/lib/team-roster-permission';
 
 export const runtime = 'nodejs';
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
- * A coach adds one roster player to a team they're already linked to
- * (enforced by RLS's "players: coaches can add roster players to their
+ * A coach adds one roster player to a team they hold an active assignment
+ * for (enforced by RLS's "players: coaches can add roster players to their
  * team" policy) and its card, generating the claim token. This is the only
  * time that token is ever returned — no endpoint re-exposes it later.
+ *
+ * An ended, expired, unrelated or role-only coach gets a 403 with a stable
+ * message, both from the assignment check below and if RLS refuses the
+ * insert anyway. Database error text never reaches the client.
  */
 export async function POST(request: NextRequest) {
   const supabase = createClient();
@@ -44,7 +56,7 @@ export async function POST(request: NextRequest) {
     squadNumber?: number;
   };
 
-  if (!teamId || !name?.trim()) {
+  if (!teamId || !UUID.test(teamId) || !name?.trim()) {
     return NextResponse.json({ error: 'teamId and name are required' }, { status: 400 });
   }
   // Position is optional at roster-creation time, but if one is sent it
@@ -52,6 +64,15 @@ export async function POST(request: NextRequest) {
   // specific-position code reintroduced through this path.
   if (position && !isCanonicalPosition(position)) {
     return NextResponse.json({ error: 'Choose one of the five position categories.' }, { status: 400 });
+  }
+
+  const assignment = await checkActiveTeamAssignment(supabase, teamId, user.id);
+  if (assignment === 'error') {
+    console.error('Roster add: coach assignment lookup failed');
+    return NextResponse.json({ error: ROSTER_ADD_FAILED_MESSAGE }, { status: 500 });
+  }
+  if (assignment === 'none') {
+    return NextResponse.json({ error: ROSTER_ADD_DENIED_MESSAGE }, { status: 403 });
   }
 
   const { data: player, error: playerError } = await supabase
@@ -73,7 +94,12 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (playerError || !player) {
-    return NextResponse.json({ error: playerError?.message ?? 'Could not create player' }, { status: 500 });
+    // The assignment can end between the check and the insert; RLS refuses then.
+    if (isPermissionDenied(playerError)) {
+      return NextResponse.json({ error: ROSTER_ADD_DENIED_MESSAGE }, { status: 403 });
+    }
+    console.error('Roster add: player insert failed', { code: playerError?.code ?? 'no-row' });
+    return NextResponse.json({ error: ROSTER_ADD_FAILED_MESSAGE }, { status: 500 });
   }
 
   // cards has no client-facing insert policy at all (by design — a
@@ -91,7 +117,8 @@ export async function POST(request: NextRequest) {
   );
 
   if (cardResult.error || !cardResult.data || !cardResult.code) {
-    return NextResponse.json({ error: cardResult.error?.message ?? 'Could not generate a claim code' }, { status: 500 });
+    console.error('Roster add: claim card insert failed', { code: cardResult.error?.code ?? 'no-row' });
+    return NextResponse.json({ error: 'Could not generate a claim code. Please try again.' }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, playerId: player.id, claimToken: cardResult.code });

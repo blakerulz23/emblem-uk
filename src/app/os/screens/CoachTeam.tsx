@@ -8,6 +8,7 @@ import type { OsActions } from '../OsApp';
 import type { SquadPlayer } from '../types';
 import GuardianInviteSheet, { daysLeftLabel } from '../overlays/GuardianInviteSheet';
 import { POSITION_OPTIONS, positionDisplayLabel } from '@/lib/player-position';
+import { canAddRosterPlayers } from '@/lib/team-roster-permission';
 
 // Status and action are stacked, not sharing a row — a shared
 // space-between row crowds/wraps badly once the label text (e.g. "Invite
@@ -105,6 +106,9 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
   const router = useRouter();
   const { mode, squad: SQUAD, teamId } = useOsData();
   const isReal = mode !== 'demo';
+  // Only an active team assignment can add roster players; the server
+  // re-checks every request.
+  const canAdd = canAddRosterPlayers({ mode, teamId });
   // Team rosters stay exactly as they were — a direct (coach_players)
   // connection never counts toward a team's roster total or sits inside
   // a fake team, and a team-linked player never appears twice just
@@ -122,6 +126,8 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
   const [parentEmail, setParentEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Kept outside the form: after a 403 the refreshed data hides the form.
+  const [accessNotice, setAccessNotice] = useState('');
   const [claimToken, setClaimToken] = useState<string | null>(null);
   const [invitedEmail, setInvitedEmail] = useState<string | null>(null);
   const [showCodeInstead, setShowCodeInstead] = useState(false);
@@ -149,9 +155,15 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
           squadNumber: squadNumber ? Number(squadNumber) : undefined,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 403) {
+        setAccessNotice(data.error || 'You no longer have permission to add players to this team.');
+        setShowAdd(false);
+        router.refresh();
+        return;
+      }
       if (!res.ok) {
-        setError(data.error || 'Could not add player');
+        setError(data.error || 'Could not add the player. Please try again.');
         return;
       }
       setClaimToken(data.claimToken);
@@ -198,7 +210,7 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
             {teamPlayers.length} player{teamPlayers.length === 1 ? '' : 's'}
           </div>
         </div>
-        {isReal && (
+        {canAdd && (
           <button
             type="button"
             onClick={resetAdd}
@@ -209,7 +221,13 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
         )}
       </div>
 
-      {showAdd && (
+      {accessNotice && (
+        <p role="status" style={{ background: 'var(--os-card)', borderRadius: 12, padding: '12px 14px', marginBottom: 16, fontSize: 13, color: 'var(--os-ink)', boxShadow: '0 6px 18px -14px rgba(0,0,0,.2)' }}>
+          {accessNotice}
+        </p>
+      )}
+
+      {canAdd && showAdd && (
         <div style={{ background: 'var(--os-card)', borderRadius: 16, padding: 16, marginBottom: 16, boxShadow: '0 6px 18px -14px rgba(0,0,0,.2)' }}>
           {claimToken ? (
             <div style={{ textAlign: 'center' }}>
