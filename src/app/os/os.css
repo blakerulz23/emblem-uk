@@ -472,3 +472,44 @@ body.emblem-os-active {
     animation: none;
   }
 }
+
+/* A secondary action inside a card (for example "Copy invitation link"):
+   the card's own surface and ink in both themes, a border that stays
+   visible on either card colour, a 44px touch target, a visible keyboard
+   focus ring and a distinct disabled state. */
+.emblem-os .os-secondary-button {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 14px;
+  border-radius: 11px;
+  background: var(--os-card);
+  color: var(--os-ink);
+  border: 1px solid rgba(21, 19, 15, .55);
+  font-family: 'Roboto', sans-serif;
+  font-weight: 800;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.emblem-os.os-dark .os-secondary-button {
+  border-color: rgba(244, 241, 236, .55);
+}
+.emblem-os .os-secondary-button:focus-visible {
+  outline: 2px solid #B34715;
+  outline-offset: 2px;
+}
+.emblem-os.os-dark .os-secondary-button:focus-visible {
+  outline-color: #E97435;
+}
+.emblem-os .os-secondary-button:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
+/* Outcome text on a card, readable on both card colours. */
+.emblem-os .os-notice-ok { color: #2E7D4F; }
+.emblem-os .os-notice-warn { color: #B34715; }
+.emblem-os .os-notice-error { color: #B3261E; }
+.emblem-os.os-dark .os-notice-ok { color: #6FD39A; }
+.emblem-os.os-dark .os-notice-warn { color: #F2A272; }
+.emblem-os.os-dark .os-notice-error { color: #F28B82; }

@@ -81,7 +81,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
   const [inviteOutcomeMessage, setInviteOutcomeMessage] = useState('');
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteLinkCode, setInviteLinkCode] = useState<string | null>(null);
-  const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
+  const [inviteLinkCopy, setInviteLinkCopy] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
 
   // Add Coach — a separate flow from Add Guardian (see sendInvite below),
   // deliberately not sharing state or a submit handler with it even
@@ -385,6 +385,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
     if (!playerId || !inviteEmail.trim()) return;
     setInviteStatus('sending');
     setInviteError(null);
+    setInviteLinkCopy('idle');
     try {
       const res = await fetch('/api/os/invites', {
         method: 'POST',
@@ -406,13 +407,15 @@ export default function Profile({ actions }: { actions: OsActions }) {
     }
   };
 
+  // Copies the invitation link. Nothing is logged: the link carries the code.
   const copyGuardianInviteLink = async () => {
-    if (!inviteLinkCode) return;
+    if (!inviteLinkCode || inviteLinkCopy === 'copying') return;
+    setInviteLinkCopy('copying');
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/os?invite=${encodeURIComponent(inviteLinkCode)}`);
-      setInviteLinkCopied(true);
+      setInviteLinkCopy('copied');
     } catch {
-      setInviteLinkCopied(false);
+      setInviteLinkCopy('failed');
     }
   };
 
@@ -782,18 +785,24 @@ export default function Profile({ actions }: { actions: OsActions }) {
         {showInvite && (
           <form onSubmit={sendInvite} style={{ marginTop: 14 }}>
             {inviteStatus === 'sent' ? (
-              <p role="status" style={{ fontSize: 13, color: '#2E9E5B', textAlign: 'center' }}>{inviteOutcomeMessage}</p>
+              <p role="status" className="os-notice-ok" style={{ fontSize: 13, textAlign: 'center' }}>{inviteOutcomeMessage}</p>
             ) : inviteStatus === 'created' ? (
               <div style={{ textAlign: 'center' }}>
-                <p role="status" style={{ fontSize: 13, lineHeight: 1.5, color: '#C4501C', margin: '0 0 10px' }}>{inviteOutcomeMessage}</p>
+                <p role="status" className="os-notice-warn" style={{ fontSize: 13, lineHeight: 1.5, margin: '0 0 10px' }}>{inviteOutcomeMessage}</p>
                 {inviteLinkCode && (
-                  <button
-                    type="button"
-                    onClick={copyGuardianInviteLink}
-                    style={{ width: '100%', padding: 12, borderRadius: 11, background: '#fff', border: '1px solid var(--os-border)', color: 'var(--os-ink)', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, cursor: 'pointer' }}
-                  >
-                    {inviteLinkCopied ? 'Link copied' : 'Copy invitation link'}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      className="os-secondary-button"
+                      onClick={copyGuardianInviteLink}
+                      disabled={inviteLinkCopy === 'copying'}
+                    >
+                      {inviteLinkCopy === 'copied' ? 'Link copied' : inviteLinkCopy === 'copying' ? 'Copying…' : 'Copy invitation link'}
+                    </button>
+                    <p role={inviteLinkCopy === 'failed' ? 'alert' : 'status'} className={inviteLinkCopy === 'failed' ? 'os-notice-error' : 'os-notice-ok'} style={{ fontSize: 12.5, margin: '8px 0 0', minHeight: 18 }}>
+                      {inviteLinkCopy === 'copied' ? 'The invitation link is on your clipboard.' : inviteLinkCopy === 'failed' ? 'Could not copy the link. Try again, or copy it from a different browser.' : ''}
+                    </p>
+                  </>
                 )}
               </div>
             ) : (
