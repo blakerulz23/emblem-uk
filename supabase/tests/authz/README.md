@@ -18,9 +18,11 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `catalog.mjs` | Whole-`public` catalog snapshot (relations and their ACLs, columns and column ACLs, constraints, indexes, policies, functions with ACL and body, triggers, publication membership) and a diff. ACLs are compared semantically: a NULL ACL is expanded with `acldefault`, and entries are sorted, so an ACL restored by GRANT/REVOKE to the same privileges compares equal to the original. |
 | `migration_0088_test.mjs` | Migration 0088 and its rollback, on a fresh 0087 database with fictional rows. |
 | `migration_0089_test.mjs` | Migration 0089 and its rollback, on fresh 0088 databases with fictional rows. |
+| `migration_0090_test.mjs` | Migration 0090 (guardian-invite write lockdown) and its rollback, on a fresh 0089 database with fictional rows. |
 
 Related: `supabase/rollback/0088_rollback.sql`, `supabase/rollback/0089_rollback.sql`,
-`src/lib/migration-0088-contract.test.ts` and `src/lib/migration-0089-contract.test.ts`
+`supabase/rollback/0090_rollback.sql`, `src/lib/migration-0088-contract.test.ts`,
+`src/lib/migration-0089-contract.test.ts` and `src/lib/migration-0090-contract.test.ts`
 (structural, run with `npm test`), and `scripts/check-migration-numbers.mjs`
 (duplicate migration numbers).
 
@@ -194,8 +196,8 @@ node --no-warnings supabase/tests/authz/app_flows_test.mjs
 ```
 
 `app_flows_test.mjs` runs the SQL the app's routes issue twice: once after
-0088, and once after the real 0089 (applied after a fictional staff account
-records release readiness, as the precondition requires). The flows it
+0088, and once after the real 0089 and 0090 (0089 applied after a fictional
+staff account records release readiness, as the precondition requires). The flows it
 covers:
 
 - sign-up and display-name edits;
@@ -650,8 +652,9 @@ display-name edits, and recording release readiness (once only).
 - `service_role` grants.
 
 **Known follow-ups, not in 0089.**
-- `player_invites` still has a table-level signed-in INSERT, so a coach can
-  set `used_at` on an invite they create. That's hygiene, not escalation.
+- `player_invites` still had a table-level signed-in INSERT, so a guardian or
+  active coach could forge an invite's status and attribution. Closed by
+  0090 (below), which ships with 0089.
 - `POST /api/os/seasons` is unused but still lets any signed-in user create
   a season.
 - `supabase/tests/full_migration_test` can't import PGlite without
@@ -690,10 +693,64 @@ Concurrency, PostgREST, Supabase Auth and real JWTs aren't exercised (see
 4. A staff member records readiness through `POST /api/staff/release-readiness`.
 5. Run H5 (direct-link review counts) read-only and review the results.
 6. Apply 0089. It refuses by itself if steps 1–4 are incomplete.
-7. Verify: repeat the smoke checks, and confirm that signed-in role and
-   relationship writes are refused.
-8. Rollback only in an emergency, with the acknowledgement above, and
-   re-apply 0089 as soon as possible.
+7. Apply 0090 immediately after, in the same maintenance window. It
+   refuses by itself unless 0089 is in place.
+8. Verify: repeat the smoke checks, and confirm that signed-in role and
+   relationship writes, and forged guardian-invite fields, are refused.
+   Production is not protected until both 0089 and 0090 pass verification.
+9. Rollback only in an emergency, with the acknowledgement above (0090's
+   first, then 0089's), and re-apply as soon as possible.
+
+## Migration 0090 (guardian-invite write lockdown)
+
+```powershell
+$env:EMBLEM_AUTHZ_PGLITE_DIR = '<PGLITE_TOOLING_DIR>'
+node --no-warnings supabase/tests/authz/migration_0090_test.mjs
+```
+
+Until 0090, a signed-in user could INSERT every column of `player_invites`.
+RLS limited the player (their own child, or a player on a team they actively
+coach) and required `created_by` to be them, but nothing stopped them writing
+`used_at`, `used_by`, `created_at`, `expires_at`, `order_id`, `email_status`
+or the id. A guardian or coach could create a guardian invite that looked
+already consumed by someone else, backdated, never expiring or tied to an
+order. It granted no access, but it could fake the record of how a guardian
+link came about.
+
+**What 0090 changes.** After a precondition (it refuses, changing nothing,
+unless 0089 is in place):
+- `anon` and `authenticated` lose INSERT, UPDATE and DELETE on the table
+  (neither held UPDATE or DELETE; the revoke makes it explicit);
+- `authenticated` may INSERT only `player_id`, `code`, `created_by`,
+  `invited_email` and `origin`: exactly what `createGuardianInvite` sends for
+  a signed-in guardian or coach. It sends `order_id` only for a trusted
+  (service-role) order caller.
+
+Existing policies, SELECT, `service_role` and every trusted path (order
+approval, resend, recovery, redemption, account deletion, child erasure) are
+unchanged. No row changes. The catalog change from 0089 is exactly the table
+ACL and the five column ACLs of `player_invites`.
+
+`migration_0090_test.mjs` reproduces the forgery at 0089, then proves the
+legitimate insert (including the app's own column list, read from
+`create-guardian-invite.ts`) still works; every forged column, update and
+delete is refused with no partial write; trusted redemption and single use
+are unchanged; and applying 0090 changes no data.
+
+**Rollback: emergency only.** `supabase/rollback/0090_rollback.sql` REOPENS
+guardian-invite forgery. It refuses, changing nothing, unless the same
+transaction first runs:
+
+```sql
+begin;
+select set_config('emblem.acknowledge_0090_rollback', 'REOPEN-GUARDIAN-INVITE-FORGERY', true);
+-- then the rollback file
+```
+
+It restores the exact 0089 catalog, changes no data, and clears the
+acknowledgement before committing, so it never persists. 0090 can then be
+re-applied. The test proves all of this, including a re-apply to the
+identical catalog.
 
 ## Duplicate migration numbers
 

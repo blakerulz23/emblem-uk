@@ -8,7 +8,8 @@
 // approve/end, and the account read behind the Parent/Coach views) twice:
 //   1. after 0088 (the compatible app must work before the lockdown);
 //   2. after the real 0089 lockdown, applied once release readiness has
-//      been recorded by a (fictional) staff account, as in production.
+//      been recorded by a (fictional) staff account, as in production, and
+//      then 0090 (guardian-invite write lockdown), which ships with it.
 // Every flow must work in both. View resolution uses the app's own
 // src/lib/os-view.ts and src/lib/coach-assignment.ts (Node strips types).
 import crypto from 'crypto';
@@ -16,10 +17,10 @@ import { applyMigrations, createDatabase } from './harness.mjs';
 import { resolveOsView, parseOsView } from '../../../src/lib/os-view.ts';
 import { activeCoachAssignments } from '../../../src/lib/coach-assignment.ts';
 
-const LOCKDOWN = 'after 0089';
+const LOCKDOWN = 'after 0089 and 0090';
 
 // Records release readiness (0088) with a fictional staff account, then
-// applies the real 0089, whose precondition requires it.
+// applies the real 0089, whose precondition requires it, then 0090.
 async function applyLockdown(db) {
   const staff = crypto.randomUUID();
   await db.query(`insert into auth.users (id, email) values ($1, 'readiness-staff@example.test')`, [staff]);
@@ -29,6 +30,7 @@ async function applyLockdown(db) {
   await db.query(`select public.confirm_release_readiness('authorization_relationships_v1', 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0', $1, true, true, true, true, true, true)`, [staff]);
   await db.exec('commit;');
   await applyMigrations(db, { from: '0089', through: '0089' });
+  await applyMigrations(db, { from: '0090', through: '0090' });
 }
 
 const results = [];
@@ -85,7 +87,7 @@ async function runMode(mode) {
   }
 
   const id = () => crypto.randomUUID();
-  const people = { parent: id(), coach: id(), neither: id(), coachFirst: id(), parentFirst: id(), parentThenTeam: id(), ended: id(), expired: id(), requester: id(), staff: id(), inviter: id() };
+  const people = { parent: id(), coach: id(), neither: id(), coachFirst: id(), parentFirst: id(), parentThenTeam: id(), ended: id(), expired: id(), requester: id(), staff: id(), inviter: id(), invitee: id() };
   await db.query(`insert into auth.users (id, email) select u, 'p-' || left(u::text, 8) || '@example.test' from unnest($1::uuid[]) u`, [Object.values(people)]);
   const season = id();
   await db.query(`insert into public.seasons (id, label, normalized_label) values ($1, 'Test Season', 'test season')`, [season]);
@@ -157,6 +159,28 @@ async function runMode(mode) {
   await ok('neither: no view, onboarding decides', () => account(people.neither), (a) => a.view === null && a.availableViews.length === 0 && a.role === null);
   await ok('a coach reads their squad', () => user(people.coach, `select id from public.players where team_id = $1`, [team]), (r) => r.rows.length === 2);
   await ok('a parent reads their child', () => user(people.parent, `select id from public.players where id = $1`, [player]), (r) => r.rows.length === 1);
+  // Guardian invite: the signed-in inviter writes exactly the five columns
+  // createGuardianInvite sends (all 0090 allows); the redeem route (service
+  // role) links the guardian and marks the invite used.
+  const guardianCode = `GINV-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+  await ok('a guardian invites a second guardian (five columns, signed in)', () =>
+    user(people.parent, `insert into public.player_invites (player_id, code, created_by, invited_email, origin) values ($1, $2, $3, null, 'second_guardian') returning id`, [player, guardianCode, people.parent]),
+    (r) => r.rows.length === 1);
+  await ok('…the invited person redeems it (service role: guardian link, invite marked used once)', async () => {
+    await service(`select public.ensure_profile_role($1, 'parent')`, [people.invitee]);
+    await service(`insert into public.guardians (player_id, profile_id, created_via, created_by) values ($1, $2, 'guardian_invite', $2)`, [player, people.invitee]);
+    return service(`update public.player_invites set used_at = now(), used_by = $2 where code = $1 and used_at is null returning used_by`, [guardianCode, people.invitee]);
+  }, (r) => r.rows.length === 1 && r.rows[0].used_by === people.invitee);
+  await ok('…who then reads the child', () => user(people.invitee, `select id from public.players where id = $1`, [player]), (r) => r.rows.length === 1);
+  if (mode === LOCKDOWN) {
+    // Proves this mode really runs under 0090.
+    try {
+      await user(people.parent, `insert into public.player_invites (player_id, code, created_by, used_at, used_by) values ($1, 'GINV-FORGED', $2, now(), $2)`, [player, people.parent]);
+      check(label('0090 is in force (a guardian cannot pre-mark an invite used)'), false, 'insert succeeded');
+    } catch (e) {
+      check(label('0090 is in force (a guardian cannot pre-mark an invite used)'), e.message.includes('permission denied'), e.message);
+    }
+  }
 
   // --- Dual role, both orders ----------------------------------------------
   await ok('coach first: team invite', () => redeemTeamInvite(people.coachFirst, otherTeam));

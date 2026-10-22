@@ -90,7 +90,10 @@ export async function createGuardianInvite(
         created_by: createdByUserId,
         invited_email: invitedEmail ?? null,
         origin,
-        order_id: orderId ?? null,
+        // Only a trusted (service-role) order caller has an order. A signed-in
+        // guardian or coach may insert just the five columns 0090 grants, so
+        // order_id must be absent from their insert, not sent as null.
+        ...(orderId ? { order_id: orderId } : {}),
       })
       .select()
       .single()

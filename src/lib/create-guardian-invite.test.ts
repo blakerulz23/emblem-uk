@@ -109,3 +109,47 @@ describe('createGuardianInvite — the invite and its email are separate outcome
     expect(allLogs()).not.toContain(EMAIL);
   });
 });
+
+// 0090 grants a signed-in user INSERT on exactly these five player_invites
+// columns. PostgreSQL needs the privilege for every column an insert lists,
+// even a null one, so the signed-in path must not list order_id at all.
+const SIGNED_IN_COLUMNS = ['code', 'created_by', 'invited_email', 'origin', 'player_id'];
+const ORDER = 'dddddddd-0000-4000-8000-000000000004';
+
+describe('createGuardianInvite — insert columns (0090 guardian-invite write lockdown)', () => {
+  it('the ordinary guardian or active-coach path sends exactly the five approved columns', async () => {
+    sendInviteEmail.mockResolvedValue({ ok: false, reason: 'not_configured' });
+    const fake = db();
+    await createGuardianInvite(fake.client as never, PLAYER, USER, EMAIL, 'coach_added_player');
+    const [insert] = inserts(fake);
+    expect(Object.keys(insert.payload as object).sort()).toEqual(SIGNED_IN_COLUMNS);
+    expect(insert.payload).toMatchObject({ player_id: PLAYER, created_by: USER, invited_email: EMAIL, origin: 'coach_added_player' });
+  });
+
+  it('it never sends order_id: null (absent, not null), for link-only and default-origin invites too', async () => {
+    sendInviteEmail.mockResolvedValue({ ok: false, reason: 'not_configured' });
+    for (const email of [EMAIL, undefined]) {
+      const fake = db();
+      await createGuardianInvite(fake.client as never, PLAYER, USER, email);
+      const payload = inserts(fake)[0].payload as Record<string, unknown>;
+      expect('order_id' in payload).toBe(false);
+      expect(Object.keys(payload).sort()).toEqual(SIGNED_IN_COLUMNS);
+    }
+    const fake = db();
+    await createGuardianInvite(fake.client as never, PLAYER, USER, EMAIL, 'second_guardian', null as unknown as string);
+    expect('order_id' in (inserts(fake)[0].payload as object)).toBe(false);
+  });
+
+  it('a trusted caller with a genuine order includes order_id (and nothing else changes)', async () => {
+    sendInviteEmail.mockResolvedValue({ ok: true });
+    const fake = db();
+    const r = await createGuardianInvite(fake.client as never, PLAYER, null, EMAIL, 'order_approval', ORDER);
+    expect(r).toMatchObject({ ok: true, reused: false, emailStatus: 'sent' });
+    const payload = inserts(fake)[0].payload as Record<string, unknown>;
+    expect(Object.keys(payload).sort()).toEqual([...SIGNED_IN_COLUMNS, 'order_id'].sort());
+    expect(payload).toMatchObject({ order_id: ORDER, origin: 'order_approval', created_by: null });
+    // The order-approval reuse lookup is still scoped to that order.
+    const lookup = fake.calls.find((c) => c.table === 'player_invites' && c.op === 'select');
+    expect(lookup?.filters).toContainEqual(['eq', 'order_id', ORDER]);
+  });
+});
