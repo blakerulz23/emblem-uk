@@ -33,6 +33,11 @@ export function trackedTextFiles(root) {
   return out.split('\0').filter((f) => f && TEXT_FILE.test(f));
 }
 
+/**
+ * @param {string} root
+ * @param {{ exclude?: string[] }} [options]
+ * @returns {{ file: string, line: number, rule: string }[]}
+ */
 export function checkRepository(root, { exclude = [] } = {}) {
   const problems = [];
   for (const file of trackedTextFiles(root)) {
