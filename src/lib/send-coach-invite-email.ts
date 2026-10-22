@@ -61,14 +61,15 @@ export async function sendCoachInviteEmail(
     });
 
     if (!res.ok) {
-      console.warn('Resend coach invite email failed', await res.text().catch(() => ''));
+      // Status only: the provider's response body can echo the recipient.
+      console.warn('Resend coach invite email failed', { status: res.status });
       return { ok: false };
     }
     return { ok: true };
   } catch (err) {
     // A thrown network error must not bubble up and fail the caller —
     // the invite row is already committed; this is best-effort delivery only.
-    console.warn('Resend coach invite email threw', err);
+    console.warn('Resend coach invite email threw', { name: err instanceof Error ? err.name : 'unknown' });
     return { ok: false };
   }
 }

@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { withUniqueCodeRetry } from '@/lib/claim-code';
 import { sendCoachInviteEmail } from '@/lib/send-coach-invite-email';
+import { isPermissionDenied } from '@/lib/permission-denied';
+import { logRouteFailure } from '@/lib/route-failure';
+
+export const COACH_INVITE_DENIED_MESSAGE = "You don't have permission to invite a coach for this player.";
+export const COACH_INVITE_FAILED_MESSAGE = 'Could not create the coach invitation. Please try again.';
 
 /**
  * Distinguishes all four outcomes the guardian-facing UI must report,
@@ -72,9 +77,15 @@ export async function createCoachInvite(
       .single()
   );
 
+  // Database error text never leaves this function: an RLS or privilege
+  // refusal (not this player's guardian) is a fixed 403; anything else a
+  // generic 500 that logs only the error code.
   if (result.error || !result.code) {
-    const status = result.error?.message?.includes('row-level security') ? 403 : 500;
-    return { ok: false, status, error: result.error?.message ?? 'Could not create invite' };
+    if (isPermissionDenied(result.error)) {
+      return { ok: false, status: 403, error: COACH_INVITE_DENIED_MESSAGE };
+    }
+    logRouteFailure('coach invite: create', result.error);
+    return { ok: false, status: 500, error: COACH_INVITE_FAILED_MESSAGE };
   }
 
   const emailStatus = await dispatchEmail(client, playerId, createdByUserId, normalizedEmail, result.code);

@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
+import { logRouteFailure, raised } from '@/lib/route-failure';
 
 export const runtime = 'nodejs';
+
+const ACCOUNT_DELETE_FAILED_MESSAGE = 'Could not delete your account. Please try again.';
 
 // This app has no password — guardians sign in by email OTP
 // (src/app/os/overlays/SignIn.tsx), so "re-authentication" here can't mean
@@ -68,7 +71,13 @@ export async function POST() {
   // plain client retry is always safe here.
   const { data: rpcResult, error: rpcError } = await supabase.rpc('delete_own_guardian_account');
   if (rpcError) {
-    return NextResponse.json({ error: rpcError.message }, { status: 400 });
+    // Database text never reaches the caller or the log. The function's one
+    // expected refusal (no session) is a 401; anything else a generic 500.
+    if (raised(rpcError, 'Not authenticated')) {
+      return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
+    }
+    logRouteFailure('account deletion: cleanup', rpcError);
+    return NextResponse.json({ error: ACCOUNT_DELETE_FAILED_MESSAGE }, { status: 500 });
   }
 
   // canDeleteIdentity is false when a NOT-NULL profile-referencing row
