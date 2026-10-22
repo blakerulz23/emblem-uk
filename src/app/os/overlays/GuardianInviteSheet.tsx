@@ -181,7 +181,21 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
     // that the page scrolls for real (see .emblem-os-shell in os.css), so
     // it needs its own viewport-anchored containing block directly.
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 46, background: 'rgba(15,13,11,.5)', display: 'flex', alignItems: 'flex-end' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', background: '#F4F2EE', borderRadius: '26px 26px 0 0', padding: '10px 20px 26px' }}>
+      {/* The sheet's surface is always light, so it pins the light theme's
+          text tokens; otherwise dark mode's light ink and borders would sit
+          on it and the title and buttons would be unreadable. */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%',
+          background: '#F4F2EE',
+          borderRadius: '26px 26px 0 0',
+          padding: '10px 20px 26px',
+          ['--os-ink' as string]: '#15130F',
+          ['--os-muted' as string]: '#8A8378',
+          ['--os-border' as string]: 'rgba(0, 0, 0, .12)',
+        }}
+      >
         <div style={{ width: 42, height: 5, borderRadius: 4, background: 'rgba(0,0,0,.18)', margin: '0 auto 16px' }} />
 
         {outcome ? (
