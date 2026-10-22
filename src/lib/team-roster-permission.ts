@@ -39,9 +39,3 @@ export async function checkActiveTeamAssignment(
   if (error) return 'error';
   return data && isActiveCoachAssignment(data as CoachAssignmentState) ? 'active' : 'none';
 }
-
-/** PostgREST reports an RLS or privilege refusal as SQLSTATE 42501. */
-export function isPermissionDenied(error: { code?: string; message?: string } | null | undefined): boolean {
-  if (!error) return false;
-  return error.code === '42501' || /row-level security|permission denied/i.test(error.message ?? '');
-}

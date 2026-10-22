@@ -2,12 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { withUniqueCodeRetry } from '@/lib/claim-code';
 import { isCanonicalPosition } from '@/lib/player-position';
-import {
-  checkActiveTeamAssignment,
-  isPermissionDenied,
-  ROSTER_ADD_DENIED_MESSAGE,
-  ROSTER_ADD_FAILED_MESSAGE,
-} from '@/lib/team-roster-permission';
+import { isPermissionDenied } from '@/lib/permission-denied';
+import { checkActiveTeamAssignment, ROSTER_ADD_DENIED_MESSAGE, ROSTER_ADD_FAILED_MESSAGE } from '@/lib/team-roster-permission';
 
 export const runtime = 'nodejs';
 

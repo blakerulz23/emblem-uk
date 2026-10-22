@@ -10,14 +10,19 @@ import { appBaseUrl } from '@/lib/marketing/site';
  * Never throws — a failed or skipped send must not fail the caller, since
  * the invite's claim code is already valid in the database regardless of
  * whether this email lands. Callers use the returned `ok` to record
- * player_invites.email_status for staff visibility/resend, not to decide
- * whether the invite itself succeeded.
+ * player_invites.email_status for staff visibility/resend and to tell the
+ * sender truthfully whether the email went, not to decide whether the
+ * invite itself succeeded. `ok` is true only when Resend accepted the
+ * email. Logs never include the address, the code or the provider's
+ * response body.
  */
-export async function sendInviteEmail(toEmail: string, inviteCode: string): Promise<{ ok: boolean }> {
+export type InviteEmailResult = { ok: true } | { ok: false; reason: 'not_configured' | 'provider_rejected' | 'network_error' };
+
+export async function sendInviteEmail(toEmail: string, inviteCode: string): Promise<InviteEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn('RESEND_API_KEY not set — skipping invite email; the code above is still valid.');
-    return { ok: false };
+    console.warn('RESEND_API_KEY not set — skipping invite email; the invite is still valid.');
+    return { ok: false, reason: 'not_configured' };
   }
 
   const from = process.env.RESEND_FROM_EMAIL || 'Emblem <onboarding@resend.dev>';
@@ -46,14 +51,14 @@ export async function sendInviteEmail(toEmail: string, inviteCode: string): Prom
     });
 
     if (!res.ok) {
-      console.warn('Resend invite email failed', await res.text().catch(() => ''));
-      return { ok: false };
+      console.warn('Resend invite email failed', { status: res.status });
+      return { ok: false, reason: 'provider_rejected' };
     }
     return { ok: true };
   } catch (err) {
     // A thrown network error must not bubble up and fail the caller — the
     // invite row is already committed; this is best-effort delivery only.
-    console.warn('Resend invite email threw', err);
-    return { ok: false };
+    console.warn('Resend invite email threw', { name: err instanceof Error ? err.name : 'unknown' });
+    return { ok: false, reason: 'network_error' };
   }
 }

@@ -170,5 +170,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: inviteResult.error }, { status: inviteResult.status });
   }
 
-  return NextResponse.json({ ok: true });
+  // The purchaser never receives the code: the email is how it reaches the
+  // other parent. A retry reuses the same invite and tries the email again.
+  return NextResponse.json({ ok: true, emailStatus: inviteResult.emailStatus });
 }

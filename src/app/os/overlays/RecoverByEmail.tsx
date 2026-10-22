@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { osAssetPath } from '../data';
 import SignIn from './SignIn';
 import BackLink from './BackLink';
+import { guardianInviteOutcome, INVITE_SENT_COPY } from '@/lib/guardian-invite-outcome';
 
 type RecoverCard = { cardId: string; playerId: string | null; playerName: string | null };
 type RecoverOrder = { orderId: string; orderRef: string; source: string; cards: RecoverCard[] };
@@ -25,6 +26,9 @@ export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boo
   const [handoffEmail, setHandoffEmail] = useState('');
   const [busyCardId, setBusyCardId] = useState<string | null>(null);
   const [sentHandoff, setSentHandoff] = useState<string | null>(null);
+  // The invite exists but its email wasn't sent: the form stays open so a
+  // retry (which reuses the same invite) can try the email again.
+  const [handoffNotice, setHandoffNotice] = useState<{ cardId: string; message: string; isError: boolean } | null>(null);
 
   useEffect(() => {
     if (!hasSession) return;
@@ -61,9 +65,18 @@ export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boo
       body: JSON.stringify({ cardId, decision: 'handoff', handoffEmail: handoffEmail.trim() }),
     });
     setBusyCardId(null);
-    if (res.ok) {
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setHandoffNotice({ cardId, message: data.error || 'Could not create the invitation. Please try again.', isError: true });
+      return;
+    }
+    const outcome = guardianInviteOutcome(data.emailStatus, { canShareLink: false });
+    if (outcome.emailed) {
+      setHandoffNotice(null);
       setSentHandoff(cardId);
       setHandoffCardId(null);
+    } else {
+      setHandoffNotice({ cardId, message: outcome.message, isError: false });
     }
   };
 
@@ -111,9 +124,14 @@ export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boo
             <div style={{ fontSize: 11.5, color: '#8B8478', marginBottom: 14 }}>Order {c.orderRef}</div>
 
             {sentHandoff === c.cardId ? (
-              <p style={{ fontSize: 13, color: '#2E9E5B' }}>Invite sent.</p>
+              <p role="status" style={{ fontSize: 13, color: '#2E9E5B' }}>{INVITE_SENT_COPY}</p>
             ) : handoffCardId === c.cardId ? (
               <form onSubmit={(e) => sendHandoff(e, c.cardId)} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {handoffNotice?.cardId === c.cardId && (
+                  <p role={handoffNotice.isError ? 'alert' : 'status'} style={{ fontSize: 13, lineHeight: 1.5, color: handoffNotice.isError ? '#E57373' : '#E9A06A', margin: 0 }}>
+                    {handoffNotice.message}
+                  </p>
+                )}
                 <input
                   type="email"
                   required
@@ -123,7 +141,7 @@ export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boo
                   style={{ boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(233,116,53,.35)', background: 'rgba(255,255,255,.04)', color: '#F4F1EC', fontFamily: 'Roboto', fontSize: 14 }}
                 />
                 <button type="submit" disabled={busyCardId === c.cardId} style={{ background: '#E97435', color: '#0B0A09', border: 'none', borderRadius: 10, padding: '11px 16px', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
-                  {busyCardId === c.cardId ? 'Sending…' : 'Send invite'}
+                  {busyCardId === c.cardId ? 'Sending…' : handoffNotice?.cardId === c.cardId && !handoffNotice.isError ? 'Try sending again' : 'Send invite'}
                 </button>
               </form>
             ) : (

@@ -10,6 +10,7 @@ import { onActivateKey } from '../a11y';
 import { useOsPhotoUpload } from '../useOsPhotoUpload';
 import AccountSettings from '../overlays/AccountSettings';
 import { POSITION_OPTIONS, positionDisplayLabel, resolveCanonicalPosition } from '@/lib/player-position';
+import { guardianInviteOutcome } from '@/lib/guardian-invite-outcome';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -76,7 +77,11 @@ export default function Profile({ actions }: { actions: OsActions }) {
   const refreshOsData = useRefreshOsData();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteStatus, setInviteStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [inviteStatus, setInviteStatus] = useState<'idle' | 'sending' | 'sent' | 'created' | 'error'>('idle');
+  const [inviteOutcomeMessage, setInviteOutcomeMessage] = useState('');
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteLinkCode, setInviteLinkCode] = useState<string | null>(null);
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
 
   // Add Coach — a separate flow from Add Guardian (see sendInvite below),
   // deliberately not sharing state or a submit handler with it even
@@ -373,16 +378,42 @@ export default function Profile({ actions }: { actions: OsActions }) {
     router.refresh();
   };
 
+  // 'sent' only when the email was accepted; 'created' when the invite
+  // exists but its email wasn't, so the link is offered instead.
   const sendInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!playerId || !inviteEmail.trim()) return;
     setInviteStatus('sending');
-    const res = await fetch('/api/os/invites', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerId, invitedEmail: inviteEmail.trim() }),
-    });
-    setInviteStatus(res.ok ? 'sent' : 'error');
+    setInviteError(null);
+    try {
+      const res = await fetch('/api/os/invites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerId, invitedEmail: inviteEmail.trim() }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInviteStatus('error');
+        setInviteError(json?.error ?? null);
+        return;
+      }
+      const outcome = guardianInviteOutcome(json.emailStatus, { canShareLink: !!json.code });
+      setInviteOutcomeMessage(outcome.message);
+      setInviteLinkCode(outcome.emailed ? null : (json.code as string | undefined) ?? null);
+      setInviteStatus(outcome.emailed ? 'sent' : 'created');
+    } catch {
+      setInviteStatus('error');
+    }
+  };
+
+  const copyGuardianInviteLink = async () => {
+    if (!inviteLinkCode) return;
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/os?invite=${encodeURIComponent(inviteLinkCode)}`);
+      setInviteLinkCopied(true);
+    } catch {
+      setInviteLinkCopied(false);
+    }
   };
 
   return (
@@ -751,7 +782,20 @@ export default function Profile({ actions }: { actions: OsActions }) {
         {showInvite && (
           <form onSubmit={sendInvite} style={{ marginTop: 14 }}>
             {inviteStatus === 'sent' ? (
-              <p style={{ fontSize: 13, color: '#2E9E5B', textAlign: 'center' }}>Invite sent to {inviteEmail}.</p>
+              <p role="status" style={{ fontSize: 13, color: '#2E9E5B', textAlign: 'center' }}>{inviteOutcomeMessage}</p>
+            ) : inviteStatus === 'created' ? (
+              <div style={{ textAlign: 'center' }}>
+                <p role="status" style={{ fontSize: 13, lineHeight: 1.5, color: '#C4501C', margin: '0 0 10px' }}>{inviteOutcomeMessage}</p>
+                {inviteLinkCode && (
+                  <button
+                    type="button"
+                    onClick={copyGuardianInviteLink}
+                    style={{ width: '100%', padding: 12, borderRadius: 11, background: '#fff', border: '1px solid var(--os-border)', color: 'var(--os-ink)', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13.5, cursor: 'pointer' }}
+                  >
+                    {inviteLinkCopied ? 'Link copied' : 'Copy invitation link'}
+                  </button>
+                )}
+              </div>
             ) : (
               <>
                 <input
@@ -769,7 +813,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
                 >
                   {inviteStatus === 'sending' ? 'Sending…' : 'Send invite'}
                 </button>
-                {inviteStatus === 'error' && <p style={{ fontSize: 12.5, color: '#C0392B', marginTop: 6 }}>Could not send the invite — try again.</p>}
+                {inviteStatus === 'error' && <p role="alert" style={{ fontSize: 12.5, color: '#C0392B', marginTop: 6 }}>{inviteError ?? 'Could not create the invitation. Please try again.'}</p>}
               </>
             )}
           </form>

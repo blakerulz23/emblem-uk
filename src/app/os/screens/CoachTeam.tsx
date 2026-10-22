@@ -40,7 +40,8 @@ export function GuardianStatusRow({ player, onAction }: { player: SquadPlayer; o
         </div>
       );
     case 'pending': {
-      const label = player.latestInviteExpiresAt ? `Invite sent · ${daysLeftLabel(player.latestInviteExpiresAt)}` : 'Invite sent';
+      // "Pending", not "sent": a pending invite may be link-only, or its email may have failed.
+      const label = player.latestInviteExpiresAt ? `Invite pending · ${daysLeftLabel(player.latestInviteExpiresAt)}` : 'Invite pending';
       return (
         <div style={wrapStyle}>
           <div style={labelStyle}>○ {label}</div>
@@ -131,12 +132,15 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
   const [claimToken, setClaimToken] = useState<string | null>(null);
   const [invitedEmail, setInvitedEmail] = useState<string | null>(null);
   const [showCodeInstead, setShowCodeInstead] = useState(false);
+  // An email address was given but the invitation email wasn't sent.
+  const [inviteNotEmailed, setInviteNotEmailed] = useState(false);
 
   const resetAdd = () => {
     setShowAdd((v) => !v);
     setClaimToken(null);
     setInvitedEmail(null);
     setShowCodeInstead(false);
+    setInviteNotEmailed(false);
   };
 
   const addPlayer = async (e: React.FormEvent) => {
@@ -169,6 +173,7 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
       setClaimToken(data.claimToken);
       setInvitedEmail(null);
       setShowCodeInstead(false);
+      setInviteNotEmailed(false);
 
       // Preferred digital flow when the coach has the parent's email —
       // reuses the existing second-guardian invite route unmodified. The
@@ -183,9 +188,14 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ playerId: data.playerId, invitedEmail: email, origin: 'coach_added_player' }),
           });
-          if (inviteRes.ok) setInvitedEmail(email);
+          const invite = await inviteRes.json().catch(() => ({}));
+          // "Sent" only when the email was accepted; otherwise the claim
+          // code below is how the parent gets set up.
+          if (inviteRes.ok && invite.emailStatus === 'sent') setInvitedEmail(email);
+          else setInviteNotEmailed(true);
         } catch {
-          // Claim code fallback above still works — no error surfaced here.
+          // Claim code fallback below still works.
+          setInviteNotEmailed(true);
         }
       }
 
@@ -233,7 +243,7 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
             <div style={{ textAlign: 'center' }}>
               {invitedEmail && !showCodeInstead ? (
                 <>
-                  <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)', marginBottom: 6 }}>Invitation sent to {invitedEmail}</div>
+                  <div role="status" style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)', marginBottom: 6 }}>Invitation sent.</div>
                   <div style={{ fontSize: 13, color: 'var(--os-muted)', marginBottom: 14 }}>They&apos;ll get an email with a code to set up the player&apos;s profile.</div>
                   <button type="button" onClick={() => setShowCodeInstead(true)} style={{ background: 'none', border: 'none', color: 'var(--os-muted)', fontSize: 13, textDecoration: 'underline', cursor: 'pointer', marginBottom: 14, display: 'block', width: '100%' }}>
                     Show code instead
@@ -241,6 +251,11 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
                 </>
               ) : (
                 <>
+                  {inviteNotEmailed && (
+                    <div role="status" style={{ fontSize: 13, lineHeight: 1.5, color: '#C4501C', marginBottom: 8 }}>
+                      The invitation email could not be sent. Share this code with the player&apos;s parent instead.
+                    </div>
+                  )}
                   <div style={{ fontSize: 13, color: 'var(--os-muted)', marginBottom: 8 }}>Share this code with the player&apos;s parent — they&apos;ll enter it when they sign up.</div>
                   <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 24, letterSpacing: '.2em', color: 'var(--os-ink)', marginBottom: 12 }}>{claimToken}</div>
                 </>

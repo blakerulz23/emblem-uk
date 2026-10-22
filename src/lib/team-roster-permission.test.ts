@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createFakeSupabase } from './fake-supabase.test-support';
-import { canAddRosterPlayers, checkActiveTeamAssignment, isPermissionDenied } from './team-roster-permission';
+import { canAddRosterPlayers, checkActiveTeamAssignment } from './team-roster-permission';
+import { isPermissionDenied } from './permission-denied';
 
 const USER = 'aaaaaaaa-0000-4000-8000-000000000001';
 const TEAM = 'bbbbbbbb-0000-4000-8000-000000000002';

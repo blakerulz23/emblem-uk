@@ -67,5 +67,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 
-  return NextResponse.json({ ok: true, code: result.code });
+  // emailStatus is 'sent' only when the provider accepted the email. The
+  // invite is valid either way, and the creator can share its link.
+  return NextResponse.json({ ok: true, code: result.code, reused: result.reused, emailStatus: result.emailStatus });
 }

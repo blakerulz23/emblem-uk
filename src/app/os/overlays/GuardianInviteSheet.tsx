@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import type { SquadPlayer } from '../types';
+import { guardianInviteOutcome } from '@/lib/guardian-invite-outcome';
 
 export function daysLeftLabel(expiresAt: string): string {
   const days = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 86400000);
@@ -55,6 +56,24 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  // The truthful result of a send or resend. "Invitation sent." only when
+  // the email was accepted; otherwise the sheet stays open with the link
+  // to share instead, because the invite itself is valid.
+  const [outcome, setOutcome] = useState<{ emailed: boolean; message: string; code: string | null } | null>(null);
+
+  const afterEmailAttempt = (data: { code?: string; emailStatus?: 'sent' | 'failed' | 'skipped_no_email' }) => {
+    const result = guardianInviteOutcome(data.emailStatus, { canShareLink: !!data.code });
+    router.refresh();
+    setOutcome({ ...result, code: data.code ?? null });
+    if (result.emailed) setTimeout(onClose, 1200);
+  };
+
+  const copyOutcomeLink = async () => {
+    if (!outcome?.code) return;
+    const ok = await copyInviteLink(outcome.code);
+    setCopied(ok);
+    setError(ok ? '' : 'Could not copy the link — try again');
+  };
 
   const sendInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,11 +88,10 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Could not send that invite');
+        setError(data.error || 'Could not create the invitation. Please try again.');
         return;
       }
-      router.refresh();
-      onClose();
+      afterEmailAttempt(data);
     } finally {
       setBusy(false);
     }
@@ -148,8 +166,7 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
         setError(data.error || 'Could not resend that invite');
         return;
       }
-      router.refresh();
-      onClose();
+      afterEmailAttempt(data);
     } finally {
       setBusy(false);
     }
@@ -167,7 +184,21 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', background: '#F4F2EE', borderRadius: '26px 26px 0 0', padding: '10px 20px 26px' }}>
         <div style={{ width: 42, height: 5, borderRadius: 4, background: 'rgba(0,0,0,.18)', margin: '0 auto 16px' }} />
 
-        {mode === 'view' ? (
+        {outcome ? (
+          <>
+            <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 20, color: 'var(--os-ink)', marginBottom: 8 }}>Guardian Invite</div>
+            <p role="status" style={{ fontSize: 13.5, lineHeight: 1.5, color: outcome.emailed ? '#2E9E5B' : '#C4501C', margin: '0 0 16px' }}>{outcome.message}</p>
+            {!outcome.emailed && outcome.code && (
+              <button type="button" onClick={copyOutcomeLink} style={sheetButtonStyle}>
+                {copied ? 'Link copied' : 'Copy invitation link'}
+              </button>
+            )}
+            {error && <p role="alert" style={{ color: '#C0392B', fontSize: 13, margin: '4px 0 8px' }}>{error}</p>}
+            <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--os-muted)', fontSize: 13, cursor: 'pointer', marginTop: 4, display: 'block' }}>
+              Done
+            </button>
+          </>
+        ) : mode === 'view' ? (
           <>
             <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 20, color: 'var(--os-ink)', marginBottom: 4 }}>Guardian Invite</div>
             <div style={{ fontSize: 13, color: 'var(--os-muted)', marginBottom: 4 }}>Status</div>
