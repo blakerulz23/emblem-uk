@@ -19,6 +19,7 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `migration_0088_test.mjs` | Migration 0088 and its rollback, on a fresh 0087 database with fictional rows. |
 | `migration_0089_test.mjs` | Migration 0089 and its rollback, on fresh 0088 databases with fictional rows. |
 | `migration_0090_test.mjs` | Migration 0090 (guardian-invite write lockdown) and its rollback, on a fresh 0089 database with fictional rows. |
+| `guardian_account_control_test.mjs` | Card suspend/unsuspend and child-deletion request/cancel on the final schema: every refusal the routes report leaves no state behind; each success and idempotent repeat makes exactly its intended change. |
 
 Related: `supabase/rollback/0088_rollback.sql`, `supabase/rollback/0089_rollback.sql`,
 `supabase/rollback/0090_rollback.sql`, `src/lib/migration-0088-contract.test.ts`,

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
+import { logRouteFailure, raised } from '@/lib/route-failure';
 
 export const runtime = 'nodejs';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DELETION_REQUEST_FAILED_MESSAGE = 'Could not send the deletion request. Please try again.';
 
 /**
  * Files a "Request player-data deletion" record — not immediate
@@ -28,17 +32,25 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
   if (!user) {
     return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
   }
+  if (!UUID.test(params.id)) {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  }
 
   const { data: requestId, error } = await supabase.rpc('request_player_deletion', {
     p_player_id: params.id,
     p_requester_email: user.email ?? null,
     p_notes: null,
   });
+  // Database text never reaches the caller or the log.
   if (error) {
-    if (error.message.includes('Not authorized')) {
+    if (raised(error, 'Not authenticated')) {
+      return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
+    }
+    if (raised(error, 'Not authorized')) {
       return NextResponse.json({ error: 'Only a guardian can request deletion for this player' }, { status: 403 });
     }
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    logRouteFailure('player deletion request', error);
+    return NextResponse.json({ error: DELETION_REQUEST_FAILED_MESSAGE }, { status: 500 });
   }
 
   if (requestId) {

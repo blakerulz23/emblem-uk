@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { logRouteFailure, raised } from '@/lib/route-failure';
 
 export const runtime = 'nodejs';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DELETION_CANCEL_FAILED_MESSAGE = 'Could not cancel the deletion request. Please try again.';
 
 /**
  * Withdraws the calling guardian's own pending "Request player-data
@@ -21,16 +25,24 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
   if (!user) {
     return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
   }
+  if (!UUID.test(params.id)) {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  }
 
   const { error } = await supabase.rpc('cancel_own_player_deletion_request', { p_player_id: params.id });
+  // Database text never reaches the caller or the log.
   if (error) {
-    if (error.message.includes('Not authorized')) {
+    if (raised(error, 'Not authenticated')) {
+      return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
+    }
+    if (raised(error, 'Not authorized')) {
       return NextResponse.json({ error: 'Only a guardian can cancel this deletion request' }, { status: 403 });
     }
-    if (error.message.includes('No cancellable deletion request found')) {
+    if (raised(error, 'No cancellable deletion request found')) {
       return NextResponse.json({ error: 'No pending deletion request to cancel' }, { status: 404 });
     }
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    logRouteFailure('player deletion request cancel', error);
+    return NextResponse.json({ error: DELETION_CANCEL_FAILED_MESSAGE }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });
