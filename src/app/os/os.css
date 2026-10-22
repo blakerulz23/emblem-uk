@@ -506,6 +506,27 @@ body.emblem-os-active {
   cursor: default;
 }
 
+/* The coach's guardian-invite sheet. Its surface is always light, in both
+   themes, so its text never switches with .os-dark: every colour here meets
+   WCAG AA (4.5:1) on the sheet (#F4F2EE) and on its white buttons. */
+.emblem-os .os-light-sheet {
+  background: #F4F2EE;
+  --os-ink: #15130F;
+  --os-muted: #6B645A;
+  --os-border: rgba(0, 0, 0, .12);
+}
+.emblem-os .os-sheet-notice-ok { color: #256B42; }
+.emblem-os .os-sheet-notice-warn { color: #B34715; }
+.emblem-os .os-sheet-notice-error { color: #B3261E; }
+.emblem-os .os-sheet-button:focus-visible {
+  outline: 2px solid #B34715;
+  outline-offset: 2px;
+}
+.emblem-os .os-sheet-button:disabled {
+  opacity: .6;
+  cursor: default;
+}
+
 /* Outcome text on a card, readable on both card colours. */
 .emblem-os .os-notice-ok { color: #2E7D4F; }
 .emblem-os .os-notice-warn { color: #B34715; }

@@ -181,19 +181,17 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
     // that the page scrolls for real (see .emblem-os-shell in os.css), so
     // it needs its own viewport-anchored containing block directly.
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 46, background: 'rgba(15,13,11,.5)', display: 'flex', alignItems: 'flex-end' }}>
-      {/* The sheet's surface is always light, so it pins the light theme's
-          text tokens; otherwise dark mode's light ink and borders would sit
-          on it and the title and buttons would be unreadable. */}
+      {/* The sheet's surface is always light, so .os-light-sheet pins
+          light-surface text tokens (os.css); otherwise dark mode's light ink
+          and borders would sit on it and be unreadable. Its notice colours
+          meet WCAG AA on this surface in both themes. */}
       <div
+        className="os-light-sheet"
         onClick={(e) => e.stopPropagation()}
         style={{
           width: '100%',
-          background: '#F4F2EE',
           borderRadius: '26px 26px 0 0',
           padding: '10px 20px 26px',
-          ['--os-ink' as string]: '#15130F',
-          ['--os-muted' as string]: '#8A8378',
-          ['--os-border' as string]: 'rgba(0, 0, 0, .12)',
         }}
       >
         <div style={{ width: 42, height: 5, borderRadius: 4, background: 'rgba(0,0,0,.18)', margin: '0 auto 16px' }} />
@@ -201,14 +199,14 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
         {outcome ? (
           <>
             <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 20, color: 'var(--os-ink)', marginBottom: 8 }}>Guardian Invite</div>
-            <p role="status" style={{ fontSize: 13.5, lineHeight: 1.5, color: outcome.emailed ? '#2E9E5B' : '#C4501C', margin: '0 0 16px' }}>{outcome.message}</p>
+            <p role="status" className={outcome.emailed ? 'os-sheet-notice-ok' : 'os-sheet-notice-warn'} style={{ fontSize: 13.5, lineHeight: 1.5, margin: '0 0 16px' }}>{outcome.message}</p>
             {!outcome.emailed && outcome.code && (
-              <button type="button" onClick={copyOutcomeLink} style={sheetButtonStyle}>
+              <button type="button" className="os-sheet-button" onClick={copyOutcomeLink} style={sheetButtonStyle}>
                 {copied ? 'Link copied' : 'Copy invitation link'}
               </button>
             )}
-            {error && <p role="alert" style={{ color: '#C0392B', fontSize: 13, margin: '4px 0 8px' }}>{error}</p>}
-            <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--os-muted)', fontSize: 13, cursor: 'pointer', marginTop: 4, display: 'block' }}>
+            {error && <p role="alert" className="os-sheet-notice-error" style={{ fontSize: 13, margin: '4px 0 8px' }}>{error}</p>}
+            <button type="button" className="os-sheet-button" onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--os-muted)', fontSize: 13, cursor: 'pointer', marginTop: 4, display: 'block' }}>
               Done
             </button>
           </>
@@ -220,17 +218,17 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
               Pending{player.latestInviteExpiresAt ? ` · ${daysLeftLabel(player.latestInviteExpiresAt)}` : ''}
             </div>
 
-            <button type="button" onClick={copyExistingLink} disabled={busy} style={sheetButtonStyle}>
+            <button type="button" className="os-sheet-button" onClick={copyExistingLink} disabled={busy} style={sheetButtonStyle}>
               {copied ? 'Link copied' : 'Copy invite link'}
             </button>
-            <button type="button" onClick={resend} disabled={busy} style={sheetButtonStyle}>
+            <button type="button" className="os-sheet-button" onClick={resend} disabled={busy} style={sheetButtonStyle}>
               {busy ? 'Resending…' : 'Resend invite'}
             </button>
-            <button type="button" onClick={() => { setMode('invite'); setError(''); }} style={sheetButtonStyle}>
+            <button type="button" className="os-sheet-button" onClick={() => { setMode('invite'); setError(''); }} style={sheetButtonStyle}>
               Invite another guardian
             </button>
-            {error && <p role="alert" style={{ color: '#C0392B', fontSize: 13, margin: '4px 0 8px' }}>{error}</p>}
-            <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--os-muted)', fontSize: 13, cursor: 'pointer', marginTop: 4, display: 'block' }}>
+            {error && <p role="alert" className="os-sheet-notice-error" style={{ fontSize: 13, margin: '4px 0 8px' }}>{error}</p>}
+            <button type="button" className="os-sheet-button" onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--os-muted)', fontSize: 13, cursor: 'pointer', marginTop: 4, display: 'block' }}>
               Cancel
             </button>
           </>
@@ -251,17 +249,18 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
               />
               <button
                 type="submit"
+                className="os-sheet-button"
                 disabled={busy || !email.trim()}
                 style={{ background: busy ? 'rgba(233,116,53,.5)' : '#E97435', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 16px', fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, cursor: busy ? 'default' : 'pointer' }}
               >
                 {busy ? 'Sending…' : 'Send invite'}
               </button>
             </form>
-            <button type="button" onClick={shareLinkInstead} disabled={busy} style={{ background: 'none', border: 'none', color: 'var(--os-muted)', fontSize: 13, textDecoration: 'underline', cursor: busy ? 'default' : 'pointer', marginTop: 12, display: 'block' }}>
+            <button type="button" className="os-sheet-button" onClick={shareLinkInstead} disabled={busy} style={{ background: 'none', border: 'none', color: 'var(--os-muted)', fontSize: 13, textDecoration: 'underline', cursor: busy ? 'default' : 'pointer', marginTop: 12, display: 'block' }}>
               {copied ? 'Link copied' : 'Or copy a shareable link instead'}
             </button>
-            {error && <p role="alert" style={{ color: '#C0392B', fontSize: 13, margin: '8px 0 0' }}>{error}</p>}
-            <button type="button" onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--os-muted)', fontSize: 13, cursor: 'pointer', marginTop: 14, display: 'block' }}>
+            {error && <p role="alert" className="os-sheet-notice-error" style={{ fontSize: 13, margin: '8px 0 0' }}>{error}</p>}
+            <button type="button" className="os-sheet-button" onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--os-muted)', fontSize: 13, cursor: 'pointer', marginTop: 14, display: 'block' }}>
               Cancel
             </button>
           </>
