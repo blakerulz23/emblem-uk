@@ -93,25 +93,14 @@ describe('team requests never return or log database text', () => {
 describe('team-invite redemption never returns or logs database text', () => {
   beforeEach(() => sessionWith());
 
-  it('a failing ensure_profile_role is a fixed 500', async () => {
-    serviceWith((fn) => (fn === 'ensure_profile_role' ? { error: sentinelError('P0001') } : {}));
-    await expectRedacted(await redeemTeamInvite(req('/api/os/team-invites/redeem', { inviteCode: 'TEAM-1' })), 500, 'Could not set up your account. Please try again.', logs);
-    expectCodeOnlyLogs(logs, 'ensure_profile_role', 'P0001');
-  });
-
-  it('a failing activate_coach_assignment is a fixed 500 and the invite is not consumed', async () => {
-    serviceWith((fn) => (fn === 'ensure_profile_role' ? { data: 'coach' } : fn === 'activate_coach_assignment' ? { error: sentinelError('23503') } : {}));
-    await expectRedacted(await redeemTeamInvite(req('/api/os/team-invites/redeem', { inviteCode: 'TEAM-1' })), 500, 'Could not accept this invite. Please try again.', logs);
-    expectCodeOnlyLogs(logs, 'activate_coach_assignment', '23503');
-    expect(service.calls.some((c) => c.table === 'team_invites' && c.op === 'update')).toBe(false);
-  });
-
-  it('a failing mark-used step is a fixed 500', async () => {
-    serviceWith(
-      (fn) => (fn === 'ensure_profile_role' ? { data: 'coach' } : fn === 'activate_coach_assignment' ? { data: true } : {}),
-      (c) => (c.table === 'team_invites' && c.op === 'update' ? { error: sentinelError('08006') } : undefined)
-    );
-    await expectRedacted(await redeemTeamInvite(req('/api/os/team-invites/redeem', { inviteCode: 'TEAM-1' })), 500, 'Could not accept this invite. Please try again.', logs);
-    expectCodeOnlyLogs(logs, 'team invite redeem: mark used', '08006');
-  });
+  // The route makes one atomic call (redeem_team_invite); the database rolls
+  // the whole redemption back on any failure, so there is one failure path.
+  for (const code of ['P0001', '23503', '08006', '40001']) {
+    it(`a failing redeem_team_invite (${code}) is a fixed 500 with a code-only log`, async () => {
+      serviceWith((fn) => (fn === 'redeem_team_invite' ? { error: sentinelError(code) } : {}));
+      await expectRedacted(await redeemTeamInvite(req('/api/os/team-invites/redeem', { inviteCode: 'TEAM-1' })), 500, 'Could not accept this invite. Please try again.', logs);
+      expectCodeOnlyLogs(logs, 'team invite redeem', code);
+      expect(service.calls.some((c) => c.op !== 'select')).toBe(false);
+    });
+  }
 });

@@ -2,11 +2,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { logRouteFailure } from '@/lib/route-failure';
 
 /**
- * The application's trusted relationship writes (migration 0088). Both go
- * through service_role-only database functions, never the signed-in
- * session: 0089 removes the session's ability to write profiles.role and
- * coach_team, and service_role itself holds no direct INSERT/UPDATE on
- * profiles or UPDATE on coach_team.
+ * The application's trusted role write (migration 0088). It goes through a
+ * service_role-only database function, never the signed-in session: 0089
+ * removes the session's ability to write profiles.role, and service_role
+ * itself holds no direct INSERT/UPDATE on profiles.
  */
 
 export type ProfileRole = 'parent' | 'coach';
@@ -39,26 +38,6 @@ export async function ensureProfileRole(
   return { ok: true, role: data as ProfileRole };
 }
 
-/**
- * Makes (team, profile) an active coach assignment: inserts a new one with
- * its creation details, or reactivates an ended or expired one. An active
- * assignment is left as it is. `actorProfileId` is the account that
- * initiated it (for a team invite, the person redeeming it), recorded in
- * the relationship audit trail.
- */
-export async function activateCoachAssignment(
-  serviceRole: SupabaseClient,
-  params: { teamId: string; profileId: string; createdVia: 'team_invite' | 'staff'; actorProfileId: string }
-): Promise<{ ok: true; changed: boolean } | { ok: false }> {
-  const { data, error } = await serviceRole.rpc('activate_coach_assignment', {
-    p_team_id: params.teamId,
-    p_profile_id: params.profileId,
-    p_created_via: params.createdVia,
-    p_actor_profile_id: params.actorProfileId,
-  });
-  if (error) {
-    logRouteFailure('activate_coach_assignment', error);
-    return { ok: false };
-  }
-  return { ok: true, changed: data === true };
-}
+// Team-invite redemption is a single call to redeem_team_invite (see
+// src/app/api/os/team-invites/redeem/route.ts), which claims the invite,
+// sets the role and creates or reactivates the assignment atomically.

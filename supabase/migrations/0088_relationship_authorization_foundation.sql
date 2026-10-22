@@ -35,7 +35,11 @@
 --        activate_coach_assignment: insert, or reactivate an ended/expired
 --          assignment, attributed to the initiating account;
 --        redeem_coach_invite: claim a coach invite and create its direct
---          coach link atomically (one invite, at most one link).
+--          coach link atomically (one invite, at most one link);
+--        redeem_team_invite: claim a team invite and create or reactivate
+--          the coach's team assignment atomically. An invite issued at or
+--          before the moment the coach's previous assignment ended or
+--          expired never restores it; that needs staff or a newer invite.
 --   9. staff_notification_outbox: event type 'new_coach_team_request'
 --      (the existing list plus one; nothing removed).
 --  10. release_readiness_confirmations: an append-only record that a staff
@@ -731,6 +735,157 @@ $$;
 alter function public.redeem_coach_invite(text, uuid, text) owner to postgres;
 revoke all on function public.redeem_coach_invite(text, uuid, text) from public, anon, authenticated;
 grant execute on function public.redeem_coach_invite(text, uuid, text) to service_role;
+
+-- Redeems a team invite in one transaction, for the coach the application
+-- names from its own server session (never from the request body).
+--   1. Locks the invite row. Of any number of simultaneous redemptions of
+--      one code exactly one consumes it; the others wait, then see it used.
+--   2. Locks this coach's existing assignment to the team, if there is one.
+--      end_coach_assignment locks the same row, so an ending and a
+--      redemption are serialised: whichever commits second sees the other.
+--   3. Refuses, changing nothing, when the invite was issued at or before
+--      the cutoff of the previous access: ended_at for an ended assignment,
+--      expires_at for one whose expiry has passed, the later of the two if
+--      both apply. Restoring that access needs staff (approval) or an invite
+--      issued strictly after the cutoff.
+--   4. Otherwise sets the coach role only if the profile has none, creates
+--      or reactivates the assignment (audited as redeem_team_invite with the
+--      coach as actor) and consumes the invite.
+-- Any failure aborts the whole call: no invite, role, assignment or audit
+-- change is left behind. Times come from the database (now()).
+-- Statuses: 'redeemed' | 'already_redeemed_by_you' (this coach consumed it
+-- and the assignment is still active; nothing changes) | 'already_active'
+-- (the coach already holds an active assignment; the invite is not
+-- consumed) | 'stale_after_end' | 'stale_after_expiry' (refused; the invite
+-- is not consumed) | 'invalid' (unknown, expired or consumed by anyone else).
+-- team_id is returned only for 'redeemed' and 'already_redeemed_by_you'.
+create function public.redeem_team_invite(p_code text, p_coach_profile_id uuid, p_display_name text default null)
+returns table (status text, team_id uuid)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_invite_id uuid;
+  v_team_id uuid;
+  v_issued_at timestamptz;
+  v_invite_expires_at timestamptz;
+  v_used_at timestamptz;
+  v_used_by uuid;
+  v_has_assignment boolean := false;
+  v_ended_at timestamptz;
+  v_expires_at timestamptz;
+  v_cutoff timestamptz;
+  v_refusal text;
+begin
+  if p_code is null or p_coach_profile_id is null then
+    return query select 'invalid'::text, null::uuid;
+    return;
+  end if;
+
+  select ti.id, ti.team_id, ti.created_at, ti.expires_at, ti.used_at, ti.used_by
+    into v_invite_id, v_team_id, v_issued_at, v_invite_expires_at, v_used_at, v_used_by
+    from public.team_invites ti
+    where ti.code = p_code
+    for update;
+
+  if v_invite_id is null then
+    return query select 'invalid'::text, null::uuid;
+    return;
+  end if;
+  if v_used_at is not null then
+    -- A retry by the coach who consumed it, while that access still stands.
+    -- A consumed invite never restores an assignment that has since ended.
+    if v_used_by = p_coach_profile_id and exists (
+      select 1 from public.coach_team ct
+      where ct.team_id = v_team_id and ct.profile_id = p_coach_profile_id
+        and public.coach_assignment_is_active(ct.ended_at, ct.expires_at)
+    ) then
+      return query select 'already_redeemed_by_you'::text, v_team_id;
+    else
+      return query select 'invalid'::text, null::uuid;
+    end if;
+    return;
+  end if;
+  if v_invite_expires_at <= now() then
+    return query select 'invalid'::text, null::uuid;
+    return;
+  end if;
+
+  select true, ct.ended_at, ct.expires_at
+    into v_has_assignment, v_ended_at, v_expires_at
+    from public.coach_team ct
+    where ct.team_id = v_team_id and ct.profile_id = p_coach_profile_id
+    for update;
+
+  if coalesce(v_has_assignment, false) then
+    if public.coach_assignment_is_active(v_ended_at, v_expires_at) then
+      return query select 'already_active'::text, null::uuid;
+      return;
+    end if;
+    v_cutoff := greatest(v_ended_at, case when v_expires_at <= now() then v_expires_at end);
+    if v_issued_at <= v_cutoff then
+      v_refusal := case when v_ended_at is not null and v_ended_at >= v_cutoff then 'stale_after_end' else 'stale_after_expiry' end;
+      return query select v_refusal, null::uuid;
+      return;
+    end if;
+  end if;
+
+  begin
+    -- The profile must exist before the assignment (foreign key). 'coach'
+    -- is set only if the profile has no role yet.
+    perform public.ensure_profile_role(p_coach_profile_id, 'coach', p_display_name);
+
+    perform set_config('emblem.trusted_operation', 'redeem_team_invite', true);
+    perform set_config('emblem.actor_profile_id', p_coach_profile_id::text, true);
+
+    -- The update branch repeats the rules above against the row as it is
+    -- now: an assignment created and ended by others since the check above
+    -- is still not restored by an older invite.
+    insert into public.coach_team (team_id, profile_id, created_at, created_via, created_by)
+      values (v_team_id, p_coach_profile_id, now(), 'team_invite', p_coach_profile_id)
+      -- By constraint name: the output column team_id would make a column
+      -- list ambiguous inside this function.
+      on conflict on constraint coach_team_pkey do update
+        set ended_at = null, ended_by = null, end_reason = null,
+            expires_at = case when public.coach_team.expires_at <= now() then null else public.coach_team.expires_at end
+        where not public.coach_assignment_is_active(public.coach_team.ended_at, public.coach_team.expires_at)
+          and v_issued_at > coalesce(greatest(public.coach_team.ended_at,
+                case when public.coach_team.expires_at <= now() then public.coach_team.expires_at end), '-infinity'::timestamptz);
+    if not found then
+      select case
+               when public.coach_assignment_is_active(ct.ended_at, ct.expires_at) then 'already_active'
+               when ct.ended_at is not null
+                    and ct.ended_at >= coalesce(case when ct.expires_at <= now() then ct.expires_at end, '-infinity'::timestamptz)
+                 then 'stale_after_end'
+               else 'stale_after_expiry'
+             end
+        into v_refusal
+        from public.coach_team ct
+        where ct.team_id = v_team_id and ct.profile_id = p_coach_profile_id;
+      raise exception using errcode = 'EM409', message = 'team invite refused';
+    end if;
+
+    update public.team_invites ti
+      set used_at = now(), used_by = p_coach_profile_id
+      where ti.id = v_invite_id;
+
+    perform set_config('emblem.trusted_operation', '', true);
+    perform set_config('emblem.actor_profile_id', '', true);
+  exception when sqlstate 'EM409' then
+    -- Undoes the role and profile changes made in this block.
+    perform set_config('emblem.trusted_operation', '', true);
+    perform set_config('emblem.actor_profile_id', '', true);
+    return query select coalesce(v_refusal, 'already_active'), null::uuid;
+    return;
+  end;
+
+  return query select 'redeemed'::text, v_team_id;
+end;
+$$;
+alter function public.redeem_team_invite(text, uuid, text) owner to postgres;
+revoke all on function public.redeem_team_invite(text, uuid, text) from public, anon, authenticated;
+grant execute on function public.redeem_team_invite(text, uuid, text) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 9. Staff notification for a new team request

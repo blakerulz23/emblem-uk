@@ -3,7 +3,6 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { normalizeClaimCode } from '@/lib/claim-code';
 import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 import { generateStoryUpdate } from '@/lib/story-updates';
-import { activateCoachAssignment, ensureProfileRole } from '@/lib/relationship-writes';
 import { logRouteFailure } from '@/lib/route-failure';
 
 export const runtime = 'nodejs';
@@ -60,7 +59,23 @@ export async function GET(request: NextRequest) {
   });
 }
 
-/** Confirms a team invite — requires auth. Single-use: rejects if already used or expired. */
+const TEAM_INVITE_UNUSABLE = "This invite isn't valid or has expired";
+const TEAM_INVITE_FAILED = 'Could not accept this invite. Please try again.';
+
+type RedeemTeamInviteRow = {
+  status: 'redeemed' | 'already_redeemed_by_you' | 'already_active' | 'stale_after_end' | 'stale_after_expiry' | 'invalid';
+  team_id: string | null;
+};
+
+/**
+ * Confirms a team invite — requires auth. The whole write is one call to
+ * the atomic redeem_team_invite (0088), for the session's own account:
+ * it consumes the invite exactly once, sets the coach role only when the
+ * profile has none, and creates or reactivates the assignment. An invite
+ * issued at or before the moment this coach's previous access to the team
+ * ended or expired never restores it. Every refusal reads the same as an
+ * unknown or expired invite, so nothing is revealed about earlier access.
+ */
 export async function POST(request: NextRequest) {
   const supabase = createClient();
   const {
@@ -78,55 +93,35 @@ export async function POST(request: NextRequest) {
   const code = normalizeClaimCode(inviteCode);
 
   const serviceRole = createServiceRoleClient();
-  const { data: invite } = await serviceRole
-    .from('team_invites')
-    .select('id, used_at, expires_at, team_id')
-    .eq('code', code)
-    .maybeSingle();
-
-  if (!invite || invite.used_at || new Date(invite.expires_at) <= new Date()) {
-    return NextResponse.json({ error: "This invite isn't valid or has expired" }, { status: 400 });
-  }
-
-  // coach_team.profile_id is a foreign key into profiles — must exist
-  // before the assignment below, same reasoning as the guardian
-  // invite/claim routes. 'coach' is set only when the profile has no role
-  // yet: a parent accepting a team invite keeps the parent view and gains
-  // the coach one (access comes from the relationships, not the role).
-  const profile = await ensureProfileRole(serviceRole, user.id, 'coach', displayName);
-  if (!profile.ok) {
-    return NextResponse.json({ error: 'Could not set up your account. Please try again.' }, { status: 500 });
-  }
-
-  // Creates the assignment, or reactivates an ended/expired one for the
-  // same team: a valid invite is staff's decision to (re)admit this coach.
-  const assignment = await activateCoachAssignment(serviceRole, {
-    teamId: invite.team_id,
-    profileId: user.id,
-    createdVia: 'team_invite',
-    actorProfileId: user.id,
+  const { data, error } = await serviceRole.rpc('redeem_team_invite', {
+    p_code: code,
+    p_coach_profile_id: user.id,
+    p_display_name: typeof displayName === 'string' && displayName.trim() ? displayName.trim() : null,
   });
-  if (!assignment.ok) {
-    return NextResponse.json({ error: 'Could not accept this invite. Please try again.' }, { status: 500 });
+  if (error) {
+    logRouteFailure('team invite redeem', error);
+    return NextResponse.json({ error: TEAM_INVITE_FAILED }, { status: 500 });
   }
-  if (!assignment.changed) {
+  const result = (Array.isArray(data) ? data[0] : data) as RedeemTeamInviteRow | null;
+
+  if (result?.status === 'already_active') {
     return NextResponse.json({ error: "You're already managing this team" }, { status: 409 });
   }
-
-  const { error: inviteUpdateError } = await serviceRole
-    .from('team_invites')
-    .update({ used_at: new Date().toISOString(), used_by: user.id })
-    .eq('id', invite.id);
-  if (inviteUpdateError) {
-    logRouteFailure('team invite redeem: mark used', inviteUpdateError);
-    return NextResponse.json({ error: 'Could not accept this invite. Please try again.' }, { status: 500 });
+  if (result?.status === 'already_redeemed_by_you' && result.team_id) {
+    // A retry by the coach who redeemed it, while that access stands: same
+    // answer, nothing written, nobody notified again.
+    return NextResponse.json({ ok: true, teamId: result.team_id });
   }
+  if (result?.status !== 'redeemed' || !result.team_id) {
+    return NextResponse.json({ error: TEAM_INVITE_UNUSABLE }, { status: 400 });
+  }
+  const teamId = result.team_id;
 
   // One story_updates row per player_id (the schema is per-player, not
   // per-team), so a coach joining a team notifies every one of that team's
   // players' guardians individually.
   const [{ data: teamPlayers }, { data: actor }] = await Promise.all([
-    serviceRole.from('players').select('id, name').eq('team_id', invite.team_id),
+    serviceRole.from('players').select('id, name').eq('team_id', teamId),
     serviceRole.from('profiles').select('display_name').eq('id', user.id).maybeSingle(),
   ]);
   const actorName = actor?.display_name ?? 'A new coach';
@@ -144,5 +139,5 @@ export async function POST(request: NextRequest) {
     })
   );
 
-  return NextResponse.json({ ok: true, teamId: invite.team_id });
+  return NextResponse.json({ ok: true, teamId });
 }

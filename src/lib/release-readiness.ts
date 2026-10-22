@@ -10,7 +10,14 @@
  */
 export const AUTHORIZATION_RELATIONSHIPS_CONTRACT = 'authorization_relationships_v1';
 
-/** The smoke checks a staff member must confirm, in the order the database function takes them. */
+/**
+ * The smoke checks a staff member must confirm, in the order the database
+ * function takes them. `teamInvite` covers the atomic redemption
+ * (redeem_team_invite) including the stale-invitation rule: a fresh invite
+ * is redeemed; after staff end that assignment, an unused invite issued
+ * before the ending is refused and stays unused, and one issued after the
+ * ending reactivates the coach. See supabase/tests/authz/README.md.
+ */
 export const AUTHORIZATION_RELATIONSHIPS_SMOKE_CHECKS = [
   'cardClaim',
   'guardianInvite',

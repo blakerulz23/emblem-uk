@@ -167,13 +167,17 @@ and checks:
   legacy rows stay NULL.
 - **Trusted writes for the app.** Production's `service_role` has no
   INSERT/UPDATE on `profiles` and no UPDATE on `coach_team` (0037), so 0088
-  adds two `service_role`-only functions:
+  adds `service_role`-only functions:
   - `ensure_profile_role(profile, role, display_name)`: creates the profile
     if it's missing, sets the role only when it's empty, and returns the
     effective role;
   - `activate_coach_assignment(team, profile, created_via, actor)`: inserts
     a new assignment, or reactivates an ended or expired one, attributed as
-    `activate_coach_assignment:<created_via>`.
+    `activate_coach_assignment:<created_via>`. No application route calls it
+    any more (team invites use `redeem_team_invite`); it stays because 0089's
+    precondition pins it;
+  - `redeem_team_invite(code, coach, display_name)`: the whole team-invite
+    redemption in one transaction (see "Atomic team-invite redemption").
 
   The claim, recovery and invite routes use these instead of writing as
   the signed-in user.
@@ -206,8 +210,9 @@ It checks:
 
 - parent only, coach only, neither, and dual role in both orders;
 - that switching view keeps both relationships;
-- that ended and expired coaches lose the Coach view, and that a valid team
-  invite reactivates them;
+- that ended and expired coaches lose the Coach view; that an unused team
+  invite issued before the ending does not reactivate them (and stays
+  unused); and that a team invite issued after the ending does;
 - that claims and invites never overwrite an existing role.
 
 View resolution uses the app's own `src/lib/os-view.ts` and
@@ -221,10 +226,74 @@ ignores an existing row, then sets the name with an update of
 0089 column grants no longer allow.
 
 **Deployment order changes to 0088 → app → 0089.** The app now calls
-`ensure_profile_role`, `activate_coach_assignment` and the request functions,
-which exist only from 0088. Deploying this app before 0088 would make every
+`ensure_profile_role`, `redeem_team_invite`, `redeem_coach_invite` and the
+request functions, which exist only from 0088. Deploying this app before 0088 would make every
 claim and invite fail. 0088 is additive, so the current app keeps working on
 it. (An earlier plan put the app first; that order is superseded.)
+
+## Atomic team-invite redemption (`redeem_team_invite`, 0088)
+
+```powershell
+$env:EMBLEM_AUTHZ_PGLITE_DIR = '<PGLITE_TOOLING_DIR>'
+node --no-warnings supabase/tests/authz/team_invite_redemption_test.mjs
+```
+
+`POST /api/os/team-invites/redeem` makes one call:
+`redeem_team_invite(code, <the session's own id>, display_name)`. The route
+writes nothing itself. In one transaction the function:
+
+1. locks the invite row (`FOR UPDATE`) and requires it unused and
+   unexpired;
+2. locks this coach's existing assignment to the team, if any. That is the
+   row `end_coach_assignment` also locks, so an ending and a redemption are
+   serialised;
+3. refuses, changing nothing, when the invite was issued **at or before**
+   the previous access's cutoff: `ended_at` for an ended assignment,
+   `expires_at` for one whose expiry has passed, the later of the two when
+   both apply;
+4. otherwise sets the coach role only if the profile has none, creates or
+   reactivates the assignment (audited as `redeem_team_invite`, actor = the
+   coach) and consumes the invite once.
+
+The reactivating upsert repeats step 3's rule in its own `WHERE`, so an
+assignment created and ended by others after step 2 is still not restored by
+an older invite. Any failure aborts the whole call. Times are the database's
+`now()`. Restoring access after an ending needs staff
+(`approve_coach_team_request`) or a team invite issued strictly afterwards.
+Other invites are never invalidated.
+
+| Status | Meaning | Route answer |
+|---|---|---|
+| `redeemed` | assignment created or reactivated; invite consumed | 200 `{ ok, teamId }`, families notified |
+| `already_redeemed_by_you` | this coach consumed it and still holds the assignment | 200 `{ ok, teamId }`, nothing written or sent |
+| `already_active` | the coach already holds an active assignment; invite not consumed | 409 "You're already managing this team" |
+| `stale_after_end` / `stale_after_expiry` | issued at or before the cutoff; nothing changed | 400 "This invite isn't valid or has expired" |
+| `invalid` | unknown, expired or consumed by someone else | 400, the same message |
+| database error | everything rolled back | 500, fixed message; the log carries the code only |
+
+The two stale statuses and `invalid` read identically, so the response never
+reveals whether the account had, lost or never held access.
+
+`team_invite_redemption_test.mjs` runs every case on a 0088 database and on
+the real 0089:
+- redemption, roles (parent kept, empty set to coach, missing profile
+  created) and retries;
+- manual endings before, exactly at and after the invite;
+- a future expiry, the same invite once it elapses, and a fresh invite
+  afterwards;
+- staff reactivation;
+- unrelated invites;
+- two redeemers;
+- both orders of an ending and a redemption;
+- a forced failure rolling back invite, role, assignment and audit;
+- permissions and the exact ACL.
+
+**Local-test limit.** PGlite is one connection, so true simultaneity is
+replayed in both orders here and proven structurally (the contract test
+checks the two `FOR UPDATE` reads, the repeated rule in the upsert and the
+single consuming update). The hosted rehearsal must add a real two-connection
+test: a redemption and `end_coach_assignment` started together, and two
+accounts redeeming one code together.
 
 ## Roster additions after 0089
 
@@ -613,7 +682,11 @@ Concurrency, PostgREST, Supabase Auth and real JWTs aren't exercised (see
 2. Deploy the compatible application.
 3. Run the six smoke checks: card claim, guardian invite, team invite,
    coach invite (with a removal), dual view, and a team request with a
-   staff decision.
+   staff decision. The `teamInvite` check now covers the atomic flow and the
+   stale-invitation rule: redeem a fresh team invite as a test coach; have
+   staff end that assignment; confirm an unused invite issued before the
+   ending is refused with the generic message and stays unused; confirm an
+   invite issued after the ending reactivates the coach.
 4. A staff member records readiness through `POST /api/staff/release-readiness`.
 5. Run H5 (direct-link review counts) read-only and review the results.
 6. Apply 0089. It refuses by itself if steps 1–4 are incomplete.

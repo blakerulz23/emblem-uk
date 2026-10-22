@@ -129,9 +129,15 @@ async function runMode(mode) {
   const claimCard = (uid, playerId, via = 'card_claim') =>
     service(`select public.ensure_profile_role($1, 'parent') as role;`, [uid]).then(() =>
       service(`insert into public.guardians (player_id, profile_id, created_via, created_by) values ($1, $2, $3, $2)`, [playerId, uid, via]));
-  const redeemTeamInvite = (uid, teamId) =>
-    service(`select public.ensure_profile_role($1, 'coach')`, [uid]).then(() =>
-      service(`select public.activate_coach_assignment($1, $2, 'team_invite', $2) as changed`, [teamId, uid]));
+  // Order approval issues team invites; the redeem route makes one call to
+  // the atomic redeem_team_invite with the session's own id, exactly as here.
+  const issueTeamInvite = async (teamId) => {
+    const code = `TEAM-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    await service(`insert into public.team_invites (team_id, code) values ($1, $2)`, [teamId, code]);
+    return code;
+  };
+  const redeemTeamInvite = async (uid, teamId, code) =>
+    service(`select status, team_id from public.redeem_team_invite($1, $2)`, [code ?? (await issueTeamInvite(teamId)), uid]);
   // A current guardian of the player creates the coach invite (their own
   // session, as the app does); the coach redeems it through the atomic
   // redeem_coach_invite, exactly as the redeem route does.
@@ -146,7 +152,7 @@ async function runMode(mode) {
   // --- Parent only, coach only, neither ------------------------------------
   await ok('card claim links a parent', () => claimCard(people.parent, player));
   await ok('parent only: Parent view only', () => account(people.parent), (a) => a.view === 'parent' && a.availableViews.join() === 'parent' && a.role === 'parent');
-  await ok('team invite redemption makes a coach', () => redeemTeamInvite(people.coach, team), (r) => r.rows[0].changed === true);
+  await ok('team invite redemption makes a coach', () => redeemTeamInvite(people.coach, team), (r) => r.rows[0].status === 'redeemed' && r.rows[0].team_id === team);
   await ok('coach only: Coach view only', () => account(people.coach), (a) => a.view === 'coach' && a.availableViews.join() === 'coach' && a.role === 'coach');
   await ok('neither: no view, onboarding decides', () => account(people.neither), (a) => a.view === null && a.availableViews.length === 0 && a.role === null);
   await ok('a coach reads their squad', () => user(people.coach, `select id from public.players where team_id = $1`, [team]), (r) => r.rows.length === 2);
@@ -175,10 +181,17 @@ async function runMode(mode) {
   await ok('…keeps parent, gains coach', () => account(people.parentThenTeam), (a) => a.role === 'parent' && a.availableViews.join() === 'parent,coach');
 
   // --- Ended and expired coaches are excluded ------------------------------
-  await ok('ended: a coach joins', () => redeemTeamInvite(people.ended, team));
+  await ok('ended: a coach joins', () => redeemTeamInvite(people.ended, team), (r) => r.rows[0].status === 'redeemed');
+  const olderInvite = await issueTeamInvite(team);
   await ok('staff end the assignment', () => service(`select public.end_coach_assignment($1, $2, $3, 'Left the club')`, [team, people.ended, people.staff]));
   await ok('an ended coach has no Coach view', () => account(people.ended), (a) => a.view === null && a.availableViews.length === 0);
-  await ok('a valid team invite reactivates the ended coach', () => redeemTeamInvite(people.ended, team), (r) => r.rows[0].changed === true);
+  await ok('an unused invite issued before the ending does not reactivate the coach', () => redeemTeamInvite(people.ended, team, olderInvite),
+    (r) => r.rows[0].status === 'stale_after_end' && r.rows[0].team_id === null);
+  await ok('…leaves that invite unused and the coach without the Coach view', async () => ({
+    used: (await db.query(`select used_at from public.team_invites where code = $1`, [olderInvite])).rows[0].used_at,
+    view: (await account(people.ended)).view,
+  }), (r) => r.used === null && r.view === null);
+  await ok('a team invite issued after the ending reactivates the coach', () => redeemTeamInvite(people.ended, team), (r) => r.rows[0].status === 'redeemed');
   await ok('…who has the Coach view again', () => account(people.ended), (a) => a.view === 'coach');
 
   const expiringRequest = (await ok('expired: a coach requests a team', () =>

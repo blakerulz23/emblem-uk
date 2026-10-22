@@ -39,7 +39,7 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
       'coach_assignment_is_active', 'coach_team_requests', 'enforce_coach_team_request_transition',
       'relationship_audit_events', 'reject_relationship_audit_mutation', 'record_relationship_audit_event',
       'approve_coach_team_request', 'reject_coach_team_request', 'cancel_own_coach_team_request', 'end_coach_assignment',
-      'ensure_profile_role', 'activate_coach_assignment', 'remove_direct_coach_link', 'redeem_coach_invite',
+      'ensure_profile_role', 'activate_coach_assignment', 'remove_direct_coach_link', 'redeem_coach_invite', 'redeem_team_invite',
       'release_readiness_confirmations', 'stamp_release_readiness_confirmation', 'reject_release_readiness_mutation', 'confirm_release_readiness',
     ];
     for (const r of revokes) expect(newObjects.some((o) => r.includes(`public.${o}`))).toBe(true);
@@ -78,7 +78,7 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
   });
 
   it('keeps staff and trusted-write functions off the signed-in role', () => {
-    for (const f of ['approve_coach_team_request', 'reject_coach_team_request', 'end_coach_assignment', 'ensure_profile_role', 'activate_coach_assignment', 'remove_direct_coach_link', 'redeem_coach_invite']) {
+    for (const f of ['approve_coach_team_request', 'reject_coach_team_request', 'end_coach_assignment', 'ensure_profile_role', 'activate_coach_assignment', 'remove_direct_coach_link', 'redeem_coach_invite', 'redeem_team_invite']) {
       const grant = code.match(new RegExp(`grant execute on function public\\.${f}\\([^)]*\\) to ([^;]+);`))!;
       expect(grant[1].trim()).toBe('service_role');
     }
@@ -109,6 +109,40 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
     expect(fn).toContain("exception when sqlstate 'EM409' then");
   });
 
+  it('team-invite redemption is one atomic, locked, cutoff-checked operation', () => {
+    // Structural half of the concurrency proof for redeem_team_invite (the
+    // behaviour, including both orders of each race, is in
+    // supabase/tests/authz/team_invite_redemption_test.mjs).
+    const fn = code.match(/create function public\.redeem_team_invite\([\s\S]*?\n\$\$;/)![0];
+    expect(fn).toMatch(/security definer\s+set search_path = ''/);
+    // The invite row is locked before anything else; then this coach's
+    // assignment row, which end_coach_assignment also locks FOR UPDATE.
+    const inviteLock = fn.search(/from public\.team_invites ti\s+where ti\.code = p_code\s+for update;/);
+    const assignmentLock = fn.search(/from public\.coach_team ct\s+where ct\.team_id = v_team_id and ct\.profile_id = p_coach_profile_id\s+for update;/);
+    expect(inviteLock).toBeGreaterThan(0);
+    expect(assignmentLock).toBeGreaterThan(inviteLock);
+    expect(code).toMatch(/from public\.coach_team where team_id = p_team_id and profile_id = p_profile_id for update;/);
+    // The cutoff: ended_at, or an expiry that has passed; the later of the two.
+    expect(fn).toContain('v_cutoff := greatest(v_ended_at, case when v_expires_at <= now() then v_expires_at end);');
+    expect(fn).toContain('if v_issued_at <= v_cutoff then');
+    // The reactivating upsert repeats the rule against the row as it is then.
+    expect(fn).toMatch(/where not public\.coach_assignment_is_active\(public\.coach_team\.ended_at, public\.coach_team\.expires_at\)\s+and v_issued_at > coalesce\(greatest\(public\.coach_team\.ended_at,/);
+    // The invite is consumed by exactly one statement, after the assignment write.
+    const consumes = (code.match(/update public\.team_invites[\s\S]*?;/g) ?? []).filter((u) => /set\s+used_at\s*=/.test(u));
+    expect(consumes).toHaveLength(1);
+    expect(fn.indexOf(consumes[0])).toBeGreaterThan(fn.indexOf('insert into public.coach_team'));
+    // Role only when empty, audited as this operation, markers always cleared.
+    expect(fn).toContain("perform public.ensure_profile_role(p_coach_profile_id, 'coach', p_display_name);");
+    expect(fn).toContain("perform set_config('emblem.trusted_operation', 'redeem_team_invite', true);");
+    expect((fn.match(/set_config\('emblem\.trusted_operation', '', true\)/g) ?? []).length).toBe(2);
+    // A fixed status contract, and no dynamic SQL.
+    const statuses = Array.from(new Set(Array.from(fn.matchAll(/'([a-z_]+)'::text/g), (m) => m[1])));
+    expect(statuses.sort()).toEqual(['already_active', 'already_redeemed_by_you', 'invalid', 'redeemed']);
+    expect(fn).toContain("then 'stale_after_end' else 'stale_after_expiry' end");
+    expect(fn).not.toMatch(/execute\s+(format|'|\$)/i);
+    expect(code).toContain('revoke all on function public.redeem_team_invite(text, uuid, text) from public, anon, authenticated;');
+  });
+
   it('widens the outbox event-type check without removing a type', () => {
     const [before] = readFileSync('supabase/migrations/0083_squad_invite_ready_to_finalise_notification.sql', 'utf8')
       .match(/staff_notification_outbox_event_type_check check \(event_type in \(([\s\S]*?)\)\);/)!.slice(1);
@@ -119,7 +153,8 @@ describe('migration 0088 — additive relationship-authorization foundation', ()
 
   it('the rollback undoes every new object and restores the helpers with search_path public', () => {
     for (const o of ['relationship_audit_events', 'coach_team_requests', 'record_relationship_audit_event', 'coach_assignment_is_active',
-      'approve_coach_team_request', 'reject_coach_team_request', 'cancel_own_coach_team_request', 'end_coach_assignment']) {
+      'approve_coach_team_request', 'reject_coach_team_request', 'cancel_own_coach_team_request', 'end_coach_assignment',
+      'redeem_coach_invite', 'redeem_team_invite']) {
       expect(rollback).toContain(`public.${o}`);
     }
     expect((rollback.match(/set search_path = public/g) ?? []).length).toBe(2);
