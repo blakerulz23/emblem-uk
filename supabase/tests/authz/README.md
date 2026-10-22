@@ -27,26 +27,34 @@ Related: `supabase/rollback/0088_rollback.sql`, `supabase/rollback/0089_rollback
 ## One-time setup (isolated tooling folder)
 
 PGlite is not a project dependency. It's installed in its own folder,
-outside every worktree:
+outside every worktree. The examples below use these placeholders:
+
+| Placeholder | Meaning |
+|---|---|
+| `<REPO_ROOT>` | the root of this repository's checkout |
+| `<PGLITE_TOOLING_DIR>` | any folder outside every worktree, used only for PGlite |
+| `<PRIVATE_EVIDENCE_DIR>` | the private folder holding the saved production catalog exports that `evidence.mjs` pins. It is never committed |
 
 ```powershell
-New-Item -ItemType Directory -Force 'C:\Users\blake\OneDrive\Desktop\vscode-demo\_tooling\emblem-authz-pglite'
-[IO.File]::WriteAllText('C:\Users\blake\OneDrive\Desktop\vscode-demo\_tooling\emblem-authz-pglite\package.json', '{ "name": "emblem-authz-pglite-tooling", "private": true, "dependencies": { "@electric-sql/pglite": "0.3.16" } }')
-npm install --prefix 'C:\Users\blake\OneDrive\Desktop\vscode-demo\_tooling\emblem-authz-pglite' --save-exact --no-audit --no-fund
+New-Item -ItemType Directory -Force '<PGLITE_TOOLING_DIR>'
+[IO.File]::WriteAllText('<PGLITE_TOOLING_DIR>\package.json', '{ "name": "emblem-authz-pglite-tooling", "private": true, "dependencies": { "@electric-sql/pglite": "0.3.16" } }')
+npm install --prefix '<PGLITE_TOOLING_DIR>' --save-exact --no-audit --no-fund
 ```
 
 This is the only step that uses the network (the npm registry).
 
-## Run (Windows PowerShell, from the worktree root)
+## Run (Windows PowerShell, from `<REPO_ROOT>`)
 
 ```powershell
-$env:EMBLEM_AUTHZ_PGLITE_DIR = 'C:\Users\blake\OneDrive\Desktop\vscode-demo\_tooling\emblem-authz-pglite'
-$env:EMBLEM_AUTHZ_EVIDENCE_DIR = 'C:\Users\blake\OneDrive\Desktop\vscode-demo\_audit\2026-10-20-authz-relationship-escalation\production-evidence'
+$env:EMBLEM_AUTHZ_PGLITE_DIR = '<PGLITE_TOOLING_DIR>'
+$env:EMBLEM_AUTHZ_EVIDENCE_DIR = '<PRIVATE_EVIDENCE_DIR>'
 node supabase/tests/authz/production_parity_test.mjs
 ```
 
 The variables last only for that PowerShell session. Exit code 0 means
 every check passed; 1 means at least one `FAIL` line, or a setup error.
+Only Gate 0 needs `EMBLEM_AUTHZ_EVIDENCE_DIR`; every other suite below
+needs only `EMBLEM_AUTHZ_PGLITE_DIR`.
 
 ## What Gate 0 checks
 
@@ -102,7 +110,7 @@ expressions, and the output says if it was ever needed).
 ## Migration 0088 (additive foundation)
 
 ```powershell
-$env:EMBLEM_AUTHZ_PGLITE_DIR = 'C:\Users\blake\OneDrive\Desktop\vscode-demo\_tooling\emblem-authz-pglite'
+$env:EMBLEM_AUTHZ_PGLITE_DIR = '<PGLITE_TOOLING_DIR>'
 node supabase/tests/authz/migration_0088_test.mjs
 node scripts/check-migration-numbers.mjs
 npx vitest run src/lib/migration-0088-contract.test.ts scripts/check-migration-numbers.test.ts
@@ -150,11 +158,11 @@ and checks:
   `create_season_focus`. 0089 should use `coach_assignment_is_active` and
   grant its EXECUTE to `authenticated` when policies start calling it.
   (Done in 0089; see below.)
-- `approve_coach_team_request` takes an extra trailing `p_season_id` (not in
-  FIX-PLAN's signature). The season rule lives in app code
-  (`currentUkFootballSeason`, `resolveOrCreateSeason`), so the staff route
-  resolves it, as order approval does. Approval sets `role = 'coach'` only
-  when the person has no role yet (HANDOFF: never overwrite a valid role).
+- `approve_coach_team_request` takes an extra trailing `p_season_id`. The
+  season rule lives in app code (`currentUkFootballSeason`,
+  `resolveOrCreateSeason`), so the staff route resolves it, as order
+  approval does. Approval sets `role = 'coach'` only when the person has no
+  role yet: a valid role is never overwritten.
 - `created_via = 'legacy'` is allowed by the checks but nothing sets it:
   legacy rows stay NULL.
 - **Trusted writes for the app.** Production's `service_role` has no
@@ -177,7 +185,7 @@ and checks:
 ## Application compatibility (Phase 3)
 
 ```powershell
-$env:EMBLEM_AUTHZ_PGLITE_DIR = 'C:\Users\blake\OneDrive\Desktop\vscode-demo\_tooling\emblem-authz-pglite'
+$env:EMBLEM_AUTHZ_PGLITE_DIR = '<PGLITE_TOOLING_DIR>'
 node --no-warnings supabase/tests/authz/app_flows_test.mjs
 ```
 
@@ -216,12 +224,12 @@ ignores an existing row, then sets the name with an update of
 `ensure_profile_role`, `activate_coach_assignment` and the request functions,
 which exist only from 0088. Deploying this app before 0088 would make every
 claim and invite fail. 0088 is additive, so the current app keeps working on
-it. This differs from FIX-PLAN §6, which put the app first.
+it. (An earlier plan put the app first; that order is superseded.)
 
 ## Direct coach links (coach_players)
 
 ```powershell
-$env:EMBLEM_AUTHZ_PGLITE_DIR = 'C:\Users\blake\OneDrive\Desktop\vscode-demo\_tooling\emblem-authz-pglite'
+$env:EMBLEM_AUTHZ_PGLITE_DIR = '<PGLITE_TOOLING_DIR>'
 node supabase/tests/authz/direct_coach_links_test.mjs
 ```
 
@@ -328,16 +336,13 @@ covers four cases:
 - neither case creates a relationship, changes a role or writes anything;
 - a valid, unused invite from a current guardian still redeems normally.
 
-**H5 (direct-link review counts).**
-- **Validated locally only.** H5 was validated on fictional PGlite data,
-  on both the 0087 and 0088 schemas: 95/95 checks passed. It returns one
-  counts-only aggregate row, and its read-only guard refused writes.
-- **Corrections made during validation:**
-  - consumed invites are now identified by `used_at`;
-  - unknown (deleted) creators are now counted separately from creators who
-    are known but no longer guardians.
-- **Not yet run anywhere real.** H5 has not been run on production or
-  staging. It must be run and reviewed before production 0089.
+**H5 (direct-link review counts).** An operator query, kept with the
+private release records rather than in this repository. It returns one
+counts-only aggregate row under a read-only guard, and must be run and
+reviewed before 0089 is applied to production. When it was validated on
+fictional PGlite data (0087 and 0088 schemas), consumed invites were
+identified by `used_at`, and unknown (deleted) creators were counted
+separately from known creators who are no longer guardians.
 
 **Atomic coach-invite redemption (`redeem_coach_invite`, 0088).**
 
@@ -470,7 +475,7 @@ verified. That fact is recorded rather than assumed.
 ## Migration 0089 (lockdown)
 
 ```powershell
-$env:EMBLEM_AUTHZ_PGLITE_DIR = 'C:\Users\blake\OneDrive\Desktop\vscode-demo\_tooling\emblem-authz-pglite'
+$env:EMBLEM_AUTHZ_PGLITE_DIR = '<PGLITE_TOOLING_DIR>'
 node supabase/tests/authz/migration_0089_test.mjs
 ```
 
@@ -566,11 +571,10 @@ display-name edits, and recording release readiness (once only).
   repository dependency changes, so it isn't run here.
 
 **Rollback: emergency only.** `supabase/rollback/0089_rollback.sql` REOPENS
-the confirmed authorization vulnerability. Any signed-in account could again
-give itself a role, attach itself to any team, link itself as guardian of
-any child and create clubs and teams, and ended or expired coaches would
-regain team access. Prefer fixing forward. It refuses, changing nothing,
-unless the same session first runs:
+authorization access that 0089 closes: it restores every signed-in role and
+relationship write listed in "What 0089 changes", and ended or expired
+coaches regain team access. Prefer fixing forward. It refuses, changing
+nothing, unless the same session first runs:
 
 ```sql
 select set_config('emblem.acknowledge_0089_rollback', 'REOPEN-AUTHORIZATION-VULNERABILITY', false);
@@ -586,8 +590,7 @@ Concurrency, PostgREST, Supabase Auth and real JWTs aren't exercised (see
 "Not represented"). Signed-in calls are simulated with
 `set local role authenticated` and `request.jwt.claim.sub`.
 
-**Draft production sequence.** Nothing has been run on staging or
-production. Each step needs explicit approval.
+**Production sequence.** Each step needs explicit approval.
 1. Apply 0088.
 2. Deploy the compatible application.
 3. Run the six smoke checks: card claim, guardian invite, team invite,
