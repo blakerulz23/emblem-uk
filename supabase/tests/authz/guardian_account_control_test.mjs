@@ -1,4 +1,4 @@
-// Guardian account-control functions on the final schema (0088, 0089, 0090):
+// Guardian account-control functions on the final schema (0088, 0089, 0090, 0091):
 // suspend_card, unsuspend_card, request_player_deletion and
 // cancel_own_player_deletion_request.
 //
@@ -44,7 +44,7 @@ await db.exec(`
 await db.exec('begin; set local role service_role;');
 await db.query(`select public.confirm_release_readiness('authorization_relationships_v1', $1, $2, true, true, true, true, true, true)`, [COMMIT, ids.staff]);
 await db.exec('commit;');
-await applyMigrations(db, { from: '0089', through: '0090' });
+await applyMigrations(db, { from: '0089', through: '0091' });
 
 async function snapshot() {
   const tables = (await db.query(`select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r' order by 1`)).rows.map((r) => r.relname);

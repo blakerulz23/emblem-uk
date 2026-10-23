@@ -6,7 +6,7 @@
 // Runs the app's own src/lib/guardian-invite-eligibility.ts (Node strips
 // types) through a minimal stand-in for the service-role Supabase client.
 // Every read it makes runs as service_role inside a READ ONLY transaction,
-// so the suite proves the reads are permitted after 0089 and 0090, use real
+// so the suite proves the reads are permitted after 0089, 0090 and 0091, use real
 // column names, and write nothing. Relationships are built with the
 // release's trusted functions, so ended assignments and removed direct
 // links carry their real audit history.
@@ -22,7 +22,7 @@ function check(name, pass, detail) {
 
 const db = await createDatabase();
 await applyMigrations(db, { through: '0088' });
-// Release readiness, then the real 0089 and 0090 (as in production).
+// Release readiness, then the real 0089, 0090 and 0091 (as in production).
 const readinessStaff = crypto.randomUUID();
 await db.query(`insert into auth.users (id, email) values ($1, 'readiness-staff@example.test')`, [readinessStaff]);
 await db.query(`insert into public.profiles (id, display_name) values ($1, 'Readiness Staff')`, [readinessStaff]);
@@ -30,7 +30,7 @@ await db.query(`insert into public.staff_accounts (profile_id) values ($1)`, [re
 await db.exec('begin; set local role service_role;');
 await db.query(`select public.confirm_release_readiness('authorization_relationships_v1', 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0', $1, true, true, true, true, true, true)`, [readinessStaff]);
 await db.exec('commit;');
-await applyMigrations(db, { from: '0089', through: '0090' });
+await applyMigrations(db, { from: '0089', through: '0091' });
 // GoTrue's admin API reports whether an email is confirmed; the harness's
 // stand-in auth.users table gains that column here, for this suite only.
 await db.exec(`alter table auth.users add column email_confirmed_at timestamptz;`);

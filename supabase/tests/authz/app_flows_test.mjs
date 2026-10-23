@@ -9,7 +9,8 @@
 //   1. after 0088 (the compatible app must work before the lockdown);
 //   2. after the real 0089 lockdown, applied once release readiness has
 //      been recorded by a (fictional) staff account, as in production, and
-//      then 0090 (guardian-invite write lockdown), which ships with it.
+//      then 0090 (guardian-invite write lockdown) and 0091 (guardian-invite
+//      code confidentiality), which ship with it.
 // Every flow must work in both. View resolution uses the app's own
 // src/lib/os-view.ts and src/lib/coach-assignment.ts (Node strips types).
 import crypto from 'crypto';
@@ -17,10 +18,10 @@ import { applyMigrations, createDatabase } from './harness.mjs';
 import { resolveOsView, parseOsView } from '../../../src/lib/os-view.ts';
 import { activeCoachAssignments } from '../../../src/lib/coach-assignment.ts';
 
-const LOCKDOWN = 'after 0089 and 0090';
+const LOCKDOWN = 'after 0089, 0090 and 0091';
 
 // Records release readiness (0088) with a fictional staff account, then
-// applies the real 0089, whose precondition requires it, then 0090.
+// applies the real 0089, whose precondition requires it, then 0090 and 0091.
 async function applyLockdown(db) {
   const staff = crypto.randomUUID();
   await db.query(`insert into auth.users (id, email) values ($1, 'readiness-staff@example.test')`, [staff]);
@@ -30,7 +31,7 @@ async function applyLockdown(db) {
   await db.query(`select public.confirm_release_readiness('authorization_relationships_v1', 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0', $1, true, true, true, true, true, true)`, [staff]);
   await db.exec('commit;');
   await applyMigrations(db, { from: '0089', through: '0089' });
-  await applyMigrations(db, { from: '0090', through: '0090' });
+  await applyMigrations(db, { from: '0090', through: '0091' });
 }
 
 const results = [];
