@@ -20,6 +20,7 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `migration_0089_test.mjs` | Migration 0089 and its rollback, on fresh 0088 databases with fictional rows. |
 | `migration_0090_test.mjs` | Migration 0090 (guardian-invite write lockdown) and its rollback, on a fresh 0089 database with fictional rows. |
 | `migration_0091_test.mjs` | Migration 0091 (guardian-invite code confidentiality) and its rollback, on a fresh 0090 database with fictional rows. |
+| `rollback_order_test.mjs` | The rollback chain 0091 → 0090 → 0089: the 0089 rollback refuses, changing nothing, while 0091 or 0090 is applied; in order it reaches the exact 0088 catalog; 0089–0091 re-apply to the exact final catalog; no acknowledgement persists. |
 | `guardian_account_control_test.mjs` | Card suspend/unsuspend and child-deletion request/cancel on the final schema: every refusal the routes report leaves no state behind; each success and idempotent repeat makes exactly its intended change. |
 | `guardian_invite_redemption_test.mjs` | Who may redeem a guardian invite: runs the app's `src/lib/guardian-invite-eligibility.ts` against the final schema, read-only as `service_role`. |
 
@@ -570,6 +571,7 @@ verified. That fact is recorded rather than assumed.
 ```powershell
 $env:EMBLEM_AUTHZ_PGLITE_DIR = '<PGLITE_TOOLING_DIR>'
 node supabase/tests/authz/migration_0089_test.mjs
+node --no-warnings supabase/tests/authz/rollback_order_test.mjs
 ```
 
 0089 closes every path by which a signed-in account could give itself a
@@ -668,23 +670,7 @@ display-name edits, and recording release readiness (once only).
 authorization access that 0089 closes: it restores every signed-in role and
 relationship write listed in "What 0089 changes", and ended or expired
 coaches regain team access. Prefer fixing forward. It refuses, changing
-nothing, unless the same session first runs:
-
-```sql
-select set_config('emblem.acknowledge_0089_rollback', 'REOPEN-AUTHORIZATION-VULNERABILITY', false);
-```
-
-With the acknowledgement it restores the exact 0088 catalog and changes no
-data. 0089 can then be re-applied, since its readiness record is still in
-place. The test proves the refusal, the exact restore, the unchanged data
-and the re-apply.
-
-**Production procedure: set the acknowledgement transaction-locally.** The
-form above (and the rollback file's own header) is session-scoped: on a
-pooled or long-lived connection it would outlive the rollback, and the file
-does not clear it. In production, and as exercised in the disposable
-rehearsal, set it inside the transaction that runs the file, so it ends with
-that transaction:
+nothing, unless the same transaction first runs:
 
 ```sql
 begin;
@@ -692,8 +678,34 @@ select set_config('emblem.acknowledge_0089_rollback', 'REOPEN-AUTHORIZATION-VULN
 -- then the exact rollback file; its own begin is a no-op and its commit ends the transaction
 ```
 
-The rollback file is unchanged; its check (`current_setting(..., true)`)
-accepts either form.
+The file clears the acknowledgement before committing, so it never
+outlives the transaction, even if it was wrongly set session-wide.
+
+**Dependency guard.** 0090 and 0091 build on 0089, so their rollbacks must
+run first. With a valid acknowledgement, the 0089 rollback still refuses,
+before changing anything, while either is in place, reading the catalog:
+
+- 0091 is applied if the coach SELECT policy on `player_invites`
+  (`player_invites: coaches can view/create for their team`) still
+  requires `created_by = auth.uid()`;
+- 0090 is applied if `authenticated` can no longer insert
+  `player_invites.used_at` (0090's five-column grant replaces 0089's
+  table-level insert).
+
+Run over them, it would rewrite that coach policy and leave 0090's column
+grants behind: a mixed state that matches no migration.
+
+With the acknowledgement, at the exact 0089 state, it restores the exact
+0088 catalog and changes no data. 0089 can then be re-applied, since its
+readiness record is still in place. `migration_0089_test.mjs` proves the
+refusal, the exact restore, the unchanged data and the re-apply;
+`rollback_order_test.mjs` proves both dependency refusals change nothing,
+the full chain reaches exact 0088, and 0089–0091 re-apply to the exact
+final catalog.
+
+Before Gate 3.9 the file had no dependency guard and documented a
+session-wide acknowledgement. Any rollback evidence recorded against that
+earlier file is stale; rehearse the rollback chain again with this one.
 
 **Local-test limits.** PGlite is one embedded PostgreSQL 17 connection.
 Concurrency, PostgREST, Supabase Auth and real JWTs aren't exercised (see
@@ -702,7 +714,7 @@ Concurrency, PostgREST, Supabase Auth and real JWTs aren't exercised (see
 
 **Production sequence.** Each step needs explicit approval.
 1. Apply 0088.
-2. Deploy the compatible application.
+2. Deploy the final release commit (the exact commit that was rehearsed).
 3. Run the six smoke checks: card claim, guardian invite, team invite,
    coach invite (with a removal), dual view, and a team request with a
    staff decision. The `teamInvite` check now covers the atomic flow and the
@@ -710,16 +722,44 @@ Concurrency, PostgREST, Supabase Auth and real JWTs aren't exercised (see
    staff end that assignment; confirm an unused invite issued before the
    ending is refused with the generic message and stays unused; confirm an
    invite issued after the ending reactivates the coach.
-4. A staff member records readiness through `POST /api/staff/release-readiness`.
+4. A staff member records readiness through `POST /api/staff/release-readiness`
+   for that exact deployed commit (a readiness record for an earlier commit
+   does not count).
 5. Run H5 (direct-link review counts) read-only and review the results.
 6. Apply 0089. It refuses by itself if steps 1–4 are incomplete.
 7. Apply 0090 immediately after, in the same maintenance window. It
    refuses by itself unless 0089 is in place.
-8. Verify: repeat the smoke checks, and confirm that signed-in role and
-   relationship writes, and forged guardian-invite fields, are refused.
-   Production is not protected until both 0089 and 0090 pass verification.
-9. Rollback only in an emergency, with the acknowledgement above (0090's
-   first, then 0089's), and re-apply as soon as possible.
+8. Apply 0091 immediately after. It refuses by itself unless the exact 0090
+   state is in place.
+9. Final verification: repeat the smoke checks, and confirm that signed-in
+   role and relationship writes, forged guardian-invite fields, and coach
+   reads of invites they did not create are refused. Production is not
+   protected until 0089, 0090 and 0091 all pass verification.
+
+**Rollback order (emergency only; re-apply as soon as possible).** Each
+step runs in its own transaction with its own transaction-local
+acknowledgement, and each file clears its acknowledgement before committing:
+1. 0091 (`REOPEN-GUARDIAN-INVITE-CODE-DISCLOSURE`): back to exact 0090;
+2. 0090 (`REOPEN-GUARDIAN-INVITE-FORGERY`): back to exact 0089;
+3. 0089 (`REOPEN-AUTHORIZATION-VULNERABILITY`): back to exact 0088. It
+   refuses while 0091 or 0090 is still applied (dependency guard above).
+4. Stop at 0088. The deployed application depends on 0088's objects; do
+   not roll 0088 back as part of an authorization rollback.
+
+**0088 rollback limits.** `supabase/rollback/0088_rollback.sql` has no
+catalog guard of its own for 0089: it must never run while 0089 is applied.
+It refuses when any coach invite has lost its creator (a guardian who
+created it deleted their account after 0088), because 0087 requires a
+creator and none can be reconstructed; such rows must be resolved
+deliberately first. It permanently discards everything created since 0088:
+team requests, relationship audit events, the readiness record, and the
+creation, expiry and ending details on `coach_team` and `guardians`.
+
+**Fresh hosted rehearsal required.** The application and the 0089 rollback
+changed at Gate 3.9. Before production, run a new disposable hosted
+rehearsal of this whole sequence on the new commit, including the full
+rollback chain above and the re-apply, and record readiness for that
+commit. Earlier rehearsal and rollback evidence does not cover it.
 
 ## Migration 0090 (guardian-invite write lockdown)
 
@@ -840,20 +880,35 @@ for every reason, when the redeemer:
 3. is the player's direct coach;
 4. was the player's direct coach (the audit history records the link).
 
-It also refuses when the invite was made through coach authority and the
-child already has a guardian. Before any of that, an invite that names a
+It also refuses when the invite carries no authority, and when it carries
+only coach authority and the child already has a guardian. Before any of
+that, an invite that names a
 recipient (`invited_email`) can only be redeemed by an account whose
 verified email is that address (compared without case or surrounding
 whitespace); a mismatch gets exactly the invalid-or-expired response. An
-invite with no recipient email keeps its link-only behaviour. The creator's authority comes from
+invite with no recipient email keeps its link-only behaviour. The invite's authority comes from
 relationships and trusted columns, never from `origin` (which a signed-in
-creator may set): guardian when the creator is currently the child's
-guardian (so a parent who also coaches acts as the parent); order when
-`order_id` names an order whose card is the child's; recovery handoff when
-the creator's verified email is the purchaser of a fulfilled order for the
-child's card; coach for everything else, including an unknown, deleted or
-former-guardian creator. Any failed read fails closed with a fixed 500 and
-a code-only log.
+creator may set) and never from an email address matching an order's
+purchaser:
+
+- **guardian**: the creator is currently the child's guardian (so a parent
+  who also coaches acts as the parent);
+- **order**: `order_id`, which only the service-role order approval,
+  resend and recovery-handoff paths write (signed-in users cannot since
+  0090), names a fulfilled order whose single linked card is this child's,
+  and the invite names its recipient. A squad order (more than one linked
+  card) never gives guardian authority: it covers a whole team and its
+  purchaser is typically the team's coach. A recovery handoff attaches the
+  verified card's own order, so it qualifies only for a single-card order;
+  a squad-order handoff is judged by its creator's own authority;
+- **coach**: the creator holds an active assignment for the child's current
+  team at redemption. An ended or expired assignment, a direct link only,
+  or a previous team's assignment gives none, so a coach-made invite dies
+  with the assignment;
+- **none**: anything else, including an unknown, deleted or former-guardian
+  creator: refused.
+
+Any failed read fails closed with a fixed 500 and a code-only log.
 
 `guardian_invite_redemption_test.mjs` builds the relationships with the
 release's trusted functions (so ended assignments and removed direct links
@@ -870,12 +925,20 @@ logs.
 **Boundaries (need an explicit safeguarding and data-protection decision
 before production):**
 
-- **A coach can deliberately create a first-guardian invite for an email or
-  account they control.** For a child with no guardian, a coach-created
-  invite is valid for any non-coach account whose verified email matches the
-  invite's recipient (or any account, for a link-only invite). Coaches can no
-  longer read other people's invite codes (0091 and the routes above), and
-  emailed invites are bound to their recipient.
+- **N1: a coach can deliberately create a first-guardian invite for an
+  email or account they control.** For a child with no guardian, an invite
+  created by a coach who still holds an active assignment for the child's
+  current team, at the moment it is redeemed, is valid for any account that
+  has never coached the child and whose verified email matches the invite's
+  recipient (or any such account, for a link-only invite). That account
+  becomes the child's first guardian, with full guardian control. The
+  invite stops working as soon as the coach's assignment ends or expires,
+  and it is refused once the child has any guardian. Coaches can no longer
+  read other people's invite codes (0091 and the routes above), emailed
+  invites are bound to their recipient, and a squad purchaser gains no
+  guardian authority from the order. Whether coaches should be able to
+  originate a first guardian at all needs explicit acceptance by the
+  safeguarding owner.
 - **A link-only invite (no recipient email) can be shared by anyone who
   legitimately holds the code.** A code alone does not prove who holds it.
 - **A genuine guardian can invite a former coach of a previous team.** The
@@ -884,10 +947,11 @@ before production):**
   current guardian's invite is treated as the family's consent. A former
   coach's own invite and another coach's invite to them (for a child who has
   a guardian) are still refused.
-- **The checks and the writes are not one transaction.** They are separate
-  PostgREST calls; a coach assignment or direct link created between the
-  check and the guardian insert is not seen. Closing that needs a trusted
-  database function.
+- **Redemption is check-then-write, not atomic.** The eligibility reads
+  and the redemption writes are separate PostgREST calls, not one
+  transaction: a coach assignment, direct link, guardian or assignment
+  ending made between the check and the guardian insert is not seen.
+  Closing that needs a trusted database function.
 - **A parent who already coaches the child's team cannot join as guardian by
   invite**; a card claim or staff help is needed.
 - Possible later controls: requiring a recipient email on every invite,

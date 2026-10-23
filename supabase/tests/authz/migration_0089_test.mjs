@@ -23,7 +23,7 @@ import { applyMigrations, createDatabase } from './harness.mjs';
 import { diffCatalog, snapshotCatalog } from './catalog.mjs';
 
 const ROLLBACK_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../rollback/0089_rollback.sql');
-const ACK = `select set_config('emblem.acknowledge_0089_rollback', 'REOPEN-AUTHORIZATION-VULNERABILITY', false)`;
+const ACK = `select set_config('emblem.acknowledge_0089_rollback', 'REOPEN-AUTHORIZATION-VULNERABILITY', true)`;
 const COMMIT = 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0';
 
 const results = [];
@@ -465,13 +465,14 @@ console.log('\n=== rollback ===');
   check('rollback without the acknowledgement is refused, naming the reopened vulnerability', refusal?.includes('0089 rollback refused') && refusal.includes('reopens the confirmed authorization vulnerability'), refusal);
   const still = diffCatalog(c89, await snapshotCatalog(rdb));
   check('the refused rollback changed nothing', still.added.length + still.removed.length + still.changed.length === 0 && (await dataSnapshot(rdb)) === d89);
+  await rdb.exec('begin;');
   await rdb.query(ACK);
   await rdb.exec(fs.readFileSync(ROLLBACK_FILE, 'utf8'));
   const back = diffCatalog(c88, await snapshotCatalog(rdb));
   check('with the acknowledgement, the rollback restores the exact 0088 catalog', back.added.length + back.removed.length + back.changed.length === 0,
     [...back.added, ...back.removed, ...back.changed].join(', '));
   check('the rollback changes no data', (await dataSnapshot(rdb)) === d89);
-  await rdb.query(`select set_config('emblem.acknowledge_0089_rollback', '', false)`);
+  check('the acknowledgement does not outlive the rollback transaction', (await rdb.query(`select coalesce(current_setting('emblem.acknowledge_0089_rollback', true), '') v`)).rows[0].v === '');
   const again = await tryApply0089(rdb);
   check('0089 re-applies after the rollback (readiness still valid)', again === null, again);
   const re = diffCatalog(c89, await snapshotCatalog(rdb));

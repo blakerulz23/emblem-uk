@@ -113,7 +113,28 @@ describe('0089 rollback — emergency only', () => {
     expect(rollback).not.toMatch(/\bsafe\b/i);
   });
 
-  it('refuses before any change unless the exact acknowledgement is set in the session', () => {
+  it('refuses before any change while 0091 or 0090 is still applied, so they are rolled back first', () => {
+    const firstChange = rollbackCode.search(/^(revoke|grant|alter policy|drop policy|create policy|create or replace function)\b/im);
+    const at0091 = rollbackCode.indexOf("like '%created_by = auth.uid()%'");
+    const at0090 = rollbackCode.indexOf("not pg_catalog.has_column_privilege('authenticated', 'public.player_invites', 'used_at', 'INSERT')");
+    expect(at0091).toBeGreaterThan(0);
+    expect(at0090).toBeGreaterThan(0);
+    expect(at0091).toBeLessThan(firstChange);
+    expect(at0090).toBeLessThan(firstChange);
+    expect(rollbackCode).toContain("pol.polname = 'player_invites: coaches can view/create for their team'");
+    expect(rollbackCode).toContain('0089 rollback refused: 0091 is still applied. Roll back 0091 first, then 0090');
+    expect(rollbackCode).toContain('0089 rollback refused: 0090 is still applied. Roll back 0090 first');
+  });
+
+  it('documents a transaction-local acknowledgement and clears it before committing', () => {
+    expect(rollback).toContain("select set_config('emblem.acknowledge_0089_rollback', 'REOPEN-AUTHORIZATION-VULNERABILITY', true);");
+    expect(rollback).not.toContain("'REOPEN-AUTHORIZATION-VULNERABILITY', false)");
+    const clear = rollbackCode.indexOf("select set_config('emblem.acknowledge_0089_rollback', '', false);");
+    expect(clear).toBeGreaterThan(rollbackCode.indexOf('create policy "profiles: update own row"'));
+    expect(clear).toBeLessThan(rollbackCode.lastIndexOf('commit;'));
+  });
+
+  it('refuses before any change unless the exact acknowledgement is set', () => {
     expect(rollbackCode.trim().startsWith('begin;')).toBe(true);
     expect(rollbackCode.trim().endsWith('commit;')).toBe(true);
     const guard = rollbackCode.indexOf("current_setting('emblem.acknowledge_0089_rollback', true) is distinct from 'REOPEN-AUTHORIZATION-VULNERABILITY'");

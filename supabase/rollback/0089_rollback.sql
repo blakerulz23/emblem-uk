@@ -11,13 +11,23 @@
 -- cannot be fixed quickly, and re-apply 0089 as soon as possible (its
 -- release-readiness precondition will still be satisfied).
 --
--- It refuses to run, changing nothing, unless the SAME session first sets
--- this exact acknowledgement:
+-- It refuses to run, changing nothing, unless the SAME TRANSACTION first
+-- sets this exact acknowledgement, transaction-local (third argument true):
 --
---   select set_config('emblem.acknowledge_0089_rollback', 'REOPEN-AUTHORIZATION-VULNERABILITY', false);
+--   begin;
+--   select set_config('emblem.acknowledge_0089_rollback', 'REOPEN-AUTHORIZATION-VULNERABILITY', true);
+--   -- then this file, in the same transaction
 --
--- (SQL Editor: put that line above this file's contents in the same run.
--- CLI/psql: run it in the same connection before this file.)
+-- (This file's own begin is then a no-op and its commit commits.) The file
+-- also clears the acknowledgement before committing, so it never outlives
+-- the transaction.
+--
+-- Order: 0090 and 0091 build on 0089, so they must be rolled back first
+-- (0091's rollback, then 0090's). This file refuses, changing nothing, while
+-- either is still in place: 0090 if a signed-in user can no longer insert
+-- player_invites.used_at (0090's five-column grant), 0091 if the coach
+-- SELECT policy on player_invites still requires created_by = auth.uid().
+-- Running it over them would leave a mixed state that matches no migration.
 --
 -- Data: lossless. 0089 changed only policies, grants and function bodies;
 -- this restores them. No row is created, changed or deleted.
@@ -26,7 +36,18 @@ begin;
 do $$
 begin
   if current_setting('emblem.acknowledge_0089_rollback', true) is distinct from 'REOPEN-AUTHORIZATION-VULNERABILITY' then
-    raise exception '0089 rollback refused: it reopens the confirmed authorization vulnerability. To proceed deliberately, first run in this same session: select set_config(''emblem.acknowledge_0089_rollback'', ''REOPEN-AUTHORIZATION-VULNERABILITY'', false);';
+    raise exception '0089 rollback refused: it reopens the confirmed authorization vulnerability. To proceed deliberately, in one transaction first run: select set_config(''emblem.acknowledge_0089_rollback'', ''REOPEN-AUTHORIZATION-VULNERABILITY'', true);';
+  end if;
+  if exists (
+    select 1 from pg_catalog.pg_policy pol
+    where pol.polrelid = 'public.player_invites'::regclass
+      and pol.polname = 'player_invites: coaches can view/create for their team'
+      and pg_catalog.pg_get_expr(pol.polqual, pol.polrelid) like '%created_by = auth.uid()%'
+  ) then
+    raise exception '0089 rollback refused: 0091 is still applied. Roll back 0091 first, then 0090, then run this file.';
+  end if;
+  if not pg_catalog.has_column_privilege('authenticated', 'public.player_invites', 'used_at', 'INSERT') then
+    raise exception '0089 rollback refused: 0090 is still applied. Roll back 0090 first, then run this file.';
   end if;
 end;
 $$;
@@ -445,5 +466,8 @@ alter policy "profiles: insert own row on signup" on public.profiles
 drop policy "profiles: update own row" on public.profiles;
 create policy "profiles: update own row" on public.profiles
   for update using (auth.uid() = id);
+
+-- Never let the acknowledgement outlive this transaction.
+select set_config('emblem.acknowledge_0089_rollback', '', false);
 
 commit;
