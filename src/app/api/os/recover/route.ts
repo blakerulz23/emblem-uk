@@ -3,9 +3,13 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { claimPlayerForCard } from '@/lib/claim-player';
 import { createGuardianInvite } from '@/lib/create-guardian-invite';
 import { ensureProfileRole } from '@/lib/relationship-writes';
-import { logRouteFailure } from '@/lib/route-failure';
+import { logRouteFailure, type DbError } from '@/lib/route-failure';
+import { checkFirstGuardianClaim } from '@/lib/guardian-invite-eligibility';
 
 export const runtime = 'nodejs';
+
+const CARD_SET_NEEDS_VERIFICATION = 'We need to verify this card set before linking it to your account. Please contact Emblem support.';
+const RECOVER_FAILED = 'Could not recover this card. Please try again.';
 
 type RecoverCardRow = {
   id: string;
@@ -84,6 +88,9 @@ export async function GET() {
         orderId: order.id,
         orderRef: order.order_ref,
         source: order.source,
+        // Only a one-card order can be recovered by the purchaser themselves
+        // (see POST); a card set needs Emblem to verify each child's guardian.
+        verificationRequired: orderCards.length !== 1,
         cards: openCards
           .filter((c): c is RecoverCardRow => c !== null)
           .map((c) => ({ cardId: c.id, playerId: c.player_id, playerName: c.players?.name ?? null })),
@@ -154,6 +161,32 @@ export async function POST(request: NextRequest) {
   // different way of identifying the same claimable card, not a separate
   // ownership system.
   if (decision === 'self') {
+    // Before any write. Stored order data can't tell a family card set from a
+    // squad order, or which children are the purchaser's own, so only a
+    // one-card order (counted from the database, never from the request) can
+    // be recovered by the purchaser themselves. A card set fails closed.
+    const { count, error: countError } = await serviceRole
+      .from('cards')
+      .select('id', { count: 'exact', head: true })
+      .eq('order_id', card.order_id ?? '');
+    if (countError) {
+      logRouteFailure('recover: order card count', countError);
+      return NextResponse.json({ error: RECOVER_FAILED }, { status: 500 });
+    }
+    if (!card.order_id || count !== 1) {
+      return NextResponse.json({ error: CARD_SET_NEEDS_VERIFICATION }, { status: 409 });
+    }
+    // A current or former coach of this child must not link their own coach
+    // account as the child's guardian (same rule as a card-code claim).
+    const eligibility = await checkFirstGuardianClaim(serviceRole, card.player_id, user.id);
+    if (eligibility.outcome === 'failed') {
+      logRouteFailure('recover: claim eligibility', eligibility.error as DbError);
+      return NextResponse.json({ error: RECOVER_FAILED }, { status: 500 });
+    }
+    if (eligibility.outcome === 'refused') {
+      return NextResponse.json({ error: 'This card is not available to recover' }, { status: 400 });
+    }
+
     const result = await claimPlayerForCard(serviceRole, card, user.id);
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });

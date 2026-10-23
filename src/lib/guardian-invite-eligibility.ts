@@ -211,6 +211,36 @@ async function childHasGuardian(service: SupabaseClient, playerId: string) {
   return matching(rows, { player_id: playerId }).length > 0;
 }
 
+export type FirstGuardianClaimEligibility = { outcome: 'eligible' } | { outcome: 'refused' } | { outcome: 'failed'; error: unknown };
+
+/**
+ * Whether `claimantId` may become `playerId`'s guardian by holding the
+ * child's card (a claim code, or purchaser recovery). Call before any write.
+ *
+ * The coach who adds a roster player receives that player's claim code, so a
+ * current or former coach of the player's current team (active, ended or
+ * expired, or in the audit history) and a current or former direct coach are
+ * refused: they must not link their own coach account as the child's
+ * guardian. Someone who is already this child's guardian is not affected
+ * (the existing claim path answers them). This cannot tell whether a separate,
+ * otherwise unrelated account belongs to the coach, and a coach of the
+ * player's previous team is not detected (team history is not recorded).
+ */
+export async function checkFirstGuardianClaim(
+  service: SupabaseClient,
+  playerId: string,
+  claimantId: string
+): Promise<FirstGuardianClaimEligibility> {
+  try {
+    if (await isCurrentGuardian(service, playerId, claimantId)) return { outcome: 'eligible' };
+    if (await isOrWasCoach(service, playerId, claimantId)) return { outcome: 'refused' };
+    return { outcome: 'eligible' };
+  } catch (e) {
+    if (e instanceof ReadFailed) return { outcome: 'failed', error: e.error };
+    throw e;
+  }
+}
+
 /** Whether `redeemerId` may redeem `invite`. Call immediately before the first redemption write. */
 export async function checkGuardianInviteRedemption(
   service: SupabaseClient,

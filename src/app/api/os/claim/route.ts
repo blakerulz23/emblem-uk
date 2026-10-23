@@ -8,6 +8,8 @@ import { resolveCardCode } from '@/lib/card-lookup';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { ensureProfileRole } from '@/lib/relationship-writes';
 import { activeCoachAssignments, COACH_ASSIGNMENT_STATE_COLUMNS } from '@/lib/coach-assignment';
+import { checkFirstGuardianClaim } from '@/lib/guardian-invite-eligibility';
+import { logRouteFailure, type DbError } from '@/lib/route-failure';
 
 export const runtime = 'nodejs';
 
@@ -103,6 +105,22 @@ export async function POST(request: NextRequest) {
 
   if (!card) {
     return NextResponse.json({ error: "This code isn't valid or has already been claimed" }, { status: 400 });
+  }
+
+  // Before any write: the coach who adds a roster player receives its claim
+  // code, so a current or former coach of this child must not link their own
+  // coach account as the child's guardian. One fixed response for every
+  // refusal; it does not say why. (A separate account the coach controls
+  // cannot be detected here — see the authz README.)
+  if (card.player_id) {
+    const eligibility = await checkFirstGuardianClaim(serviceRole, card.player_id, user.id);
+    if (eligibility.outcome === 'failed') {
+      logRouteFailure('claim: eligibility', eligibility.error as DbError);
+      return NextResponse.json({ error: 'Could not claim this player. Please try again.' }, { status: 500 });
+    }
+    if (eligibility.outcome === 'refused') {
+      return NextResponse.json({ error: "This card isn't available to claim" }, { status: 400 });
+    }
   }
 
   // guardians.profile_id is a foreign key into profiles — a brand-new

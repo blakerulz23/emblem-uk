@@ -8,7 +8,13 @@ import BackLink from './BackLink';
 import { guardianInviteOutcome, INVITE_SENT_COPY } from '@/lib/guardian-invite-outcome';
 
 type RecoverCard = { cardId: string; playerId: string | null; playerName: string | null };
-type RecoverOrder = { orderId: string; orderRef: string; source: string; cards: RecoverCard[] };
+type RecoverOrder = { orderId: string; orderRef: string; source: string; verificationRequired?: boolean; cards: RecoverCard[] };
+
+// A card set can't be linked by the purchaser here: Emblem must first verify
+// each child's guardian (the server refuses it too). The code printed on each
+// card still works for whoever holds that card.
+const CARD_SET_COPY =
+  'We need to verify this card set before linking it to your account. Please contact Emblem support. Each child’s parent or guardian can also use the code on their card.';
 
 /**
  * The no-card fallback — a verified purchaser email is just a different
@@ -29,6 +35,7 @@ export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boo
   // The invite exists but its email wasn't sent: the form stays open so a
   // retry (which reuses the same invite) can try the email again.
   const [handoffNotice, setHandoffNotice] = useState<{ cardId: string; message: string; isError: boolean } | null>(null);
+  const [claimError, setClaimError] = useState<{ cardId: string; message: string } | null>(null);
 
   useEffect(() => {
     if (!hasSession) return;
@@ -52,6 +59,8 @@ export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boo
       router.refresh();
     } else {
       setBusyCardId(null);
+      const data = await res.json().catch(() => ({}));
+      setClaimError({ cardId, message: data.error || 'Could not recover this card. Please try again.' });
     }
   };
 
@@ -80,7 +89,7 @@ export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boo
     }
   };
 
-  const allCards = (orders ?? []).flatMap((o) => o.cards.map((c) => ({ ...c, orderRef: o.orderRef })));
+  const allCards = (orders ?? []).flatMap((o) => o.cards.map((c) => ({ ...c, orderRef: o.orderRef, verificationRequired: o.verificationRequired !== false })));
 
   return (
     <div
@@ -123,7 +132,9 @@ export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boo
             </div>
             <div style={{ fontSize: 11.5, color: '#8B8478', marginBottom: 14 }}>Order {c.orderRef}</div>
 
-            {sentHandoff === c.cardId ? (
+            {c.verificationRequired ? (
+              <p role="status" style={{ fontSize: 13, lineHeight: 1.5, color: '#E9A06A', margin: 0 }}>{CARD_SET_COPY}</p>
+            ) : sentHandoff === c.cardId ? (
               <p role="status" style={{ fontSize: 13, color: '#2E9E5B' }}>{INVITE_SENT_COPY}</p>
             ) : handoffCardId === c.cardId ? (
               <form onSubmit={(e) => sendHandoff(e, c.cardId)} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -146,6 +157,9 @@ export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boo
               </form>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {claimError?.cardId === c.cardId && (
+                  <p role="alert" style={{ fontSize: 13, lineHeight: 1.5, color: '#E57373', margin: 0 }}>{claimError.message}</p>
+                )}
                 <button
                   type="button"
                   onClick={() => claimSelf(c.cardId)}

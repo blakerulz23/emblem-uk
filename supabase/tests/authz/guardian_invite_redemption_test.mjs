@@ -12,7 +12,7 @@
 // links carry their real audit history.
 import crypto from 'crypto';
 import { applyMigrations, createDatabase } from './harness.mjs';
-import { checkGuardianInviteRedemption } from '../../../src/lib/guardian-invite-eligibility.ts';
+import { checkFirstGuardianClaim, checkGuardianInviteRedemption } from '../../../src/lib/guardian-invite-eligibility.ts';
 
 const results = [];
 function check(name, pass, detail) {
@@ -307,6 +307,26 @@ await expectOutcome('N2: (after the dual guardian/coach is ended) still guardian
 await activate(TEAM, P.purchaser);
 await end(TEAM, P.purchaser);
 await expectOutcome('N2: a trusted order handoff is judged by its order, not by its creator\'s former coach status', inv.handoff, P.adult, { outcome: 'eligible', authority: 'order' });
+
+// Gate 3.12: who may become a guardian by holding the child's card (claim code or purchaser recovery).
+const roleOnlyCoach = id();
+await db.query(`insert into auth.users (id, email) values ($1, 'g312-role@example.test')`, [roleOnlyCoach]);
+await db.query(`insert into public.profiles (id, display_name, role) values ($1, 'Fictional Role Coach', 'coach')`, [roleOnlyCoach]);
+async function expectClaim(name, player, claimant, expected) {
+  const before = await snapshot();
+  const r = await checkFirstGuardianClaim(client, player, claimant);
+  if ((await snapshot()) !== before) everyEvaluationWroteNothing = false;
+  check(name, r.outcome === expected, JSON.stringify(r.outcome === 'failed' ? { outcome: r.outcome, code: r.error?.code } : r));
+}
+await expectClaim('claim: an active coach of the child\'s team cannot claim the child with their own account', firstChild, P.coach, 'refused');
+await expectClaim('claim: an ended coach of the child\'s team is refused', firstChild, P.endedCoach, 'refused');
+await expectClaim('claim: an expired coach of the child\'s team is refused', firstChild, P.expiredCoach, 'refused');
+await expectClaim('claim: the child\'s current direct coach is refused', child, P.directCoach, 'refused');
+await expectClaim('claim: a former direct coach (audit history) is refused', child, P.removedDirect, 'refused');
+await expectClaim('claim: a role-only coach with no relationship is an ordinary claimant', firstChild, roleOnlyCoach, 'eligible');
+await expectClaim('claim: an unrelated adult is an ordinary claimant', firstChild, P.adult, 'eligible');
+await expectClaim('claim: an existing guardian who also coached keeps the existing path (not refused)', child, P.dual, 'eligible');
+await expectClaim('claim limitation (documented): a coach of the child\'s previous team is not detected (team history is not recorded)', movedChild, P.formerCoach, 'eligible');
 
 check('every eligibility read ran read-only as service_role and no evaluation wrote anything (guardians, used invites, roles, audit, notifications)',
   everyEvaluationWroteNothing && reads.length > 0, `${reads.length} reads`);
