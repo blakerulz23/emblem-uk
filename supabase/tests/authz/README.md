@@ -696,7 +696,13 @@ Run over them, it would rewrite that coach policy and leave 0090's column
 grants behind: a mixed state that matches no migration.
 
 With the acknowledgement, at the exact 0089 state, it restores the exact
-0088 catalog and changes no data. 0089 can then be re-applied, since its
+0088 catalog and changes no data. On production, whose
+`create_season_focus` body differs from the repository's only in comments
+and whitespace (known pre-release drift), the rollback leaves the
+repository's 0088 text of that function: equal in behaviour, but a
+post-rollback catalog comparison must expect that one cosmetic difference.
+A disposable rehearsal built from the repository's migrations cannot show
+it. 0089 can then be re-applied, since its
 readiness record is still in place. `migration_0089_test.mjs` proves the
 refusal, the exact restore, the unchanged data and the re-apply;
 `rollback_order_test.mjs` proves both dependency refusals change nothing,
