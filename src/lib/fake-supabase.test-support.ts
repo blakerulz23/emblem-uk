@@ -20,12 +20,24 @@ export function createFakeSupabase(opts: {
   user?: { id: string; email?: string | null } | null;
   respond?: (call: FakeCall) => FakeResult | undefined;
   rpc?: (fn: string, args: Record<string, unknown>) => FakeResult | undefined;
+  /** auth.admin.getUserById: the user record for an id, or an error. */
+  adminUser?: (id: string) => { user?: { id: string; email?: string | null; email_confirmed_at?: string | null } | null; error?: { code?: string; message: string } | null } | undefined;
 }) {
   const calls: FakeCall[] = [];
   const rpcCalls: Array<{ fn: string; args: Record<string, unknown> }> = [];
+  const adminCalls: string[] = [];
 
   const client = {
-    auth: { getUser: async () => ({ data: { user: opts.user ?? null } }) },
+    auth: {
+      getUser: async () => ({ data: { user: opts.user ?? null } }),
+      admin: {
+        getUserById: async (id: string) => {
+          adminCalls.push(id);
+          const r = opts.adminUser?.(id) ?? {};
+          return { data: { user: r.user ?? null }, error: r.error ?? null };
+        },
+      },
+    },
     rpc: async (fn: string, args: Record<string, unknown>) => {
       rpcCalls.push({ fn, args });
       const r = opts.rpc?.(fn, args) ?? {};
@@ -89,7 +101,7 @@ export function createFakeSupabase(opts: {
     },
   };
 
-  return { client, calls, rpcCalls };
+  return { client, calls, rpcCalls, adminCalls };
 }
 
 /** True when any recorded call writes the given table. */

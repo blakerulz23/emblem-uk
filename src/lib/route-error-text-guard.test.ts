@@ -37,7 +37,9 @@ const GATE_3_5 = [
   'src/app/api/os/players/[id]/deletion-request/route.ts',
   'src/app/api/os/players/[id]/deletion-request/cancel/route.ts',
 ];
-const inScope = Array.from(new Set([...usesHelpers, ...GATE_3_4, ...GATE_3_5])).sort();
+// Gate 3.7: the guardian-invite redemption rules, which return outcomes only.
+const GATE_3_7 = ['src/lib/guardian-invite-eligibility.ts'];
+const inScope = Array.from(new Set([...usesHelpers, ...GATE_3_4, ...GATE_3_5, ...GATE_3_7])).sort();
 
 const ERR = String.raw`(?:error|err|e|\w+Error|result\.error)`;
 const RESPONSE_WITH_TEXT = new RegExp(String.raw`NextResponse\.json\(\s*\{[^}]*\berror:\s*${ERR}\??\.(?:message|details|hint)\b`);
@@ -46,7 +48,7 @@ const LOGGED_TEXT = new RegExp(String.raw`console\.(?:error|warn|log|info)\([^)]
 
 describe('route failure redaction guard', () => {
   it('covers the expected files', () => {
-    for (const f of ['src/app/api/os/team-invites/redeem/route.ts', 'src/app/api/staff/coach-assignments/end/route.ts', ...GATE_3_4, ...GATE_3_5]) expect(inScope).toContain(f);
+    for (const f of ['src/app/api/os/team-invites/redeem/route.ts', 'src/app/api/os/invites/redeem/route.ts', 'src/app/api/staff/coach-assignments/end/route.ts', ...GATE_3_4, ...GATE_3_5, ...GATE_3_7]) expect(inScope).toContain(f);
   });
 
   it.each(inScope)('%s returns and logs no database or provider error text', (file) => {

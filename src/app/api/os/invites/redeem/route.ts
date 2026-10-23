@@ -7,7 +7,8 @@ import { generateStoryUpdate } from '@/lib/story-updates';
 import { ensurePublicPlayerId } from '@/lib/public-player-id';
 import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
 import { ensureProfileRole } from '@/lib/relationship-writes';
-import { logRouteFailure } from '@/lib/route-failure';
+import { logRouteFailure, type DbError } from '@/lib/route-failure';
+import { checkGuardianInviteRedemption, GUARDIAN_INVITE_REDEEM_REFUSED_MESSAGE } from '@/lib/guardian-invite-eligibility';
 
 export const runtime = 'nodejs';
 
@@ -109,12 +110,27 @@ export async function POST(request: NextRequest) {
   const serviceRole = createServiceRoleClient();
   const { data: invite } = await serviceRole
     .from('player_invites')
-    .select('id, used_at, expires_at, player_id')
+    .select('id, used_at, expires_at, player_id, created_by, order_id')
     .eq('code', code)
     .maybeSingle();
 
   if (!invite || invite.used_at || new Date(invite.expires_at) <= new Date()) {
     return NextResponse.json({ error: "This invite isn't valid or has expired" }, { status: 400 });
+  }
+
+  // Before any write: a coach, or the invite's own creator, must not be able
+  // to link themselves as a guardian. Every refusal is the same fixed 403.
+  const eligibility = await checkGuardianInviteRedemption(
+    serviceRole,
+    { player_id: invite.player_id, created_by: invite.created_by ?? null, order_id: invite.order_id ?? null },
+    user.id
+  );
+  if (eligibility.outcome === 'failed') {
+    logRouteFailure('guardian invite redeem: eligibility', eligibility.error as DbError);
+    return NextResponse.json({ error: 'Could not accept this invite. Please try again.' }, { status: 500 });
+  }
+  if (eligibility.outcome === 'refused') {
+    return NextResponse.json({ error: GUARDIAN_INVITE_REDEEM_REFUSED_MESSAGE }, { status: 403 });
   }
 
   // guardians.profile_id is a foreign key into profiles — must exist

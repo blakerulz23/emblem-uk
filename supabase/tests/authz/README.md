@@ -20,6 +20,7 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `migration_0089_test.mjs` | Migration 0089 and its rollback, on fresh 0088 databases with fictional rows. |
 | `migration_0090_test.mjs` | Migration 0090 (guardian-invite write lockdown) and its rollback, on a fresh 0089 database with fictional rows. |
 | `guardian_account_control_test.mjs` | Card suspend/unsuspend and child-deletion request/cancel on the final schema: every refusal the routes report leaves no state behind; each success and idempotent repeat makes exactly its intended change. |
+| `guardian_invite_redemption_test.mjs` | Who may redeem a guardian invite: runs the app's `src/lib/guardian-invite-eligibility.ts` against the final schema, read-only as `service_role`. |
 
 Related: `supabase/rollback/0088_rollback.sql`, `supabase/rollback/0089_rollback.sql`,
 `supabase/rollback/0090_rollback.sql`, `src/lib/migration-0088-contract.test.ts`,
@@ -676,6 +677,22 @@ data. 0089 can then be re-applied, since its readiness record is still in
 place. The test proves the refusal, the exact restore, the unchanged data
 and the re-apply.
 
+**Production procedure: set the acknowledgement transaction-locally.** The
+form above (and the rollback file's own header) is session-scoped: on a
+pooled or long-lived connection it would outlive the rollback, and the file
+does not clear it. In production, and as exercised in the disposable
+rehearsal, set it inside the transaction that runs the file, so it ends with
+that transaction:
+
+```sql
+begin;
+select set_config('emblem.acknowledge_0089_rollback', 'REOPEN-AUTHORIZATION-VULNERABILITY', true);
+-- then the exact rollback file; its own begin is a no-op and its commit ends the transaction
+```
+
+The rollback file is unchanged; its check (`current_setting(..., true)`)
+accepts either form.
+
 **Local-test limits.** PGlite is one embedded PostgreSQL 17 connection.
 Concurrency, PostgREST, Supabase Auth and real JWTs aren't exercised (see
 "Not represented"). Signed-in calls are simulated with
@@ -752,6 +769,70 @@ It restores the exact 0089 catalog, changes no data, and clears the
 acknowledgement before committing, so it never persists. 0090 can then be
 re-applied. The test proves all of this, including a re-apply to the
 identical catalog.
+
+## Guardian-invite redemption: no self-escalation
+
+```powershell
+node --no-warnings supabase/tests/authz/guardian_invite_redemption_test.mjs
+```
+
+A guardian link gives full control of a child and outlives any coaching
+assignment, so `POST /api/os/invites/redeem` checks, before any write (role,
+guardian row, card lock, public id, invite consumption, audit event or
+notification), that the invite cannot be used by a coach to link themselves
+(`src/lib/guardian-invite-eligibility.ts`). It refuses, with one fixed 403
+for every reason, when the redeemer:
+
+1. created the invite;
+2. has an active, ended or expired coach assignment for the player's current
+   team, or one the audit history records;
+3. is the player's direct coach;
+4. was the player's direct coach (the audit history records the link).
+
+It also refuses when the invite was made through coach authority and the
+child already has a guardian. The creator's authority comes from
+relationships and trusted columns, never from `origin` (which a signed-in
+creator may set): guardian when the creator is currently the child's
+guardian (so a parent who also coaches acts as the parent); order when
+`order_id` names an order whose card is the child's; recovery handoff when
+the creator's verified email is the purchaser of a fulfilled order for the
+child's card; coach for everything else, including an unknown, deleted or
+former-guardian creator. Any failed read fails closed with a fixed 500 and
+a code-only log.
+
+`guardian_invite_redemption_test.mjs` builds the relationships with the
+release's trusted functions (so ended assignments and removed direct links
+carry real audit history), creates each invite through its real authority
+(signed in with 0090's five columns, or the service-role order and handoff
+paths), and checks every rule and every legitimate path. Each read runs as
+`service_role` in a read-only transaction, so the suite also proves the
+reads are permitted on the final schema and write nothing.
+`src/app/api/os/invites/redeem/guardian-invite-escalation.test.ts` proves the
+route: the same 403 for every refusal, no write or notification on any
+refusal, legitimate paths unchanged, and no database text in responses or
+logs.
+
+**Boundaries (need an explicit safeguarding and data-protection decision
+before production):**
+
+- **A coach can pass a first-guardian invite to another account they
+  control.** For a child with no guardian, a coach-created invite is valid
+  for any non-coach account, and an invite code does not prove who holds it.
+- **A genuine guardian can invite a former coach of a previous team.** The
+  player's team history is not recorded (staff order approval overwrites
+  `players.team_id`), so only the current team's assignments are seen. A
+  current guardian's invite is treated as the family's consent. A former
+  coach's own invite and another coach's invite to them (for a child who has
+  a guardian) are still refused.
+- **The checks and the writes are not one transaction.** They are separate
+  PostgREST calls; a coach assignment or direct link created between the
+  check and the guardian insert is not seen. Closing that needs a trusted
+  database function.
+- **A parent who already coaches the child's team cannot join as guardian by
+  invite**; a card claim or staff help is needed.
+- Possible later controls: binding redemption to the invited email, staff
+  confirmation of coach-created invites, and recording player-team history
+  from now on.
 
 ## Duplicate migration numbers
 
