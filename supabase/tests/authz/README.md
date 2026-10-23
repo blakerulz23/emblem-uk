@@ -762,10 +762,12 @@ team requests, relationship audit events, the readiness record, and the
 creation, expiry and ending details on `coach_team` and `guardians`.
 
 **Fresh hosted rehearsal required.** The application and the 0089 rollback
-changed at Gate 3.9. Before production, run a new disposable hosted
-rehearsal of this whole sequence on the new commit, including the full
-rollback chain above and the re-apply, and record readiness for that
-commit. Earlier rehearsal and rollback evidence does not cover it.
+changed at Gate 3.9, and the application changed again at Gate 3.12 (card
+claims and purchaser recovery). Before production, run a disposable hosted
+rehearsal of this sequence on the final commit and record readiness for that
+exact commit. The full rollback chain was rehearsed with the current
+migration and rollback files at Gate 3.9; it needs repeating only if a
+migration or rollback file changes.
 
 ## Migration 0090 (guardian-invite write lockdown)
 
@@ -928,41 +930,111 @@ route: the same 403 for every refusal, no write or notification on any
 refusal, legitimate paths unchanged, and no database text in responses or
 logs.
 
+### First guardian through a card (claim code or purchaser recovery)
+
+A child's guardian can also be created by holding the child's card: the
+claim code printed on it (`POST /api/os/claim`), or, without the card, by
+the verified purchaser of its order (`POST /api/os/recover`, `self`). Both
+run `checkFirstGuardianClaim` (`src/lib/guardian-invite-eligibility.ts`)
+before any write (role, guardian row, card lock, public id, audit event or
+notification):
+
+- a current or former coach of the child's current team (active, ended or
+  expired assignment, or one the audit history records) and a current or
+  former direct coach cannot claim the child with their own account. One
+  fixed response; it does not say why. Someone who is already the child's
+  guardian keeps the existing path;
+- purchaser recovery (`self`) works only for an order with exactly one card,
+  counted in the database. Stored order data cannot tell a family card set
+  from a squad order, or which children are the purchaser's own, so every
+  multi-card `self` request is refused with "We need to verify this card set
+  before linking it to your account. Please contact Emblem support." The
+  recovery screen shows that instead of the buttons for a card set. Each
+  child's guardian can still use the code on their own card.
+
+`src/app/api/os/first-guardian-claim-safeguards.test.ts` and
+`guardian_invite_redemption_test.mjs` prove the refusals, that nothing is
+written, and the legitimate paths.
+
+**Closed by Gate 3.12:**
+
+- purchaser `self` recovery works only for a single-card order; every
+  multi-card `self` request fails closed;
+- current and former team and direct coaches cannot use their own account to
+  claim a child through the child's card (the roster-add claim code included);
+- a squad purchase does not itself create guardian authority through
+  recovery `self`.
+
 **Boundaries (need an explicit safeguarding and data-protection decision
 before production):**
 
-- **N1: a coach can deliberately create a first-guardian invite for an
-  email or account they control.** For a child with no guardian, an invite
-  created by a coach who still holds an active assignment for the child's
-  current team, at the moment it is redeemed, is valid for any account that
-  has never coached the child and whose verified email matches the invite's
-  recipient (or any such account, for a link-only invite). That account
-  becomes the child's first guardian, with full guardian control. The
-  invite stops working as soon as the coach's assignment ends or expires,
-  and it is refused once the child has any guardian. Coaches can no longer
-  read other people's invite codes (0091 and the routes above), emailed
-  invites are bound to their recipient, and a squad purchaser gains no
-  guardian authority from the order. Whether coaches should be able to
-  originate a first guardian at all needs explicit acceptance by the
-  safeguarding owner.
-- **A link-only invite (no recipient email) can be shared by anyone who
-  legitimately holds the code.** A code alone does not prove who holds it.
-- **A genuine guardian can invite a former coach of a previous team.** The
-  player's team history is not recorded (staff order approval overwrites
-  `players.team_id`), so only the current team's assignments are seen. A
-  current guardian's invite is treated as the family's consent. A former
-  coach's own invite and another coach's invite to them (for a child who has
-  a guardian) are still refused.
-- **Redemption is check-then-write, not atomic.** The eligibility reads
-  and the redemption writes are separate PostgREST calls, not one
-  transaction: a coach assignment, direct link, guardian or assignment
-  ending made between the check and the guardian insert is not seen.
-  Closing that needs a trusted database function.
-- **A parent who already coaches the child's team cannot join as guardian by
-  invite**; a card claim or staff help is needed.
-- Possible later controls: requiring a recipient email on every invite,
-  staff confirmation of coach-created invites, and recording player-team
-  history from now on.
+- **N1: a coach can still originate a child's first guardian through another
+  account.** A coach legitimately receives or can access a first-guardian
+  claim code for a player they add, and an active coach can create a
+  first-guardian invite (for a child with no guardian; it stops working when
+  their assignment ends or expires). The application can prevent that
+  coach's known account from claiming the child, but it cannot prove that an
+  otherwise unrelated account holding the code or invite is not controlled
+  by that coach. That account would become the child's first guardian, with
+  full guardian control. Preventing this completely requires an additional
+  staff, club-welfare or real-world identity-verification step. Whether
+  coaches should be able to originate a first guardian at all needs explicit
+  acceptance by the safeguarding owner (decision table below).
+- **A parent who is also a current or former coach of the child cannot link
+  themselves by card or invite.** There is no staff flow for this yet; the
+  other parent or guardian can claim the card or invite them.
+- **Multi-card purchasers cannot link profiles themselves.** Emblem must
+  verify each child's guardian manually (there is no staff tool for this
+  yet; it is the first post-lockdown product task), or each child's guardian
+  uses the code on their own card.
+- **Claim codes have no expiry.** There is no approved product rule; a code
+  stays usable until the card is claimed, suspended or revoked.
+- **A coach of the child's previous team is not detected.** The player's
+  team history is not recorded (staff order approval overwrites
+  `players.team_id`), so only the current team's assignments and the audit
+  history are seen. A current guardian's invite to such a coach is treated
+  as the family's consent.
+- **A link-only guardian invite (no recipient email), and every coach-invite
+  and team-invite code, is possession-based.** Anyone who legitimately holds
+  the code can use it; coach and team invites are not bound to the
+  recipient's email.
+- **A trusted order invite can add another guardian after a first guardian
+  exists** (for example after the real parent has already claimed the card);
+  nothing expires the outstanding order invite.
+- **Redemption is check-then-write, not atomic.** The eligibility reads and
+  the redemption writes are separate PostgREST calls, not one transaction: a
+  coach assignment, direct link, guardian or assignment ending made between
+  the check and the guardian insert is not seen, and two accounts redeeming
+  the same link-only (or coach-authority) code at once can both become
+  guardians. Card claims are the same. Closing that needs a trusted database
+  function.
+- **Staff approve a team request on the requester's self-chosen display name
+  and the request details**; staff review is the control.
+- Possible later controls: authoritative order classification with
+  per-child guardian details, requiring a recipient email on every invite,
+  staff or club-welfare confirmation of first guardians, claim-code expiry,
+  and recording player-team history from now on.
+
+**Safeguarding-owner decision on N1 (blank; to be completed by the owner):**
+
+| Field | Value |
+|---|---|
+| Chosen option (A or B) | |
+| Safeguarding owner | |
+| Rationale | |
+| Compensating controls | |
+| Pilot scope | |
+| Evidence reviewed | |
+| Review date | |
+| Expiry / reconsideration date | |
+
+- **Option A, conditional pilot acceptance:** vetted clubs only; approved
+  active coaches; clear club instruction that the code or invite goes only to
+  the child's genuine guardian; audit trail; a staff investigation and
+  removal procedure; no unsupervised expansion; mandatory review before
+  broader family onboarding.
+- **Option B, block:** require an independent staff or club-welfare
+  confirmation system before a first guardian is created.
 
 ## Duplicate migration numbers
 

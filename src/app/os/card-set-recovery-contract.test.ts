@@ -1,0 +1,49 @@
+import { readFileSync } from 'fs';
+import { describe, expect, it } from 'vitest';
+
+// Gate 3.12 contracts: the recovery screen never offers a card set to the
+// purchaser, the server checks run before the first write, and marketing no
+// longer promises guardian linking for friends' children.
+const read = (p: string) => readFileSync(p, 'utf8');
+
+describe('card-set recovery and first-guardian claim contracts', () => {
+  it('the recovery screen shows the verification notice instead of the buttons for a card set, failing closed when the flag is missing', () => {
+    const ui = read('src/app/os/overlays/RecoverByEmail.tsx');
+    expect(ui).toContain('We need to verify this card set before linking it to your account. Please contact Emblem support.');
+    expect(ui).toContain('verificationRequired: o.verificationRequired !== false');
+    const notice = ui.indexOf('{c.verificationRequired ? (');
+    expect(notice).toBeGreaterThan(0);
+    expect(notice).toBeLessThan(ui.indexOf("'This is my child'"));
+    expect(notice).toBeLessThan(ui.indexOf('Send to the right parent'));
+    expect(ui).toMatch(/role="alert"[^>]*>\{claimError\.message\}/);
+  });
+
+  it('recovery self: the database card count and the coach check run before the first claim write', () => {
+    const route = read('src/app/api/os/recover/route.ts');
+    const self = route.indexOf("if (decision === 'self') {");
+    const count = route.indexOf(".select('id', { count: 'exact', head: true })", self);
+    const coach = route.indexOf('checkFirstGuardianClaim(serviceRole, card.player_id, user.id)', self);
+    const write = route.indexOf('claimPlayerForCard(serviceRole, card, user.id)', self);
+    expect(self).toBeGreaterThan(0);
+    expect(count).toBeGreaterThan(self);
+    expect(route).toContain('count !== 1');
+    expect(coach).toBeGreaterThan(count);
+    expect(write).toBeGreaterThan(coach);
+    expect(route).toContain('verificationRequired: orderCards.length !== 1');
+  });
+
+  it('card claim: the coach check runs before ensureProfileRole, the first write', () => {
+    const route = read('src/app/api/os/claim/route.ts');
+    const post = route.indexOf('export async function POST');
+    const check = route.indexOf('checkFirstGuardianClaim(serviceRole, card.player_id, user.id)', post);
+    const firstWrite = route.indexOf('ensureProfileRole(serviceRole, user.id', post);
+    expect(check).toBeGreaterThan(post);
+    expect(firstWrite).toBeGreaterThan(check);
+  });
+
+  it('marketing no longer promises a set for friends and says guardian verification is a separate step', () => {
+    const home = read('src/app/page.tsx');
+    expect(home).not.toMatch(/siblings (and|or) friends/i);
+    expect(home).toContain('Buying the cards and becoming a child’s verified guardian are separate steps');
+  });
+});
