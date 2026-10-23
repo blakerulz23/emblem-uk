@@ -167,7 +167,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'handoffEmail is required to send to the right parent' }, { status: 400 });
   }
 
-  const inviteResult = await createGuardianInvite(serviceRole, card.player_id, user.id, handoffEmail.trim());
+  // The card's own order is the handoff's provenance: redemption treats it as
+  // trusted order authority only for a fulfilled single-card order whose card
+  // is this child's (a squad order never grants guardian authority). The
+  // purchaser's email on its own grants nothing.
+  const inviteResult = await createGuardianInvite(serviceRole, card.player_id, user.id, handoffEmail.trim(), 'second_guardian', card.order_id ?? undefined);
   if (!inviteResult.ok) {
     return NextResponse.json({ error: inviteResult.error }, { status: inviteResult.status });
   }

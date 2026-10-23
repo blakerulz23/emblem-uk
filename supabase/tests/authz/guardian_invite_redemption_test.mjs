@@ -150,14 +150,17 @@ const end = (team, profile) => service(`select public.end_coach_assignment($1, $
 await activate(PREVIOUS_TEAM, P.formerCoach);
 
 const code = () => `G37-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-const inviteAs = async (creator, player) => {
+const inviteAs = async (creator, player, { email = null, origin = 'second_guardian' } = {}) => {
   const c = code();
-  await user(creator, `insert into public.player_invites (player_id, code, created_by, invited_email, origin) values ($1, $2, $3, null, 'second_guardian')`, [player, c, creator]);
+  await user(creator, `insert into public.player_invites (player_id, code, created_by, invited_email, origin) values ($1, $2, $3, $4, $5)`, [player, c, creator, email, origin]);
   return c;
 };
-const inviteAsService = async (player, createdBy, orderId) => {
+// Trusted service-role paths: order approval (no creator) and recovery handoff (the purchaser), each with a named recipient.
+const RECIPIENT = 'g39-recipient@example.test';
+const inviteAsService = async (player, createdBy, orderId, email = RECIPIENT) => {
   const c = code();
-  await service(`insert into public.player_invites (player_id, code, created_by, invited_email, origin, order_id) values ($1, $2, $3, null, $4, $5)`, [player, c, createdBy, orderId ? 'order_approval' : 'second_guardian', orderId]);
+  await service(`insert into public.player_invites (player_id, code, created_by, invited_email, origin, order_id) values ($1, $2, $3, $4, $5, $6)`,
+    [player, c, createdBy, email, orderId && !createdBy ? 'order_approval' : 'second_guardian', orderId]);
   return c;
 };
 
@@ -179,15 +182,29 @@ await service(`insert into public.coach_players (player_id, profile_id, created_
 const removal = (await service(`select public.remove_direct_coach_link($1, $2, $3, 'Fictional reason') as r`, [child, P.removedDirect, P.guardian])).rows[0].r;
 check('setup: the removed direct coach was removed through the trusted function', removal === 'removed', removal);
 
-// Orders: a fulfilled order for the child (purchaser verified), one whose
-// purchaser email is unverified, and one for a different child.
-const order = id(), unverifiedOrder = id(), otherOrder = id();
+// Orders: a fulfilled single-card order for the child (purchaser verified),
+// one whose purchaser email is unverified, one for a different child, a
+// refunded single-card order for the child, and a fulfilled SQUAD order
+// (cards for the child and another child) bought by the team's coach.
+const order = id(), unverifiedOrder = id(), otherOrder = id(), refundedOrder = id(), squadOrder = id();
 const email = async (uid) => (await db.query(`select email from auth.users where id = $1`, [uid])).rows[0].email;
 await db.query(`insert into public.orders (id, order_ref, purchaser_email, source, payment_status) values
-  ($1, 'G37-ORDER-1', $4, 'standalone_order', 'fulfilled'), ($2, 'G37-ORDER-2', $5, 'standalone_order', 'fulfilled'), ($3, 'G37-ORDER-3', 'nobody@example.test', 'standalone_order', 'fulfilled')`,
-  [order, unverifiedOrder, otherOrder, await email(P.purchaser), await email(P.unverifiedPurchaser)]);
-await db.query(`insert into public.cards (player_id, order_id, claim_token, status) values ($1, $2, 'G37-CARD-1', 'claimed'), ($1, $3, 'G37-CARD-2', 'claimed'), ($4, $5, 'G37-CARD-3', 'assigned')`,
-  [child, order, unverifiedOrder, otherChild, otherOrder]);
+  ($1, 'G37-ORDER-1', $4, 'standalone_order', 'fulfilled'), ($2, 'G37-ORDER-2', $5, 'standalone_order', 'fulfilled'), ($3, 'G37-ORDER-3', 'nobody@example.test', 'standalone_order', 'fulfilled'),
+  ($6, 'G39-ORDER-REFUNDED', $4, 'standalone_order', 'refunded'), ($7, 'G39-ORDER-SQUAD', $8, 'standalone_order', 'fulfilled')`,
+  [order, unverifiedOrder, otherOrder, await email(P.purchaser), await email(P.unverifiedPurchaser), refundedOrder, squadOrder, await email(P.coach)]);
+await db.query(`update auth.users set email_confirmed_at = now() where id = $1`, [P.coach]);
+await db.query(`insert into public.cards (player_id, order_id, claim_token, status) values ($1, $2, 'G37-CARD-1', 'claimed'), ($1, $3, 'G37-CARD-2', 'claimed'), ($4, $5, 'G37-CARD-3', 'assigned'),
+  ($1, $6, 'G39-CARD-REFUNDED', 'assigned'), ($1, $7, 'G39-CARD-SQUAD-A', 'assigned'), ($4, $7, 'G39-CARD-SQUAD-B', 'assigned')`,
+  [child, order, unverifiedOrder, otherChild, otherOrder, refundedOrder, squadOrder]);
+
+// Proof: a signed-in guardian or coach cannot write order_id (0090), so a
+// trusted order id can only come from a service-role path.
+const forgeOrder = async (creator) => {
+  try { await user(creator, `insert into public.player_invites (player_id, code, created_by, invited_email, origin, order_id) values ($1, $2, $3, $4, 'order_approval', $5)`, [child, code(), creator, RECIPIENT, order]); return 'ALLOWED'; }
+  catch (e) { return e.code; }
+};
+check('a signed-in guardian cannot write order_id', (await forgeOrder(P.guardian)) === '42501');
+check('a signed-in active coach cannot write order_id', (await forgeOrder(P.coach)) === '42501');
 
 // Invites, created by their real authority (signed in, five columns) or by
 // the trusted service-role paths (order approval, recovery handoff).
@@ -198,26 +215,37 @@ const inv = {
   dual: await inviteAs(P.dual, child),
   exGuardian: await inviteAs(P.exGuardian, child),
   order: await inviteAsService(child, null, order),
+  orderLinkOnly: await inviteAsService(child, null, order, null),
   forgedOrder: await inviteAsService(child, null, otherOrder),
-  handoff: await inviteAsService(child, P.purchaser, null),
+  refundedOrder: await inviteAsService(child, null, refundedOrder),
+  handoff: await inviteAsService(child, P.purchaser, order),
+  emailOnlyHandoff: await inviteAsService(child, P.purchaser, null),
   unverifiedHandoff: await inviteAsService(child, P.unverifiedPurchaser, null),
   deletedCreator: await inviteAsService(child, null, null),
   deletedCreatorFirst: await inviteAsService(firstChild, null, null),
   formerOwn: formerOwnInvite,
+  // B1: the squad buyer coaches the team; the child already has a guardian.
+  buyerCoachEmailed: await inviteAs(P.coach, child, { email: RECIPIENT }),
+  buyerCoachForgedOrigin: await inviteAs(P.coach, child, { email: RECIPIENT, origin: 'order_approval' }),
+  buyerCoachSquadHandoff: await inviteAsService(child, P.coach, squadOrder),
 };
 // The ex-guardian stops being a guardian after inviting (an administrative
 // removal: no app role may delete guardian rows).
 await db.query(`delete from public.guardians where player_id = $1 and profile_id = $2`, [child, P.exGuardian]);
 
-const auditBefore = (await db.query(`select count(*)::int n from public.relationship_audit_events`)).rows[0].n;
-const writesBefore = (await db.query(`select (select count(*) from public.guardians) g, (select count(*) from public.player_invites where used_at is not null) u, (select count(*) from public.profiles where role is not null) r`)).rows[0];
 
 async function evaluate(inviteCode, redeemer) {
-  const row = (await db.query(`select player_id, created_by, order_id from public.player_invites where code = $1`, [inviteCode])).rows[0];
+  const row = (await db.query(`select player_id, created_by, order_id, invited_email from public.player_invites where code = $1`, [inviteCode])).rows[0];
   return checkGuardianInviteRedemption(client, row, redeemer);
 }
+// Every evaluation is proved write-free on its own (the setup between evaluations writes legitimately).
+const snapshot = async () => JSON.stringify((await db.query(`select (select count(*) from public.guardians) g, (select count(*) from public.player_invites where used_at is not null) u,
+  (select count(*) from public.profiles where role is not null) r, (select count(*) from public.relationship_audit_events) a, (select count(*) from public.story_updates) s`)).rows[0]);
+let everyEvaluationWroteNothing = true;
 async function expectOutcome(name, inviteCode, redeemer, expected) {
+  const before = await snapshot();
   const r = await evaluate(inviteCode, redeemer);
+  if ((await snapshot()) !== before) everyEvaluationWroteNothing = false;
   const pass = r.outcome === expected.outcome && (expected.authority === undefined || r.authority === expected.authority);
   check(name, pass, JSON.stringify(r.outcome === 'failed' ? { outcome: r.outcome, code: r.error?.code } : r));
 }
@@ -234,6 +262,15 @@ await expectOutcome('a deleted/unknown creator is treated as non-guardian: refus
 await expectOutcome('an ex-guardian\'s invite is treated as non-guardian: refused when the child has a guardian', inv.exGuardian, P.adult, REFUSED);
 await expectOutcome('an order id that is not this child\'s order is not order authority: refused', inv.forgedOrder, P.adult, REFUSED);
 await expectOutcome('an unverified purchaser email is not a recovery handoff: refused', inv.unverifiedHandoff, P.adult, REFUSED);
+// Gate 3.9 B1
+await expectOutcome('B1: buyer-coach emailed invite to a second account (child has a guardian) is refused', inv.buyerCoachEmailed, P.adult, REFUSED);
+await expectOutcome('B1: buyer-coach link-only invite (child has a guardian) is refused', inv.coach, P.adult, REFUSED);
+await expectOutcome('B1: buyer-coach invite with a forged origin order_approval is refused', inv.buyerCoachForgedOrigin, P.adult, REFUSED);
+await expectOutcome('B1: a squad-order handoff (more than one linked card) is not trusted order authority: refused', inv.buyerCoachSquadHandoff, P.adult, REFUSED);
+await expectOutcome('B1: a verified purchaser\'s handoff with no trusted order id (email coincidence only) is refused', inv.emailOnlyHandoff, P.adult, REFUSED);
+await expectOutcome('B1: a refunded single-card order is not trusted order authority: refused', inv.refundedOrder, P.adult, REFUSED);
+await expectOutcome('B1: a trusted order invite with no named recipient is refused when the child has a guardian', inv.orderLinkOnly, P.adult, REFUSED);
+await expectOutcome('N2: a deleted creator\'s invite for a child with no guardian has no authority: refused', inv.deletedCreatorFirst, P.adult, REFUSED);
 // Only the creator rule can refuse these two.
 await expectOutcome('a former previous-team coach redeeming their own invite (child has no guardian) is refused', inv.formerOwn, P.formerCoach, REFUSED);
 await expectOutcome('a purchaser redeeming their own recovery handoff is refused', inv.handoff, P.purchaser, REFUSED);
@@ -242,15 +279,37 @@ await expectOutcome('a coach-authority invite to a former previous-team coach is
 await expectOutcome('a genuine guardian invite to an ordinary adult is eligible (guardian authority)', inv.guardian, P.adult, { outcome: 'eligible', authority: 'guardian' });
 await expectOutcome('a dual guardian/coach creator acts through guardian authority', inv.dual, P.adult, { outcome: 'eligible', authority: 'guardian' });
 await expectOutcome('an order invite for this child\'s order is eligible (order authority)', inv.order, P.adult, { outcome: 'eligible', authority: 'order' });
-await expectOutcome('a recovery handoff from the verified purchaser is eligible', inv.handoff, P.adult, { outcome: 'eligible', authority: 'recovery_handoff' });
-await expectOutcome('a coach-created first-guardian invite redeemed by a different non-coach is eligible', inv.coachFirst, P.adult, { outcome: 'eligible', authority: 'coach' });
-await expectOutcome('a deleted creator\'s invite for a child with no guardian is eligible', inv.deletedCreatorFirst, P.adult, { outcome: 'eligible', authority: 'coach' });
+await expectOutcome('a recovery handoff carrying the card\'s single-card order is eligible (trusted order authority)', inv.handoff, P.adult, { outcome: 'eligible', authority: 'order' });
+await expectOutcome('an active coach\'s first-guardian invite redeemed by a different non-coach is eligible', inv.coachFirst, P.adult, { outcome: 'eligible', authority: 'coach' });
 await expectOutcome('documented boundary: a genuine guardian invite to a former previous-team coach is eligible', inv.guardian, P.formerCoach, { outcome: 'eligible', authority: 'guardian' });
 
-const auditAfter = (await db.query(`select count(*)::int n from public.relationship_audit_events`)).rows[0].n;
-const writesAfter = (await db.query(`select (select count(*) from public.guardians) g, (select count(*) from public.player_invites where used_at is not null) u, (select count(*) from public.profiles where role is not null) r`)).rows[0];
-check('every eligibility read ran read-only as service_role and nothing was written (guardians, used invites, roles, audit)',
-  auditAfter === auditBefore && JSON.stringify(writesAfter) === JSON.stringify(writesBefore) && reads.length > 0, `${reads.length} reads`);
+// Gate 3.9 N2: coach authority lives only as long as the creator's assignment.
+const coachN2 = id(), expiringCoach = id(), n2Child = id(), n2ChildB = id();
+await db.query(`insert into auth.users (id, email) values ($1, 'g39-n2a@example.test'), ($2, 'g39-n2b@example.test')`, [coachN2, expiringCoach]);
+await db.query(`insert into public.profiles (id, display_name) values ($1, 'Fictional N2 A'), ($2, 'Fictional N2 B')`, [coachN2, expiringCoach]);
+await db.query(`insert into public.players (id, name, team_id) values ($1, 'Fictional N2 Child', $3), ($2, 'Fictional N2 Child B', $3)`, [n2Child, n2ChildB, TEAM]);
+await activate(TEAM, coachN2);
+const n2Invite = await inviteAs(coachN2, n2Child);
+await expectOutcome('N2: while the creator is active, the first-guardian invite is eligible', n2Invite, P.adult, { outcome: 'eligible', authority: 'coach' });
+await end(TEAM, coachN2);
+await expectOutcome('N2: after staff end the creator, the same unconsumed invite is refused', n2Invite, P.adult, REFUSED);
+await expectOutcome('N2: asking again (refresh or reuse of the code) changes nothing', n2Invite, P.adult, REFUSED);
+await service(`insert into public.coach_team (team_id, profile_id, created_at, created_via, created_by, expires_at) values ($1, $2, now(), 'staff', $3, now() + interval '2 seconds')`, [TEAM, expiringCoach, P.staff]);
+const n2Expiring = await inviteAs(expiringCoach, n2ChildB);
+await expectOutcome('N2: before the creator\'s expiry, the invite is eligible', n2Expiring, P.adult, { outcome: 'eligible', authority: 'coach' });
+await new Promise((r) => setTimeout(r, 2500));
+await expectOutcome('N2: after the creator\'s assignment expires, the invite is refused', n2Expiring, P.adult, REFUSED);
+await end(TEAM, expiringCoach);
+await expectOutcome('N2: an expired then ended creator stays refused (neither order restores it)', n2Expiring, P.adult, REFUSED);
+await expectOutcome('N2: a guardian-created invite stays valid after that guardian stops coaching', inv.dual, P.adult, { outcome: 'eligible', authority: 'guardian' });
+await end(TEAM, P.dual);
+await expectOutcome('N2: (after the dual guardian/coach is ended) still guardian authority', inv.dual, P.adult, { outcome: 'eligible', authority: 'guardian' });
+await activate(TEAM, P.purchaser);
+await end(TEAM, P.purchaser);
+await expectOutcome('N2: a trusted order handoff is judged by its order, not by its creator\'s former coach status', inv.handoff, P.adult, { outcome: 'eligible', authority: 'order' });
+
+check('every eligibility read ran read-only as service_role and no evaluation wrote anything (guardians, used invites, roles, audit, notifications)',
+  everyEvaluationWroteNothing && reads.length > 0, `${reads.length} reads`);
 check('the reads touched only the expected tables',
   [...new Set(reads)].sort().join(',') === 'cards,coach_players,coach_team,guardians,orders,players,relationship_audit_events', [...new Set(reads)].sort().join(','));
 const audit = (await db.query(`select count(*)::int n from public.relationship_audit_events where table_name = 'coach_players' and event = 'DELETE' and profile_id = $1`, [P.removedDirect])).rows[0].n;

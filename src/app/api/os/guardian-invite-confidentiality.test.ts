@@ -238,21 +238,19 @@ describe('redemption of an emailed invite is bound to the recipient\'s verified 
   });
 
   it('legitimate order and recovery redemptions by their verified recipients still work', async () => {
-    service = worldClient(world(invite('ORDER-INV-6666', null, { origin: 'order_approval', order_id: ORDER, invited_email: 'buyer@example.test' }), { cards: [{ player_id: PLAYER, order_id: ORDER }] }));
+    // Order approval: a trusted order id for this child's fulfilled single-card order.
+    const orders = [{ id: ORDER, purchaser_email: 'buyer@example.test', payment_status: 'fulfilled' }];
+    service = worldClient(world(invite('ORDER-INV-6666', null, { origin: 'order_approval', order_id: ORDER, invited_email: 'buyer@example.test' }), { cards: [{ player_id: PLAYER, order_id: ORDER }], orders }));
     expect((await post({ id: P.redeemer, email: 'BUYER@example.test', email_confirmed_at: VERIFIED }, 'ORDER-INV-6666')).status).toBe(200);
-    // Recovery handoff: the creator is the verified purchaser of this child's fulfilled order.
+    // Recovery handoff (Gate 3.9): the purchaser's invite carries the card's own order, not mere email coincidence.
     service = createFakeSupabase({
       respond: (c: FakeCall) => {
-        const w = world(invite('HANDOFF-INV-7777', P.purchaser, { invited_email: 'right-parent@example.test' }), {
-          cards: [{ player_id: PLAYER, order_id: ORDER }],
-          orders: [{ id: ORDER, purchaser_email: 'buyer@example.test', payment_status: 'fulfilled' }],
-        });
+        const w = world(invite('HANDOFF-INV-7777', P.purchaser, { order_id: ORDER, invited_email: 'right-parent@example.test' }), { cards: [{ player_id: PLAYER, order_id: ORDER }], orders });
         if (c.op !== 'select') return {};
         const rows = (w[c.table] ?? []).filter((r) => c.filters.every((f) => matches(r, f)));
         return SINGLE.includes(c.table) ? { data: rows[0] ?? null } : { data: rows };
       },
       rpc: (fn) => (fn === 'ensure_profile_role' ? { data: 'parent' } : {}),
-      adminUser: (uid) => (uid === P.purchaser ? { user: { id: uid, email: 'buyer@example.test', email_confirmed_at: VERIFIED } } : { user: null }),
     });
     expect((await post({ id: P.redeemer, email: 'right-parent@example.test', email_confirmed_at: VERIFIED }, 'HANDOFF-INV-7777')).status).toBe(200);
   });

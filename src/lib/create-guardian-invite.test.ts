@@ -152,4 +152,21 @@ describe('createGuardianInvite — insert columns (0090 guardian-invite write lo
     const lookup = fake.calls.find((c) => c.table === 'player_invites' && c.op === 'select');
     expect(lookup?.filters).toContainEqual(['eq', 'order_id', ORDER]);
   });
+
+  it('Gate 3.9: a signed-in caller only ever reuses invites with no order, so it is never handed a trusted invite', async () => {
+    sendInviteEmail.mockResolvedValue({ ok: false, reason: 'not_configured' });
+    const fake = db();
+    await createGuardianInvite(fake.client as never, PLAYER, USER, EMAIL, 'second_guardian');
+    const lookup = fake.calls.find((c) => c.table === 'player_invites' && c.op === 'select');
+    expect(lookup?.filters).toContainEqual(['is', 'order_id', null]);
+  });
+
+  it('Gate 3.9: a trusted recovery handoff carries the card\'s order and reuses only an invite for that order', async () => {
+    sendInviteEmail.mockResolvedValue({ ok: false, reason: 'not_configured' });
+    const fake = db();
+    await createGuardianInvite(fake.client as never, PLAYER, USER, EMAIL, 'second_guardian', ORDER);
+    const lookup = fake.calls.find((c) => c.table === 'player_invites' && c.op === 'select');
+    expect(lookup?.filters).toContainEqual(['eq', 'order_id', ORDER]);
+    expect(inserts(fake)[0].payload).toMatchObject({ order_id: ORDER, origin: 'second_guardian', created_by: USER, invited_email: EMAIL });
+  });
 });

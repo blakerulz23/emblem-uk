@@ -30,7 +30,11 @@ function setup({ rpcError, write }: { rpcError?: FakeResult['error']; write?: (c
       const w = write?.(c);
       if (w) return w;
       if (c.table === 'cards' && c.op === 'select') return { data: { id: 'card-1', status: 'assigned', player_id: PLAYER, access_status: null } };
-      if (c.table === 'player_invites' && c.op === 'select') return { data: { id: 'inv-1', used_at: null, expires_at: '2999-01-01T00:00:00Z', player_id: PLAYER } };
+      // The guardian invite is a current guardian's (Gate 3.9: an invite must carry authority).
+      if (c.table === 'player_invites' && c.op === 'select') return { data: { id: 'inv-1', used_at: null, expires_at: '2999-01-01T00:00:00Z', player_id: PLAYER, created_by: 'guardian-1' } };
+      if (c.table === 'guardians' && c.op === 'select') {
+        return c.filters.some(([, col, v]) => col === 'profile_id' && v === 'guardian-1') ? { data: [{ player_id: PLAYER, profile_id: 'guardian-1' }] } : { data: [] };
+      }
       return {};
     },
     rpc: (fn) => (fn === 'ensure_profile_role' ? (rpcError ? { error: rpcError } : { data: 'parent' }) : {}),

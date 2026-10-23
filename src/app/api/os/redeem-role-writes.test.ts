@@ -32,7 +32,7 @@ function setupService(existingRole: 'parent' | 'coach' | null) {
   service = createFakeSupabase({
     respond: (c) => {
       if (c.table === 'cards' && c.op === 'select') return { data: { id: 'card-1', status: 'assigned', player_id: PLAYER, access_status: null } };
-      if (c.table === 'player_invites' && c.op === 'select') return { data: { id: 'inv-1', used_at: null, expires_at: '2999-01-01T00:00:00Z', player_id: PLAYER } };
+      if (c.table === 'player_invites' && c.op === 'select') return { data: { id: 'inv-1', used_at: null, expires_at: '2999-01-01T00:00:00Z', player_id: PLAYER, created_by: 'guardian-1' } };
       if (c.table === 'coach_invites' && c.op === 'select') return { data: { id: 'ci-1', used_at: null, used_by: null, expires_at: '2999-01-01T00:00:00Z', player_id: PLAYER, created_by: 'guardian-1' } };
       if (c.table === 'players') return { data: { name: 'Fictional Player', team_id: 'team-1' } };
       if (c.table === 'profiles') return { data: { display_name: 'Fictional Person' } };
@@ -45,9 +45,9 @@ function setupService(existingRole: 'parent' | 'coach' | null) {
           ],
         };
       }
-      // The coach invite's creator ('guardian-1') is a current guardian; other guardian reads are lists.
+      // Both invites' creator ('guardian-1') is a current guardian; other guardian reads are lists.
       if (c.table === 'guardians' && c.op === 'select') {
-        return c.filters.some(([, col, v]) => col === 'profile_id' && v === 'guardian-1') ? { data: { player_id: PLAYER } } : { data: [] };
+        return c.filters.some(([, col, v]) => col === 'profile_id' && v === 'guardian-1') ? { data: { player_id: PLAYER, profile_id: 'guardian-1' } } : { data: [] };
       }
       return {};
     },

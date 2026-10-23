@@ -128,10 +128,12 @@ export async function POST(request: NextRequest) {
   }
 
   // Before any write: a coach, or the invite's own creator, must not be able
-  // to link themselves as a guardian. Every refusal is the same fixed 403.
+  // to link themselves as a guardian, and an invite must carry real authority
+  // (a current guardian, a trusted order, or a still-active coach). Every
+  // refusal is the same fixed 403.
   const eligibility = await checkGuardianInviteRedemption(
     serviceRole,
-    { player_id: invite.player_id, created_by: invite.created_by ?? null, order_id: invite.order_id ?? null },
+    { player_id: invite.player_id, created_by: invite.created_by ?? null, order_id: invite.order_id ?? null, invited_email: invite.invited_email ?? null },
     user.id
   );
   if (eligibility.outcome === 'failed') {

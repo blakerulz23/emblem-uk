@@ -44,4 +44,10 @@ describe('POST /api/os/recover (handoff) — truthful delivery, and the purchase
     const body = await (await handoff()).json();
     expect(body).toEqual({ ok: true, emailStatus: 'failed' });
   });
+
+  it('Gate 3.9: the handoff carries the verified card\'s own order as its provenance (trusted service-role write)', async () => {
+    createGuardianInvite.mockResolvedValue({ ok: true, code: 'HANDOFF-CODE', reused: false, emailStatus: 'sent' });
+    await handoff();
+    expect(createGuardianInvite).toHaveBeenCalledWith(service.client, PLAYER, expect.any(String), 'parent@example.test', 'second_guardian', 'order-1');
+  });
 });

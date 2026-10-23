@@ -66,6 +66,11 @@ export async function createGuardianInvite(
 
   if (origin === 'order_approval') {
     existingQuery = existingQuery.eq('order_id', orderId ?? '');
+  } else {
+    // A trusted recovery handoff reuses only its own order's invite; any other
+    // caller reuses only invites with no order, so a signed-in path is never
+    // handed a trusted invite and a handoff never reuses one without provenance.
+    existingQuery = orderId ? existingQuery.eq('order_id', orderId) : existingQuery.is('order_id', null);
   }
   existingQuery = createdByUserId ? existingQuery.eq('created_by', createdByUserId) : existingQuery.is('created_by', null);
   existingQuery = invitedEmail ? existingQuery.eq('invited_email', invitedEmail) : existingQuery.is('invited_email', null);

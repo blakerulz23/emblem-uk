@@ -35,18 +35,21 @@ const P = {
   otherAdult: id(7),
 };
 const PLAYER = id(100);
+const OTHER_PLAYER = id(101);
 const TEAM = id(200);
 const PREVIOUS_TEAM = id(201);
 const ORDER = id(300);
 const OTHER_ORDER = id(301);
 const CODE = 'INV-FICT1234';
+const REDEEMER_EMAIL = 'fictional-redeemer@example.test';
+const BUYER_EMAIL = 'fictional-buyer@example.test';
 
 type World = Record<string, Array<Record<string, unknown>>>;
-type InviteFields = { created_by: string | null; order_id?: string | null };
+type InviteFields = { created_by: string | null; order_id?: string | null; invited_email?: string | null; origin?: string };
 
 function baseWorld(invite: InviteFields): World {
   return {
-    player_invites: [{ id: 'invite-1', code: CODE, used_at: null, expires_at: '2999-01-01T00:00:00Z', player_id: PLAYER, order_id: null, ...invite }],
+    player_invites: [{ id: 'invite-1', code: CODE, used_at: null, expires_at: '2999-01-01T00:00:00Z', player_id: PLAYER, order_id: null, invited_email: null, origin: 'second_guardian', ...invite }],
     players: [{ id: PLAYER, team_id: TEAM, name: 'Fictional Child' }],
     guardians: [],
     coach_team: [],
@@ -85,7 +88,9 @@ function setup(world: World, { users = {}, fail }: { users?: Users; fail?: (c: F
 }
 
 const post = (redeemerId = P.redeemer) => {
-  session = createFakeSupabase({ user: { id: redeemerId, email: 'fictional-redeemer@example.test' } });
+  // A verified account, so emailed invites to REDEEMER_EMAIL pass the recipient binding.
+  const user = { id: redeemerId, email: REDEEMER_EMAIL, email_confirmed_at: '2026-01-01T00:00:00Z' };
+  session = createFakeSupabase({ user });
   return redeem(new NextRequest('http://localhost/api/os/invites/redeem', { method: 'POST', body: JSON.stringify({ inviteCode: CODE }) }));
 };
 
@@ -226,7 +231,92 @@ const refusals: Record<string, () => Promise<Response>> = {
     });
     return post(P.formerCoach);
   },
+  // --- Gate 3.9 B1: a squad buyer who coaches the team gains nothing from the purchase ---
+  'B1: the squad buyer who coaches the team sends an ordinary emailed invite to a second account, child has a guardian': () => {
+    setup(squadBuyerWorld({ invited_email: REDEEMER_EMAIL }), { users: buyerUsers });
+    return post();
+  },
+  'B1: the same buyer-coach invite as a link-only code': () => {
+    setup(squadBuyerWorld({}), { users: buyerUsers });
+    return post();
+  },
+  'B1: a single-card purchaser (not a coach) whose email matches, but the invite carries no trusted order id': () => {
+    setup(
+      {
+        ...baseWorld({ created_by: P.purchaser, invited_email: REDEEMER_EMAIL }),
+        guardians: [guardianOf(P.guardian)],
+        cards: [{ player_id: PLAYER, order_id: ORDER }],
+        orders: [{ id: ORDER, purchaser_email: BUYER_EMAIL, payment_status: 'fulfilled' }],
+      },
+      { users: buyerUsers }
+    );
+    return post();
+  },
+  'B1: a forged origin order_approval without a trusted order id': () => {
+    setup({ ...squadBuyerWorld({ invited_email: REDEEMER_EMAIL, origin: 'order_approval' }) }, { users: buyerUsers });
+    return post();
+  },
+  'B1: a deleted creator does not gain recovery authority from the purchaser email': () => {
+    setup({ ...squadBuyerWorld({ created_by: null, invited_email: REDEEMER_EMAIL }) }, { users: buyerUsers });
+    return post();
+  },
+  'B1: the squad order itself (more than one linked card) is not trusted order authority': () => {
+    setup(squadBuyerWorld({ order_id: ORDER, invited_email: REDEEMER_EMAIL }), { users: buyerUsers });
+    return post();
+  },
+  'B1: an order whose single card is another child\'s': () => {
+    setup({ ...baseWorld({ created_by: null, order_id: ORDER, invited_email: REDEEMER_EMAIL }), guardians: [guardianOf(P.guardian)], cards: [{ player_id: OTHER_PLAYER, order_id: ORDER }], orders: [fulfilled(ORDER)] });
+    return post();
+  },
+  'B1: an arbitrary order id with no card at all': () => {
+    setup({ ...baseWorld({ created_by: null, order_id: OTHER_ORDER, invited_email: REDEEMER_EMAIL }), guardians: [guardianOf(P.guardian)], orders: [fulfilled(OTHER_ORDER)] });
+    return post();
+  },
+  'B1: a refunded single-card order is not trusted order authority': () => {
+    setup({ ...baseWorld({ created_by: null, order_id: ORDER, invited_email: REDEEMER_EMAIL }), guardians: [guardianOf(P.guardian)], cards: [{ player_id: PLAYER, order_id: ORDER }], orders: [{ id: ORDER, payment_status: 'refunded' }] });
+    return post();
+  },
+  'B1: a trusted order invite with no named recipient is not email-bound, so it is not trusted authority': () => {
+    setup({ ...baseWorld({ created_by: null, order_id: ORDER }), guardians: [guardianOf(P.guardian)], cards: [{ player_id: PLAYER, order_id: ORDER }], orders: [fulfilled(ORDER)] });
+    return post();
+  },
+  // --- Gate 3.9 N2: coach authority lives only as long as the assignment ---
+  'N2: a coach-created first-guardian invite after staff ended that coach': () => {
+    setup({ ...baseWorld({ created_by: P.coach }), coach_team: [assignment(P.coach, TEAM, { ended_at: '2026-01-01T00:00:00Z' })] });
+    return post();
+  },
+  'N2: a coach-created first-guardian invite after that coach\'s assignment expired': () => {
+    setup({ ...baseWorld({ created_by: P.coach }), coach_team: [assignment(P.coach, TEAM, { expires_at: '2026-01-01T00:00:00Z' })] });
+    return post();
+  },
+  'N2: a first-guardian invite whose creator is only a direct coach (no team assignment)': () => {
+    setup({ ...baseWorld({ created_by: P.coach }), coach_players: [{ player_id: PLAYER, profile_id: P.coach }] });
+    return post();
+  },
+  'N2: a first-guardian invite whose creator coaches only a previous team': () => {
+    setup({ ...baseWorld({ created_by: P.coach }), coach_team: [assignment(P.coach, PREVIOUS_TEAM)] });
+    return post();
+  },
+  'N2: a deleted or unknown creator for a child with no guardian (no authority)': () => {
+    setup({ ...baseWorld({ created_by: null }) });
+    return post();
+  },
 };
+
+/** The squad buyer is the team's active coach; the squad order holds this child's card and another's; the child has a guardian. */
+function squadBuyerWorld(invite: Partial<InviteFields>): World {
+  return {
+    ...baseWorld({ created_by: P.coach, ...invite }),
+    guardians: [guardianOf(P.guardian)],
+    coach_team: [assignment(P.coach, TEAM)],
+    cards: [{ player_id: PLAYER, order_id: ORDER }, { player_id: OTHER_PLAYER, order_id: ORDER }],
+    orders: [{ id: ORDER, purchaser_email: BUYER_EMAIL, payment_status: 'fulfilled' }],
+  };
+}
+const buyerUsers = { [P.coach]: { email: BUYER_EMAIL, email_confirmed_at: '2026-01-01T00:00:00Z' }, [P.purchaser]: { email: BUYER_EMAIL, email_confirmed_at: '2026-01-01T00:00:00Z' } };
+function fulfilled(orderId: string) {
+  return { id: orderId, purchaser_email: BUYER_EMAIL, payment_status: 'fulfilled' };
+}
 
 describe('guardian invite redemption refuses coaches and self-redemption, before any write', () => {
   it.each(Object.keys(refusals))('%s: fixed 403, no writes, no notification, nothing logged', async (name) => {
@@ -251,32 +341,49 @@ describe('legitimate guardian invites still redeem', () => {
     await expectRedeemed(await post());
   });
 
-  it('an order invite whose order is this child\'s card (child already has a guardian)', async () => {
-    setup({ ...baseWorld({ created_by: null, order_id: ORDER }), guardians: [guardianOf(P.guardian)], cards: [{ player_id: PLAYER, order_id: ORDER }] });
+  it('a trusted order invite for this child\'s single-card fulfilled order, to its named recipient (child already has a guardian)', async () => {
+    setup({ ...baseWorld({ created_by: null, order_id: ORDER, invited_email: REDEEMER_EMAIL, origin: 'order_approval' }), guardians: [guardianOf(P.guardian)], cards: [{ player_id: PLAYER, order_id: ORDER }], orders: [fulfilled(ORDER)] });
     await expectRedeemed(await post());
   });
 
-  it('a recovery handoff from the verified purchaser of a fulfilled order (child already has a guardian)', async () => {
+  it('a trusted recovery handoff (the purchaser\'s invite carrying the card\'s single-card order) to its named recipient (child already has a guardian)', async () => {
     setup(
-      {
-        ...baseWorld({ created_by: P.purchaser }),
-        guardians: [guardianOf(P.guardian)],
-        cards: [{ player_id: PLAYER, order_id: ORDER }],
-        orders: [{ id: ORDER, purchaser_email: 'Fictional-Buyer@example.test', payment_status: 'fulfilled' }],
-      },
-      { users: { [P.purchaser]: { email: 'fictional-buyer@example.test', email_confirmed_at: '2026-01-01T00:00:00Z' } } }
+      { ...baseWorld({ created_by: P.purchaser, order_id: ORDER, invited_email: ` ${REDEEMER_EMAIL.toUpperCase()} ` }), guardians: [guardianOf(P.guardian)], cards: [{ player_id: PLAYER, order_id: ORDER }], orders: [fulfilled(ORDER)] },
+      { users: buyerUsers }
     );
     await expectRedeemed(await post());
   });
 
-  it('a coach invites the first guardian of a child with none, and a different non-coach account redeems it', async () => {
+  it('a trusted order invite is judged by its order, not by its creator\'s former coach status', async () => {
+    setup({
+      ...baseWorld({ created_by: P.purchaser, order_id: ORDER, invited_email: REDEEMER_EMAIL }),
+      guardians: [guardianOf(P.guardian)],
+      coach_team: [assignment(P.purchaser, TEAM, { ended_at: '2026-01-01T00:00:00Z' })],
+      cards: [{ player_id: PLAYER, order_id: ORDER }],
+      orders: [fulfilled(ORDER)],
+    });
+    await expectRedeemed(await post());
+  });
+
+  it('an active coach invites the first guardian of a child with none, and a different non-coach account redeems it', async () => {
     setup({ ...baseWorld({ created_by: P.coach }), coach_team: [assignment(P.coach, TEAM)] });
     await expectRedeemed(await post());
   });
 
-  it('a deleted creator\'s invite for a child with no guardian', async () => {
-    setup({ ...baseWorld({ created_by: null }) });
+  it('a guardian-created invite stays valid after that guardian stops coaching the team', async () => {
+    setup({ ...baseWorld({ created_by: P.dual }), guardians: [guardianOf(P.dual)], coach_team: [assignment(P.dual, TEAM, { ended_at: '2026-01-01T00:00:00Z' })] });
     await expectRedeemed(await post());
+  });
+
+  it('an emailed invite to someone else is the same invalid response as an unknown code, before any write', async () => {
+    setup({ ...baseWorld({ created_by: P.guardian, invited_email: 'someone-else@example.test' }), guardians: [guardianOf(P.guardian)] });
+    const mismatch = await post();
+    const mismatchBody = await mismatch.text();
+    expectNoWrites();
+    setup({ ...baseWorld({ created_by: P.guardian }), player_invites: [] });
+    const unknown = await post();
+    expect([mismatch.status, mismatchBody]).toEqual([unknown.status, await unknown.text()]);
+    expect(mismatch.status).toBe(400);
   });
 
   it('documented boundary: a genuine guardian invites a former coach of a previous team', async () => {
@@ -303,16 +410,14 @@ describe('legitimate guardian invites still redeem', () => {
 describe('a failing eligibility read fails closed without database text', () => {
   const reads = ['players', 'coach_team', 'coach_players', 'relationship_audit_events', 'guardians', 'cards', 'orders'];
   it.each(reads)('a failing %s read is a fixed 500 with a code-only log and no writes', async (table) => {
+    // An invite that reaches every read: not a guardian's, an order that is not this child's single card, no active coach creator.
     setup(
       {
-        ...baseWorld({ created_by: P.purchaser, order_id: ORDER }),
-        cards: [{ player_id: PLAYER, order_id: OTHER_ORDER }],
-        orders: [{ id: OTHER_ORDER, purchaser_email: 'nobody@example.test', payment_status: 'fulfilled' }],
+        ...baseWorld({ created_by: P.purchaser, order_id: ORDER, invited_email: REDEEMER_EMAIL }),
+        cards: [{ player_id: OTHER_PLAYER, order_id: ORDER }],
+        orders: [fulfilled(ORDER)],
       },
-      {
-        users: { [P.purchaser]: { email: 'fictional-buyer@example.test', email_confirmed_at: '2026-01-01T00:00:00Z' } },
-        fail: (c) => (c.table === table && c.op === 'select' ? { error: sentinelError('XX000') } : undefined),
-      }
+      { fail: (c) => (c.table === table && c.op === 'select' ? { error: sentinelError('XX000') } : undefined) }
     );
     const res = await post();
     const raw = await res.text();
@@ -324,17 +429,18 @@ describe('a failing eligibility read fails closed without database text', () => 
     expectNoWrites();
   });
 
-  it('a failing account lookup for the creator is a fixed 500 with a code-only log', async () => {
-    setup({ ...baseWorld({ created_by: P.purchaser }) });
+  it('eligibility never consults the creator\'s account email (purchaser-email matching grants nothing)', async () => {
+    setup(squadBuyerWorld({ invited_email: REDEEMER_EMAIL }), { users: buyerUsers });
     service = createFakeSupabase({
-      respond: (c) => (c.table === 'player_invites' ? { data: baseWorld({ created_by: P.purchaser }).player_invites[0] } : c.op === 'select' ? { data: [] } : {}),
-      adminUser: () => ({ error: sentinelError('XX000') }),
+      respond: (c) => {
+        if (c.op !== 'select') return {};
+        const rows = (squadBuyerWorld({ invited_email: REDEEMER_EMAIL })[c.table] ?? []).filter((r) => c.filters.every((flt) => matches(r, flt)));
+        return ['player_invites', 'players', 'profiles'].includes(c.table) ? { data: rows[0] ?? null } : { data: rows };
+      },
+      adminUser: () => {
+        throw new Error('the creator account must not be looked up');
+      },
     });
-    const res = await post();
-    expect(res.status).toBe(500);
-    expect(await res.text()).not.toMatch(/SENTINEL/);
-    expect(logs.text()).not.toMatch(/SENTINEL|sentinel_secret/);
-    expectCodeOnlyLogs(logs, 'guardian invite redeem: eligibility', 'XX000');
-    expectNoWrites();
+    await expectRefused(await post());
   });
 });
