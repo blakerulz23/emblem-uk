@@ -98,8 +98,8 @@ export default function TrustAndSafeguardingPage() {
         <li>request full deletion of their child&rsquo;s profile.</li>
       </ul>
       <p style={{ ...BODY, marginTop: 10 }}>
-        These are guardian-only actions — a coach or Squad Invite organiser never has the ability to
-        publish, share or delete a child&rsquo;s profile on a guardian&rsquo;s behalf.
+        These are guardian-only actions — being a coach or Squad Invite organiser does not by itself
+        give anyone the ability to publish, share or delete a child&rsquo;s profile.
       </p>
 
       <h2 style={SECTION_TITLE}>Coach contributions and verification</h2>

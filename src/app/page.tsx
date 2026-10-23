@@ -37,7 +37,7 @@ const tiers = [
     who: 'Two to nine cards in one order.',
     price: `From ${PRICES.multi}`,
     priceSuffix: 'per card',
-    points: ['Everything in a single card', 'One order for several players', 'Each child’s profile is linked after their guardian is verified'],
+    points: ['Everything in a single card', 'One order for several players', 'Each child’s profile is linked with their own family'],
     cta: 'Build a set',
     href: '/builder?mode=set',
   },
@@ -138,7 +138,7 @@ export default function Home() {
       <section id="pricing" className="emh-section emh-pricing">
         <p className="emh-eyebrow">Pricing</p>
         <h2>Choose how you want to collect.</h2>
-        <p>Start with one card, order a set for brothers and sisters, or bring the whole squad together. Every card includes premium printing, built-in NFC and its digital profile. Buying the cards and becoming a child’s verified guardian are separate steps: for a card set, Emblem may need to verify each child’s guardian before profiles are linked.</p>
+        <p>Start with one card, order a set for brothers and sisters, or bring the whole squad together. Every card includes premium printing, built-in NFC and its digital profile. Buying the cards does not make you each child’s guardian: for a card set, Emblem arranges with each child’s family how that child’s profile is linked.</p>
         <div className="emh-tier-grid">
           {tiers.map((tier) => (
             <article key={tier.name} className={tier.featured ? 'emh-tier-featured' : ''}>

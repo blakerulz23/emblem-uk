@@ -718,6 +718,15 @@ Concurrency, PostgREST, Supabase Auth and real JWTs aren't exercised (see
 "Not represented"). Signed-in calls are simulated with
 `set local role authenticated` and `request.jwt.claim.sub`.
 
+**Release conditions (confirm before step 1).**
+- The binding pilot control is in force and staff are instructed: no
+  centrally purchased multi-card order may be approved or used with real
+  children; squad pilots use Squad Invite only; multi-card family orders are
+  handled manually. Before step 1, staff review read-only, as counts only,
+  how many multi-card orders are awaiting approval, and hold each one.
+- The safeguarding-owner decision table below is completed and signed,
+  including the Squad Invite card-custody row.
+
 **Production sequence.** Each step needs explicit approval.
 1. Apply 0088.
 2. Deploy the final release commit (the exact commit that was rehearsed).
@@ -962,8 +971,10 @@ written, and the legitimate paths.
   multi-card `self` request fails closed;
 - current and former team and direct coaches cannot use their own account to
   claim a child through the child's card (the roster-add claim code included);
-- a squad purchase does not itself create guardian authority through
-  recovery `self`.
+- recovery `self` gives the purchaser of a multi-card (squad) order no
+  guardian authority. This does not stop that purchaser claiming the cards
+  with their claim codes (see the multi-card boundary and the binding pilot
+  control below).
 
 **Boundaries (need an explicit safeguarding and data-protection decision
 before production):**
@@ -983,10 +994,24 @@ before production):**
 - **A parent who is also a current or former coach of the child cannot link
   themselves by card or invite.** There is no staff flow for this yet; the
   other parent or guardian can claim the card or invite them.
-- **Multi-card purchasers cannot link profiles themselves.** Emblem must
-  verify each child's guardian manually (there is no staff tool for this
-  yet; it is the first post-lockdown product task), or each child's guardian
-  uses the code on their own card.
+- **A central multi-card buyer can become the first guardian of every
+  child on the order.**
+  - Staff approval of an order with more than one card makes every card
+    claimable and emails the purchaser a team invite.
+  - The cards are delivered together, normally to the buyer, and each card's
+    claim code works for whoever holds it.
+  - Until the purchaser redeems that team invite they have no coach record,
+    so the card-claim check (which refuses only current and former coaches)
+    does not stop them claiming each child with their own account.
+  - Redeeming the invite afterwards also makes them the team's coach.
+  - Refusing recovery `self` for multi-card orders does not close this path.
+  - Approving any multi-card order, including a family's set, makes the
+    purchaser a coach through that team invite.
+  - There is no staff tool to verify each child's guardian (the first
+    post-lockdown product task).
+
+  For this release the binding pilot control below forbids central
+  multi-card orders for real children.
 - **Claim codes have no expiry.** There is no approved product rule; a code
   stays usable until the card is claimed, suspended or revoked.
 - **A coach of the child's previous team is not detected.** The player's
@@ -1015,10 +1040,35 @@ before production):**
   staff or club-welfare confirmation of first guardians, claim-code expiry,
   and recording player-team history from now on.
 
+**Binding pilot control (release condition for this release; not optional):**
+
+- No centrally purchased multi-card order (two or more cards bought by one
+  purchaser through the multi-card set or full-squad builder) may be
+  approved, fulfilled or used with real children. Staff must not approve
+  such an order through the multi-card (team order) approval; it is held
+  and handled manually.
+- Squad pilots use only the Squad Invite flow, where each family privately
+  creates and pays for its own child's card.
+- Single-card parent purchases remain permitted.
+- Multi-card family orders require manual handling by Emblem before any
+  card is approved or linked.
+- The control stays in force until a reviewed, rehearsed and approved
+  change closes the multi-card purchaser claim path.
+- **Squad Invite card custody (disclosed; owner decision below).**
+  - A Squad Invite approval links no guardian. Each family links its child
+    later, through the staff-sent claim reminder, purchaser recovery or the
+    card's code.
+  - Until then, the paid cards delivered together to the club's chosen
+    contact can be claimed by whoever holds them. A holder with a current or
+    former coach record for the child is refused; any other account is not.
+    This is the same possession-based model as N1.
+
 **Safeguarding-owner decision on N1 (blank; to be completed by the owner):**
 
 | Field | Value |
 |---|---|
+| Binding pilot control (release condition, fixed) | No centrally purchased multi-card order approved or used with real children; squad pilots through Squad Invite only; single-card parent purchases permitted; multi-card family orders handled manually |
+| Squad Invite card custody until families claim (owner decision) | |
 | Chosen option (A or B) | |
 | Safeguarding owner | |
 | Rationale | |

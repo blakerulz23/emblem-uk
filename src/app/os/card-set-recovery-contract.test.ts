@@ -2,8 +2,10 @@ import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 
 // Gate 3.12 contracts: the recovery screen never offers a card set to the
-// purchaser, the server checks run before the first write, and marketing no
-// longer promises guardian linking for friends' children.
+// purchaser, the server checks run before the first write, marketing neither
+// promises guardian linking for friends' children nor claims that guardians
+// are verified, and the README discloses the multi-card buyer path and the
+// binding pilot control.
 const read = (p: string) => readFileSync(p, 'utf8');
 
 describe('card-set recovery and first-guardian claim contracts', () => {
@@ -51,9 +53,23 @@ describe('card-set recovery and first-guardian claim contracts', () => {
     expect(readme).toContain('purchaser `self` recovery works only for a single-card order');
   });
 
-  it('marketing no longer promises a set for friends and says guardian verification is a separate step', () => {
+  it('the README discloses that a central multi-card buyer can become each child\'s guardian and records the binding pilot control', () => {
+    const readme = read('supabase/tests/authz/README.md').replace(/\s+/g, ' ');
+    expect(readme).not.toContain('Multi-card purchasers cannot link profiles themselves');
+    expect(readme).not.toContain('a squad purchase does not itself create guardian authority');
+    expect(readme).toContain('A central multi-card buyer can become the first guardian of every child on the order.');
+    expect(readme).toContain('**Binding pilot control (release condition for this release; not optional):**');
+    expect(readme).toContain('No centrally purchased multi-card order');
+    expect(readme).toContain('Squad pilots use only the Squad Invite flow');
+    expect(readme).toContain('**Release conditions (confirm before step 1).**');
+    expect(readme).toContain('| Binding pilot control (release condition, fixed) |');
+    expect(readme).toContain('| Squad Invite card custody until families claim (owner decision) | |');
+  });
+
+  it('marketing no longer promises a set for friends or claims that guardians are verified', () => {
     const home = read('src/app/page.tsx');
     expect(home).not.toMatch(/siblings (and|or) friends/i);
-    expect(home).toContain('Buying the cards and becoming a child’s verified guardian are separate steps');
+    expect(home).not.toMatch(/verified guardian|guardian is verified|verify each child/i);
+    expect(home).toContain('Buying the cards does not make you each child’s guardian');
   });
 });
