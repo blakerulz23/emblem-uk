@@ -41,6 +41,16 @@ describe('card-set recovery and first-guardian claim contracts', () => {
     expect(firstWrite).toBeGreaterThan(check);
   });
 
+  it('the authz README discloses the remaining N1 risk exactly and no longer overstates what is closed', () => {
+    const readme = read('supabase/tests/authz/README.md').replace(/\s+/g, ' ');
+    expect(readme).toContain('it cannot prove that an otherwise unrelated account holding the code or invite is not controlled by that coach');
+    expect(readme).toContain('Preventing this completely requires an additional staff, club-welfare or real-world identity-verification step');
+    expect(readme).not.toContain('a squad purchaser gains no guardian authority from the order');
+    expect(readme).not.toMatch(/second account[^.]*(is|are) (now )?(blocked|detected|prevented)/i);
+    expect(readme).toContain('**Safeguarding-owner decision on N1 (blank; to be completed by the owner):**');
+    expect(readme).toContain('purchaser `self` recovery works only for a single-card order');
+  });
+
   it('marketing no longer promises a set for friends and says guardian verification is a separate step', () => {
     const home = read('src/app/page.tsx');
     expect(home).not.toMatch(/siblings (and|or) friends/i);
