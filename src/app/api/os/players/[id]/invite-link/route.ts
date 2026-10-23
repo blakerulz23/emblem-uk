@@ -9,6 +9,11 @@ export const runtime = 'nodejs';
  * payload (getCoachOsData) — it's only ever fetched here, on demand,
  * when a coach actually opens Manage Invite or taps Copy Link.
  *
+ * Only an invite this coach created is ever returned. A guardian's,
+ * order-approval or recovery-handoff invite belongs to someone else, and
+ * its code must not reach a coach who could pass it to another account
+ * (0091 enforces the same rule in the database).
+ *
  * Re-checks team membership explicitly (coach_team -> teamIds -> this
  * player's team_id) rather than relying only on player_invites' own
  * "coaches can view for their team" RLS policy — belt-and-braces so the
@@ -40,6 +45,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
     .from('player_invites')
     .select('code')
     .eq('player_id', params.id)
+    .eq('created_by', user.id)
     .is('used_at', null)
     .gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })

@@ -19,12 +19,14 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `migration_0088_test.mjs` | Migration 0088 and its rollback, on a fresh 0087 database with fictional rows. |
 | `migration_0089_test.mjs` | Migration 0089 and its rollback, on fresh 0088 databases with fictional rows. |
 | `migration_0090_test.mjs` | Migration 0090 (guardian-invite write lockdown) and its rollback, on a fresh 0089 database with fictional rows. |
+| `migration_0091_test.mjs` | Migration 0091 (guardian-invite code confidentiality) and its rollback, on a fresh 0090 database with fictional rows. |
 | `guardian_account_control_test.mjs` | Card suspend/unsuspend and child-deletion request/cancel on the final schema: every refusal the routes report leaves no state behind; each success and idempotent repeat makes exactly its intended change. |
 | `guardian_invite_redemption_test.mjs` | Who may redeem a guardian invite: runs the app's `src/lib/guardian-invite-eligibility.ts` against the final schema, read-only as `service_role`. |
 
 Related: `supabase/rollback/0088_rollback.sql`, `supabase/rollback/0089_rollback.sql`,
-`supabase/rollback/0090_rollback.sql`, `src/lib/migration-0088-contract.test.ts`,
-`src/lib/migration-0089-contract.test.ts` and `src/lib/migration-0090-contract.test.ts`
+`supabase/rollback/0090_rollback.sql`, `supabase/rollback/0091_rollback.sql`,
+`src/lib/migration-0088-contract.test.ts`, `src/lib/migration-0089-contract.test.ts`,
+`src/lib/migration-0090-contract.test.ts` and `src/lib/migration-0091-contract.test.ts`
 (structural, run with `npm test`), and `scripts/check-migration-numbers.mjs`
 (duplicate migration numbers).
 
@@ -770,6 +772,55 @@ acknowledgement before committing, so it never persists. 0090 can then be
 re-applied. The test proves all of this, including a re-apply to the
 identical catalog.
 
+## Migration 0091 (guardian-invite code confidentiality)
+
+```powershell
+node --no-warnings supabase/tests/authz/migration_0091_test.mjs
+```
+
+Until 0091 an active coach could read every guardian invite, including its
+code, for any player on their team, whoever created it: a guardian's
+second-guardian invite, an order-approval invite or a recovery handoff. A
+coach could pass such a code to another account they control and add a
+guardian to a child who already has one. 0091 changes one thing: the coach
+SELECT policy on `player_invites` also requires `created_by = auth.uid()`,
+so a coach reads only invites they created, and only while their
+assignment is active. The guardian SELECT policy (a guardian reads their own
+child's invites), the 0090 grants, anon (no privilege) and service_role are
+unchanged, and `origin` is not used. The catalog delta from 0090 is exactly
+that one policy; no data changes. A precondition refuses, changing nothing,
+unless the exact 0090 state is in place (RLS on, exactly the two SELECT
+policies, the 0090 column grants, no anon access), and refuses a second
+application.
+
+The application follows the same rule: `GET /api/os/players/[id]/invite-link`
+returns only the requesting coach's own live invite; invite reuse
+(`createGuardianInvite`) and resend look only at the caller's own invites;
+and the Team screen's invite status is read through the service role,
+scoped to the coach's players, without the code, offering "Manage invite"
+only for the coach's own live invite.
+
+`migration_0091_test.mjs` reproduces the disclosure at exact 0090, then
+proves who reads what after 0091 (active, ended, expired, direct-only and
+other-team coaches; the guardian; another child's guardian; the purchaser;
+an unrelated account; anon; service_role), that the legitimate inserts with
+RETURNING and service-role redemption still work, the precondition
+refusals, the exact delta, and the rollback chain.
+
+**Rollback: emergency only.** `supabase/rollback/0091_rollback.sql` REOPENS
+guardian-invite code disclosure and relay. It refuses, changing nothing,
+unless the same transaction first runs:
+
+```sql
+begin;
+select set_config('emblem.acknowledge_0091_rollback', 'REOPEN-GUARDIAN-INVITE-CODE-DISCLOSURE', true);
+-- then the rollback file
+```
+
+It restores the exact 0090 catalog (the disclosure is then genuinely back),
+changes no data, and clears the acknowledgement before committing. 0091 can
+then be re-applied to the identical catalog.
+
 ## Guardian-invite redemption: no self-escalation
 
 ```powershell
@@ -790,7 +841,11 @@ for every reason, when the redeemer:
 4. was the player's direct coach (the audit history records the link).
 
 It also refuses when the invite was made through coach authority and the
-child already has a guardian. The creator's authority comes from
+child already has a guardian. Before any of that, an invite that names a
+recipient (`invited_email`) can only be redeemed by an account whose
+verified email is that address (compared without case or surrounding
+whitespace); a mismatch gets exactly the invalid-or-expired response. An
+invite with no recipient email keeps its link-only behaviour. The creator's authority comes from
 relationships and trusted columns, never from `origin` (which a signed-in
 creator may set): guardian when the creator is currently the child's
 guardian (so a parent who also coaches acts as the parent); order when
@@ -815,9 +870,14 @@ logs.
 **Boundaries (need an explicit safeguarding and data-protection decision
 before production):**
 
-- **A coach can pass a first-guardian invite to another account they
-  control.** For a child with no guardian, a coach-created invite is valid
-  for any non-coach account, and an invite code does not prove who holds it.
+- **A coach can deliberately create a first-guardian invite for an email or
+  account they control.** For a child with no guardian, a coach-created
+  invite is valid for any non-coach account whose verified email matches the
+  invite's recipient (or any account, for a link-only invite). Coaches can no
+  longer read other people's invite codes (0091 and the routes above), and
+  emailed invites are bound to their recipient.
+- **A link-only invite (no recipient email) can be shared by anyone who
+  legitimately holds the code.** A code alone does not prove who holds it.
 - **A genuine guardian can invite a former coach of a previous team.** The
   player's team history is not recorded (staff order approval overwrites
   `players.team_id`), so only the current team's assignments are seen. A
@@ -830,14 +890,18 @@ before production):**
   database function.
 - **A parent who already coaches the child's team cannot join as guardian by
   invite**; a card claim or staff help is needed.
-- Possible later controls: binding redemption to the invited email, staff
-  confirmation of coach-created invites, and recording player-team history
-  from now on.
+- Possible later controls: requiring a recipient email on every invite,
+  staff confirmation of coach-created invites, and recording player-team
+  history from now on.
 
 ## Duplicate migration numbers
 
 `node scripts/check-migration-numbers.mjs [dir]` exits 1 and names the files
-when two migrations share a number, or a file isn't `NNNN_name.sql`.
+when two migrations share a number, a file isn't `NNNN_name.sql`, or a
+reserved number is used by a different migration. Reserved: 0088–0091 for
+this security release, 0092 for `test_card_archive`, 0093 for
+`achievement_card_reveals` (those feature branches must be renumbered
+before they merge).
 `scripts/check-migration-numbers.test.ts` runs it against the real folder
 and against synthetic temporary folders. There is no CI workflow in this
 repository yet. Running it on every push and pull request is a follow-up.

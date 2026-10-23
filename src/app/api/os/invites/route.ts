@@ -44,10 +44,13 @@ export async function POST(request: NextRequest) {
   let originToUse: InviteOrigin = origin === 'coach_added_player' ? 'coach_added_player' : 'second_guardian';
 
   if (resend) {
+    // Only the caller's own pending invite: resending reuses that invite
+    // and returns its code, so it must never be someone else's.
     const { data: pending } = await supabase
       .from('player_invites')
       .select('invited_email, origin')
       .eq('player_id', playerId)
+      .eq('created_by', user.id)
       .is('used_at', null)
       .gt('expires_at', new Date().toISOString())
       .not('invited_email', 'is', null)

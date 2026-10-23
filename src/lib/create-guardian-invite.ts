@@ -34,6 +34,9 @@ export const GUARDIAN_INVITE_FAILED_MESSAGE = 'Could not create the invitation. 
  * recipient's code to a different recipient. Order-approval invites are
  * scoped to player_id + origin + order_id (+ recipient email, when known);
  * guardian/coach invites are scoped to player_id + origin + invited_email.
+ * Every lookup is also scoped to the same creator (none, for an order
+ * invite): a reused code is returned to the caller, so it must never be
+ * someone else's invite (guardian-invite confidentiality, 0091).
  *
  * Creating the invite and emailing it are separate outcomes. The invite is
  * valid as soon as its row exists, so a skipped or failed email never fails
@@ -64,6 +67,7 @@ export async function createGuardianInvite(
   if (origin === 'order_approval') {
     existingQuery = existingQuery.eq('order_id', orderId ?? '');
   }
+  existingQuery = createdByUserId ? existingQuery.eq('created_by', createdByUserId) : existingQuery.is('created_by', null);
   existingQuery = invitedEmail ? existingQuery.eq('invited_email', invitedEmail) : existingQuery.is('invited_email', null);
 
   const { data: existing } = await existingQuery.maybeSingle();

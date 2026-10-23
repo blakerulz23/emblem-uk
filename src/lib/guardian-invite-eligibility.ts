@@ -31,8 +31,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * Boundaries (see supabase/tests/authz/README.md):
  *   - the player's team history is not recorded, so a coach of a previous
  *     team is not detected; a genuine guardian may invite them;
- *   - an invite code does not prove who holds it, so a coach can still pass
- *     a first-guardian invite (child with no guardian) to another account;
+ *   - a coach can still create a first-guardian invite (child with no
+ *     guardian) for an email or account they control; coaches cannot read
+ *     other people's invite codes (0091), and an emailed invite is bound to
+ *     its recipient (redeemerMatchesInvitedEmail), but a link-only invite
+ *     can be used by anyone who holds the code;
  *   - these reads and the redemption writes are separate PostgREST calls,
  *     not one transaction: a relationship created between this check and
  *     the guardian insert is not seen.
@@ -56,6 +59,25 @@ export type GuardianInviteEligibility =
 
 /** The one response for every refusal, so none reveals which rule applied. */
 export const GUARDIAN_INVITE_REDEEM_REFUSED_MESSAGE = "This invite can't be accepted with this account.";
+
+const normalisedEmail = (value: unknown) => (typeof value === 'string' ? value.trim().toLowerCase() : '');
+
+/**
+ * An invite that names a recipient (invited_email) may be redeemed only by
+ * an account whose verified email is that address, compared without case
+ * or surrounding whitespace. Holding the code is not enough: a code can be
+ * passed on. An invite with no recipient email keeps its link-only
+ * behaviour (anyone holding the code, subject to the other rules).
+ */
+export function redeemerMatchesInvitedEmail(
+  invitedEmail: string | null | undefined,
+  redeemer: { email?: string | null; email_confirmed_at?: string | null }
+): boolean {
+  const invited = normalisedEmail(invitedEmail);
+  if (!invited) return true;
+  const own = normalisedEmail(redeemer.email);
+  return own !== '' && !!redeemer.email_confirmed_at && own === invited;
+}
 
 type Row = Record<string, unknown>;
 type Read = { data: unknown; error: unknown };

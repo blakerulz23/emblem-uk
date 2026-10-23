@@ -8,9 +8,11 @@ import { ensurePublicPlayerId } from '@/lib/public-player-id';
 import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
 import { ensureProfileRole } from '@/lib/relationship-writes';
 import { logRouteFailure, type DbError } from '@/lib/route-failure';
-import { checkGuardianInviteRedemption, GUARDIAN_INVITE_REDEEM_REFUSED_MESSAGE } from '@/lib/guardian-invite-eligibility';
+import { checkGuardianInviteRedemption, GUARDIAN_INVITE_REDEEM_REFUSED_MESSAGE, redeemerMatchesInvitedEmail } from '@/lib/guardian-invite-eligibility';
 
 export const runtime = 'nodejs';
+
+const INVITE_INVALID_MESSAGE = "This invite isn't valid or has expired";
 
 type InviteLookupRow = {
   id: string;
@@ -110,12 +112,19 @@ export async function POST(request: NextRequest) {
   const serviceRole = createServiceRoleClient();
   const { data: invite } = await serviceRole
     .from('player_invites')
-    .select('id, used_at, expires_at, player_id, created_by, order_id')
+    .select('id, used_at, expires_at, player_id, created_by, order_id, invited_email')
     .eq('code', code)
     .maybeSingle();
 
   if (!invite || invite.used_at || new Date(invite.expires_at) <= new Date()) {
-    return NextResponse.json({ error: "This invite isn't valid or has expired" }, { status: 400 });
+    return NextResponse.json({ error: INVITE_INVALID_MESSAGE }, { status: 400 });
+  }
+
+  // Before any write: an invite sent to a named recipient can only be
+  // accepted by that recipient's verified account. A mismatch looks exactly
+  // like an invalid invite, revealing nothing about who it was for.
+  if (!redeemerMatchesInvitedEmail(invite.invited_email, user)) {
+    return NextResponse.json({ error: INVITE_INVALID_MESSAGE }, { status: 400 });
   }
 
   // Before any write: a coach, or the invite's own creator, must not be able

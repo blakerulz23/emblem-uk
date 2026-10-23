@@ -884,25 +884,30 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
   const guardianCounts = new Map<string, number>();
   (guardianRows ?? []).forEach((g) => guardianCounts.set(g.player_id as string, (guardianCounts.get(g.player_id as string) ?? 0) + 1));
 
-  // player_invites already has a coach-select policy — no service-role
-  // needed here, the ordinary session client is enough. Deliberately
-  // never selects `code` — the code is only ever fetched on demand, via
-  // GET /api/os/players/[id]/invite-link, when the coach actually opens
-  // Manage Invite or taps Copy Link.
+  // Invite status (pending/expired) must reflect every live invite, but
+  // since 0091 a coach may read only invites they created themselves, so
+  // other people's codes can't be relayed. Like guardianRows above, this
+  // reads via service-role scoped to playerIds (already coach-authorized)
+  // and never selects `code`: only a status, an expiry and whether this
+  // coach has a live invite of their own leave this function. The code is
+  // fetched on demand, via GET /api/os/players/[id]/invite-link, and only
+  // for an invite this coach created.
   const { data: inviteRows } = playerIds.length
-    ? await supabase
+    ? await createServiceRoleClient()
         .from('player_invites')
-        .select('player_id, expires_at')
+        .select('player_id, expires_at, created_by')
         .in('player_id', playerIds)
         .is('used_at', null)
         .order('created_at', { ascending: false })
-    : { data: [] as { player_id: string; expires_at: string }[] };
+    : { data: [] as { player_id: string; expires_at: string; created_by: string | null }[] };
   const latestInviteByPlayer = new Map<string, { expiresAt: string }>();
+  const ownLiveInvite = new Set<string>();
   (inviteRows ?? []).forEach((inv) => {
     const playerId = inv.player_id as string;
     if (!latestInviteByPlayer.has(playerId)) {
       latestInviteByPlayer.set(playerId, { expiresAt: inv.expires_at as string });
     }
+    if (inv.created_by === userId && new Date(inv.expires_at as string) > new Date()) ownLiveInvite.add(playerId);
   });
 
   // Season Focus / Recognised Strengths / Coach's Assessment for every
@@ -980,7 +985,8 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
       guardianStatus,
       guardianCount,
       latestInviteExpiresAt: guardianStatus === 'pending' || guardianStatus === 'expired' ? latestInvite?.expiresAt ?? null : null,
-      hasManageableInvite: guardianStatus === 'pending',
+      // Only this coach's own live invite can be managed (and its link copied).
+      hasManageableInvite: guardianStatus === 'pending' && ownLiveInvite.has(p.id),
       secondaryPosition: p.secondary_position ?? null,
       footballAgeGroup: p.football_age_group ?? null,
       heightCm: p.height_cm ?? null,
