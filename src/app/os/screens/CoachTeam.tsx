@@ -252,7 +252,7 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
               ) : (
                 <>
                   {inviteNotEmailed && (
-                    <div role="status" style={{ fontSize: 13, lineHeight: 1.5, color: '#C4501C', marginBottom: 8 }}>
+                    <div role="status" className="os-notice-warn" style={{ fontSize: 13, lineHeight: 1.5, marginBottom: 8 }}>
                       The invitation email could not be sent. Share this code with the player&apos;s parent instead.
                     </div>
                   )}
