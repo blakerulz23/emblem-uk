@@ -62,7 +62,7 @@ export default function PrivacyPage() {
         Privacy Policy
       </h1>
       <p style={{ ...BODY, marginTop: 8, fontSize: 13.5, color: 'var(--ink-faint)' }}>
-        Last updated 20 October 2026
+        Last updated 25 October 2026
       </p>
 
       <p style={{ ...BODY, marginTop: 20 }}>
@@ -171,6 +171,28 @@ export default function PrivacyPage() {
         confirm the names actually belong to their own team. Each parent&rsquo;s photo, full name
         and any other detail stays private to that parent and to Emblem staff reviewing the
         request.
+      </p>
+
+      <h3 style={SUBSECTION_TITLE}>Creator partners and partner codes</h3>
+      <p style={BODY}>
+        Adults who apply to our partner programme give us their name, email, main social platform,
+        a link to their profile and a short note about their audience. We use these only to review
+        the application and, if approved, to run the partnership: their code, commission and
+        payments (bank details are requested by email when a payment is due and are not stored on
+        our site). This is necessary to take steps towards, and perform, our agreement with them.
+      </p>
+      <p style={{ ...BODY, marginTop: 10 }}>
+        If you use a partner&rsquo;s code at checkout, we record which code was used on your order so
+        the partner can be paid. The partner sees only the date and amount of the order, never your
+        name, contact details, or anything about your child.
+      </p>
+      <p style={{ ...BODY, marginTop: 10 }}>
+        <strong style={{ color: 'var(--ink)' }}>How long we keep partner information:</strong>{' '}
+        Applications that do not lead to an approved partnership are deleted when no longer needed,
+        and normally within 12 months of submission. We retain active partner information while
+        needed to administer the partnership. Commission, payout and associated accounting records
+        are retained for six years from the end of the financial year they relate to, or longer where
+        legally required. Other partner information is deleted or anonymised when no longer needed.
       </p>
 
       <h2 style={SECTION_TITLE}>A note on identity verification</h2>
