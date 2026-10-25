@@ -186,6 +186,14 @@ export default function PrivacyPage() {
         the partner can be paid. The partner sees only the date and amount of the order, never your
         name, contact details, or anything about your child.
       </p>
+      <p style={{ ...BODY, marginTop: 10 }}>
+        <strong style={{ color: 'var(--ink)' }}>How long we keep partner information:</strong>{' '}
+        Applications that do not lead to an approved partnership are deleted when no longer needed,
+        and normally within 12 months of submission. We retain active partner information while
+        needed to administer the partnership. Commission, payout and associated accounting records
+        are retained for six years from the end of the financial year they relate to, or longer where
+        legally required. Other partner information is deleted or anonymised when no longer needed.
+      </p>
 
       <h2 style={SECTION_TITLE}>A note on identity verification</h2>
       <p style={BODY}>
@@ -291,7 +299,6 @@ export default function PrivacyPage() {
         <li>An active player profile and its moments: for as long as the profile is active, reviewed periodically.</li>
         <li>Sign-in and claim-attempt security logs: a short window (proposed 30–90 days).</li>
         <li>Order and payment records: retained by Shopify as required by law (e.g. tax records).</li>
-        <li>Partner applications that are not approved: deleted within 12 months. Partner and commission records: for the partnership plus 6 years, for tax and accounting.</li>
       </ul>
       <p style={{ ...BODY, marginTop: 10 }}>
         You can ask us to delete a player&rsquo;s profile, a specific moment or photo, or a whole
