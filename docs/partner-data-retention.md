@@ -17,11 +17,10 @@ Implements the partner retention wording in the Privacy Policy ("Creator partner
 | Active partner information (name, email, profile link, audience note, staff notes, codes) | While needed to run the partnership | When the partnership has ended and nothing is pending: personal details anonymised and codes switched off (B2) |
 | Commission, payout and related accounting records | **6 years from the end of the financial year they relate to**, or longer if the law requires | Deleted, together with the anonymised partner row (B3) |
 
-**Financial year: NOT YET CONFIRMED.**
-- The accounting steps (A4 review, B3 deletion) **refuse to run** until the confirmed accounting year-end month (1–12) is typed in place of `<REQUIRED: accounting year-end month 1-12>`. There is no default.
-- Take the month from LAUDA CARTOONS STUDIO LTD's accounting reference date (Companies House).
-- The queries assume the year ends on the last day of that month. If it doesn't, change the `fy_end` expression before use.
-- Application clean-up (A1–A3, B1, B2) doesn't depend on the year end and can run now.
+**Financial year: ends 30 November** (month `11`, last day of the month). Source: the Companies House register for LAUDA CARTOONS STUDIO LTD (16063577), checked 25 October 2026: last accounts made up to 30 November 2025, next accounts made up to 30 November 2026.
+- **Re-check it** on the register at each annual review, and before any B3 run. A company can change its accounting reference date. If it changes, update the month in A4 and B3, and treat records from the changed (shortened or extended) year by hand.
+- A4 and B3 refuse to run if the month is missing or outside 1–12.
+- Application clean-up (A1–A3, B1, B2) doesn't depend on the year end.
 
 **Legal holds:** if there is a dispute, an HMRC enquiry, or any other reason to keep a record, don't delete it. Note the reason in that partner's `staff_notes` and skip it until the hold ends.
 
@@ -62,13 +61,12 @@ order by p.updated_at;
 ```
 
 ```sql
--- [A4] Financial records (REQUIRES the confirmed year end, see above): when each anonymised partner's records may be deleted. Its latest
+-- [A4] Financial records (year end 30 November, see above): when each anonymised partner's records may be deleted. Its latest
 -- commission or payout sets the date: end of that financial year + 6 years. "due" = may be
 -- deleted now (B3); anything due within 3 months is listed so it can be planned.
 with params as (
-  -- REQUIRED, no default: replace the text below with the confirmed accounting year-end month (1-12).
-  -- Left as it is, this query stops with: invalid input syntax for type integer.
-  select '<REQUIRED: accounting year-end month 1-12>'::integer as fy_end_month
+  -- Accounting year-end month: 11 = 30 November (Companies House, checked 25 Oct 2026; re-check yearly).
+  select '11'::integer as fy_end_month
 ),
 guard as (
   -- Refuses a month outside 1-12 ("date field value out of range"). The final select starts
@@ -161,14 +159,14 @@ end $$;
 ```
 
 ```sql
--- [B3] Delete expired financial records (REQUIRES the confirmed year end; ids from A4 with due = true). Deletion order follows
+-- [B3] Delete expired financial records (year end 30 November; ids from A4 with due = true). Deletion order follows
 -- the foreign keys: commissions (they reference payouts), then payouts, then the partner row
 -- (its codes are deleted with it). Orders are never touched. The payout-balance check
 -- (migration 0095) passes because each payout goes in the same statement as its commissions.
 do $$
 declare
-  -- REQUIRED, no default: replace with the confirmed accounting year-end month (1-12), same as A4.
-  v_fy_end_text text := '<REQUIRED: accounting year-end month 1-12>';
+  -- Accounting year-end month, same as A4: 11 = 30 November (Companies House, checked 25 Oct 2026).
+  v_fy_end_text text := '11';
   v_fy_end_month integer;
   v_ids uuid[] := '{PASTE-IDS}';
   v_due uuid[];
@@ -177,7 +175,7 @@ declare
   v_p integer;
 begin
   if v_fy_end_text !~ '^(1[0-2]|[1-9])$' then
-    raise exception 'B3 refused: the accounting year-end month is not set. Replace <REQUIRED: accounting year-end month 1-12> with the confirmed month.';
+    raise exception 'B3 refused: the accounting year-end month must be 1-12 (currently %).', v_fy_end_text;
   end if;
   v_fy_end_month := v_fy_end_text::integer;
 
@@ -228,5 +226,6 @@ Use ids only. Never copy names or emails into the log.
   - refusal of a whole run when any id doesn't qualify;
   - foreign-key order and the payout-balance check;
   - the date maths;
-  - refusal of A4 and B3 while the year end is missing or invalid.
+  - retention dates for the 30 November year end, including both sides of the year boundary;
+  - refusal of A4 and B3 when the month is missing or invalid.
 - If the partner tables change in a later migration, re-review this procedure before the next monthly run.
