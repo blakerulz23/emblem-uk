@@ -133,6 +133,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, orderId: existing.id, applied: false, reason: 'refund_failed' });
   }
 
+  // Refunded cards earn nothing: a full refund, or a partial one that
+  // returned money for any card, voids a pending partner commission for
+  // this order (migration 0095; a no-op when the order wasn't credited). A
+  // goodwill or shipping-only amount, or a restock with no money returned,
+  // leaves it. Squad Invite orders never take a partner code, so they're
+  // skipped. 500 asks Shopify to retry.
+  const refundedCards = classification.kind === 'full'
+    || (classification.refundedQuantity > 0 && classification.refundedAmountPence !== 0);
+  if (!isSquadInvite && refundedCards) {
+    const { error: voidError } = await supabase.rpc('void_uk_partner_commission', { p_order_id: existing.id, p_reason: 'refunded' });
+    if (voidError) {
+      console.error('shopify refund webhook: partner commission not voided, asking Shopify to retry', { reference });
+      return NextResponse.json({ error: 'partner commission not yet voided' }, { status: 500 });
+    }
+  }
+
   if (classification.kind === 'partial') {
     await notifyStaffOfPaymentIssue(supabase, {
       kind: 'refund_partial',

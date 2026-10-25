@@ -12,6 +12,7 @@ const mockRpc = vi.fn();
 const mockOrdersSelect = vi.fn();
 const mockParticipationSelect = vi.fn();
 const mockOrderStatus = vi.fn();
+const mockPartnerCode = vi.fn();
 vi.mock('@/lib/supabase/server', () => ({
   createServiceRoleClient: () => ({
     rpc: (name: string, args: unknown) => mockRpc(name, args),
@@ -19,6 +20,9 @@ vi.mock('@/lib/supabase/server', () => ({
       if (table === 'orders') {
         // The re-read before Squad Invite bookkeeping selects payment_status only.
         return { select: (cols: string) => ({ eq: () => ({ maybeSingle: () => (cols === 'payment_status' ? mockOrderStatus() : mockOrdersSelect()) }) }) };
+      }
+      if (table === 'partner_codes') {
+        return { select: () => ({ eq: () => ({ maybeSingle: () => mockPartnerCode() }) }) };
       }
       if (table === 'squad_invite_participations') {
         return { select: () => ({ eq: () => ({ maybeSingle: () => mockParticipationSelect() }) }) };
@@ -107,6 +111,7 @@ beforeEach(() => {
   mockOrdersSelect.mockResolvedValue({ data: ORDER_ROW, error: null });
   mockRpc.mockResolvedValue({ data: { applied: true, orderId: ORDER_ROW.id }, error: null });
   mockFlagSecondPayment.mockReset().mockResolvedValue('none');
+  mockPartnerCode.mockReset().mockResolvedValue({ data: null, error: null });
 });
 
 describe('POST /api/webhooks/shopify/orders-paid — signature and delivery-id verification', () => {
@@ -540,5 +545,88 @@ describe('POST /api/webhooks/shopify/orders-paid — second payment for an alrea
     await post(VALID_PAYLOAD);
     expect(mockFlagSecondPayment).not.toHaveBeenCalled();
     expect(mockEnqueueStaffNotification).toHaveBeenCalledTimes(1);
+  });
+});
+
+// UK partner programme (migration 0095): an order whose one discount code is
+// a recorded partner code may carry exactly that percentage off; anything
+// else still fails closed.
+describe('POST /api/webhooks/shopify/orders-paid — UK partner codes', () => {
+  // 2 x £24.99 with 20% off: Shopify allocates £10.00 (round(4998 * 0.2) = 1000p).
+  const discountedLine = (amount: string) => ({
+    variant_id: 123456789,
+    quantity: 2,
+    price: '24.99',
+    discount_allocations: [{ amount, amount_set: { presentment_money: { amount, currency_code: 'GBP' } } }],
+  });
+  const partnerPayload = (amount = '10.00', code = 'coachjo') => ({
+    ...VALID_PAYLOAD,
+    discount_codes: [{ code, amount, type: 'percentage' }],
+    line_items: [discountedLine(amount)],
+  });
+  const applyCall = () => mockRpc.mock.calls.find(([name]) => name === 'apply_gate3_payment_event');
+  const commissionCall = () => mockRpc.mock.calls.find(([name]) => name === 'record_uk_partner_commission');
+
+  it('accepts exactly the partner percentage, records what was actually paid, and credits the partner on that amount', async () => {
+    mockPartnerCode.mockResolvedValue({ data: { code: 'COACHJO', discount_bps: 2000 }, error: null });
+    const res = await post(partnerPayload());
+    expect(res.status).toBe(200);
+    expect(applyCall()?.[1]).toMatchObject({ p_to_status: 'paid', p_amount_pence: 3998 });
+    expect(commissionCall()?.[1]).toEqual({ p_order_id: 'order-1', p_code: 'COACHJO', p_paid_subtotal_pence: 3998 });
+    expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
+  });
+
+  it('rejects a discount that is not the partner percentage', async () => {
+    mockPartnerCode.mockResolvedValue({ data: { code: 'COACHJO', discount_bps: 1000 }, error: null });
+    await post(partnerPayload('10.00'));
+    expect(applyCall()).toBeUndefined();
+    expect(commissionCall()).toBeUndefined();
+    expect(mockEnqueueStaffNotification.mock.calls[0][1].summary.reason).toMatch(/discount_mismatch/);
+  });
+
+  it('still rejects a discount from a code that is not a UK partner code (e.g. a Canadian code)', async () => {
+    await post(partnerPayload('10.00', 'CANADA20'));
+    expect(applyCall()).toBeUndefined();
+    expect(mockEnqueueStaffNotification.mock.calls[0][1].summary.reason).toMatch(/discount_mismatch/);
+  });
+
+  it('rejects a discounted order with more than one code', async () => {
+    mockPartnerCode.mockResolvedValue({ data: { code: 'COACHJO', discount_bps: 2000 }, error: null });
+    await post({ ...partnerPayload(), discount_codes: [{ code: 'COACHJO' }, { code: 'OTHER' }] });
+    expect(mockPartnerCode).not.toHaveBeenCalled();
+    expect(applyCall()).toBeUndefined();
+  });
+
+  it('a partner code that took nothing off still credits the partner on the full price', async () => {
+    mockPartnerCode.mockResolvedValue({ data: { code: 'COACHJO', discount_bps: 2000 }, error: null });
+    await post({ ...VALID_PAYLOAD, discount_codes: [{ code: 'COACHJO' }] });
+    expect(applyCall()?.[1]).toMatchObject({ p_amount_pence: 4998 });
+    expect(commissionCall()?.[1]).toMatchObject({ p_paid_subtotal_pence: 4998 });
+  });
+
+  it('credits on a retried delivery too (the RPC is idempotent per order)', async () => {
+    mockPartnerCode.mockResolvedValue({ data: { code: 'COACHJO', discount_bps: 2000 }, error: null });
+    mockRpc.mockImplementation((name: string) =>
+      Promise.resolve(name === 'apply_gate3_payment_event' ? { data: { applied: false, reason: 'duplicate_event' }, error: null } : { data: { status: 'already_recorded' }, error: null }));
+    await post(partnerPayload());
+    expect(commissionCall()).toBeDefined();
+  });
+
+  it('asks Shopify to retry when the commission cannot be recorded', async () => {
+    mockPartnerCode.mockResolvedValue({ data: { code: 'COACHJO', discount_bps: 2000 }, error: null });
+    mockRpc.mockImplementation((name: string) =>
+      Promise.resolve(name === 'record_uk_partner_commission' ? { data: null, error: { message: 'boom' } } : { data: { applied: true }, error: null }));
+    const res = await post(partnerPayload());
+    expect(res.status).toBe(500);
+  });
+
+  it('never accepts a partner discount on a Squad Invite order', async () => {
+    mockOrdersSelect.mockResolvedValue({ data: SQUAD_ORDER_ROW, error: null });
+    mockPartnerCode.mockResolvedValue({ data: { code: 'COACHJO', discount_bps: 2000 }, error: null });
+    const discounted = squadLine({ discount_allocations: [{ amount: '3.80', amount_set: { presentment_money: { amount: '3.80', currency_code: 'GBP' } } }] });
+    await post({ ...SQUAD_PAYLOAD, discount_codes: [{ code: 'COACHJO' }], line_items: [discounted] });
+    expect(mockPartnerCode).not.toHaveBeenCalled();
+    expect(applyCall()).toBeUndefined();
+    expect(commissionCall()).toBeUndefined();
   });
 });

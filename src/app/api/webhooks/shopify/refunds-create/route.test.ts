@@ -181,7 +181,9 @@ describe('POST /api/webhooks/shopify/refunds-create — partial and failed refun
   it('a refund of 1 of 2 cards is partial: not applied, staff alerted', async () => {
     const res = await post({ ...FULL_REFUND, refund_line_items: [line(UK_VARIANT, 1)], transactions: [tx('24.99')] });
     expect(await res.json()).toMatchObject({ applied: false, reason: 'partial_refund' });
-    expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockRpc).not.toHaveBeenCalledWith('apply_gate3_payment_event', expect.anything());
+    // A refunded card earns no partner commission (migration 0095).
+    expect(mockRpc).toHaveBeenCalledWith('void_uk_partner_commission', { p_order_id: 'order-9', p_reason: 'refunded' });
     expect(reasons()[0]).toMatch(/Partial refund \(1 card\(s\), £24\.99\)/);
     expect(keys()[0]).toMatch(/^payment_refund_partial:EMB-REF-1:/);
   });

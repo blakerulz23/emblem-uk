@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'crypto';
+import { DISCOUNT_ROUNDING_TOLERANCE_PENCE, expectedDiscountPence, MAX_CUSTOMER_DISCOUNT_BPS } from './partner-programme';
 
 /**
  * Helpers for validating incoming Shopify webhooks and extracting the
@@ -108,6 +109,12 @@ type ShopifyOrderPayload = {
  * Fails closed (the caller notifies staff and never marks the order paid)
  * when a field it needs is missing or malformed, because payload shapes
  * depend on the webhook API version.
+ *
+ * Discounts: none are accepted unless `allowedDiscountBps` is given — the
+ * caller passes it only after matching the order's single discount code to
+ * a UK partner code (partner-programme.ts). Then a line may carry exactly
+ * that percentage off (±1p rounding) or no discount; the result's
+ * `discountPence` is the total taken off our card lines.
  */
 export function verifyPaidLineItem(
   payload: unknown,
@@ -115,8 +122,13 @@ export function verifyPaidLineItem(
   expectedQuantity: number,
   expectedUnitPricePence: number,
   expectedCurrency = 'GBP',
-): { ok: true; currency: string } | { ok: false; reason: string } {
+  allowedDiscountBps?: number,
+): { ok: true; currency: string; discountPence?: number } | { ok: false; reason: string } {
   const order = payload as ShopifyOrderPayload;
+  // A partner percentage outside (0%, 50%] is never accepted as a discount.
+  const discountBps = allowedDiscountBps !== undefined && Number.isInteger(allowedDiscountBps) && allowedDiscountBps > 0 && allowedDiscountBps <= MAX_CUSTOMER_DISCOUNT_BPS
+    ? allowedDiscountBps
+    : undefined;
   const expected = expectedCurrency.trim().toUpperCase();
   const shopCurrency = typeof order?.currency === 'string' ? order.currency.toUpperCase() : null;
   const presentmentCurrency = typeof order?.presentment_currency === 'string' ? order.presentment_currency.toUpperCase() : null;
@@ -137,6 +149,7 @@ export function verifyPaidLineItem(
   }
 
   let totalQuantity = 0;
+  let totalDiscountPence = 0;
   for (const match of matches) {
     if (!Number.isSafeInteger(match.quantity) || (match.quantity ?? 0) <= 0) {
       return { ok: false, reason: 'quantity_mismatch' };
@@ -151,17 +164,22 @@ export function verifyPaidLineItem(
       return { ok: false, reason: 'quantity_mismatch' };
     }
 
-    // Gate 3 does not support discounts: reject any non-zero (or malformed)
-    // allocation, read in the customer's currency where Shopify provides it.
+    // Discounts are rejected (any non-zero or malformed allocation, read in
+    // the customer's currency where Shopify provides it) unless the caller
+    // has already matched the order's code to a UK partner code, in which
+    // case exactly that percentage off this line is accepted (checked once
+    // the unit price is known, below) and nothing else.
     const allocations = Array.isArray(match.discount_allocations) ? match.discount_allocations : [];
+    let lineDiscountPence = 0;
     for (const allocation of allocations) {
       const presentmentDiscount = allocation?.amount_set?.presentment_money;
       const discountPence = presentmentDiscount !== undefined
         ? moneyStringToPence(presentmentDiscount?.amount)
         : moneyStringToPence(allocation?.amount);
-      if (discountPence !== 0) {
+      if (discountPence === null || (discountPence !== 0 && discountBps === undefined)) {
         return { ok: false, reason: 'discount_mismatch' };
       }
+      lineDiscountPence += discountPence;
     }
 
     // The unit price the customer actually paid.
@@ -180,6 +198,15 @@ export function verifyPaidLineItem(
     }
     if (unitPricePence === null || unitPricePence !== expectedUnitPricePence) {
       return { ok: false, reason: 'price_mismatch' };
+    }
+    if (lineDiscountPence !== 0) {
+      // Only reachable with a valid discountBps. No discount at all is also
+      // fine (the code did not apply to this line: full price paid).
+      const expectedPence = expectedDiscountPence(unitPricePence, match.quantity!, discountBps!);
+      if (Math.abs(lineDiscountPence - expectedPence) > DISCOUNT_ROUNDING_TOLERANCE_PENCE) {
+        return { ok: false, reason: 'discount_mismatch' };
+      }
+      totalDiscountPence += lineDiscountPence;
     }
   }
   if (totalQuantity !== expectedQuantity) {
@@ -200,7 +227,9 @@ export function verifyPaidLineItem(
     return { ok: false, reason: 'order_refunded' };
   }
 
-  return { ok: true, currency: expected };
+  return allowedDiscountBps === undefined
+    ? { ok: true, currency: expected }
+    : { ok: true, currency: expected, discountPence: totalDiscountPence };
 }
 
 function moneyStringToPence(value: unknown): number | null {

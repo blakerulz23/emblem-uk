@@ -68,7 +68,10 @@ export type AnonymousRequestAction =
   // session at all), so IP-only. Generous enough for real family/friends
   // opening a forwarded link and refreshing, tight enough to slow down
   // token-guessing/scraping against the 64-hex-char token space.
-  | 'card-share-public-page-view';
+  | 'card-share-public-page-view'
+  // UK partner programme application (/partners/apply) — anonymous, so
+  // IP-keyed, plus the applicant's email as subject.
+  | 'partner-application';
 
 const LIMITS: Record<
   | 'builder-submission-status'
@@ -86,7 +89,8 @@ const LIMITS: Record<
   | 'card-share-consent'
   | 'card-share-photo'
   | 'card-share-public-page-create'
-  | 'card-share-public-page-view',
+  | 'card-share-public-page-view'
+  | 'partner-application',
   { ip: number; subject?: number }
 > = {
   // One check per restored, interrupted submit, plus "Check again" taps.
@@ -134,6 +138,8 @@ const LIMITS: Record<
   'card-share-public-page-create': { ip: 20, subject: 10 },
   // IP-only — no authenticated subject exists for an anonymous visitor.
   'card-share-public-page-view': { ip: 120 },
+  // One real application per creator; room for a typo-and-resubmit.
+  'partner-application': { ip: 5, subject: 3 },
 };
 
 /**
