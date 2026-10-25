@@ -36,7 +36,7 @@ Canada's codes are created by `emblem-ca` with `SHOPIFY_PARTNER_DISCOUNT_VARIANT
 
 ## Release order
 1. Merge after review. The migration is **0095**: it touches no existing table, policy or function, so it can be applied before or after the relationship-authorization lockdown (0088–0091).
-2. Apply `0095_uk_partner_programme.sql` to production (Supabase SQL editor or CLI), then deploy the app. An app deployed without the migration would return 500 to Shopify (which then retries) on every order carrying a discount code, every card refund and every cancellation, so **migration first**.
+2. Apply `0095_uk_partner_programme.sql` (applied 25 Oct 2026) and then `0096_partner_tables_service_role_least_privilege.sql` to production, then deploy the app. 0096 narrows the app's database role (`service_role`) to SELECT/INSERT/UPDATE on partners, codes and payouts, and SELECT on commissions. Supabase's default privileges had also given it DELETE and TRUNCATE. An app deployed without the migration would return 500 to Shopify (which then retries) on every order carrying a discount code, every card refund and every cancellation, so **migration first**.
 3. Update the **Privacy Policy** to cover partner applicants' data (name, email, profile link, audience note; purpose: running the programme; retention). The apply form links to it.
 4. Make a test code (e.g. `UKTEST`, 20%, UK card variant), run one real £24.99 purchase with it, and check:
    - the order is marked paid at £19.99;

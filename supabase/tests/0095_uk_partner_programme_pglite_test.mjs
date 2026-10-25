@@ -55,7 +55,7 @@ for (const f of files) {
     process.exit(1);
   }
 }
-check(`applied ${files.length} migrations, ending with ${files[files.length - 1]}`, files[files.length - 1].startsWith('0095'));
+check(`applied ${files.length} migrations, including 0095 (last ${files[files.length - 1]})`, files.some((f) => f.startsWith('0095')));
 
 // --- Privileges --------------------------------------------------------------
 for (const role of ['anon', 'authenticated']) {

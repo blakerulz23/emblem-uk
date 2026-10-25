@@ -71,7 +71,7 @@ try {
       throw e;
     }
   }
-  check(`applied ${files.length} migrations on a real server, ending with ${files[files.length - 1]}`, files[files.length - 1].startsWith('0095'));
+  check(`applied ${files.length} migrations on a real server, including 0095 (last ${files[files.length - 1]})`, files.some((f) => f.startsWith('0095')));
 
   // --- Fixtures ---------------------------------------------------------------
   const orderCols = (await pool.query(`
