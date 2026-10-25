@@ -5,6 +5,7 @@ import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notifi
 import { squadInviteVariantId } from '@/lib/squad-invite-payment-link';
 import { notifyStaffOfPaymentIssue } from '@/lib/payment-alerts';
 import { flagSecondPaymentIfAny } from '@/lib/duplicate-payment';
+import { extractOrderDiscountCode } from '@/lib/partner-programme';
 
 /**
  * Real money, currently invisible outside raw server logs — every failure
@@ -127,6 +128,10 @@ export async function POST(req: NextRequest) {
   //    was built from). Both fail closed with a staff alert.
   let verifiedAmountPence: number | null = null;
   let verifiedCurrency: string | null = null;
+  // UK partner code (partner-programme.ts): set only when the order's one
+  // discount code is a recorded partner code. Builder orders only — a Squad
+  // Invite price is set by its tier and never takes a partner discount.
+  let partnerCode: string | null = null;
   if (existing.source !== 'squad_invite') {
     const variantId = process.env.NEXT_PUBLIC_SHOPIFY_UK_CARD_VARIANT;
     if (!variantId || existing.unit_price_pence == null || existing.total_print_quantity == null) {
@@ -134,8 +139,25 @@ export async function POST(req: NextRequest) {
       await notifyStaffOfPaymentVerificationFailure(supabase, orderRef, 'Pricing snapshot or variant configuration missing');
       return NextResponse.json({ ok: true, note: 'pricing snapshot unavailable, not applying' });
     }
+    let partnerDiscountBps: number | undefined;
+    const discount = extractOrderDiscountCode(payload);
+    if (discount !== 'multiple' && discount.code) {
+      const { data: codeRow, error: codeError } = await supabase
+        .from('partner_codes')
+        .select('code, discount_bps')
+        .eq('code', discount.code)
+        .maybeSingle();
+      if (codeError) {
+        // Transient DB error — let Shopify retry.
+        return NextResponse.json({ error: codeError.message }, { status: 500 });
+      }
+      if (codeRow) {
+        partnerCode = codeRow.code as string;
+        partnerDiscountBps = codeRow.discount_bps as number;
+      }
+    }
     // Verified in the currency the customer paid (Shopify presentment currency), which must be this order's own snapshot currency.
-    const verification = verifyPaidLineItem(payload, variantId, existing.total_print_quantity, existing.unit_price_pence, existing.currency || 'GBP');
+    const verification = verifyPaidLineItem(payload, variantId, existing.total_print_quantity, existing.unit_price_pence, existing.currency || 'GBP', partnerDiscountBps);
     if (!verification.ok) {
       // Never applied — flagged loudly for reconciliation. 200 because
       // retrying won't change what Shopify actually charged.
@@ -143,7 +165,7 @@ export async function POST(req: NextRequest) {
       await notifyStaffOfPaymentVerificationFailure(supabase, orderRef, `Paid line item verification failed: ${verification.reason}`);
       return NextResponse.json({ ok: true, note: 'verification failed, not applying' });
     }
-    verifiedAmountPence = existing.unit_price_pence * existing.total_print_quantity;
+    verifiedAmountPence = existing.unit_price_pence * existing.total_print_quantity - (verification.discountPence ?? 0);
     verifiedCurrency = verification.currency ?? existing.currency ?? null;
     if (existing.currency && verifiedCurrency && existing.currency !== verifiedCurrency) {
       console.error('shopify webhook: currency mismatch', { orderRef, expected: existing.currency, got: verifiedCurrency });
@@ -225,6 +247,22 @@ export async function POST(req: NextRequest) {
     }
     if (outcome === 'flagged' && existing.source !== 'squad_invite') {
       return NextResponse.json({ ok: true, applied: false, reason: 'duplicate_payment_flagged', orderId: existing.id });
+    }
+  }
+
+  // 4c) Partner commission — one row per order (record_uk_partner_commission,
+  //     migration 0095, is idempotent on order_id and checks the order is
+  //     paid), on the amount actually paid for cards. Runs on retries too,
+  //     so a failure here returns 500 and Shopify's retry records it.
+  if (partnerCode && verifiedAmountPence !== null && (result?.applied || result?.reason === 'duplicate_event' || result?.reason === 'already_paid')) {
+    const { error: commissionError } = await supabase.rpc('record_uk_partner_commission', {
+      p_order_id: existing.id,
+      p_code: partnerCode,
+      p_paid_subtotal_pence: verifiedAmountPence,
+    });
+    if (commissionError) {
+      console.error('shopify webhook: partner commission not recorded, asking Shopify to retry', { orderRef });
+      return NextResponse.json({ error: 'partner commission not yet recorded' }, { status: 500 });
     }
   }
 

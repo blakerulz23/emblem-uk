@@ -64,6 +64,14 @@ export async function POST(req: NextRequest) {
 
   const result = applied as { applied: boolean; reason?: string } | null;
 
+  // A cancelled order never earns a partner commission (migration 0095; a
+  // no-op when the order wasn't credited). 500 asks Shopify to retry.
+  const { error: voidError } = await supabase.rpc('void_uk_partner_commission', { p_order_id: existing.id, p_reason: 'cancelled' });
+  if (voidError) {
+    console.error('shopify cancel webhook: partner commission not voided, asking Shopify to retry', { orderRef });
+    return NextResponse.json({ error: 'partner commission not yet voided' }, { status: 500 });
+  }
+
   // A paid or production-approved order can't move to cancelled (the money
   // is still taken), but it must not be printed either: the delivery is
   // recorded in shopify_webhook_events, which the approve route checks, and
