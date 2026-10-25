@@ -16,7 +16,7 @@ Lean first version (branch `feat/uk-partner-programme`, migration `0095`). Same 
 3. `orders/paid` reads the order's single discount code. If it's a recorded UK partner code, the payment check accepts **exactly that percentage off** (±1p rounding) and nothing else. The order is recorded as paid at the discounted amount.
 4. `record_uk_partner_commission` writes one commission per order (unique, so a retried webhook can't credit twice): commission % × what was paid for cards, held for 45 days. Own orders (the declaring adult's email matches the partner's) and paused partners or switched-off codes get a void row instead.
 5. A refund that returns money for a card, or a cancellation, voids a pending commission. At payout time, only commissions whose hold has passed **and whose order is still paid** count.
-6. Monthly: on `/staff/partners`, "Create payout" gathers everything payable (refused under £40). Send the bank transfer yourself, then "Mark sent" with the reference. Bank details are never stored in Emblem; ask the creator by email.
+6. Monthly: on `/staff/partners`, "Create payout" locks and gathers everything payable (refused under £40). Send the bank transfer yourself, then "Mark sent" with the reference. Bank details are never stored in Emblem; ask the creator by email.
 
 **Not covered:** Squad Invite orders never accept a partner discount. Their price is set by the squad tier and still verified exactly. Any other discount on a UK order still fails closed with a staff alert, as before.
 
@@ -46,3 +46,9 @@ Canada's codes are created by `emblem-ca` with `SHOPIFY_PARTNER_DISCOUNT_VARIANT
 ## Tests
 - `npx vitest run src/lib/partner-programme.test.ts src/app/api/webhooks/shopify` covers the payment check and webhook crediting.
 - `node supabase/tests/0095_uk_partner_programme_pglite_test.mjs` runs every migration on real Postgres (pglite, `npm install --no-save @electric-sql/pglite`). It covers privileges, crediting, idempotency, voids, own orders and payouts.
+- `node supabase/tests/0095_uk_partner_payout_concurrency_test.mjs` runs every migration on a throwaway multi-connection PostgreSQL 17 server (`npm install --no-save embedded-postgres@17.10.0-beta.17 pg`). It forces each interleaving of payout against void, payout against an in-flight refund, and two payouts at once, then runs a 25-round free-running stress. It also checks that the database refuses any payout whose amount differs from its linked commissions.
+
+## Concurrency (how payouts stay consistent)
+Payouts and voids for one partner are serialised on the partner's row. Every function takes locks in the same order: partner, then commissions, then orders. A payout locks one fixed set of eligible commissions and their orders, and attaches exactly that set. A deferred constraint trigger checks at commit that every payout equals the sum of its linked commissions.
+- **Refund arrives before allocation:** its commission is voided, and the payout never includes it.
+- **Refund arrives after allocation:** the commission stays in the payout as paid, and staff reconcile it by hand.

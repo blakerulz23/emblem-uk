@@ -20,6 +20,23 @@
 --                       details are never stored here
 --
 -- No child data anywhere: commissions hold an order id and amounts only.
+--
+-- Concurrency (READ COMMITTED). Payouts and voids for one partner are
+-- serialised on that partner's row, and every function that locks more than
+-- one thing takes locks in the same order, so they cannot deadlock:
+--   1. partners row          FOR NO KEY UPDATE (does not block the FK
+--                            KEY SHARE that a new commission insert takes)
+--   2. partner_commissions   FOR UPDATE
+--   3. orders                FOR SHARE (payout only; a refund's
+--                            apply_gate3_payment_event holds FOR UPDATE on
+--                            the order in its own, separate transaction and
+--                            never touches partner rows)
+-- A payout locks one fixed set of eligible commissions and attaches exactly
+-- that set; a deferred constraint trigger then proves at commit that every
+-- payout's amount equals the sum of the commissions linked to it.
+-- A refund that arrives after a commission was put in a payout leaves it
+-- paid (documented: staff reconcile by hand); one that arrives before voids
+-- it, and the payout never includes it.
 
 begin;
 
@@ -180,9 +197,9 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- void_uk_partner_commission: any refund or cancellation of a credited
--- order voids its pending commission (refunds earn nothing). Already-paid
--- commissions are left for staff to reconcile by hand.
+-- void_uk_partner_commission: a refund or cancellation of a credited order
+-- voids its pending commission (refunds earn nothing). A commission already
+-- in a payout stays paid and is left for staff to reconcile by hand.
 -- ---------------------------------------------------------------------------
 create or replace function public.void_uk_partner_commission(p_order_id uuid, p_reason text)
 returns jsonb
@@ -191,27 +208,39 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
+  v_partner_id uuid;
   v_status text;
 begin
   if p_reason not in ('refunded', 'cancelled', 'staff') then
     raise exception 'invalid void reason';
   end if;
-  update public.partner_commissions
-  set status = 'void', void_reason = p_reason, commission_pence = 0, updated_at = now()
-  where order_id = p_order_id and status = 'pending'
-  returning status into v_status;
-  if v_status is not null then
+
+  -- partner_id never changes on a commission, so it is safe to read before
+  -- locking. Lock order 1 (partner) then 2 (commission), the same as
+  -- create_uk_partner_payout: a void and a payout for one partner run one
+  -- after the other, never interleaved.
+  select partner_id into v_partner_id from public.partner_commissions where order_id = p_order_id;
+  if v_partner_id is null then
+    return jsonb_build_object('status', 'none');
+  end if;
+  perform 1 from public.partners where id = v_partner_id for no key update;
+
+  select status into v_status from public.partner_commissions where order_id = p_order_id for update;
+  if v_status = 'pending' then
+    update public.partner_commissions
+    set status = 'void', void_reason = p_reason, commission_pence = 0, updated_at = now()
+    where order_id = p_order_id;
     return jsonb_build_object('status', 'voided');
   end if;
-  select status into v_status from public.partner_commissions where order_id = p_order_id;
-  return jsonb_build_object('status', coalesce(v_status, 'none'));
+  -- Already 'void', or 'paid' (in a payout): left for staff to reconcile.
+  return jsonb_build_object('status', v_status);
 end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- create_uk_partner_payout: gathers every payable commission for one
--- partner (pending, hold passed, order still paid or fulfilled) into one
--- payout, atomically. Refuses below the £40 minimum.
+-- create_uk_partner_payout: locks every payable commission for one partner
+-- (pending, hold passed, order still paid or fulfilled) as one fixed set and
+-- puts exactly that set into one payout. Refuses below the £40 minimum.
 -- ---------------------------------------------------------------------------
 create or replace function public.create_uk_partner_payout(p_partner_id uuid, p_staff_user_id uuid)
 returns jsonb
@@ -220,18 +249,38 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
+  v_ids uuid[];
   v_total integer;
   v_payout_id uuid;
+  v_attached integer;
 begin
-  perform 1 from public.partners where id = p_partner_id for update;
+  -- Lock order 1: the partner row. A second payout or a void for this
+  -- partner waits here until this transaction ends.
+  perform 1 from public.partners where id = p_partner_id for no key update;
+  if not found then
+    return jsonb_build_object('ok', false, 'reason', 'partner_not_found', 'amount_pence', 0);
+  end if;
 
-  select coalesce(sum(c.commission_pence), 0)::integer into v_total
-  from public.partner_commissions c
-  join public.orders o on o.id = c.order_id
-  where c.partner_id = p_partner_id
-    and c.status = 'pending'
-    and c.hold_until <= now()
-    and o.payment_status in ('paid', 'fulfilled');
+  -- Lock order 2 and 3: the eligible commissions (FOR UPDATE) and their
+  -- orders (FOR SHARE), as ONE fixed set. If a refund is changing one of
+  -- these orders, this waits for it and re-checks the row, so a refunded
+  -- order drops out; once locked, no order in the set can change status
+  -- until this transaction ends.
+  with eligible as (
+    select c.id, c.commission_pence
+    from public.partner_commissions c
+    join public.orders o on o.id = c.order_id
+    where c.partner_id = p_partner_id
+      and c.status = 'pending'
+      and c.hold_until <= now()
+      and o.payment_status in ('paid', 'fulfilled')
+    order by c.id
+    for update of c
+    for share of o
+  )
+  select coalesce(array_agg(id order by id), '{}'::uuid[]), coalesce(sum(commission_pence), 0)::integer
+  into v_ids, v_total
+  from eligible;
 
   if v_total < 4000 then
     return jsonb_build_object('ok', false, 'reason', 'below_minimum', 'amount_pence', v_total);
@@ -241,22 +290,89 @@ begin
   values (p_partner_id, v_total, p_staff_user_id)
   returning id into v_payout_id;
 
-  update public.partner_commissions c
+  -- Attach exactly the locked set, nothing else.
+  update public.partner_commissions
   set status = 'paid', payout_id = v_payout_id, updated_at = now()
-  from public.orders o
-  where o.id = c.order_id
-    and c.partner_id = p_partner_id
-    and c.status = 'pending'
-    and c.hold_until <= now()
-    and o.payment_status in ('paid', 'fulfilled');
+  where id = any (v_ids) and status = 'pending';
+  get diagnostics v_attached = row_count;
+  if v_attached <> cardinality(v_ids) then
+    raise exception 'partner payout allocation changed while it was being created';
+  end if;
 
-  return jsonb_build_object('ok', true, 'payout_id', v_payout_id, 'amount_pence', v_total);
+  return jsonb_build_object('ok', true, 'payout_id', v_payout_id, 'amount_pence', v_total, 'commission_count', v_attached);
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Payout integrity, enforced by the database at commit: every payout has at
+-- least one linked commission, and its amount equals their sum. Deferred,
+-- so create_uk_partner_payout can insert the payout and then attach its
+-- commissions in one transaction. Also catches any other write that would
+-- break it, including a manual service-role update.
+-- ---------------------------------------------------------------------------
+create or replace function public.assert_partner_payout_balanced(p_payout_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_amount integer;
+  v_sum integer;
+  v_count integer;
+begin
+  if p_payout_id is null then
+    return;
+  end if;
+  select amount_pence into v_amount from public.partner_payouts where id = p_payout_id;
+  if v_amount is null then
+    return;
+  end if;
+  select coalesce(sum(commission_pence), 0)::integer, count(*)::integer into v_sum, v_count
+  from public.partner_commissions
+  where payout_id = p_payout_id;
+  if v_count = 0 or v_sum <> v_amount then
+    raise exception 'partner payout % is % pence but its % linked commission(s) total % pence', p_payout_id, v_amount, v_count, v_sum;
+  end if;
+end;
+$$;
+
+create or replace function public.partner_payout_balance_trigger()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if tg_table_name = 'partner_payouts' then
+    perform public.assert_partner_payout_balanced(new.id);
+    return null;
+  end if;
+  if tg_op in ('UPDATE', 'DELETE') then
+    perform public.assert_partner_payout_balanced(old.payout_id);
+  end if;
+  if tg_op = 'INSERT' or (tg_op = 'UPDATE' and new.payout_id is distinct from old.payout_id) then
+    perform public.assert_partner_payout_balanced(new.payout_id);
+  end if;
+  return null;
+end;
+$$;
+
+create constraint trigger partner_payouts_balanced
+after insert or update on public.partner_payouts
+deferrable initially deferred
+for each row execute function public.partner_payout_balance_trigger();
+
+create constraint trigger partner_commissions_payout_balanced
+after insert or update or delete on public.partner_commissions
+deferrable initially deferred
+for each row execute function public.partner_payout_balance_trigger();
 
 revoke all on function public.record_uk_partner_commission(uuid, text, integer) from public, anon, authenticated;
 revoke all on function public.void_uk_partner_commission(uuid, text) from public, anon, authenticated;
 revoke all on function public.create_uk_partner_payout(uuid, uuid) from public, anon, authenticated;
+revoke all on function public.assert_partner_payout_balanced(uuid) from public, anon, authenticated, service_role;
+revoke all on function public.partner_payout_balance_trigger() from public, anon, authenticated, service_role;
 grant execute on function public.record_uk_partner_commission(uuid, text, integer) to service_role;
 grant execute on function public.void_uk_partner_commission(uuid, text) to service_role;
 grant execute on function public.create_uk_partner_payout(uuid, uuid) to service_role;

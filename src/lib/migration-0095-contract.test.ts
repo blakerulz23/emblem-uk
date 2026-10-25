@@ -27,7 +27,32 @@ describe('migration 0095 — UK partner programme', () => {
       expect(sql).toContain(`revoke all on function public.${fn} from public, anon, authenticated;`);
       expect(sql).toContain(`grant execute on function public.${fn} to service_role;`);
     }
-    expect((sql.match(/security definer\s+set search_path = public, pg_temp/g) ?? []).length).toBe(3);
+    expect((sql.match(/security definer\s+set search_path = public, pg_temp/g) ?? []).length).toBe(5);
+    for (const fn of ['assert_partner_payout_balanced(uuid)', 'partner_payout_balance_trigger()']) {
+      expect(sql).toContain(`revoke all on function public.${fn} from public, anon, authenticated, service_role;`);
+    }
+  });
+
+  it('payouts and voids lock in one order (partner, then commissions, then orders), so they serialise and cannot deadlock', () => {
+    const fnBody = (name: string) => {
+      const start = sql.indexOf(`create or replace function public.${name}(`);
+      return sql.slice(start, sql.indexOf('$$;', start));
+    };
+    const payout = fnBody('create_uk_partner_payout');
+    const voidFn = fnBody('void_uk_partner_commission');
+    expect(payout.indexOf('from public.partners where id = p_partner_id for no key update')).toBeGreaterThan(-1);
+    expect(payout.indexOf('for no key update')).toBeLessThan(payout.indexOf('for update of c'));
+    expect(payout.indexOf('for update of c')).toBeLessThan(payout.indexOf('for share of o'));
+    expect(voidFn.indexOf('for no key update')).toBeGreaterThan(-1);
+    expect(voidFn.indexOf('for no key update')).toBeLessThan(voidFn.indexOf('for update;'));
+    // The payout attaches exactly the locked set.
+    expect(payout).toContain("where id = any (v_ids) and status = 'pending'");
+    expect(payout).toContain('if v_attached <> cardinality(v_ids) then');
+  });
+
+  it('the database itself enforces payout amount = sum of linked commissions, checked at commit', () => {
+    expect(sql).toMatch(/create constraint trigger partner_payouts_balanced\s+after insert or update on public\.partner_payouts\s+deferrable initially deferred/);
+    expect(sql).toMatch(/create constraint trigger partner_commissions_payout_balanced\s+after insert or update or delete on public\.partner_commissions\s+deferrable initially deferred/);
   });
 
   it('a commission is unique per order, so a retried webhook can never credit twice', () => {

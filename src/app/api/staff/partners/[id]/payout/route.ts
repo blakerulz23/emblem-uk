@@ -7,10 +7,11 @@ import { formatPence, PAYOUT_MINIMUM_PENCE } from '@/lib/partner-programme';
 export const runtime = 'nodejs';
 
 /**
- * POST /api/staff/partners/[id]/payout — gathers every payable commission
- * (hold passed, order still paid) into one payout, atomically
- * (create_uk_partner_payout, migration 0095). Staff then send the bank
- * transfer by hand and mark it sent with the reference.
+ * POST /api/staff/partners/[id]/payout — locks every payable commission
+ * (hold passed, order still paid) and puts exactly that set into one payout
+ * (create_uk_partner_payout, migration 0095; serialised with refunds and
+ * other payouts for the same partner). Staff then send the bank transfer by
+ * hand and mark it sent with the reference.
  */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   if (!hasSafeRequestOrigin(request)) {
@@ -30,6 +31,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: 'Could not create the payout' }, { status: 500 });
   }
   const result = data as { ok: boolean; reason?: string; amount_pence?: number; payout_id?: string };
+  if (!result.ok && result.reason === 'partner_not_found') {
+    return NextResponse.json({ error: 'Partner not found' }, { status: 404 });
+  }
   if (!result.ok) {
     return NextResponse.json(
       { error: `Payable balance is ${formatPence(result.amount_pence ?? 0)}; payouts start at ${formatPence(PAYOUT_MINIMUM_PENCE)}.` },
