@@ -62,7 +62,7 @@ export default function PrivacyPage() {
         Privacy Policy
       </h1>
       <p style={{ ...BODY, marginTop: 8, fontSize: 13.5, color: 'var(--ink-faint)' }}>
-        Last updated 20 October 2026
+        Last updated 25 October 2026
       </p>
 
       <p style={{ ...BODY, marginTop: 20 }}>
@@ -173,6 +173,20 @@ export default function PrivacyPage() {
         request.
       </p>
 
+      <h3 style={SUBSECTION_TITLE}>Creator partners and partner codes</h3>
+      <p style={BODY}>
+        Adults who apply to our partner programme give us their name, email, main social platform,
+        a link to their profile and a short note about their audience. We use these only to review
+        the application and, if approved, to run the partnership: their code, commission and
+        payments (bank details are requested by email when a payment is due and are not stored on
+        our site). This is necessary to take steps towards, and perform, our agreement with them.
+      </p>
+      <p style={{ ...BODY, marginTop: 10 }}>
+        If you use a partner&rsquo;s code at checkout, we record which code was used on your order so
+        the partner can be paid. The partner sees only the date and amount of the order, never your
+        name, contact details, or anything about your child.
+      </p>
+
       <h2 style={SECTION_TITLE}>A note on identity verification</h2>
       <p style={BODY}>
         Signing in with an email and one-time code proves control of that email address — it does
@@ -277,6 +291,7 @@ export default function PrivacyPage() {
         <li>An active player profile and its moments: for as long as the profile is active, reviewed periodically.</li>
         <li>Sign-in and claim-attempt security logs: a short window (proposed 30–90 days).</li>
         <li>Order and payment records: retained by Shopify as required by law (e.g. tax records).</li>
+        <li>Partner applications that are not approved: deleted within 12 months. Partner and commission records: for the partnership plus 6 years, for tax and accounting.</li>
       </ul>
       <p style={{ ...BODY, marginTop: 10 }}>
         You can ask us to delete a player&rsquo;s profile, a specific moment or photo, or a whole
