@@ -6,8 +6,8 @@ Implements the partner retention wording in the Privacy Policy ("Creator partner
 - **When:** monthly, on the first working day, plus whenever a partnership ends or a partner asks for erasure.
 - **How:** by hand, in the Supabase SQL editor (production). **Nothing is deleted automatically.**
 - **Permissions:** the app has no route or function that deletes partner data, and none should be added. Clean-up is done only by a person with database owner access, running the reviewed statements below.
-  - ⚠️ **Current production state:** Supabase's default privileges gave the app's database role (`service_role`) DELETE and TRUNCATE on these tables, which 0095 didn't remove.
-  - **Pending fix:** migration `0096_partner_tables_service_role_least_privilege.sql` narrows it to exactly what the app uses (select/insert/update; commissions select-only). It is not applied yet.
+  - Supabase's default privileges gave the app's database role (`service_role`) DELETE and TRUNCATE on these tables, which 0095 didn't remove.
+  - Migration `0096_partner_tables_service_role_least_privilege.sql` (on PR #128) narrows it to exactly what the app uses: select/insert/update, and select-only on commissions. **Until 0096 is applied and verified in production, the app's role can still delete.**
   - Don't widen permissions to make clean-up easier.
 
 ## What the policy promises
@@ -17,9 +17,11 @@ Implements the partner retention wording in the Privacy Policy ("Creator partner
 | Active partner information (name, email, profile link, audience note, staff notes, codes) | While needed to run the partnership | When the partnership has ended and nothing is pending: personal details anonymised and codes switched off (B2) |
 | Commission, payout and related accounting records | **6 years from the end of the financial year they relate to**, or longer if the law requires | Deleted, together with the anonymised partner row (B3) |
 
-**Financial year:** the queries assume the financial year ends on the last day of `fy_end_month`.
-- Set it to LAUDA CARTOONS STUDIO LTD's accounting reference date (Companies House). The value **11** (30 November) used below is a placeholder. **Confirm it before the first run.**
-- If the year doesn't end on a month-end, change the `fy_end` expression.
+**Financial year: NOT YET CONFIRMED.**
+- The accounting steps (A4 review, B3 deletion) **refuse to run** until the confirmed accounting year-end month (1–12) is typed in place of `<REQUIRED: accounting year-end month 1-12>`. There is no default.
+- Take the month from LAUDA CARTOONS STUDIO LTD's accounting reference date (Companies House).
+- The queries assume the year ends on the last day of that month. If it doesn't, change the `fy_end` expression before use.
+- Application clean-up (A1–A3, B1, B2) doesn't depend on the year end and can run now.
 
 **Legal holds:** if there is a dispute, an HMRC enquiry, or any other reason to keep a record, don't delete it. Note the reason in that partner's `staff_notes` and skip it until the hold ends.
 
@@ -60,10 +62,19 @@ order by p.updated_at;
 ```
 
 ```sql
--- [A4] Financial records: when each anonymised partner's records may be deleted. Its latest
+-- [A4] Financial records (REQUIRES the confirmed year end, see above): when each anonymised partner's records may be deleted. Its latest
 -- commission or payout sets the date: end of that financial year + 6 years. "due" = may be
 -- deleted now (B3); anything due within 3 months is listed so it can be planned.
-with params as (select 11 as fy_end_month),   -- CONFIRM: accounting reference date month (last day of month)
+with params as (
+  -- REQUIRED, no default: replace the text below with the confirmed accounting year-end month (1-12).
+  -- Left as it is, this query stops with: invalid input syntax for type integer.
+  select '<REQUIRED: accounting year-end month 1-12>'::integer as fy_end_month
+),
+guard as (
+  -- Refuses a month outside 1-12 ("date field value out of range"). The final select starts
+  -- from this row and shows its month, so the check always runs, even when no partner is listed.
+  select fy_end_month, make_date(2000, fy_end_month, 1) as checked from params
+),
 latest as (
   select p.id as partner_id,
          greatest(
@@ -83,10 +94,13 @@ fy as (
   from latest l cross join params prm
   where l.last_record is not null
 )
-select partner_id, last_record::date, fy_end, (fy_end + interval '6 years')::date as retain_until,
-       (fy_end + interval '6 years') <= now() as due
-from fy
-where (fy_end + interval '6 years') <= now() + interval '3 months'
+-- One row per partner listed; if none is due within 3 months, a single row with an empty
+-- partner_id (the year-end month used is always shown).
+select extract(month from g.checked)::integer as year_end_month_used, f.partner_id, f.last_record::date as last_record,
+       f.fy_end, (f.fy_end + interval '6 years')::date as retain_until,
+       (f.fy_end + interval '6 years') <= now() as due
+from guard g
+left join fy f on (f.fy_end + interval '6 years') <= now() + interval '3 months'
 order by retain_until;
 ```
 
@@ -147,19 +161,26 @@ end $$;
 ```
 
 ```sql
--- [B3] Delete expired financial records (ids from A4 with due = true). Deletion order follows
+-- [B3] Delete expired financial records (REQUIRES the confirmed year end; ids from A4 with due = true). Deletion order follows
 -- the foreign keys: commissions (they reference payouts), then payouts, then the partner row
 -- (its codes are deleted with it). Orders are never touched. The payout-balance check
 -- (migration 0095) passes because each payout goes in the same statement as its commissions.
 do $$
 declare
-  v_fy_end_month constant integer := 11;   -- CONFIRM: same value as A4
+  -- REQUIRED, no default: replace with the confirmed accounting year-end month (1-12), same as A4.
+  v_fy_end_text text := '<REQUIRED: accounting year-end month 1-12>';
+  v_fy_end_month integer;
   v_ids uuid[] := '{PASTE-IDS}';
   v_due uuid[];
   v_c integer;
   v_o integer;
   v_p integer;
 begin
+  if v_fy_end_text !~ '^(1[0-2]|[1-9])$' then
+    raise exception 'B3 refused: the accounting year-end month is not set. Replace <REQUIRED: accounting year-end month 1-12> with the confirmed month.';
+  end if;
+  v_fy_end_month := v_fy_end_text::integer;
+
   select coalesce(array_agg(x.partner_id), '{}') into v_due
   from (
     select p.id as partner_id,
@@ -206,5 +227,6 @@ Use ids only. Never copy names or emails into the log.
   - partners that qualify and partners that don't;
   - refusal of a whole run when any id doesn't qualify;
   - foreign-key order and the payout-balance check;
-  - the date maths.
+  - the date maths;
+  - refusal of A4 and B3 while the year end is missing or invalid.
 - If the partner tables change in a later migration, re-review this procedure before the next monthly run.
