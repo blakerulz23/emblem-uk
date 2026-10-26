@@ -46,6 +46,15 @@ await db.exec(`
   alter default privileges in schema public grant select, insert, update, delete on tables to authenticated;
 `);
 
+const READINESS_STAFF = '00000000-0000-4000-8000-0000000000ad';
+const READINESS_SQL = `
+  insert into auth.users (id, email) values ('${READINESS_STAFF}', 'readiness-staff@example.test');
+  insert into public.profiles (id, display_name) values ('${READINESS_STAFF}', 'Readiness Staff');
+  insert into public.staff_accounts (profile_id) values ('${READINESS_STAFF}');
+  begin; set local role service_role;
+  select public.confirm_release_readiness('authorization_relationships_v1', repeat('0', 40), '${READINESS_STAFF}', true, true, true, true, true, true);
+  commit;
+`;
 const files = fs.readdirSync(MIGRATIONS_DIR).filter((f) => /^\d{4}_.*\.sql$/.test(f)).sort();
 for (const f of files) {
   try {
@@ -54,6 +63,10 @@ for (const f of files) {
     console.log(`MIGRATION FAILED: ${f} — ${e.message}`);
     process.exit(1);
   }
+  // 0089 refuses to run without one release-readiness confirmation
+  // (authorization lockdown). Record it right after 0088, as the
+  // authorization suites do, so every later migration can apply.
+  if (f.startsWith('0088_')) await db.exec(READINESS_SQL);
 }
 check(`applied ${files.length} migrations, including 0095 (last ${files[files.length - 1]})`, files.some((f) => f.startsWith('0095')));
 
