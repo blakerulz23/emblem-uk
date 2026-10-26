@@ -9,8 +9,8 @@ parallel to it, and the bars' top-left corners have a radius of half the
 bar height.
 
 Outputs:
-  src/app/icon.svg              adaptive favicon: dark bars on light tabs, white bars on dark tabs
-  src/app/favicon.ico           16/32/48 px fallback on a dark rounded tile (reads on any tab)
+  src/app/icon.svg              vector favicon: white bars and orange wedge on a dark rounded tile
+  src/app/favicon.ico           16/32/48 px raster favicon, same tile (reads on light and dark tabs)
   src/app/apple-icon.png        180 px, opaque dark square (iOS applies its own rounding)
   public/icon-192.png           manifest icon, dark rounded tile
   public/icon-512.png           manifest icon, dark rounded tile
@@ -36,8 +36,6 @@ VIEW = (0, 0, 316, 316)
 DARK_TILE = (15, 13, 11)            # #0F0D0B, Emblem OS dark background
 WHITE = (255, 255, 255)
 ORANGE_ON_DARK = (254, 122, 39)     # #FE7A27, from the site's white logo (embm-nav.png)
-INK_ON_LIGHT = (17, 17, 17)         # #111111
-ORANGE_ON_LIGHT = (236, 84, 33)     # #EC5421, from the black-on-white logo
 
 
 def bar_right(y):
@@ -101,7 +99,14 @@ def rounded_outline(verts, steps=10):
     return pts, ''.join(d) + 'Z'
 
 
-def write_svg(path):
+def write_svg(path, symbol_fraction=0.80, tile_radius=0.22):
+    """Same dark rounded tile as favicon.ico. A transparent, colour-scheme-
+    adaptive version was tried and rejected: browsers don't reliably match
+    a favicon's prefers-color-scheme to the tab strip's actual colour
+    (custom themes, Firefox following page content), and white or black
+    bars alone then disappear. The tile reads on every tab colour."""
+    size = VIEW[2]
+    pad = size * (1 - symbol_fraction) / 2
     bars = []
     wedge = ''
     for kind, verts in shapes():
@@ -110,15 +115,16 @@ def write_svg(path):
             bars.append(d)
         else:
             wedge = d
+    tile = '#%02X%02X%02X' % DARK_TILE
+    white = '#%02X%02X%02X' % WHITE
+    orange = '#%02X%02X%02X' % ORANGE_ON_DARK
     svg = (
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{VIEW[0]} {VIEW[1]} {VIEW[2]} {VIEW[3]}">'
-        '<style>'
-        '.b{fill:#111111}.w{fill:#EC5421}'
-        '@media (prefers-color-scheme:dark){.b{fill:#FFFFFF}.w{fill:#FE7A27}}'
-        '</style>'
-        f'<path class="b" d="{"".join(bars)}"/>'
-        f'<path class="w" d="{wedge}"/>'
-        '</svg>\n'
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {size} {size}">'
+        f'<rect width="{size}" height="{size}" rx="{size * tile_radius:.1f}" fill="{tile}"/>'
+        f'<g transform="translate({pad:.1f} {pad:.1f}) scale({symbol_fraction})">'
+        f'<path fill="{white}" d="{"".join(bars)}"/>'
+        f'<path fill="{orange}" d="{wedge}"/>'
+        '</g></svg>\n'
     )
     with open(path, 'w', encoding='utf-8', newline='\n') as f:
         f.write(svg)
