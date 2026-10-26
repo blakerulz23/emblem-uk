@@ -23,6 +23,7 @@ import { canUseWebGL } from './portal-math';
 const CARD_IMAGE = '/assets/home/hero/card-royal-560.webp';
 const ACCENT = '#9d84ff';
 const LOAD_TIMEOUT_MS = 10_000;
+const TRANSITION_GIVE_UP_MS = 4_000;
 
 type Mode = 'card' | 'loading' | 'entering' | 'inside' | 'exiting';
 
@@ -163,6 +164,18 @@ export default function ClubsCardPortal({ startHref }: { startHref: string }) {
       setPaused(false);
     };
   }, [sceneActive]);
+
+  // Never leave a visitor waiting on a struggling GPU: if a transition hasn't
+  // finished well after its 1.4 s, jump to the end state (the season shows,
+  // or the card returns) and let the 3D catch up behind it.
+  useEffect(() => {
+    if (mode !== 'entering' && mode !== 'exiting') return;
+    const id = window.setTimeout(() => {
+      if (mode === 'entering') setMode((m) => (m === 'entering' ? 'inside' : m));
+      else onExited();
+    }, TRANSITION_GIVE_UP_MS);
+    return () => window.clearTimeout(id);
+  }, [mode, onExited]);
 
   // Rendering pauses off screen, so a transition that is still running when
   // the stage scrolls away is finished at once rather than left hanging.
