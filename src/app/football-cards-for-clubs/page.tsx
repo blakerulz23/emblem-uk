@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import Icon from '@/components/builder/emblem/Icon';
-import HeroStage from '@/components/marketing/HeroStage';
+import ClubsCardPortal from '@/components/marketing/clubs-portal/ClubsCardPortal';
 import JsonLd from '@/components/marketing/JsonLd';
 import { FaqAccordion } from '../HomeEffects';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
@@ -27,6 +27,14 @@ const playerGets = [
   { title: 'A profile that grows', body: 'Tap the card to a phone and their private player profile opens, with appearances, goals and season moments.' },
   { title: 'Recognition from their coach', body: 'Coaches can verify the moments families share and award recognition, so effort is celebrated as well as goals.' },
   { title: 'No app to download', body: 'The profile opens straight from the card. Families manage it from their phone.' },
+];
+
+// The Squad Invite in four lines, matching the steps below.
+const squadPoints = [
+  'Families create and approve their own child’s card.',
+  'Each family pays for their own card.',
+  'You share one squad link.',
+  'Cards are delivered together to your club’s chosen contact.',
 ];
 
 const steps = [
@@ -74,6 +82,11 @@ export default function FootballCardsForClubsPage() {
               </Link>
             </div>
             <p className="emh-hero-price">Squad pricing from {PRICES.squad} per card · families pay for their own · no roster to collect</p>
+            <ul className="emh-portal-points" aria-label="How a Squad Invite works">
+              {squadPoints.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
             <Link className="emh-hero-demo" href="/os/demo" data-track="clubs_hero_coach_demo">
               See the coach view
               <Icon name="chevR" size={14} />
@@ -82,7 +95,7 @@ export default function FootballCardsForClubsPage() {
               Give your squad their own personalised football cards. Each card has a chip that opens the player’s private profile, where coaches can recognise goals, effort and milestones all season. One link for families, and every card delivered together to your club.
             </p>
           </div>
-          <HeroStage />
+          <ClubsCardPortal startHref={startHref} />
         </div>
       </section>
 
