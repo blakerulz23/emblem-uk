@@ -46,14 +46,24 @@ export function transitionStages(p: number) {
 }
 
 /** True when this browser can create a WebGL context at all. */
+/**
+ * True for WebGL drawn by the CPU (a blocklisted or missing GPU). The 3D
+ * portal is slow there, so the app demo opens directly instead.
+ */
+export function isSoftwareRenderer(renderer: string): boolean {
+  return /swiftshader|llvmpipe|softpipe|software|basic render/i.test(renderer);
+}
+
 export function canUseWebGL(doc: Document | undefined = typeof document === 'undefined' ? undefined : document): boolean {
   if (!doc) return false;
   try {
     const canvas = doc.createElement('canvas');
-    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    const gl = (canvas.getContext('webgl2') || canvas.getContext('webgl')) as WebGLRenderingContext | null;
     if (!gl) return false;
-    (gl as WebGLRenderingContext).getExtension('WEBGL_lose_context')?.loseContext();
-    return true;
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const renderer = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : '';
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return !isSoftwareRenderer(renderer);
   } catch {
     return false;
   }
