@@ -22,24 +22,22 @@ export const metadata: Metadata = {
   openGraph: pageOpenGraph({ title: 'Every player recognised. Every season remembered.', url: '/football-cards-for-clubs' }),
 };
 
-const playerGets = [
-  { title: 'A card they’ll keep', body: 'Their photo, name, number and club on a premium personalised football trading card, printed in the UK.' },
-  { title: 'A profile that grows', body: 'Tap the card to a phone and their private player profile opens, with appearances, goals and season moments.' },
-  { title: 'Recognition from their coach', body: 'Coaches can verify the moments families share and award recognition, so effort is celebrated as well as goals.' },
-  { title: 'No app to download', body: 'The profile opens straight from the card. Families manage it from their phone.' },
+// One section for why families and clubs choose Emblem. Detailed privacy and
+// organiser rules live in the club FAQ and on /trust-and-safeguarding.
+const benefits = [
+  { title: 'Their card. Their club.', body: 'Their photo, name, number and club on a personalised football card they can proudly keep.' },
+  { title: 'More than a printed card', body: 'A phone tap opens their private player profile, bringing their season’s moments and achievements together.' },
+  { title: 'Celebrate effort as well as goals', body: 'Coach recognition gives teamwork, commitment and progress a place alongside match-day achievements.' },
+  { title: 'Parents stay in control', body: 'Parents create and approve their child’s card. Player profiles are private during the pilot.' },
 ];
 
-const safeguards = [
-  { title: 'No roster to collect', body: 'You never upload children’s names or photos. You see the team’s progress and each joined player’s first name and surname initial, as printed on the card.' },
-  { title: 'Parents stay in control', body: 'Each parent or guardian creates and approves their own child’s card, and can ask us to delete it.' },
-  { title: 'Private by default', body: 'Player profiles are private, and public profiles stay switched off during the pilot.' },
-  { title: 'Reviewed by people', body: 'Our team reviews every Squad Invite. Email verification confirms the organiser’s email address only; it is not a DBS check.' },
-];
-
-const tiers = [
-  { name: '1 family', price: PRICES.single, suffix: 'per card', points: ['Premium printed card', 'Built-in NFC chip', 'Private player profile'] },
-  { name: '2 to 9 families', price: PRICES.multi, suffix: 'per card', points: ['Everything in a single card', 'One link for the whole team'] },
-  { name: '10 or more families', price: PRICES.squad, suffix: 'per card', points: ['The lowest price per card', 'Free coach card once 10 families have paid'], featured: true, badge: 'Best for squads' },
+// Quantity tiers of the same card, priced from PRICES. The fanned artwork
+// is the fictional sample player used across the marketing site.
+const HERO_CARD = (design: string, size: 400 | 560 = 400) => `/assets/home/hero/card-${design}-${size}.webp`;
+const priceTiles = [
+  { name: 'Single card', price: PRICES.single, cards: ['glacier'] },
+  { name: '2–9 families', price: PRICES.multi, cards: ['crimson', 'royal', 'emerald'] },
+  { name: '10+ families', price: PRICES.squad, cards: ['glacier', 'crimson', 'royal', 'emerald', 'royal'], note: 'Free coach card once 10 families have paid.' },
 ];
 
 export default function FootballCardsForClubsPage() {
@@ -82,51 +80,10 @@ export default function FootballCardsForClubsPage() {
         </div>
       </section>
 
-      <section className="emh-section emh-clubs-gets" aria-labelledby="emh-clubs-gets-heading">
-        <p className="emh-eyebrow">What every player gets</p>
-        <h2 id="emh-clubs-gets-heading">A card to hold. A season to look back on.</h2>
+      <section className="emh-section emh-trust emh-clubs-why" aria-labelledby="emh-clubs-why-heading">
+        <h2 id="emh-clubs-why-heading">Why choose Emblem cards?</h2>
         <div className="emh-trust-grid">
-          {playerGets.map((item) => (
-            <div key={item.title} className="emh-trust-item">
-              <h3>{item.title}</h3>
-              <p>{item.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section id="pricing" className="emh-section emh-pricing" aria-labelledby="emh-clubs-pricing-heading">
-        <p className="emh-eyebrow">Squad pricing</p>
-        <h2 id="emh-clubs-pricing-heading">The more families join, the less each card costs.</h2>
-        <p>Your team’s price is set at your deadline by the number of families who have committed to a card. Each family then pays for their own card through secure checkout.</p>
-        <div className="emh-tier-grid">
-          {tiers.map((tier) => (
-            <article key={tier.name} className={tier.featured ? 'emh-tier-featured' : ''}>
-              {tier.badge && <span className="emh-tier-flag">{tier.badge}</span>}
-              <h3>{tier.name}</h3>
-              <strong>
-                {tier.price}
-                <span> {tier.suffix}</span>
-              </strong>
-              <ul>
-                {tier.points.map((point) => (
-                  <li key={point}>{point}</li>
-                ))}
-              </ul>
-            </article>
-          ))}
-        </div>
-        <div className="emh-pricing-note">
-          <p className="emh-pricing-reassurance">Digital profile included. No annual subscription.</p>
-          <p className="emh-pricing-delivery">Cards are delivered together to your club’s chosen contact. Delivery details are confirmed with you during setup.</p>
-        </div>
-      </section>
-
-      <section className="emh-section emh-trust" aria-labelledby="emh-clubs-trust-heading">
-        <p className="emh-eyebrow">Guardian controls</p>
-        <h2 id="emh-clubs-trust-heading">Built around young players’ privacy.</h2>
-        <div className="emh-trust-grid">
-          {safeguards.map((item) => (
+          {benefits.map((item) => (
             <div key={item.title} className="emh-trust-item">
               <h3>{item.title}</h3>
               <p>{item.body}</p>
@@ -136,6 +93,67 @@ export default function FootballCardsForClubsPage() {
         <Link className="emh-text-link" href="/trust-and-safeguarding" data-track="clubs_safeguarding">
           How we protect players <Icon name="chevR" size={14} />
         </Link>
+      </section>
+
+      <section id="pricing" className="emh-section emh-clubs-shop" aria-labelledby="emh-clubs-pricing-heading">
+        <div className="emh-clubs-shop-intro">
+          <h2 id="emh-clubs-pricing-heading">Their season. Worth keeping.</h2>
+          <p>Personalised football cards for your squad, with a private digital profile included.</p>
+          <Link className="emh-btn emh-btn-primary" href={startHref} data-track="clubs_pricing_start">
+            Start a Squad Invite
+            <span aria-hidden="true" className="emh-hero-cta-icon">
+              <Icon name="chevR" size={18} />
+            </span>
+          </Link>
+        </div>
+        {/* No authorised photo of a player holding a card exists yet, so the
+            feature image is a composition of the sample card artwork. */}
+        <div className="emh-clubs-shop-media">
+          <img src={HERO_CARD('crimson', 560)} alt="" width={560} height={784} loading="lazy" decoding="async" />
+          <img src={HERO_CARD('royal', 560)} alt="Personalised Emblem football cards for a sample player" width={560} height={784} loading="lazy" decoding="async" />
+          <img src={HERO_CARD('emerald', 560)} alt="" width={560} height={784} loading="lazy" decoding="async" />
+        </div>
+        <div className="emh-clubs-shop-products">
+          <ul className="emh-clubs-tiles">
+            {priceTiles.map((tile) => (
+              <li key={tile.name} className="emh-clubs-tile">
+                <div className="emh-clubs-tile-art" data-count={tile.cards.length} aria-hidden="true">
+                  {tile.cards.map((design, i) => (
+                    <img key={i} src={HERO_CARD(design)} alt="" width={400} height={560} loading="lazy" decoding="async" />
+                  ))}
+                </div>
+                <h3>{tile.name}</h3>
+                <p className="emh-clubs-tile-price">
+                  {tile.price} <span>per card</span>
+                </p>
+                {tile.note && <p className="emh-clubs-tile-note">{tile.note}</p>}
+              </li>
+            ))}
+            {/* Provisional: the case is not on sale and its price, and whether
+                it is included, are undecided. Original illustration only. */}
+            <li className="emh-clubs-tile emh-clubs-tile-case">
+              <div className="emh-clubs-tile-art" aria-hidden="true">
+                <div className="emh-case">
+                  <div className="emh-case-label">
+                    <span>EMBLEM</span>
+                  </div>
+                  <div className="emh-case-window">
+                    <img src={HERO_CARD('royal')} alt="" width={400} height={560} loading="lazy" decoding="async" />
+                  </div>
+                </div>
+              </div>
+              <h3>Protective display case</h3>
+              <p className="emh-clubs-tile-preview">Preview — availability to be confirmed</p>
+            </li>
+          </ul>
+          <p className="emh-clubs-shop-rule">
+            Your team’s price is set at your deadline by the number of families who have committed. Each family then pays for their own card.
+          </p>
+          <div className="emh-pricing-note">
+            <p className="emh-pricing-reassurance">Digital profile included. No annual subscription.</p>
+            <p className="emh-pricing-delivery">Cards are delivered together to your club’s chosen contact. Delivery details are confirmed with you during setup.</p>
+          </div>
+        </div>
       </section>
 
       <section className="emh-section emh-gift-promo emh-clubs-coach" aria-labelledby="emh-clubs-coach-heading">
