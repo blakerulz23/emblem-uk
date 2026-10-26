@@ -12005,3 +12005,40 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   }
   .emh-clubs-shop-media { aspect-ratio: auto; min-height: 420px; }
 }
+
+/* Clubs page: compact three-step "How it works" between pricing and the
+   benefits. Small own padding so the gaps either side match the page. */
+.emh-section.emh-clubs-how { padding-top: 8px; padding-bottom: 8px; }
+.emh-clubs-how h2 { margin: 0 0 18px; }
+.emh-clubs-steps {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.emh-clubs-step {
+  padding: 18px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: #0f1113;
+}
+.emh-clubs-step-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.emh-clubs-step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #f1601d;
+  color: #fff;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+}
+.emh-clubs-step-icon { display: inline-flex; color: rgba(255, 255, 255, 0.7); }
+.emh-clubs-step h3 { margin: 0 0 4px; font-size: 16px; }
+.emh-clubs-step p { margin: 0; color: rgba(255, 255, 255, 0.64); font-size: 14.5px; line-height: 1.5; }
+@media (min-width: 768px) {
+  .emh-clubs-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
