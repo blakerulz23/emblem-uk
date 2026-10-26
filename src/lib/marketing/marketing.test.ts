@@ -247,6 +247,10 @@ describe('grassroots club landing page', () => {
     const nav = await read('../../components/Navbar.tsx');
     expect(nav).toContain("{ href: '/football-cards-for-clubs', label: 'Teams' }");
     expect(nav).not.toContain("label: 'Gifts'");
+    // "The Cards" left the nav; the logo is the way home. The footer keeps /#cards.
+    expect(nav).not.toContain("'/#cards'");
+    expect(nav).toContain('href="/" className="flex items-center" aria-label="Emblem home"');
+    expect(await read('../../components/Footer.tsx')).toContain("href: '/#cards'");
     expect(await read('../../components/Footer.tsx')).toContain("href: '/football-gifts-for-kids'");
     expect(await read('../../app/page.tsx')).toContain("href: '/football-cards-for-clubs'");
   });
