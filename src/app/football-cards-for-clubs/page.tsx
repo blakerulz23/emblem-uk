@@ -67,36 +67,45 @@ export default function FootballCardsForClubsPage() {
     <main className="emh-page">
       <JsonLd data={[breadcrumbJsonLd([{ name: 'Home', path: '/' }, { name: 'Football cards for clubs', path: '/football-cards-for-clubs' }])]} />
 
+      {/* Copy on the left, the card and its portal on the right. On phones the
+          blocks stack as intro → card → price and CTA (grid areas in CSS). */}
       <section className="emh-hero-section">
         <div className="emh-glow" aria-hidden="true" />
-        <div className="emh-hero">
-          <div className="emh-hero-copy">
-            <p className="emh-eyebrow">For grassroots clubs · controlled pilot</p>
-            <h1>Every player recognised. Every season remembered.</h1>
-            <div className="emh-actions emh-hero-actions-single">
-              <Link className="emh-btn emh-btn-primary emh-hero-cta" href={startHref} data-track="clubs_hero_start">
-                Start a Squad Invite
-                <span aria-hidden="true" className="emh-hero-cta-icon">
-                  <Icon name="chevR" size={18} />
-                </span>
-              </Link>
-            </div>
-            <p className="emh-hero-price">Squad pricing from {PRICES.squad} per card · families pay for their own · no roster to collect</p>
-            <ul className="emh-portal-points" aria-label="How a Squad Invite works">
-              {squadPoints.map((point) => (
-                <li key={point}>{point}</li>
-              ))}
-            </ul>
-            <Link className="emh-hero-demo" href="/os/demo" data-track="clubs_hero_coach_demo">
-              See the coach view
-              <Icon name="chevR" size={14} />
-            </Link>
-            <p className="emh-hero-lede emh-hero-lede-after">
-              Give your squad their own personalised football cards. Each card has a chip that opens the player’s private profile, where coaches can recognise goals, effort and milestones all season. One link for families, and every card delivered together to your club.
+        <div className="emh-clubs-hero">
+          <div className="emh-clubs-hero-intro">
+            <p className="emh-eyebrow">For grassroots football clubs</p>
+            <h1>
+              Your squad.
+              <br />
+              Their own football cards.
+            </h1>
+            <p className="emh-clubs-hero-desc">
+              Give every player a personalised card to keep—and a private digital profile to celebrate their season.
             </p>
           </div>
-          <ClubsCardPortal startHref={startHref} />
+          <div className="emh-clubs-hero-card">
+            <ClubsCardPortal startHref={startHref} />
+          </div>
+          <div className="emh-clubs-hero-action">
+            <p className="emh-clubs-hero-price">From {PRICES.squad} per card when 10 or more families commit by your squad deadline.</p>
+            <Link className="emh-btn emh-btn-primary emh-clubs-hero-cta" href={startHref} data-track="clubs_hero_start">
+              Start a Squad Invite
+              <span aria-hidden="true" className="emh-hero-cta-icon">
+                <Icon name="chevR" size={18} />
+              </span>
+            </Link>
+            <p className="emh-clubs-hero-support">One link for your squad. Families create, approve and pay for their own cards.</p>
+          </div>
         </div>
+      </section>
+
+      <section className="emh-section emh-clubs-summary" aria-labelledby="emh-clubs-summary-heading">
+        <h2 id="emh-clubs-summary-heading">Every player recognised. Every season remembered.</h2>
+        <ul className="emh-portal-points">
+          {squadPoints.map((point) => (
+            <li key={point}>{point}</li>
+          ))}
+        </ul>
       </section>
 
       <section className="emh-section emh-clubs-gets" aria-labelledby="emh-clubs-gets-heading">

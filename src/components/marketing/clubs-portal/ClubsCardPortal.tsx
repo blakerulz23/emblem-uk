@@ -235,23 +235,21 @@ export default function ClubsCardPortal({ startHref }: { startHref: string }) {
         )}
       </div>
 
-      <p className="emh-portal-caption">
-        <svg className="emh-portal-caption-icon" viewBox="0 0 60 60" aria-hidden="true" focusable="false">
-          <path d="M14 18a17 17 0 0 1 0 24" />
-          <path d="M24 10a29 29 0 0 1 0 40" />
-          <path d="M34 2a41 41 0 0 1 0 56" />
-        </svg>
-        Tap the physical card with your phone to open the player&rsquo;s private profile.
-      </p>
-
       {mode === 'card' && (
         <div className="emh-portal-cta">
           <p className="emh-portal-badge">Sample experience</p>
           <button ref={enterRef} type="button" className="emh-portal-enter" onClick={enter} data-track="clubs_portal_enter">
             <span className="emh-portal-enter-icon" aria-hidden="true" />
-            Explore a sample player&rsquo;s season
+            Explore a sample season <span aria-hidden="true">→</span>
           </button>
-          <p className="emh-portal-hint">See how one card connects to a player&rsquo;s season.</p>
+          <p className="emh-portal-caption">
+            <svg className="emh-portal-caption-icon" viewBox="0 0 60 60" aria-hidden="true" focusable="false">
+              <path d="M14 18a17 17 0 0 1 0 24" />
+              <path d="M24 10a29 29 0 0 1 0 40" />
+              <path d="M34 2a41 41 0 0 1 0 56" />
+            </svg>
+            The real card opens the player&rsquo;s private profile with a phone tap.
+          </p>
         </div>
       )}
     </div>

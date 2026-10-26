@@ -234,7 +234,9 @@ describe('grassroots club landing page', () => {
     expect(page).toContain("'/squad-invite/start'");
     expect(page).not.toMatch(/free (uk )?delivery|free shipping|delivered (with)?in \d|working days/i);
     expect(page).toContain("canonical: '/football-cards-for-clubs'");
-    for (const id of ['clubs_hero_start', 'clubs_final_start', 'clubs_hero_coach_demo', 'clubs_coach_demo', 'clubs_safeguarding', 'clubs_email']) {
+    // The hero's "See the coach view" link (clubs_hero_coach_demo) was removed
+    // in the two-column hero; the coach demo stays linked from the coach section.
+    for (const id of ['clubs_hero_start', 'clubs_final_start', 'clubs_coach_demo', 'clubs_safeguarding', 'clubs_email']) {
       expect(page).toContain(`data-track="${id}"`);
     }
   });

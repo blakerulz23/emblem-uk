@@ -11766,3 +11766,104 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   stroke-linecap: round;
 }
 .emh-portal[data-mode='inside'] .emh-portal-caption { display: none; }
+
+/* ── Clubs hero: copy left, card + portal CTA right (phones: intro → card → action) ──
+   --card-w drives both the static card and the stage height, so the 3D card
+   (framed by restingCameraDistance with an 18% margin) lands at the same size. */
+.emh-clubs-hero {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas: 'intro' 'card' 'action';
+  row-gap: 4px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 22px 18px 30px;
+  text-align: left;
+}
+.emh-clubs-hero-intro { grid-area: intro; }
+.emh-clubs-hero-card { grid-area: card; --card-w: min(64vw, 290px); }
+.emh-clubs-hero-action { grid-area: action; }
+.emh-page .emh-clubs-hero .emh-eyebrow { margin: 0 0 10px; }
+.emh-page .emh-clubs-hero h1 {
+  margin: 0 0 12px;
+  color: #16130f;
+  font-size: clamp(32px, 8.4vw, 40px);
+  line-height: 1.02;
+  text-wrap: balance;
+}
+.emh-clubs-hero-desc {
+  margin: 0;
+  max-width: 480px;
+  color: #5a5248;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.emh-clubs-hero-price {
+  margin: 0 0 14px;
+  max-width: 440px;
+  color: #3d3832;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.emh-page .emh-clubs-hero .emh-clubs-hero-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 50px;
+  padding: 12px 24px;
+  font-size: 16px;
+  text-transform: none;
+}
+.emh-clubs-hero-support {
+  margin: 12px 0 0;
+  max-width: 420px;
+  color: #6f675d;
+  font-size: 14px;
+  line-height: 1.45;
+}
+/* The portal inside the card column */
+.emh-clubs-hero .emh-portal { width: 100%; margin: 6px 0 18px; }
+.emh-clubs-hero .emh-portal-stage { min-height: calc(var(--card-w) * 1.4 * 1.18); }
+.emh-clubs-hero .emh-portal-card { width: var(--card-w); transform: rotate(-3deg); box-shadow: 0 22px 44px rgba(20, 16, 12, 0.34), 0 4px 10px rgba(20, 16, 12, 0.22); }
+.emh-clubs-hero .emh-portal-cta { margin-top: 2px; gap: 6px; }
+.emh-clubs-hero .emh-portal-caption { margin: 2px auto 0; max-width: 300px; font-size: 13.5px; font-weight: 600; text-align: left; }
+.emh-clubs-hero .emh-portal[data-mode='inside'] .emh-portal-stage { min-height: 0; }
+
+/* Below the hero: the four Squad Invite points under the old headline */
+.emh-clubs-summary { text-align: center; }
+.emh-page .emh-clubs-summary h2 { margin: 0 auto 18px; max-width: 760px; }
+.emh-clubs-summary .emh-portal-points {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(20, 17, 15, 0.08);
+}
+
+@media (min-width: 900px) {
+  .emh-clubs-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: '. card' 'intro card' 'action card' '. card';
+    grid-template-rows: 1fr auto auto 1fr;
+    column-gap: 56px;
+    row-gap: 22px;
+    align-items: start;
+    padding: 34px 32px 34px;
+  }
+  .emh-clubs-hero-card {
+    align-self: center;
+    /* fits the card + portal CTA in short desktop windows (1366×768) */
+    --card-w: clamp(230px, min(25vw, calc((100vh - 330px) * 0.6)), 340px);
+  }
+  .emh-page .emh-clubs-hero h1 { font-size: clamp(40px, 4.2vw, 58px); }
+  .emh-clubs-hero-desc { font-size: 17.5px; }
+  .emh-page .emh-clubs-hero .emh-clubs-hero-cta { width: auto; min-width: 280px; }
+  .emh-clubs-hero .emh-portal { margin: 0; }
+  .emh-clubs-summary .emh-portal-points { grid-template-columns: 1fr 1fr; column-gap: 28px; }
+}
