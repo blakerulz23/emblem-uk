@@ -11546,32 +11546,23 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   touch-action: pan-y;
 }
 .emh-portal-canvas canvas { pointer-events: none; }
-.emh-portal-card {
+/* The hero photo. While the 3D card plays it stays as a dimmed, blurred
+   backdrop in the same frame (never stretched: the stage keeps its ratio);
+   inside the app it is hidden. */
+.emh-portal-photo {
   position: relative;
-  width: min(62vw, 300px);
-  aspect-ratio: 5 / 7;
-  border-radius: 16px;
+  width: 100%;
+  border-radius: 18px;
   overflow: hidden;
-  transform: rotate(-4deg);
-  box-shadow: 0 18px 36px rgba(20, 16, 12, 0.32), 0 3px 8px rgba(20, 16, 12, 0.22);
-  background: #15121a;
+  background: #e9e2d8;
+  box-shadow: 0 14px 34px rgba(20, 16, 12, 0.18), 0 2px 6px rgba(20, 16, 12, 0.1);
+  transition: filter 0.5s ease, opacity 0.5s ease;
 }
-.emh-portal-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.emh-portal-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.24) 48%, transparent 60%);
-  transform: translateX(-120%);
-  pointer-events: none;
-}
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .emh-portal-stage:hover .emh-portal-card::after { transform: translateX(120%); transition: transform 0.9s ease; }
-}
-/* Once the 3D card has drawn, it replaces the static one. */
-.emh-portal[data-mode='entering'] .emh-portal-card,
-.emh-portal[data-mode='exiting'] .emh-portal-card,
-.emh-portal[data-mode='inside'] .emh-portal-card { visibility: hidden; position: absolute; pointer-events: none; }
+.emh-portal-photo img { display: block; width: 100%; height: auto; }
+.emh-portal[data-mode='entering'] .emh-portal-photo,
+.emh-portal[data-mode='exiting'] .emh-portal-photo { filter: blur(6px) brightness(0.45) saturate(0.8); }
+.emh-portal[data-mode='inside'] .emh-portal-photo { visibility: hidden; position: absolute; inset: 0; pointer-events: none; }
+.emh-portal-photo-note { margin: 10px 0 2px; color: #7a7167; font-size: 12px; line-height: 1.4; }
 .emh-portal[data-mode='inside'] .emh-portal-stage { min-height: 0; place-items: stretch; }
 /* No WebGL / reduced motion: a still "pitch" behind the season, no 3D. */
 .emh-portal[data-fallback='true'] .emh-portal-stage {
@@ -11686,7 +11677,7 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 }
 @media (prefers-reduced-motion: reduce) {
   .emh-portal-panel { animation: none; }
-  .emh-portal-card, .emh-portal-stage { transition: none; }
+  .emh-portal-photo, .emh-portal-stage { transition: none; }
 }
 /* Physical card → private profile, stated beside the card without any interaction. */
 .emh-portal-caption {
@@ -11713,9 +11704,10 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 }
 .emh-portal[data-mode='inside'] .emh-portal-caption { display: none; }
 
-/* ── Clubs hero: copy left, card + portal CTA right (phones: intro → card → action) ──
-   --card-w drives both the static card and the stage height, so the 3D card
-   (framed by restingCameraDistance with an 18% margin) lands at the same size. */
+/* ── Clubs hero: copy left, photo + portal CTA right (phones: intro → photo → action) ──
+   The stage takes the photo's own ratio, so the 3D card (framed by
+   restingCameraDistance, height-bound in a landscape frame) plays in exactly
+   the photo's box. */
 .emh-clubs-hero {
   position: relative;
   z-index: 2;
@@ -11729,7 +11721,7 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   text-align: left;
 }
 .emh-clubs-hero-intro { grid-area: intro; }
-.emh-clubs-hero-card { grid-area: card; --card-w: min(64vw, 290px); }
+.emh-clubs-hero-card { grid-area: card; }
 .emh-clubs-hero-action { grid-area: action; }
 .emh-page .emh-clubs-hero .emh-eyebrow { margin: 0 0 10px; }
 .emh-page .emh-clubs-hero h1 {
@@ -11766,10 +11758,11 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 }
 /* The portal inside the card column */
 .emh-clubs-hero .emh-portal { width: 100%; margin: 6px 0 18px; }
-.emh-clubs-hero .emh-portal-stage { min-height: calc(var(--card-w) * 1.4 * 1.18); }
-.emh-clubs-hero .emh-portal-card { width: var(--card-w); transform: rotate(-3deg); box-shadow: 0 22px 44px rgba(20, 16, 12, 0.34), 0 4px 10px rgba(20, 16, 12, 0.22); }
+.emh-clubs-hero .emh-portal-stage { min-height: 0; aspect-ratio: 1448 / 1086; border-radius: 18px; }
+.emh-clubs-hero .emh-portal-canvas { z-index: 1; border-radius: 18px; }
+.emh-clubs-hero .emh-portal[data-mode='inside'] .emh-portal-stage { aspect-ratio: auto; }
 .emh-clubs-hero .emh-portal-cta { margin-top: 2px; gap: 6px; }
-.emh-clubs-hero .emh-portal-caption { margin: 2px auto 0; max-width: 300px; font-size: 13.5px; font-weight: 600; text-align: left; }
+.emh-clubs-hero .emh-portal-caption { margin: 2px auto 0; max-width: 320px; font-size: 13.5px; font-weight: 600; text-align: left; }
 .emh-clubs-hero .emh-portal[data-mode='inside'] .emh-portal-stage { min-height: 0; }
 
 @media (min-width: 900px) {
@@ -11782,11 +11775,7 @@ button.uk-bgremove-frame:disabled { cursor: default; }
     align-items: start;
     padding: 34px 32px 34px;
   }
-  .emh-clubs-hero-card {
-    align-self: center;
-    /* fits the card + portal CTA in short desktop windows (1366×768) */
-    --card-w: clamp(230px, min(25vw, calc((100vh - 330px) * 0.6)), 340px);
-  }
+  .emh-clubs-hero-card { align-self: center; }
   .emh-page .emh-clubs-hero h1 { font-size: clamp(40px, 4.2vw, 58px); }
   .emh-clubs-hero-desc { font-size: 17.5px; }
   .emh-page .emh-clubs-hero .emh-clubs-hero-cta { width: auto; min-width: 280px; }
