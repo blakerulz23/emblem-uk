@@ -17,12 +17,13 @@ import { canUseWebGL } from './portal-math';
  * Phones: the canvas never takes pointer events (no drag, orbit or scroll
  * capture); entering and leaving are buttons; the page scrolls normally.
  *
- * Fallbacks: reduced motion, no WebGL, a scene error or a slow load all
- * show the same season as plain HTML with no 3D.
+ * Fallbacks: reduced motion, no WebGL, software-only WebGL, a scene error
+ * or a slow load all open the app demo directly with no 3D. While the 3D
+ * loads or plays, "Skip to the app demo" is always on screen.
  */
 const CARD_IMAGE = '/assets/home/hero/card-royal-560.webp';
 const ACCENT = '#9d84ff';
-const LOAD_TIMEOUT_MS = 10_000;
+const LOAD_TIMEOUT_MS = 6_000;
 const TRANSITION_GIVE_UP_MS = 4_000;
 
 type Mode = 'card' | 'loading' | 'entering' | 'inside' | 'exiting';
@@ -237,13 +238,19 @@ export default function ClubsCardPortal() {
           </section>
         )}
 
-        {mode === 'loading' && (
-          <p className="emh-portal-status" role="status">Opening the sample season…</p>
-        )}
-        {mode === 'entering' && (
-          <button type="button" className="emh-portal-skip" onClick={() => setMode('inside')}>
-            Skip animation
-          </button>
+        {(mode === 'loading' || mode === 'entering') && (
+          <div className="emh-portal-progress">
+            <p className="emh-portal-status" role="status">
+              {mode === 'loading' ? 'Opening the sample app…' : 'Going through the card…'}
+            </p>
+            <button
+              type="button"
+              className="emh-portal-skip"
+              onClick={() => (mode === 'loading' ? showHtmlOnly() : setMode('inside'))}
+            >
+              Skip to the app demo
+            </button>
+          </div>
         )}
       </div>
 

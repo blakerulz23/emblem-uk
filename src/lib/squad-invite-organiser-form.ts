@@ -122,7 +122,7 @@ export function projectedSquadIncentive(expectedSquadSize: string): SquadIncenti
     return {
       tier: 'squad',
       headline: 'Projected: Full Squad pricing',
-      detail: `An estimated ${count} players would qualify for the lowest price per card, plus a free coach card.`,
+      detail: `An estimated ${count} players would qualify for the lowest price per card. The free coach card follows once 10 families have paid.`,
     };
   }
   if (count >= PROJECTED_MULTI_MIN) {
@@ -130,7 +130,7 @@ export function projectedSquadIncentive(expectedSquadSize: string): SquadIncenti
     return {
       tier: 'multi',
       headline: 'Projected: Multi-player pricing',
-      detail: `${remaining} more ${remaining === 1 ? 'player' : 'players'} would unlock Full Squad pricing and a free coach card.`,
+      detail: `${remaining} more ${remaining === 1 ? 'player' : 'players'} would unlock Full Squad pricing. The free coach card follows once 10 families have paid.`,
     };
   }
   const remaining = PROJECTED_MULTI_MIN - count;

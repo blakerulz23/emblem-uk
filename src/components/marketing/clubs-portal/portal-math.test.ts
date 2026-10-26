@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { advanceProgress, canUseWebGL, restingCameraDistance, smoothstep, transitionStages } from './portal-math';
+import { advanceProgress, canUseWebGL, isSoftwareRenderer, restingCameraDistance, smoothstep, transitionStages } from './portal-math';
 
 describe('restingCameraDistance', () => {
   it('moves the camera further back on a narrow phone than on a wide screen', () => {
@@ -48,10 +48,22 @@ describe('canUseWebGL', () => {
   it('is false when context creation throws', () => {
     expect(canUseWebGL(docWith(() => { throw new Error('blocked'); }))).toBe(false);
   });
-  it('is true when a context exists, and releases the probe context', () => {
+  const glWith = (renderer: string | null, onRelease: () => void) => ({
+    getExtension: (name: string) =>
+      name === 'WEBGL_debug_renderer_info' ? (renderer === null ? null : { UNMASKED_RENDERER_WEBGL: 1 }) : { loseContext: onRelease },
+    getParameter: () => renderer,
+  });
+  it('is true when a hardware context exists, and releases the probe context', () => {
     let released = false;
-    const gl = { getExtension: () => ({ loseContext: () => { released = true; } }) };
-    expect(canUseWebGL(docWith(() => gl))).toBe(true);
+    expect(canUseWebGL(docWith(() => glWith('Apple GPU', () => { released = true; })))).toBe(true);
+    expect(released).toBe(true);
+  });
+  it('is true when the renderer cannot be identified', () => {
+    expect(canUseWebGL(docWith(() => glWith(null, () => {})))).toBe(true);
+  });
+  it('is false for software-only WebGL, still releasing the probe context', () => {
+    let released = false;
+    expect(canUseWebGL(docWith(() => glWith('Google SwiftShader', () => { released = true; })))).toBe(false);
     expect(released).toBe(true);
   });
 });
@@ -73,5 +85,18 @@ describe('advanceProgress', () => {
   });
   it('caps a long stall so one frame cannot finish the move', () => {
     expect(advanceProgress(0, 1, 5)).toBeCloseTo(0.25 / 1.4, 5);
+  });
+});
+
+describe('isSoftwareRenderer', () => {
+  it('flags CPU-drawn WebGL', () => {
+    for (const r of ['ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)))', 'llvmpipe (LLVM 15.0.7, 256 bits)', 'Microsoft Basic Render Driver', 'Google SwiftShader']) {
+      expect(isSoftwareRenderer(r)).toBe(true);
+    }
+  });
+  it('keeps real GPUs and unknown renderers on the 3D path', () => {
+    for (const r of ['Apple GPU', 'Adreno (TM) 640', 'Mali-G78', 'ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11)', '']) {
+      expect(isSoftwareRenderer(r)).toBe(false);
+    }
   });
 });

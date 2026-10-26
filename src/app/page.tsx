@@ -72,7 +72,7 @@ export default function Home() {
     { label: 'How it works', body: 'From one photo to a printed card with a chip inside, and a profile that grows every season.', href: '/how-it-works' },
     {
       label: 'For coaches and teams',
-      body: 'One invite for the whole squad, with a free coach card on full-squad orders.',
+      body: 'Your coach receives a free personalised card once 10 families in your squad have paid.',
       href: '/football-cards-for-clubs',
     },
     { label: 'Privacy and safety', body: 'Private by default and controlled by parents.', href: '/trust-and-safeguarding' },
