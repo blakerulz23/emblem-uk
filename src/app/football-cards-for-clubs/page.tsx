@@ -67,7 +67,7 @@ export default function FootballCardsForClubsPage() {
             </p>
           </div>
           <div className="emh-clubs-hero-card">
-            <ClubsCardPortal startHref={startHref} />
+            <ClubsCardPortal />
           </div>
           <div className="emh-clubs-hero-action">
             <p className="emh-clubs-hero-price">From {PRICES.squad} per card when 10 or more families commit by your squad deadline.</p>

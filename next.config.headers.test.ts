@@ -30,6 +30,17 @@ describe('next.config.mjs headers() — Gate 1 baseline security headers', () =>
     expect(byKey['Referrer-Policy']).toBe('no-referrer');
   });
 
+  it('lets only /os/demo/embed be framed, and only by this site', async () => {
+    const entries = await loadHeaderEntries();
+    const framable = entries.filter((e: { headers: { key: string; value: string }[] }) =>
+      e.headers.some((h) => h.key === 'X-Frame-Options' && h.value !== 'DENY'));
+    expect(framable.map((e: { source: string }) => e.source)).toEqual(['/os/demo/embed']);
+    const byKey = Object.fromEntries(framable[0].headers.map((h: { key: string; value: string }) => [h.key, h.value]));
+    expect(byKey['X-Frame-Options']).toBe('SAMEORIGIN');
+    expect(byKey['Content-Security-Policy']).toBe("frame-ancestors 'self'");
+    expect(entries.some((e: { source: string }) => e.source === '/os/demo' || e.source === '/os/:path*')).toBe(false);
+  });
+
   it('disables the Image Optimization API as a route-level mitigation for the unresolved Next.js 14 advisories (Gate 1 residual pass)', () => {
     expect(nextConfig.images?.unoptimized).toBe(true);
   });

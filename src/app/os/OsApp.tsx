@@ -126,6 +126,12 @@ export type OsAppProps = {
    * sample data (DEMO_OS_DATA) — no sign-in, no real account, nothing
    * saved. The Owner / Coach pill switches between the two sides. */
   demo?: boolean;
+  /** The demo framed inside another Emblem page (/os/demo/embed, used by the
+   * clubs-page card portal): tab and overlay changes don't add browser
+   * history entries (they would pile up in the host page's history), Escape
+   * with nothing open asks the host page to close the demo, and the banner
+   * drops its Exit link. Only meaningful together with demo. */
+  embedded?: boolean;
 };
 
 export default function OsApp({
@@ -136,6 +142,7 @@ export default function OsApp({
   hasTeam = false,
   cardAlreadyResolved = false,
   demo = false,
+  embedded = false,
 }: OsAppProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -600,9 +607,26 @@ export default function OsApp({
   ].filter((entry): entry is { key: string; close: () => void } => entry !== null);
 
   useOverlayHistory(
-    demo && state.activated ? overlayStack.length : 0,
+    demo && !embedded && state.activated ? overlayStack.length : 0,
     () => overlayStack[overlayStack.length - 1]?.close(),
   );
+
+  // Embedded demo: Escape closes the top overlay, or, with nothing open, asks
+  // the host page (same origin only) to close the demo. Key presses inside a
+  // frame never reach the host page's own Escape handler.
+  const overlayStackRef = useRef(overlayStack);
+  overlayStackRef.current = overlayStack;
+  useEffect(() => {
+    if (!embedded) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      const top = overlayStackRef.current[overlayStackRef.current.length - 1];
+      if (top) top.close();
+      else if (window.parent !== window) window.parent.postMessage({ type: 'emblem-demo:escape' }, window.location.origin);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [embedded]);
 
   // Pull-to-refresh is disabled whenever anyOverlayOpen is true (covers
   // AddMomentFlow/MomentStage/CollectibleViewer/CelebrateSheet/
@@ -656,7 +680,7 @@ export default function OsApp({
     }
     if (alreadySynced && !playerAdded) return;
     const newUrl = `${window.location.pathname}?${params.toString()}`;
-    if (tabSyncedOnceRef.current) {
+    if (tabSyncedOnceRef.current && !embedded) {
       window.history.pushState(null, '', newUrl);
     } else {
       window.history.replaceState(null, '', newUrl);
@@ -712,7 +736,7 @@ export default function OsApp({
           )}
 
           {/* Public /os/demo only: Exit back to the site, DEMO label, parent/coach switch and Build my card. */}
-          {demo && <DemoBanner isCoach={isCoach} onToggleRole={actions.toggleRole} />}
+          {demo && <DemoBanner isCoach={isCoach} onToggleRole={actions.toggleRole} embedded={embedded} />}
 
           {/* top bar — a three-column grid (from the Canadian demo), not
               space-between: the right-hand cluster is wider than the back

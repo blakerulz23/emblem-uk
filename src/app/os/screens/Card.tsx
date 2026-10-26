@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { DEMO_PLAYER_PHOTO, osAssetPath } from '../data';
+import { DEMO_PLAYER_PHOTO } from '../data';
 import { useOsData, useRefreshOsData } from '../OsDataContext';
 import { CardFace } from '@/lib/card-definition';
 import { onActivateKey } from '../a11y';

@@ -2,7 +2,7 @@
 
 import { Component, useCallback, useEffect, useId, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import type { CardPortalSceneProps } from './CardPortalScene';
-import SampleSeason, { SAMPLE_PLAYER } from './SampleSeason';
+import SampleAppPanel, { SAMPLE_PLAYER } from './SampleAppPanel';
 import { canUseWebGL } from './portal-math';
 
 /**
@@ -52,7 +52,7 @@ class SceneBoundary extends Component<{ onError: () => void; children: ReactNode
   }
 }
 
-export default function ClubsCardPortal({ startHref }: { startHref: string }) {
+export default function ClubsCardPortal() {
   const [mode, setMode] = useState<Mode>('card');
   const [fallback, setFallback] = useState(false);
   const [Scene, setScene] = useState<ComponentType<CardPortalSceneProps> | null>(null);
@@ -134,6 +134,18 @@ export default function ClubsCardPortal({ startHref }: { startHref: string }) {
       reveal(enterRef.current);
     }
   }, [mode, reducedMotion]);
+
+  // Escape pressed inside the framed app demo (OsApp embedded mode) arrives
+  // as a message from this same origin; treat it like Escape here.
+  useEffect(() => {
+    if (mode === 'card') return;
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if ((event.data as { type?: string } | null)?.type === 'emblem-demo:escape') back();
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [mode, back]);
 
   // Escape leaves from anywhere in the experience.
   useEffect(() => {
@@ -220,8 +232,8 @@ export default function ClubsCardPortal({ startHref }: { startHref: string }) {
         </div>
 
         {showSeason && (
-          <section className="emh-portal-panel" aria-labelledby={headingId}>
-            <SampleSeason ref={headingRef} headingId={headingId} startHref={startHref} onBack={back} />
+          <section className="emh-portal-panel emh-portal-panel-app" aria-labelledby={headingId}>
+            <SampleAppPanel ref={headingRef} headingId={headingId} onBack={back} />
           </section>
         )}
 
