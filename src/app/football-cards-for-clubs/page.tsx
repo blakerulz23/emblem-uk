@@ -29,23 +29,6 @@ const playerGets = [
   { title: 'No app to download', body: 'The profile opens straight from the card. Families manage it from their phone.' },
 ];
 
-// The Squad Invite in four lines, matching the steps below.
-const squadPoints = [
-  'Families create and approve their own child’s card.',
-  'Each family pays for their own card.',
-  'You share one squad link.',
-  'Cards are delivered together to your club’s chosen contact.',
-];
-
-const steps = [
-  { title: 'Apply', body: 'Verify your email and tell us your team name, age group, rough squad size, a deadline and who should receive the cards. No roster needed.' },
-  { title: 'We review it', body: 'Our team reviews every request, usually within two business days.' },
-  { title: 'Share one link', body: 'Once approved, add the delivery details and share your team’s private link with families.' },
-  { title: 'Families build their own', body: 'Each family creates and approves their own child’s card, at their own pace.' },
-  { title: 'Price confirmed, families pay', body: 'At your deadline the team’s price is set by the number of families who have committed. Each family then pays for their own card.' },
-  { title: 'Delivered together', body: 'Paid cards are printed in the UK and delivered together to your club’s chosen contact.' },
-];
-
 const safeguards = [
   { title: 'No roster to collect', body: 'You never upload children’s names or photos. You see the team’s progress and each joined player’s first name and surname initial, as printed on the card.' },
   { title: 'Parents stay in control', body: 'Each parent or guardian creates and approves their own child’s card, and can ask us to delete it.' },
@@ -99,15 +82,6 @@ export default function FootballCardsForClubsPage() {
         </div>
       </section>
 
-      <section className="emh-section emh-clubs-summary" aria-labelledby="emh-clubs-summary-heading">
-        <h2 id="emh-clubs-summary-heading">Every player recognised. Every season remembered.</h2>
-        <ul className="emh-portal-points">
-          {squadPoints.map((point) => (
-            <li key={point}>{point}</li>
-          ))}
-        </ul>
-      </section>
-
       <section className="emh-section emh-clubs-gets" aria-labelledby="emh-clubs-gets-heading">
         <p className="emh-eyebrow">What every player gets</p>
         <h2 id="emh-clubs-gets-heading">A card to hold. A season to look back on.</h2>
@@ -119,20 +93,6 @@ export default function FootballCardsForClubsPage() {
             </div>
           ))}
         </div>
-      </section>
-
-      <section className="emh-section emh-steps emh-clubs-steps" aria-labelledby="emh-clubs-steps-heading">
-        <p className="emh-eyebrow">How the club pilot works</p>
-        <h2 id="emh-clubs-steps-heading">One link. Your whole squad.</h2>
-        <ol className="emh-steps-grid">
-          {steps.map((step, i) => (
-            <li key={step.title} className="emh-step">
-              <span className="emh-step-number" aria-hidden="true">{i + 1}</span>
-              <h3>{step.title}</h3>
-              <p>{step.body}</p>
-            </li>
-          ))}
-        </ol>
       </section>
 
       <section id="pricing" className="emh-section emh-pricing" aria-labelledby="emh-clubs-pricing-heading">
@@ -187,29 +147,6 @@ export default function FootballCardsForClubsPage() {
         <Link className="emh-btn emh-btn-primary" href="/os/demo" data-track="clubs_coach_demo">
           See the coach view
         </Link>
-      </section>
-
-      <section className="emh-section emh-clubs-pilot" aria-labelledby="emh-clubs-pilot-heading">
-        <p className="emh-eyebrow">The pilot</p>
-        <h2 id="emh-clubs-pilot-heading">Open to UK grassroots clubs.</h2>
-        <div className="emh-trust-grid">
-          <div className="emh-trust-item">
-            <h3>Who can apply</h3>
-            <p>UK grassroots clubs and teams with players aged U6 to U18.</p>
-          </div>
-          <div className="emh-trust-item">
-            <h3>Who organises</h3>
-            <p>A coach or authorised club representative, or a parent representative authorised by the team.</p>
-          </div>
-          <div className="emh-trust-item">
-            <h3>What you’ll need</h3>
-            <p>Your team name and age group, a rough squad size, a deadline for families, and a UK contact to receive the cards.</p>
-          </div>
-          <div className="emh-trust-item">
-            <h3>What it costs the club</h3>
-            <p>Nothing up front. Families pay for their own cards once the team’s price is confirmed.</p>
-          </div>
-        </div>
       </section>
 
       <section className="emh-section emh-faq">
