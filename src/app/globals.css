@@ -11742,3 +11742,27 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   .emh-portal-panel { animation: none; }
   .emh-portal-card, .emh-portal-stage { transition: none; }
 }
+/* Physical card → private profile, stated beside the card without any interaction. */
+.emh-portal-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 340px;
+  margin: 14px auto 0;
+  color: #3d3832;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+}
+.emh-portal-caption-icon {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: #f1601d;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.emh-portal[data-mode='inside'] .emh-portal-caption { display: none; }
