@@ -6,7 +6,7 @@ import { useState } from 'react';
 const links = [
   { href: '/#cards', label: 'The Cards' },
   { href: '/how-it-works', label: 'How It Works' },
-  { href: '/football-gifts-for-kids', label: 'Gifts' },
+  { href: '/football-cards-for-clubs', label: 'Teams' },
   { href: '/#pricing', label: 'Pricing' },
   { href: '/os/demo', label: 'See the App' },
 ];

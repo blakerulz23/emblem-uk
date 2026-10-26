@@ -241,8 +241,13 @@ describe('grassroots club landing page', () => {
     }
   });
 
-  it('is linked from the footer club link and the homepage coach link', async () => {
+  it('is linked from the nav Teams tab, the footer club link and the homepage coach link', async () => {
     expect(await read('../../components/Footer.tsx')).toContain("{ href: '/football-cards-for-clubs', label: 'Clubs & coaches' }");
+    // The shared desktop/mobile nav links to it as "Teams"; gifts stays reachable from the footer.
+    const nav = await read('../../components/Navbar.tsx');
+    expect(nav).toContain("{ href: '/football-cards-for-clubs', label: 'Teams' }");
+    expect(nav).not.toContain("label: 'Gifts'");
+    expect(await read('../../components/Footer.tsx')).toContain("href: '/football-gifts-for-kids'");
     expect(await read('../../app/page.tsx')).toContain("href: '/football-cards-for-clubs'");
   });
 });
