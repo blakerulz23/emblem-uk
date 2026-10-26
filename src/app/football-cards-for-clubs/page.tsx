@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import Icon from '@/components/builder/emblem/Icon';
-import type { IconName } from '@/components/builder/emblem/data';
 import ClubsCardPortal from '@/components/marketing/clubs-portal/ClubsCardPortal';
 import JsonLd from '@/components/marketing/JsonLd';
+import SquadInviteJourneySection from '@/components/SquadInviteJourneySection';
 import { FaqAccordion } from '../HomeEffects';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { CLUB_PAGE_FAQ_ITEMS } from '@/lib/marketing/faq';
@@ -30,14 +30,6 @@ const benefits = [
   { title: 'More than a printed card', body: 'A phone tap opens their private player profile, bringing their season’s moments and achievements together.' },
   { title: 'Celebrate effort as well as goals', body: 'Coach recognition gives teamwork, commitment and progress a place alongside match-day achievements.' },
   { title: 'Parents stay in control', body: 'Parents create and approve their child’s card. Player profiles are private during the pilot.' },
-];
-
-// Three short steps; the full price and payment rules stay in the pricing
-// section and the club FAQ.
-const howItWorks: { title: string; body: string; icon: IconName }[] = [
-  { title: 'Start your squad', body: 'Tell us about your team. Once your Squad Invite is approved, share one private link with families.', icon: 'shield' },
-  { title: 'Families make it theirs', body: 'Parents personalise and approve their child’s card. At the deadline, the squad price is confirmed and each family pays individually.', icon: 'edit' },
-  { title: 'Keep it. Tap it. Celebrate.', body: 'Paid cards arrive together at your club. Families tap their card with a phone to open their player’s private profile.', icon: 'nfc' },
 ];
 
 // Quantity tiers of the same card, priced from PRICES. The fanned artwork
@@ -157,23 +149,14 @@ export default function FootballCardsForClubsPage() {
         </div>
       </section>
 
-      <section className="emh-section emh-clubs-how" aria-labelledby="emh-clubs-how-heading">
-        <h2 id="emh-clubs-how-heading">How it works</h2>
-        <ol className="emh-clubs-steps">
-          {howItWorks.map((step, i) => (
-            <li key={step.title} className="emh-clubs-step">
-              <div className="emh-clubs-step-head" aria-hidden="true">
-                <span className="emh-clubs-step-num">{i + 1}</span>
-                <span className="emh-clubs-step-icon">
-                  <Icon name={step.icon} size={22} />
-                </span>
-              </div>
-              <h3>{step.title}</h3>
-              <p>{step.body}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
+      {/* The shared Squad Invite journey (also on /how-it-works), as this
+          page's How it works. */}
+      <SquadInviteJourneySection
+        squadInviteEnabled={isSquadInviteMvpEnabled()}
+        ctaHref={startHref}
+        eyebrow="How it works"
+        ctaTrack="clubs_how_start"
+      />
 
       <section className="emh-section emh-trust emh-clubs-why" aria-labelledby="emh-clubs-why-heading">
         <h2 id="emh-clubs-why-heading">Why choose Emblem cards?</h2>
