@@ -58,3 +58,20 @@ export function canUseWebGL(doc: Document | undefined = typeof document === 'und
     return false;
   }
 }
+
+/** Seconds a full move into or out of the card takes. */
+export const TRANSITION_SECONDS = 1.4;
+
+/**
+ * Moves progress toward the target at a fixed rate in real time, so the
+ * transition takes about TRANSITION_SECONDS on a fast or a slow device (a
+ * per-frame damped step slows down when the frame rate drops). A long gap
+ * between frames (tab switch, a stall) is capped so it can't jump straight
+ * to the end in one frame.
+ */
+export function advanceProgress(current: number, target: number, deltaSeconds: number, duration = TRANSITION_SECONDS): number {
+  const step = Math.min(Math.max(deltaSeconds, 0), 0.25) / duration;
+  if (current < target) return Math.min(target, current + step);
+  if (current > target) return Math.max(target, current - step);
+  return current;
+}

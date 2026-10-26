@@ -16,7 +16,7 @@ import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { MeshPortalMaterial, useTexture } from '@react-three/drei';
 import * as THREE from 'three';
-import { CARD_HEIGHT, CARD_WIDTH, restingCameraDistance, transitionStages } from './portal-math';
+import { advanceProgress, CARD_HEIGHT, CARD_WIDTH, restingCameraDistance, transitionStages } from './portal-math';
 
 export type CardPortalSceneProps = {
   /** true to move into the card, false to come back out. */
@@ -196,8 +196,7 @@ function PortalCard(props: Omit<CardPortalSceneProps, 'paused' | 'onError'>) {
 
   useFrame(({ clock }, delta) => {
     const target = inside ? 1 : 0;
-    progress.current = THREE.MathUtils.damp(progress.current, target, 4.2, Math.min(delta, 0.05));
-    if (Math.abs(progress.current - target) < 0.01) progress.current = target;
+    progress.current = advanceProgress(progress.current, target, delta);
     const stage = transitionStages(progress.current);
 
     if (portal.current) portal.current.blend = stage.blend;

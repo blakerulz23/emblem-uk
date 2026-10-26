@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canUseWebGL, restingCameraDistance, smoothstep, transitionStages } from './portal-math';
+import { advanceProgress, canUseWebGL, restingCameraDistance, smoothstep, transitionStages } from './portal-math';
 
 describe('restingCameraDistance', () => {
   it('moves the camera further back on a narrow phone than on a wide screen', () => {
@@ -53,5 +53,25 @@ describe('canUseWebGL', () => {
     const gl = { getExtension: () => ({ loseContext: () => { released = true; } }) };
     expect(canUseWebGL(docWith(() => gl))).toBe(true);
     expect(released).toBe(true);
+  });
+});
+
+describe('advanceProgress', () => {
+  const run = (fps: number) => {
+    let p = 0;
+    let frames = 0;
+    while (p < 1 && frames < 10_000) { p = advanceProgress(p, 1, 1 / fps); frames += 1; }
+    return frames / fps;
+  };
+  it('takes about the same real time at 60 fps and at 8 fps', () => {
+    expect(run(60)).toBeCloseTo(1.4, 1);
+    expect(run(8)).toBeCloseTo(1.4, 0);
+  });
+  it('moves back out toward 0 and stops exactly at the target', () => {
+    expect(advanceProgress(0.05, 0, 0.2)).toBe(0);
+    expect(advanceProgress(1, 1, 0.016)).toBe(1);
+  });
+  it('caps a long stall so one frame cannot finish the move', () => {
+    expect(advanceProgress(0, 1, 5)).toBeCloseTo(0.25 / 1.4, 5);
   });
 });
