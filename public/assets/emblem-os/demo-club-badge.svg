@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 72" role="img" aria-label="Westbrook Juniors (fictional demo club)">
+  <path d="M32 2 60 12v22c0 18-12 30-28 36C16 64 4 52 4 34V12Z" fill="#1d2b4f" stroke="#e9c46a" stroke-width="3"/>
+  <path d="M32 10 52 17v17c0 13-8 22-20 27-12-5-20-14-20-27V17Z" fill="#2c3f6e"/>
+  <text x="32" y="44" text-anchor="middle" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#fff">WJ</text>
+</svg>

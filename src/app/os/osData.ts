@@ -210,8 +210,8 @@ export type OsData = {
 };
 
 /** Demo-mode goals, moved here from Profile.tsx so DEMO_OS_DATA is the one source of truth for demo content. */
-// Ollie is a central midfielder, so these are a midfielder's goals (they
-// were a goalkeeper's — clean sheets, distribution). The tournament is the
+// Riley is a forward who also creates, so these goals mix assists and
+// passing (they were a goalkeeper's — clean sheets, distribution). The tournament is the
 // U10 Champions Cup in the demo Collection (data.tsx, e3).
 const DEMO_GOALS: SeasonTarget[] = [
   { label: 'Register 8 assists', current: 6, target: 8, unit: 'assists', status: 'in-progress' },
@@ -234,14 +234,14 @@ export const DEMO_OS_DATA: OsData = {
   playerId: null,
   viewerId: null,
   connections: [
-    { profileId: 'demo-guardian', displayName: 'Rebecca Penny', relationship: 'Mother', kind: 'guardian', teamContext: null },
-    { profileId: 'demo-coach', displayName: 'James Walker', relationship: null, kind: 'coach', teamContext: 'Curzon Ashton Juniors' },
+    { profileId: 'demo-guardian', displayName: 'Sam Hart', relationship: 'Parent', kind: 'guardian', teamContext: null },
+    { profileId: 'demo-coach', displayName: 'James Walker', relationship: null, kind: 'coach', teamContext: 'Westbrook Juniors' },
   ],
   coachDisplayName: 'Coach Danny',
-  coachClub: { name: 'Curzon Ashton Juniors', location: 'Manchester, England' },
+  coachClub: { name: 'Westbrook Juniors', location: 'England' },
   coachTeamsManaged: [
-    { id: 'demo-team-u10', name: 'Curzon Ashton U10', playerCount: 14 },
-    { id: 'demo-team-u8', name: 'Curzon Ashton U8', playerCount: 11 },
+    { id: 'demo-team-u10', name: 'Westbrook Juniors U10', playerCount: 14 },
+    { id: 'demo-team-u8', name: 'Westbrook Juniors U8', playerCount: 11 },
   ],
   goals: DEMO_GOALS,
   seasonFocus: DEMO_SEASON_FOCUS,

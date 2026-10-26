@@ -19,7 +19,7 @@ const assetPath = '/assets/emblem-os';
 export const osAssetPath = assetPath;
 
 /** The demo player's photo. The demo profile carries photoUrl: null (only real mode reads that field), so screens fall back to this rather than to an initial. */
-export const DEMO_PLAYER_PHOTO = `${assetPath}/player-ollie.png`;
+export const DEMO_PLAYER_PHOTO = `${assetPath}/demo-riley-photo.webp`;
 
 export const ICN: Record<string, (color: string) => React.ReactElement> = {
   home: (c) => (
@@ -98,7 +98,7 @@ const twoDaysAgo = new Date(Date.now() - 2 * 86400000).toISOString();
 
 /** Demo Season Focus — one guardian-authored, one coach-authored, deliberately never merged into one anonymous value. */
 export const DEMO_SEASON_FOCUS: SeasonFocusEntry[] = [
-  { id: 'demo-focus-1', label: 'Improve confidence on the ball', createdBy: 'demo-guardian', authorName: 'Rebecca Penny', authorRole: 'guardian', createdAt: '2026-07-10', status: 'active' },
+  { id: 'demo-focus-1', label: 'Improve confidence on the ball', createdBy: 'demo-guardian', authorName: 'Sam Hart', authorRole: 'guardian', createdAt: '2026-07-10', status: 'active' },
   { id: 'demo-focus-2', label: 'Develop first touch under pressure', createdBy: 'demo-coach', authorName: 'Coach Danny', authorRole: 'coach', createdAt: '2026-07-15', status: 'active' },
 ];
 
@@ -113,15 +113,15 @@ export const DEMO_STRENGTHS: StrengthEntry[] = [
 export const DEMO_ASSESSMENTS: AssessmentEntry[] = [
   {
     id: 'demo-assessment-1',
-    body: "Ollie's reading of the game has really grown this season — he's linking play well between defence and midfield. Keep working on first touch under pressure and he'll be even more of a threat.",
+    body: "Riley's reading of the game has really grown this season — he's linking play well with the midfield. Keep working on first touch under pressure and he'll be even more of a threat.",
     authorName: 'Coach Danny',
     createdAt: '2026-07-20',
   },
 ];
 
 export const SQUAD: SquadPlayer[] = [
-  { id: 'ollie', name: 'Ollie Harrison', num: 7, pos: 'Midfielder', status: 'Recognised today', guardianStatus: 'connected', guardianCount: 1, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: 'RW', footballAgeGroup: 'U10', heightCm: 142, preferredFoot: 'Right', coachFieldsUpdatedAt: '2026-08-01T14:20:00Z', seasonFocus: DEMO_SEASON_FOCUS, strengths: DEMO_STRENGTHS, assessments: DEMO_ASSESSMENTS, teamId: 'demo-team-u10' },
-  { id: 'jack', name: 'Jack Bennett', num: 9, pos: 'Forward', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, footballAgeGroup: null, heightCm: null, preferredFoot: null, coachFieldsUpdatedAt: null, seasonFocus: [], strengths: [], assessments: [], teamId: 'demo-team-u10' },
+  { id: 'ollie', name: 'Riley Hart', num: 9, pos: 'Forward', status: 'Recognised today', guardianStatus: 'connected', guardianCount: 1, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: 'RW', footballAgeGroup: 'U10', heightCm: 142, preferredFoot: 'Right', coachFieldsUpdatedAt: '2026-08-01T14:20:00Z', seasonFocus: DEMO_SEASON_FOCUS, strengths: DEMO_STRENGTHS, assessments: DEMO_ASSESSMENTS, teamId: 'demo-team-u10' },
+  { id: 'jack', name: 'Jack Bennett', num: 10, pos: 'Forward', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, footballAgeGroup: null, heightCm: null, preferredFoot: null, coachFieldsUpdatedAt: null, seasonFocus: [], strengths: [], assessments: [], teamId: 'demo-team-u10' },
   { id: 'leo', name: 'Leo Marsh', num: 4, pos: 'Defender', status: 'Add recognition', guardianStatus: 'pending', guardianCount: 0, latestInviteExpiresAt: inThreeDays, hasManageableInvite: true, secondaryPosition: null, footballAgeGroup: 'U10', heightCm: null, preferredFoot: null, coachFieldsUpdatedAt: '2026-07-20T09:00:00Z', seasonFocus: [], strengths: [], assessments: [], teamId: 'demo-team-u10' },
   { id: 'finn', name: 'Finn Doyle', num: 1, pos: 'Goalkeeper', status: 'Add recognition', guardianStatus: 'expired', guardianCount: 0, latestInviteExpiresAt: twoDaysAgo, hasManageableInvite: false, secondaryPosition: null, footballAgeGroup: null, heightCm: null, preferredFoot: null, coachFieldsUpdatedAt: null, seasonFocus: [], strengths: [], assessments: [], teamId: 'demo-team-u10' },
   { id: 'reuben', name: 'Reuben Clarke', num: 8, pos: 'Midfielder', status: 'Recognised today', guardianStatus: 'multiple', guardianCount: 2, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, footballAgeGroup: 'U10', heightCm: 139, preferredFoot: 'Both', coachFieldsUpdatedAt: '2026-07-25T11:10:00Z', seasonFocus: [], strengths: [], assessments: [], teamId: 'demo-team-u10' },
@@ -134,13 +134,13 @@ export const CELEBRATE_CATS: CelebrateGroup[] = [
 ];
 
 export const VERIFY_QUEUE: VerifyItem[] = [
-  { id: 'v1', player: 'Ollie Harrison', playerId: 'ollie', moment: 'First Goal', thumb: `${assetPath}/jn-firstgoal-photo.jpg`, by: 'Rebecca Penny (Parent)', date: '12 March 2025', note: 'His first goal — arrived late in the box and finished low into the corner!', mediaKind: 'photo' },
-  { id: 'v2', player: 'Jack Bennett', playerId: 'jack', moment: 'Tournament Winner', thumb: `${assetPath}/jn-tournament-photo.jpg`, by: 'Mark Bennett (Parent)', date: '7 June 2026', note: null, mediaKind: 'photo' },
-  { id: 'v3', player: 'Leo Marsh', playerId: 'leo', moment: 'Team Photo', thumb: `${assetPath}/jn-team-photo.jpg`, by: 'Sara Marsh (Parent)', date: '22 April 2026', note: 'Whole squad after the cup win.', mediaKind: 'photo' },
+  { id: 'v1', player: 'Riley Hart', playerId: 'ollie', moment: 'First Goal', thumb: `${assetPath}/jn-potm.png`, by: 'Sam Hart (Parent)', date: '12 March 2025', note: 'His first goal — arrived late in the box and finished low into the corner!', mediaKind: 'photo' },
+  { id: 'v2', player: 'Jack Bennett', playerId: 'jack', moment: 'Tournament Winner', thumb: `${assetPath}/jn-county.png`, by: 'Mark Bennett (Parent)', date: '7 June 2026', note: null, mediaKind: 'photo' },
+  { id: 'v3', player: 'Leo Marsh', playerId: 'leo', moment: 'Team Photo', thumb: `${assetPath}/jn-potm.png`, by: 'Sara Marsh (Parent)', date: '22 April 2026', note: 'Whole squad after the cup win.', mediaKind: 'photo' },
 ];
 
 export const COACH_ACTIVITY: CoachActivityItem[] = [
-  { text: 'You celebrated Ollie Harrison — Player of the Match', when: '2h ago', ic: 'star' },
+  { text: 'You celebrated Riley Hart — Player of the Match', when: '2h ago', ic: 'star' },
   { text: 'You verified Reuben Clarke — First Assist', when: 'Yesterday', ic: 'shield' },
   { text: 'You added a team photo', when: '2 days ago', ic: 'camera' },
 ];
@@ -204,8 +204,8 @@ export const ADD_TYPES: AddMomentType[] = [
 ];
 
 export const ADD_PLAYERS: AddPlayer[] = [
-  { id: 'ollie', name: 'Ollie Harrison', team: 'Curzon Ashton U10', num: 7, grad: 'linear-gradient(160deg,#E9C46A,#C98B3A)' },
-  { id: 'mia', name: 'Mia Harrison', team: 'Curzon Ashton U8', num: 9, grad: 'linear-gradient(160deg,#8FB7E8,#3F6FA8)' },
+  { id: 'ollie', name: 'Riley Hart', team: 'Westbrook Juniors U10', num: 9, grad: 'linear-gradient(160deg,#E9C46A,#C98B3A)' },
+  { id: 'mia', name: 'Mia Hart', team: 'Westbrook Juniors U8', num: 9, grad: 'linear-gradient(160deg,#8FB7E8,#3F6FA8)' },
 ];
 
 export const ADD_EVENTS: AddEvent[] = [
@@ -242,20 +242,20 @@ export const ADD_ACH: AddAchievement[] = [
 // careerOrdinal mirrors RealMoment.careerOrdinal — a real, ever-counting
 // position, never a fraction of a fixed total.
 //
-// One storyline for one player: Ollie is a central midfielder (#7, as on
-// PLAYER_PROFILE and in every photo), across three seasons from U8 to this
+// One storyline for one player: Riley is a forward (#9, as on
+// PLAYER_PROFILE and the card), across three seasons from U8 to this
 // season's U10, matching DEVELOPMENT_SEASONS (24/25, 25/26, 26/27). `year`
 // is the season label, so Collection's chapters and Home's "This season"
-// agree. The *-photo.jpg / -clip.mp4 files are crops of the original jn-*
-// artwork with its mock app controls trimmed off, so the pictures sit in
-// the app's own frames without a second, fake UI baked into them.
+// agree. All names, clubs and organisations are fictional. Moments carry
+// plain textures rather than photos: the earlier match photos showed a
+// real-looking kit sponsor and phone number, so they are not used.
 export const MOMENTS: Record<string, Moment> = {
   e1: {
     id: 'e1', year: '2024/25', ageGroup: 'U8', title: 'First Goal', date: '12 March 2025', occurredOn: '2025-03-12', ic: 'ball',
-    thumb: `${assetPath}/jn-firstgoal-photo.jpg`, video: `${assetPath}/jn-firstgoal-clip.mp4`,
+    thumb: `${assetPath}/jn-potm.png`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'Arrived late in the box and finished low into the corner — his first competitive goal.', media: true,
-    match: { competition: 'U8 League', opponent: 'Hyde United', score: '3 – 1', venue: 'Home' },
+    note: 'Arrived late in the box and finished low into the corner — his first competitive goal.', media: false,
+    match: { competition: 'U8 League', opponent: 'Millbrook Rangers', score: '3 – 1', venue: 'Home' },
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
       rank: 'milestone', sub: 'Goal Scorer',
@@ -269,9 +269,9 @@ export const MOMENTS: Record<string, Moment> = {
   },
   e2: {
     id: 'e2', year: '2024/25', ageGroup: 'U8', title: 'Team Photo', date: '26 April 2025', occurredOn: '2025-04-26', ic: 'camera',
-    thumb: `${assetPath}/jn-team-photo.jpg`,
-    trust: 'coach', source: 'Curzon Ashton Juniors', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'End-of-season squad photo on the home pitch.', media: true,
+    thumb: `${assetPath}/jn-county.png`,
+    trust: 'coach', source: 'Westbrook Juniors', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
+    note: 'End-of-season squad photo on the home pitch.', media: false,
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
       rank: 'milestone', sub: 'Team Memory',
@@ -286,8 +286,8 @@ export const MOMENTS: Record<string, Moment> = {
     id: 'e4', year: '2025/26', ageGroup: 'U9', title: 'Player of the Match', date: '19 October 2025', occurredOn: '2025-10-19', ic: 'star',
     thumb: `${assetPath}/jn-potm.png`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'Ran the midfield — won the ball back and kept the team moving all game.', media: false,
-    match: { competition: 'U9 League', opponent: 'Hyde United', score: '2 – 2', venue: 'Away' },
+    note: 'Led the press from the front — won the ball back high and kept the team moving all game.', media: false,
+    match: { competition: 'U9 League', opponent: 'Millbrook Rangers', score: '2 – 2', venue: 'Away' },
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
       rank: 'milestone', sub: 'Player of the Match',
@@ -300,9 +300,9 @@ export const MOMENTS: Record<string, Moment> = {
   },
   e7: {
     id: 'e7', year: '2025/26', ageGroup: 'U9', title: 'Team Photo', date: '18 April 2026', occurredOn: '2026-04-18', ic: 'camera',
-    thumb: `${assetPath}/jn-team-photo.jpg`,
-    trust: 'parent', source: 'Rebecca Penny', uploadedBy: 'Rebecca Penny', verifiedBy: 'Rebecca Penny',
-    note: 'End-of-season squad photo — his second year with the team.', media: true,
+    thumb: `${assetPath}/jn-county.png`,
+    trust: 'parent', source: 'Sam Hart', uploadedBy: 'Sam Hart', verifiedBy: 'Sam Hart',
+    note: 'End-of-season squad photo — his second year with the team.', media: false,
     rarity: { label: 'STANDARD', color: '#8A8378', tier: 'standard' },
     reward: {
       rank: 'standard', sub: 'Team Memory',
@@ -314,9 +314,9 @@ export const MOMENTS: Record<string, Moment> = {
   },
   e5: {
     id: 'e5', year: '2026/27', ageGroup: 'U10', title: 'Captain', date: '6 September 2026', occurredOn: '2026-09-06', ic: 'captain',
-    thumb: `${assetPath}/jn-captain-photo.jpg`,
-    trust: 'club', source: 'Curzon Ashton Juniors', uploadedBy: 'Coach Danny', verifiedBy: 'Curzon Ashton Juniors',
-    note: 'Handed the armband before the first league game of the season.', media: true,
+    thumb: `${assetPath}/jn-potm.png`,
+    trust: 'club', source: 'Westbrook Juniors', uploadedBy: 'Coach Danny', verifiedBy: 'Westbrook Juniors',
+    note: 'Handed the armband before the first league game of the season.', media: false,
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
       rank: 'milestone', sub: 'Leadership Unlocked',
@@ -329,10 +329,10 @@ export const MOMENTS: Record<string, Moment> = {
   },
   e3: {
     id: 'e3', year: '2026/27', ageGroup: 'U10', title: 'Tournament Winner', date: '4 October 2026', occurredOn: '2026-10-04', ic: 'trophy',
-    thumb: `${assetPath}/jn-tournament-photo.jpg`,
-    trust: 'club', source: 'Curzon Ashton Juniors', uploadedBy: 'Rebecca Penny', verifiedBy: 'Curzon Ashton Juniors',
-    note: 'Lifted the U10 Champions Cup as captain after a 3-1 final.', media: true,
-    match: { competition: 'U10 Champions Cup', opponent: 'Hyde United', score: '3 – 1', venue: 'Curzon Ashton FC' },
+    thumb: `${assetPath}/jn-county.png`,
+    trust: 'club', source: 'Westbrook Juniors', uploadedBy: 'Sam Hart', verifiedBy: 'Westbrook Juniors',
+    note: 'Lifted the U10 Champions Cup as captain after a 3-1 final.', media: false,
+    match: { competition: 'U10 Champions Cup', opponent: 'Millbrook Rangers', score: '3 – 1', venue: 'Westbrook Park' },
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
       rank: 'milestone', sub: 'Champions Cup Final',
@@ -343,20 +343,20 @@ export const MOMENTS: Record<string, Moment> = {
         { ic: 'shield', label: 'Official Club', sub: 'Verified', lit: true },
       ],
       careerOrdinal: 6, season: '2026/27',
-      story: 'Curzon Ashton lifted the U10 Champions Cup after a 3-1 win in the final. Ollie set up the opener and scored the third, wearing the captain’s armband.',
-      coach: 'Ollie was outstanding all tournament. He ran the midfield, kept the ball moving and led by example.',
+      story: 'Westbrook Juniors lifted the U10 Champions Cup after a 3-1 win in the final. Riley set up the opener and scored the third, wearing the captain’s armband.',
+      coach: 'Riley was outstanding all tournament. He led the line, kept the ball moving and led by example.',
       coachName: 'Coach James Walker',
-      score: '3 – 1', opp: 'Hyde United',
-      facts: [['Goals', '1'], ['Assists', '1'], ['Round', 'Final'], ['Competition', 'U10 Champions Cup'], ['Venue', 'Curzon Ashton FC']],
-      key: [['12′', 'Ollie assist — through ball for the opener', 'star'], ['34′', 'Hyde United goal', 'ball'], ['56′', 'Curzon Ashton goal', 'ball'], ['78′', 'Ollie goal from the edge of the box', 'ball'], ['90′', 'Full time', 'shield']],
+      score: '3 – 1', opp: 'Millbrook Rangers',
+      facts: [['Goals', '1'], ['Assists', '1'], ['Round', 'Final'], ['Competition', 'U10 Champions Cup'], ['Venue', 'Westbrook Park']],
+      key: [['12′', 'Riley assist — through ball for the opener', 'star'], ['34′', 'Millbrook Rangers goal', 'ball'], ['56′', 'Westbrook Juniors goal', 'ball'], ['78′', 'Riley goal from the edge of the box', 'ball'], ['90′', 'Full time', 'shield']],
     },
   },
   e8: {
     id: 'e8', year: '2026/27', ageGroup: 'U10', title: 'Player of the Match', date: '11 October 2026', occurredOn: '2026-10-11', ic: 'star',
     thumb: `${assetPath}/jn-potm.png`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'A second Player of the Match award — two assists from central midfield.', media: false,
-    match: { competition: 'U10 League', opponent: 'Hyde United', score: '4 – 2', venue: 'Home' },
+    note: 'A second Player of the Match award — two assists from up front.', media: false,
+    match: { competition: 'U10 League', opponent: 'Millbrook Rangers', score: '4 – 2', venue: 'Home' },
     rarity: { label: 'RECOGNIZED', color: '#E97435', tier: 'metallic' },
     reward: {
       rank: 'recognized', sub: 'Player of the Match',
@@ -369,7 +369,7 @@ export const MOMENTS: Record<string, Moment> = {
   e6: {
     id: 'e6', year: '2026/27', ageGroup: 'U10', title: 'County Selection', date: '17 October 2026', occurredOn: '2026-10-17', ic: 'shield',
     thumb: `${assetPath}/jn-county.png`,
-    trust: 'league', source: 'Greater Manchester FA', uploadedBy: 'Rebecca Penny', verifiedBy: 'Greater Manchester FA',
+    trust: 'league', source: 'Northfield County FA', uploadedBy: 'Sam Hart', verifiedBy: 'Northfield County FA',
     note: 'Selected for the county development squad.', media: false,
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
