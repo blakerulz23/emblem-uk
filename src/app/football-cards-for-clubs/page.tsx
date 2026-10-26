@@ -70,14 +70,13 @@ export default function FootballCardsForClubsPage() {
               Their own football cards.
             </h1>
             <p className="emh-clubs-hero-desc">
-              Give every player a personalised card to keep—and a private digital profile to celebrate their season.
+              Give every player a personalised card to keep and a private digital profile to celebrate their season.
             </p>
           </div>
           <div className="emh-clubs-hero-card">
             <ClubsCardPortal />
           </div>
           <div className="emh-clubs-hero-action">
-            <p className="emh-clubs-hero-price">From {PRICES.squad} per card when 10 or more families commit by your squad deadline.</p>
             <Link className="emh-btn emh-btn-primary emh-clubs-hero-cta" href={startHref} data-track="clubs_hero_start">
               Start a Squad Invite
               <span aria-hidden="true" className="emh-hero-cta-icon">

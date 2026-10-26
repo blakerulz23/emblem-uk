@@ -11740,14 +11740,6 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   font-size: 16px;
   line-height: 1.5;
 }
-.emh-clubs-hero-price {
-  margin: 0 0 14px;
-  max-width: 440px;
-  color: #3d3832;
-  font-size: 15px;
-  font-weight: 650;
-  line-height: 1.4;
-}
 .emh-page .emh-clubs-hero .emh-clubs-hero-cta {
   display: inline-flex;
   align-items: center;
