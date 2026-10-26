@@ -192,7 +192,7 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
         <div>
           <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 22, color: 'var(--os-ink)', lineHeight: 1.1 }}>
-            {isReal ? 'Your team' : 'Curzon Ashton U10'}
+            {isReal ? 'Your team' : 'Westbrook Juniors U10'}
           </div>
           <div style={{ fontSize: 13, color: 'var(--os-muted)', marginTop: 4 }}>
             {teamPlayers.length} player{teamPlayers.length === 1 ? '' : 's'}

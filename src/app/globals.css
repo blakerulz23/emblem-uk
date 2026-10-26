@@ -11515,3 +11515,522 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   .ukd .ukd-stage-bar .uk-photo-tools span { color: rgba(255, 255, 255, 0.8); }
   .ukd .uk-photo-tools-row { display: none; }
 }
+
+/* ── Clubs page card portal (ClubsCardPortal.tsx) ──
+   One card a coach can "go through" to a sample season. The static card is
+   server HTML; the 3D canvas loads only on request and never takes pointer
+   events, so page scrolling on phones is untouched. The season panel is
+   plain HTML in normal flow: the stage grows to fit it. */
+.emh-portal {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 460px);
+  margin: 26px auto 8px;
+  scroll-margin-top: 24px;
+}
+.emh-portal-stage {
+  position: relative;
+  width: 100%;
+  min-height: min(118vw, 520px);
+  display: grid;
+  place-items: center;
+  border-radius: 24px;
+  transition: background 0.5s ease;
+}
+.emh-portal-canvas {
+  position: absolute !important;
+  inset: 0;
+  border-radius: 24px;
+  overflow: hidden;
+  pointer-events: none;
+  touch-action: pan-y;
+}
+.emh-portal-canvas canvas { pointer-events: none; }
+.emh-portal-card {
+  position: relative;
+  width: min(62vw, 300px);
+  aspect-ratio: 5 / 7;
+  border-radius: 16px;
+  overflow: hidden;
+  transform: rotate(-4deg);
+  box-shadow: 0 18px 36px rgba(20, 16, 12, 0.32), 0 3px 8px rgba(20, 16, 12, 0.22);
+  background: #15121a;
+}
+.emh-portal-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.emh-portal-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.24) 48%, transparent 60%);
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .emh-portal-stage:hover .emh-portal-card::after { transform: translateX(120%); transition: transform 0.9s ease; }
+}
+/* Once the 3D card has drawn, it replaces the static one. */
+.emh-portal[data-mode='entering'] .emh-portal-card,
+.emh-portal[data-mode='exiting'] .emh-portal-card,
+.emh-portal[data-mode='inside'] .emh-portal-card { visibility: hidden; position: absolute; pointer-events: none; }
+.emh-portal[data-mode='inside'] .emh-portal-stage { min-height: 0; place-items: stretch; }
+/* No WebGL / reduced motion: a still "pitch" behind the season, no 3D. */
+.emh-portal[data-fallback='true'] .emh-portal-stage {
+  background:
+    repeating-linear-gradient(0deg, #2a7d45 0 28px, #2f8a4c 28px 56px);
+}
+.emh-portal-panel {
+  position: relative;
+  z-index: 1;
+  margin: 14px;
+  padding: 18px 18px 16px;
+  border-radius: 18px;
+  background: rgba(16, 14, 20, 0.86);
+  color: #f4f4f2;
+  text-align: left;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.35);
+  animation: emh-portal-in 0.35s ease both;
+}
+@keyframes emh-portal-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.emh-portal-badge {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(241, 96, 29, 0.55);
+  color: #f1601d;
+  font-family: var(--font-jbmono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.emh-portal-panel .emh-portal-badge { color: #ff8a52; border-color: rgba(255, 138, 82, 0.55); }
+.emh-portal-enter { scroll-margin-top: 96px; }
+.emh-portal-back { gap: 8px; }
+.emh-portal-panel .emh-btn-secondary {
+  background: transparent;
+  color: #f4f4f2;
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  box-shadow: none;
+}
+.emh-portal-cta { display: grid; justify-items: center; gap: 4px; margin-top: 16px; }
+.emh-portal-cta .emh-portal-badge { margin-bottom: 4px; }
+.emh-portal-enter {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid #16130f;
+  background: #16130f;
+  color: #fff;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+.emh-portal-enter:hover { background: #2a251f; }
+.emh-portal-enter:focus-visible,
+.emh-portal-skip:focus-visible { outline: 3px solid #f1601d; outline-offset: 3px; }
+.emh-portal-enter-icon {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #fff 0 22%, transparent 24%), #2f8a4c;
+  box-shadow: 0 0 0 2px #9d84ff;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .emh-portal-enter-icon { animation: emh-portal-pulse 2.4s ease-in-out infinite; }
+}
+@keyframes emh-portal-pulse { 0%, 100% { box-shadow: 0 0 0 2px #9d84ff; } 50% { box-shadow: 0 0 0 5px rgba(157, 132, 255, 0.35); } }
+.emh-portal-hint { margin: 2px 0 0; font-size: 13px; color: #6f675d; }
+.emh-portal-status {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(22, 19, 15, 0.82);
+  color: #fff;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.emh-portal-skip {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(22, 19, 15, 0.7);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+@media (min-width: 760px) {
+  .emh-portal-stage { min-height: 500px; }
+  .emh-portal-panel { margin: 24px; padding: 22px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .emh-portal-panel { animation: none; }
+  .emh-portal-card, .emh-portal-stage { transition: none; }
+}
+/* Physical card → private profile, stated beside the card without any interaction. */
+.emh-portal-caption {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 340px;
+  margin: 14px auto 0;
+  color: #3d3832;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+}
+.emh-portal-caption-icon {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: #f1601d;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.emh-portal[data-mode='inside'] .emh-portal-caption { display: none; }
+
+/* ── Clubs hero: copy left, card + portal CTA right (phones: intro → card → action) ──
+   --card-w drives both the static card and the stage height, so the 3D card
+   (framed by restingCameraDistance with an 18% margin) lands at the same size. */
+.emh-clubs-hero {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas: 'intro' 'card' 'action';
+  row-gap: 4px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 22px 18px 30px;
+  text-align: left;
+}
+.emh-clubs-hero-intro { grid-area: intro; }
+.emh-clubs-hero-card { grid-area: card; --card-w: min(64vw, 290px); }
+.emh-clubs-hero-action { grid-area: action; }
+.emh-page .emh-clubs-hero .emh-eyebrow { margin: 0 0 10px; }
+.emh-page .emh-clubs-hero h1 {
+  margin: 0 0 12px;
+  color: #16130f;
+  font-size: clamp(32px, 8.4vw, 40px);
+  line-height: 1.02;
+  text-wrap: balance;
+}
+.emh-clubs-hero-desc {
+  margin: 0;
+  max-width: 480px;
+  color: #5a5248;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.emh-page .emh-clubs-hero .emh-clubs-hero-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 50px;
+  padding: 12px 24px;
+  font-size: 16px;
+  text-transform: none;
+}
+.emh-clubs-hero-support {
+  margin: 12px 0 0;
+  max-width: 420px;
+  color: #6f675d;
+  font-size: 14px;
+  line-height: 1.45;
+}
+/* The portal inside the card column */
+.emh-clubs-hero .emh-portal { width: 100%; margin: 6px 0 18px; }
+.emh-clubs-hero .emh-portal-stage { min-height: calc(var(--card-w) * 1.4 * 1.18); }
+.emh-clubs-hero .emh-portal-card { width: var(--card-w); transform: rotate(-3deg); box-shadow: 0 22px 44px rgba(20, 16, 12, 0.34), 0 4px 10px rgba(20, 16, 12, 0.22); }
+.emh-clubs-hero .emh-portal-cta { margin-top: 2px; gap: 6px; }
+.emh-clubs-hero .emh-portal-caption { margin: 2px auto 0; max-width: 300px; font-size: 13.5px; font-weight: 600; text-align: left; }
+.emh-clubs-hero .emh-portal[data-mode='inside'] .emh-portal-stage { min-height: 0; }
+
+@media (min-width: 900px) {
+  .emh-clubs-hero {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: '. card' 'intro card' 'action card' '. card';
+    grid-template-rows: 1fr auto auto 1fr;
+    column-gap: 56px;
+    row-gap: 22px;
+    align-items: start;
+    padding: 34px 32px 34px;
+  }
+  .emh-clubs-hero-card {
+    align-self: center;
+    /* fits the card + portal CTA in short desktop windows (1366×768) */
+    --card-w: clamp(230px, min(25vw, calc((100vh - 330px) * 0.6)), 340px);
+  }
+  .emh-page .emh-clubs-hero h1 { font-size: clamp(40px, 4.2vw, 58px); }
+  .emh-clubs-hero-desc { font-size: 17.5px; }
+  .emh-page .emh-clubs-hero .emh-clubs-hero-cta { width: auto; min-width: 280px; }
+  .emh-clubs-hero .emh-portal { margin: 0; }
+}
+
+/* Entered state: the real app demo (/os/demo/embed) in a phone-sized frame. */
+.emh-portal-panel.emh-portal-panel-app { padding: 14px; margin: 12px; }
+.emh-portal-app { display: grid; gap: 8px; }
+.emh-portal-app-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.emh-portal-app-head .emh-portal-badge { margin: 0; }
+.emh-portal-app-head .emh-portal-back { min-height: 44px; padding: 8px 14px; font-size: 14px; }
+.emh-portal-back:focus-visible { outline: 3px solid #f1601d; outline-offset: 2px; }
+.emh-portal-app-title {
+  margin: 4px 0 0;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 18px;
+  line-height: 1.2;
+  color: #fff;
+  outline: none;
+  scroll-margin-top: 96px;
+}
+.emh-portal-app-title:focus-visible { outline: 3px solid #f1601d; outline-offset: 3px; border-radius: 4px; }
+.emh-portal-app-note { margin: 0 0 4px; font-size: 13px; line-height: 1.4; color: rgba(244, 244, 242, 0.75); }
+.emh-portal-app-frame {
+  display: block;
+  width: 100%;
+  height: clamp(520px, calc(100svh - 190px), 760px);
+  border: 0;
+  border-radius: 18px;
+  background: #0b0b0f;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+@media (min-width: 900px) {
+  .emh-portal-app-frame { height: clamp(560px, calc(100vh - 200px), 760px); }
+}
+/* Phones: the open app uses the full screen width (the hero's side padding is 18px). */
+@media (max-width: 899px) {
+  .emh-clubs-hero .emh-portal[data-mode='inside'] { width: calc(100% + 36px); margin-left: -18px; margin-right: -18px; }
+  .emh-clubs-hero .emh-portal[data-mode='inside'] .emh-portal-stage,
+  .emh-clubs-hero .emh-portal[data-mode='inside'] .emh-portal-canvas { border-radius: 0; }
+  .emh-portal-panel.emh-portal-panel-app { margin: 10px; padding: 10px; }
+}
+.emh-portal-app-head { align-items: flex-start; }
+.emh-portal-app-head .emh-portal-back { flex: 0 0 auto; }
+
+/* Clubs page: "Why choose Emblem cards?" reuses the trust cards; the old
+   guardian strip had an eyebrow above its heading, this one doesn't. */
+.emh-clubs-why h2 { margin-top: 0; }
+
+/* Clubs page: product and pricing. Intro and feature image on the left,
+   2×2 product tiles on the right; on phones intro → image → tiles. */
+.emh-clubs-shop {
+  display: grid;
+  grid-template-areas: 'intro' 'media' 'products';
+  gap: 22px;
+}
+.emh-clubs-shop-intro { grid-area: intro; }
+.emh-clubs-shop-intro h2 { margin: 0 0 12px; }
+.emh-clubs-shop-intro p { max-width: 460px; margin: 0 0 22px; color: rgba(255, 255, 255, 0.66); font-size: 16.5px; line-height: 1.5; }
+.emh-clubs-shop-media {
+  grid-area: media;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 50% 62%, rgba(241, 96, 29, 0.34), transparent 58%),
+    linear-gradient(160deg, #1b1511 0%, #0b0b0d 70%);
+}
+.emh-clubs-shop-media { aspect-ratio: 1100 / 1043; }
+.emh-clubs-shop-media img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 0;
+}
+.emh-clubs-shop-products { grid-area: products; min-width: 0; }
+
+.emh-clubs-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.emh-clubs-tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 12px 12px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  background: #0f1113;
+}
+.emh-clubs-tile:nth-child(3) { border-color: rgba(241, 96, 29, 0.7); }
+.emh-clubs-tile-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 150px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: radial-gradient(circle at 50% 70%, rgba(255, 255, 255, 0.07), transparent 65%), #15181b;
+}
+.emh-clubs-tile-art img {
+  width: 64px;
+  height: auto;
+  border-radius: 5px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.5);
+}
+.emh-clubs-tile-art img + img { margin-left: -34px; }
+.emh-clubs-tile-art[data-count='1'] img { width: 82px; transform: rotate(-4deg); }
+.emh-clubs-tile-art[data-count='3'] img:nth-child(1) { transform: rotate(-10deg) translateY(6px); }
+.emh-clubs-tile-art[data-count='3'] img:nth-child(2) { z-index: 1; transform: translateY(-4px); }
+.emh-clubs-tile-art[data-count='3'] img:nth-child(3) { transform: rotate(10deg) translateY(6px); }
+.emh-clubs-tile-art[data-count='5'] img { width: 56px; }
+.emh-clubs-tile-art[data-count='5'] img + img { margin-left: -34px; }
+.emh-clubs-tile-art[data-count='5'] img:nth-child(1) { transform: rotate(-16deg) translateY(12px); }
+.emh-clubs-tile-art[data-count='5'] img:nth-child(2) { transform: rotate(-8deg) translateY(3px); }
+.emh-clubs-tile-art[data-count='5'] img:nth-child(3) { z-index: 1; transform: translateY(-2px); }
+.emh-clubs-tile-art[data-count='5'] img:nth-child(4) { z-index: 1; transform: rotate(8deg) translateY(3px); }
+.emh-clubs-tile-art[data-count='5'] img:nth-child(5) { z-index: 1; transform: rotate(16deg) translateY(12px); }
+.emh-clubs-tile h3 { margin: 0 0 4px; font-size: 15.5px; font-weight: 800; }
+.emh-clubs-tile-price {
+  margin: 0;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.emh-clubs-tile-price span { color: rgba(255, 255, 255, 0.55); font-family: var(--font-manrope), system-ui, sans-serif; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.emh-clubs-tile-note { margin: 6px 0 0; color: rgba(255, 255, 255, 0.72); font-size: 13px; line-height: 1.4; }
+.emh-clubs-tile-preview {
+  align-self: flex-start;
+  margin: 4px 0 0;
+  padding: 4px 9px;
+  border: 1px dashed rgba(241, 96, 29, 0.65);
+  border-radius: 8px;
+  color: #f7a77f;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+/* Provisional display case: an original drawing of a clear case with a
+   label window, holding the sample card. */
+.emh-case {
+  position: relative;
+  width: 92px;
+  padding: 5px;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  border-radius: 9px;
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.05) 45%, rgba(255, 255, 255, 0.14));
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.07), 0 12px 24px rgba(0, 0, 0, 0.5);
+  transform: rotate(-3deg);
+}
+.emh-case::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  background: linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.22) 42%, transparent 52%);
+  pointer-events: none;
+}
+.emh-case-label {
+  display: flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-jbmono), monospace;
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+}
+.emh-case-window {
+  margin-top: 5px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+}
+.emh-clubs-tile-art .emh-case-window img { display: block; width: 100%; margin: 0; border-radius: 3px; box-shadow: none; transform: none; }
+
+.emh-clubs-shop-rule { margin: 18px 0 0; color: rgba(255, 255, 255, 0.74); font-size: 15px; line-height: 1.5; }
+.emh-clubs-shop .emh-pricing-note { margin-top: 12px; text-align: left; }
+
+@media (max-width: 359px) {
+  .emh-clubs-tiles { grid-template-columns: 1fr; }
+}
+@media (min-width: 640px) {
+  .emh-clubs-tile-art { height: 170px; }
+  .emh-clubs-tile-art img { width: 74px; }
+  .emh-clubs-tile-art[data-count='1'] img { width: 96px; }
+  .emh-clubs-tile-art[data-count='5'] img { width: 64px; }
+  .emh-case { width: 104px; }
+  .emh-clubs-tile h3 { font-size: 17px; }
+  .emh-clubs-tile-price { font-size: 28px; }
+}
+@media (min-width: 960px) {
+  .emh-clubs-shop {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas: 'intro products' 'media products';
+    column-gap: 40px;
+    row-gap: 28px;
+  }
+  .emh-clubs-shop-media { aspect-ratio: auto; min-height: 420px; }
+}
+
+/* Clubs page: compact three-step "How it works" between pricing and the
+   benefits. Small own padding so the gaps either side match the page. */
+.emh-section.emh-clubs-how { padding-top: 8px; padding-bottom: 8px; }
+.emh-clubs-how h2 { margin: 0 0 18px; }
+.emh-clubs-steps {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.emh-clubs-step {
+  padding: 18px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: #0f1113;
+}
+.emh-clubs-step-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.emh-clubs-step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #f1601d;
+  color: #fff;
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+}
+.emh-clubs-step-icon { display: inline-flex; color: rgba(255, 255, 255, 0.7); }
+.emh-clubs-step h3 { margin: 0 0 4px; font-size: 16px; }
+.emh-clubs-step p { margin: 0; color: rgba(255, 255, 255, 0.64); font-size: 14.5px; line-height: 1.5; }
+@media (min-width: 768px) {
+  .emh-clubs-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

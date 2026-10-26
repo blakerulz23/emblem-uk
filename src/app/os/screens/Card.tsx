@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { DEMO_PLAYER_PHOTO, osAssetPath } from '../data';
+import { DEMO_PLAYER_PHOTO } from '../data';
 import { useOsData, useRefreshOsData } from '../OsDataContext';
 import { CardFace } from '@/lib/card-definition';
 import { onActivateKey } from '../a11y';
@@ -147,7 +147,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
         ) : (
           <div onClick={actions.flipCard} onMouseMove={actions.tiltMove} onMouseLeave={actions.tiltReset} style={{ position: 'relative', width: 300, maxWidth: '100%', margin: '14px auto 14px', borderRadius: 18, overflow: 'hidden', boxShadow: '0 26px 50px -18px rgba(0,0,0,.55)', cursor: 'pointer' }}>
             <img
-              src={isReal && PLAYER_PROFILE.photoUrl ? PLAYER_PROFILE.photoUrl : `${osAssetPath}/card-ollie-front.png`}
+              src={isReal && PLAYER_PROFILE.photoUrl ? PLAYER_PROFILE.photoUrl : '/assets/home/hero/card-royal-560.webp'}
               alt={`${PLAYER_PROFILE.name} card front`}
               style={{ display: 'block', width: '100%', height: 'auto' }}
             />

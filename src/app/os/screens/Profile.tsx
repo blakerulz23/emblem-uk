@@ -43,7 +43,7 @@ function coachInviteSuccessCopy(reused: boolean, emailStatus: 'sent' | 'failed' 
 type PreferenceRow = { label: string; value: string; badge?: string };
 
 const DEMO_IDENTITY: PreferenceRow[] = [
-  { label: 'Primary position', value: 'Midfielder' },
+  { label: 'Primary position', value: 'Striker' },
   { label: 'Football age group', value: 'U10', badge: 'Set by coach' },
   { label: 'Favourite player', value: 'Kevin De Bruyne' },
   { label: 'Football ambition', value: 'Play academy football' },
@@ -426,7 +426,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
             >
               {isReal && <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onChange={handlePhotoChange} style={{ display: 'none' }} />}
               <img
-                src={isReal && playerProfile.photoUrl ? playerProfile.photoUrl : `${osAssetPath}/player-ollie.png`}
+                src={isReal && playerProfile.photoUrl ? playerProfile.photoUrl : `${osAssetPath}/demo-riley-photo.webp`}
                 alt={playerProfile.name}
                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }}
               />

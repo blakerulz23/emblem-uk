@@ -234,13 +234,20 @@ describe('grassroots club landing page', () => {
     expect(page).toContain("'/squad-invite/start'");
     expect(page).not.toMatch(/free (uk )?delivery|free shipping|delivered (with)?in \d|working days/i);
     expect(page).toContain("canonical: '/football-cards-for-clubs'");
-    for (const id of ['clubs_hero_start', 'clubs_final_start', 'clubs_hero_coach_demo', 'clubs_coach_demo', 'clubs_safeguarding', 'clubs_email']) {
+    // The hero's "See the coach view" link (clubs_hero_coach_demo) was removed
+    // in the two-column hero; the coach demo stays linked from the coach section.
+    for (const id of ['clubs_hero_start', 'clubs_final_start', 'clubs_coach_demo', 'clubs_safeguarding', 'clubs_email']) {
       expect(page).toContain(`data-track="${id}"`);
     }
   });
 
-  it('is linked from the footer club link and the homepage coach link', async () => {
+  it('is linked from the nav Teams tab, the footer club link and the homepage coach link', async () => {
     expect(await read('../../components/Footer.tsx')).toContain("{ href: '/football-cards-for-clubs', label: 'Clubs & coaches' }");
+    // The shared desktop/mobile nav links to it as "Teams"; gifts stays reachable from the footer.
+    const nav = await read('../../components/Navbar.tsx');
+    expect(nav).toContain("{ href: '/football-cards-for-clubs', label: 'Teams' }");
+    expect(nav).not.toContain("label: 'Gifts'");
+    expect(await read('../../components/Footer.tsx')).toContain("href: '/football-gifts-for-kids'");
     expect(await read('../../app/page.tsx')).toContain("href: '/football-cards-for-clubs'");
   });
 });
