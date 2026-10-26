@@ -11852,7 +11852,6 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 .emh-clubs-shop-media {
   grid-area: media;
   position: relative;
-  min-height: 300px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 22px;
@@ -11860,18 +11859,15 @@ button.uk-bgremove-frame:disabled { cursor: default; }
     radial-gradient(circle at 50% 62%, rgba(241, 96, 29, 0.34), transparent 58%),
     linear-gradient(160deg, #1b1511 0%, #0b0b0d 70%);
 }
+.emh-clubs-shop-media { aspect-ratio: 1100 / 1043; }
 .emh-clubs-shop-media img {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: clamp(112px, 30%, 220px);
-  height: auto;
-  border-radius: 10px;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 0;
 }
-.emh-clubs-shop-media img:nth-child(1) { transform: translate(-118%, -47%) rotate(-11deg); }
-.emh-clubs-shop-media img:nth-child(2) { z-index: 1; transform: translate(-50%, -52%) scale(1.08); }
-.emh-clubs-shop-media img:nth-child(3) { transform: translate(18%, -47%) rotate(11deg); }
 .emh-clubs-shop-products { grid-area: products; min-width: 0; }
 
 .emh-clubs-tiles {
@@ -12007,5 +12003,5 @@ button.uk-bgremove-frame:disabled { cursor: default; }
     column-gap: 40px;
     row-gap: 28px;
   }
-  .emh-clubs-shop-media { min-height: 360px; }
+  .emh-clubs-shop-media { aspect-ratio: auto; min-height: 420px; }
 }

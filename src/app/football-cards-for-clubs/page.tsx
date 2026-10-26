@@ -106,12 +106,20 @@ export default function FootballCardsForClubsPage() {
             </span>
           </Link>
         </div>
-        {/* No authorised photo of a player holding a card exists yet, so the
-            feature image is a composition of the sample card artwork. */}
+        {/* Generated image of the sample player (likeness use confirmed) holding
+            a blank card at real size; the exact Royal Edition artwork was
+            composited onto the card afterwards, not regenerated. */}
         <div className="emh-clubs-shop-media">
-          <img src={HERO_CARD('crimson', 560)} alt="" width={560} height={784} loading="lazy" decoding="async" />
-          <img src={HERO_CARD('royal', 560)} alt="Personalised Emblem football cards for a sample player" width={560} height={784} loading="lazy" decoding="async" />
-          <img src={HERO_CARD('emerald', 560)} alt="" width={560} height={784} loading="lazy" decoding="async" />
+          <img
+            src="/assets/clubs/riley-holding-card-1100.webp"
+            srcSet="/assets/clubs/riley-holding-card-640.webp 640w, /assets/clubs/riley-holding-card-1100.webp 1100w"
+            sizes="(min-width: 960px) 520px, 100vw"
+            alt="Riley Hart, a sample player, smiling and holding his personalised Royal Edition Emblem card"
+            width={1100}
+            height={1043}
+            loading="lazy"
+            decoding="async"
+          />
         </div>
         <div className="emh-clubs-shop-products">
           <ul className="emh-clubs-tiles">
