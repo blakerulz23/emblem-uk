@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 
+// The homepage card showcase stays reachable from the footer and the page
+// itself; the logo is the way back to the top of the homepage.
 const links = [
-  { href: '/#cards', label: 'The Cards' },
   { href: '/how-it-works', label: 'How It Works' },
   { href: '/football-cards-for-clubs', label: 'Teams' },
   { href: '/#pricing', label: 'Pricing' },
@@ -13,6 +14,17 @@ const links = [
 
 export default function Navbar({ sticky = false }: { sticky?: boolean }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Already on the homepage (possibly at /#cards): a same-page link wouldn't
+  // reliably scroll, so go to the top and drop the hash ourselves.
+  const goHome = (e: MouseEvent<HTMLAnchorElement>) => {
+    setMobileOpen(false);
+    if (window.location.pathname !== '/' || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    if (window.location.hash) window.history.pushState(null, '', '/');
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+  };
 
   return (
     <nav
@@ -26,8 +38,8 @@ export default function Navbar({ sticky = false }: { sticky?: boolean }) {
     >
       <div className="mx-auto max-w-[1220px] px-[16px] min-[701px]:px-[10px]">
         <div className="emh-site-nav-inner flex h-[64px] items-center justify-between gap-4">
-          <Link href="/" className="flex items-center" onClick={() => setMobileOpen(false)}>
-            <img src="/embm-nav.png" alt="Emblem" className="emh-nav-logo" decoding="async" />
+          <Link href="/" className="flex items-center" aria-label="Emblem home" onClick={goHome}>
+            <img src="/embm-nav.png" alt="" className="emh-nav-logo" decoding="async" />
           </Link>
 
           <div className="hidden min-[860px]:flex items-center gap-[30px]">
