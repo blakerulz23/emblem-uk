@@ -368,9 +368,11 @@ export const MOMENTS: Record<string, Moment> = {
   },
   e6: {
     id: 'e6', year: '2026/27', ageGroup: 'U10', title: 'County Selection', date: '17 October 2026', occurredOn: '2026-10-17', ic: 'shield',
-    thumb: `${assetPath}/jn-county.png`,
+    // The demo's one photo: the fictional sample player with his card, so
+    // Home's Latest Moment has a picture (no real kit, sponsor or crest).
+    thumb: `${assetPath}/demo-riley-county.webp`,
     trust: 'league', source: 'Northfield County FA', uploadedBy: 'Sam Hart', verifiedBy: 'Northfield County FA',
-    note: 'Selected for the county development squad.', media: false,
+    note: 'Selected for the county development squad.', media: true,
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
       rank: 'milestone', sub: 'County Selected',
