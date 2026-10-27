@@ -11801,6 +11801,33 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   background: #0f1113;
 }
 .emh-clubs-tile:nth-child(3) { border-color: rgba(241, 96, 29, 0.7); }
+/* Priced tiles are whole-tile links; the display case stays a plain tile. */
+.emh-clubs-tile-action { padding: 0; transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease; }
+.emh-clubs-tile-link {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: 12px 12px 16px;
+  border-radius: 16px;
+  color: inherit;
+  text-decoration: none;
+  -webkit-tap-highlight-color: rgba(241, 96, 29, 0.18);
+}
+.emh-clubs-tile-cta {
+  display: block;
+  margin-top: auto;
+  padding-top: 12px;
+  color: #f7a77f;
+  font-size: 14px;
+  font-weight: 700;
+}
+.emh-clubs-tile-cta-end { white-space: nowrap; }
+.emh-clubs-tile-action:hover { border-color: rgba(241, 96, 29, 0.85); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); }
+.emh-clubs-tile-action:hover .emh-clubs-tile-cta { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+.emh-clubs-tile-link:focus-visible { outline: 3px solid #f1601d; outline-offset: 3px; }
+@media (prefers-reduced-motion: no-preference) {
+  .emh-clubs-tile-action:hover { transform: translateY(-2px); }
+}
 .emh-clubs-tile-art {
   display: flex;
   align-items: center;
