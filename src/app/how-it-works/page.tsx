@@ -1,12 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import PlayerMomentSection from '@/components/PlayerMomentSection';
 import PlayerOsCollectionSection from '@/components/PlayerOsCollectionSection';
 import TrustSafeguardingPanel from '@/components/TrustSafeguardingPanel';
-import SquadInviteJourneySection from '@/components/SquadInviteJourneySection';
 import JsonLd from '@/components/marketing/JsonLd';
 import { HowItWorksSection } from '../HomeEffects';
-import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { PAGE_DESCRIPTIONS, pageOpenGraph, PRICES } from '@/lib/marketing/site';
 import { breadcrumbJsonLd } from '@/lib/marketing/structured-data';
 
@@ -20,7 +17,6 @@ export const metadata: Metadata = {
 };
 
 export default function HowItWorksPage() {
-  const squadInviteEnabled = isSquadInviteMvpEnabled();
   return (
     <main className="emh-page">
       <JsonLd data={breadcrumbJsonLd([{ name: 'Home', path: '/' }, { name: 'How it works', path: '/how-it-works' }])} />
@@ -42,10 +38,6 @@ export default function HowItWorksPage() {
       <PlayerOsCollectionSection />
 
       <TrustSafeguardingPanel />
-
-      <PlayerMomentSection />
-
-      <SquadInviteJourneySection squadInviteEnabled={squadInviteEnabled} ctaHref="/squad-invite/start" />
     </main>
   );
 }

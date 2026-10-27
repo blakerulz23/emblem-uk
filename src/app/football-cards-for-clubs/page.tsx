@@ -149,7 +149,7 @@ export default function FootballCardsForClubsPage() {
         </div>
       </section>
 
-      {/* The shared Squad Invite journey (also on /how-it-works), as this
+      {/* The shared Squad Invite journey, as this
           page's How it works. */}
       <SquadInviteJourneySection
         squadInviteEnabled={isSquadInviteMvpEnabled()}
