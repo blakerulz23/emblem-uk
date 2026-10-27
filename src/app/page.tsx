@@ -1,5 +1,6 @@
 ﻿import type { Metadata } from 'next';
 import Link from 'next/link';
+import PlayerMomentSection from '@/components/PlayerMomentSection';
 import Icon from '@/components/builder/emblem/Icon';
 import HeroStage from '@/components/marketing/HeroStage';
 import JsonLd from '@/components/marketing/JsonLd';
@@ -134,6 +135,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <PlayerMomentSection ctaTrack="home_moment_build" />
 
       <section id="pricing" className="emh-section emh-pricing">
         <p className="emh-eyebrow">Pricing</p>

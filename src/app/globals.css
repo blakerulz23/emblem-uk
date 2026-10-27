@@ -11992,3 +11992,11 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   }
   .emh-clubs-shop-media { aspect-ratio: auto; min-height: 420px; }
 }
+
+/* Homepage: pricing follows the "Every player deserves their moment." panel,
+   whose own margin already separates them. The nav's Pricing link (/#pricing)
+   stops below the sticky nav rather than under it. */
+#pricing { scroll-margin-top: 72px; }
+@media (min-width: 900px) {
+  #tap + #pricing { padding-top: 40px; }
+}
