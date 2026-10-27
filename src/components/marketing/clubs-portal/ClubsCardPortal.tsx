@@ -6,11 +6,17 @@ import SampleAppPanel, { SAMPLE_PLAYER } from './SampleAppPanel';
 import { canUseWebGL } from './portal-math';
 
 /**
- * Clubs page hero: one Emblem card a coach can "go through" to see a sample
- * player's season. Marketing presentation only: the customer receives the
- * printed card and a private profile, never a 3D world.
+ * Clubs page hero: a photo of the sample player's card in a display case,
+ * and a way to "go through" the card to the sample app. Marketing
+ * presentation only: the customer receives the printed card and a private
+ * profile, never a 3D world.
  *
- * Loading: the server HTML is a static card image plus a button. three.js
+ * The photo is never used as card artwork. When the 3D scene is ready the
+ * photo dims and blurs into a backdrop, the 3D card (the Royal Edition art)
+ * appears in the same frame and the camera goes through it; on the way back
+ * the photo sharpens again.
+ *
+ * Loading: the server HTML is the photo plus a button. three.js
  * and the scene load only after an explicit tap/click/Enter, so nothing
  * here delays the headline, pricing or "Start a Squad Invite".
  *
@@ -22,6 +28,7 @@ import { canUseWebGL } from './portal-math';
  * loads or plays, "Skip to the app demo" is always on screen.
  */
 const CARD_IMAGE = '/assets/home/hero/card-royal-560.webp';
+const PHOTO = '/assets/clubs/riley-display-case';
 const ACCENT = '#9d84ff';
 const LOAD_TIMEOUT_MS = 6_000;
 const TRANSITION_GIVE_UP_MS = 4_000;
@@ -218,15 +225,15 @@ export default function ClubsCardPortal() {
           </SceneBoundary>
         )}
 
-        {/* The static card: what the server sends, and what stays until the 3D scene has drawn. */}
-        <div className="emh-portal-card" aria-hidden={mode !== 'card' && mode !== 'loading' ? true : undefined}>
+        {/* The photo: what the server sends; a dimmed backdrop while the 3D card plays. */}
+        <div className="emh-portal-photo" aria-hidden={mode !== 'card' && mode !== 'loading' ? true : undefined}>
           <img
-            src="/assets/home/hero/card-royal-400.webp"
-            srcSet="/assets/home/hero/card-royal-400.webp 400w, /assets/home/hero/card-royal-560.webp 560w"
-            sizes="(max-width: 760px) 62vw, 300px"
-            width={400}
-            height={560}
-            alt={`Royal Edition personalised football card for a sample player, ${SAMPLE_PLAYER.name}, number ${SAMPLE_PLAYER.number}`}
+            src={`${PHOTO}-960.webp`}
+            srcSet={`${PHOTO}-640.webp 640w, ${PHOTO}-960.webp 960w, ${PHOTO}-1448.webp 1448w`}
+            sizes="(min-width: 900px) min(520px, 46vw), calc(100vw - 36px)"
+            width={1448}
+            height={1086}
+            alt={`${SAMPLE_PLAYER.name}’s Royal Edition Emblem card in a clear display case beside a football trophy and medal.`}
             fetchPriority="high"
             decoding="async"
           />
@@ -256,6 +263,7 @@ export default function ClubsCardPortal() {
 
       {mode === 'card' && (
         <div className="emh-portal-cta">
+          <p className="emh-portal-photo-note">Display case shown for illustration. Availability to be confirmed.</p>
           <p className="emh-portal-badge">Sample experience</p>
           <button ref={enterRef} type="button" className="emh-portal-enter" onClick={enter} data-track="clubs_portal_enter">
             <span className="emh-portal-enter-icon" aria-hidden="true" />
