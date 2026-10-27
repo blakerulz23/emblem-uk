@@ -35,10 +35,13 @@ const benefits = [
 // Quantity tiers of the same card, priced from PRICES. The fanned artwork
 // is the fictional sample player used across the marketing site.
 const HERO_CARD = (design: string, size: 400 | 560 = 400) => `/assets/home/hero/card-${design}-${size}.webp`;
+// Each tile is one link. Both family tiers go into the same Squad Invite
+// flow with nothing preselected: the team's price is set at the deadline by
+// the families who have committed.
 const priceTiles = [
-  { name: 'Single card', price: PRICES.single, cards: ['glacier'] },
-  { name: '2–9 families', price: PRICES.multi, cards: ['crimson', 'royal', 'emerald'] },
-  { name: '10+ families', price: PRICES.squad, cards: ['glacier', 'crimson', 'royal', 'emerald', 'royal'], note: 'Free coach card once 10 families have paid.' },
+  { name: 'Single card', price: PRICES.single, cards: ['glacier'], dest: 'builder', cta: 'Build My Card', track: 'clubs_tile_single' },
+  { name: '2–9 families', price: PRICES.multi, cards: ['crimson', 'royal', 'emerald'], dest: 'squad', cta: 'Start a Squad Invite', track: 'clubs_tile_multi' },
+  { name: '10+ families', price: PRICES.squad, cards: ['glacier', 'crimson', 'royal', 'emerald', 'royal'], note: 'Free coach card once 10 families have paid.', dest: 'squad', cta: 'Start a Squad Invite', track: 'clubs_tile_squad' },
 ];
 
 export default function FootballCardsForClubsPage() {
@@ -109,17 +112,27 @@ export default function FootballCardsForClubsPage() {
         <div className="emh-clubs-shop-products">
           <ul className="emh-clubs-tiles">
             {priceTiles.map((tile) => (
-              <li key={tile.name} className="emh-clubs-tile">
-                <div className="emh-clubs-tile-art" data-count={tile.cards.length} aria-hidden="true">
-                  {tile.cards.map((design, i) => (
-                    <img key={i} src={HERO_CARD(design)} alt="" width={400} height={560} loading="lazy" decoding="async" />
-                  ))}
-                </div>
-                <h3>{tile.name}</h3>
-                <p className="emh-clubs-tile-price">
-                  {tile.price} <span>per card</span>
-                </p>
-                {tile.note && <p className="emh-clubs-tile-note">{tile.note}</p>}
+              <li key={tile.name} className="emh-clubs-tile emh-clubs-tile-action">
+                <Link className="emh-clubs-tile-link" href={tile.dest === 'builder' ? '/builder?mode=single' : startHref} data-track={tile.track}>
+                  <div className="emh-clubs-tile-art" data-count={tile.cards.length} aria-hidden="true">
+                    {tile.cards.map((design, i) => (
+                      <img key={i} src={HERO_CARD(design)} alt="" width={400} height={560} loading="lazy" decoding="async" />
+                    ))}
+                  </div>
+                  <h3>{tile.name}</h3>
+                  <p className="emh-clubs-tile-price">
+                    {tile.price} <span>per card</span>
+                  </p>
+                  {tile.note && <p className="emh-clubs-tile-note">{tile.note}</p>}
+                  <span className="emh-clubs-tile-cta">
+                    {tile.cta.slice(0, tile.cta.lastIndexOf(' ') + 1)}
+                    {/* The arrow wraps with the last word, never on a line alone. */}
+                    <span className="emh-clubs-tile-cta-end">
+                      {tile.cta.slice(tile.cta.lastIndexOf(' ') + 1)}
+                      <Icon name="chevR" size={14} style={{ display: 'inline-block', marginLeft: 3, verticalAlign: '-2px' }} />
+                    </span>
+                  </span>
+                </Link>
               </li>
             ))}
             {/* Provisional: the case is not on sale and its price, and whether
