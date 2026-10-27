@@ -5,7 +5,7 @@ import { TapVideo } from '@/app/HomeEffects';
 /**
  * "Every player deserves their moment." Dark rounded panel with an orange
  * glow, copy and a "Make yours" CTA into the card builder, beside the tap
- * video. Shared by the homepage (above pricing) and /how-it-works.
+ * video. Used on the homepage, above pricing.
  */
 export default function PlayerMomentSection({ ctaTrack }: { ctaTrack?: string }) {
   return (
