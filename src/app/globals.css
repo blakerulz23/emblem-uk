@@ -12000,3 +12000,84 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 @media (min-width: 900px) {
   #tap + #pricing { padding-top: 40px; }
 }
+
+/* ── Homepage hero: copy left, card-and-phone showcase right ──────────────
+   Self-contained so the older .emh-hero layers above (centred column) are
+   overridden here rather than edited. Phones: intro → showcase → actions →
+   steps/proof, in DOM order. Desktop: the showcase spans the intro and
+   actions rows on the right, so card and phone sit beside the CTA. */
+.emh-hero.emh-home-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'intro' 'visual' 'actions' 'footer';
+  align-items: start;
+  max-width: 1180px;
+  padding: 22px 18px 26px;
+  text-align: left;
+}
+.emh-home-hero-intro { grid-area: intro; }
+.emh-home-hero-visual { grid-area: visual; min-width: 0; }
+.emh-home-hero-actions { grid-area: actions; display: flex; flex-direction: column; align-items: flex-start; }
+.emh-home-hero .emh-hero-footer { grid-area: footer; }
+.emh-page .emh-home-hero .emh-eyebrow { margin: 0 0 10px; }
+.emh-page .emh-home-hero h1 {
+  margin: 0 0 12px;
+  max-width: 14.5em;
+  color: #16130f;
+  font-size: clamp(30px, 8vw, 38px);
+  line-height: 1.04;
+  text-wrap: balance;
+}
+.emh-home-hero-desc {
+  margin: 0;
+  max-width: 34em;
+  color: #5a5248;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.emh-home-hero .emh-stage-wrap { width: min(100%, 560px); margin: 18px auto 4px; }
+.emh-page .emh-home-hero .emh-home-hero-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 50px;
+  margin-top: 14px;
+  padding: 12px 24px;
+  font-size: 16px;
+  text-transform: none;
+}
+.emh-home-hero-price { margin: 10px 0 0; color: #3d3832; font-size: 15px; font-weight: 700; }
+.emh-home-hero-delivery { margin: 2px 0 0; color: #6f675d; font-size: 13px; }
+.emh-home-hero .emh-home-hero-demo { margin-top: 12px; min-height: 32px; }
+.emh-home-hero .emh-hero-steps { margin: 20px auto 12px; }
+
+/* Phones: the showcase uses some of the side gutter, and the phone
+   preview's smallest labels keep a readable floor. */
+@media (max-width: 999px) {
+  .emh-home-hero .emh-stage-wrap { width: calc(100% + 20px); max-width: 580px; margin-left: -10px; margin-right: -10px; }
+  .emh-home-hero :is(.emh-phone-id small, .emh-phone-moment small, .emh-phone-stats small, .emh-phone-tap, .emh-phone-kicker) { font-size: max(1.8cqw, 7.5px); }
+  .emh-home-hero .emh-phone-screen { gap: 1.8cqw; }
+  .emh-home-hero .emh-phone-stats { gap: 0.8cqw; }
+  .emh-home-hero .emh-phone-stats span { padding-inline: 0.2cqw; }
+  .emh-home-hero .emh-phone-stats small { letter-spacing: 0; }
+}
+@media (min-width: 1000px) {
+  .emh-hero.emh-home-hero {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    grid-template-rows: 1fr auto auto 1fr auto;
+    grid-template-areas: '. visual' 'intro visual' 'actions visual' '. visual' 'footer footer';
+    column-gap: 48px;
+    padding: 28px 32px 22px;
+  }
+  .emh-page .emh-home-hero h1 { font-size: clamp(38px, 3.6vw, 52px); }
+  .emh-home-hero-desc { font-size: 17px; }
+  .emh-home-hero-visual { align-self: center; }
+  /* Fits card, phone and design chips inside common laptop viewports
+     (1366×768) while staying large on taller screens. */
+  .emh-home-hero .emh-stage-wrap { width: min(100%, 600px, calc((100vh - 230px) * 1.36)); margin: 0 auto; }
+  .emh-page .emh-home-hero .emh-home-hero-cta { width: auto; min-width: 260px; margin-top: 22px; }
+  .emh-home-hero .emh-hero-steps { margin-top: 16px; }
+}
+
