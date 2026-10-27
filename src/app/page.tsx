@@ -9,7 +9,7 @@ import { organizationJsonLd, personalisedCardProductJsonLd } from '@/lib/marketi
 
 // Homepage layout follows the shorter Canadian page (buy action and price
 // directly under the headline, card designs shown inside the hero, then
-// pricing and links out); copy targets the UK DataForSEO research.
+// pricing, then trust); copy targets the UK DataForSEO research.
 // The long story sections live on /how-it-works, the full FAQ (and its
 // FAQPage structured data) on /faq, the design gallery on the gift page.
 export const metadata: Metadata = {
@@ -68,17 +68,6 @@ const trustItems = [
 ];
 
 export default function Home() {
-  const explore = [
-    { label: 'Try the app', body: 'Open the private profile a card unlocks, with sample data. No sign-in needed.', href: '/os/demo' },
-    { label: 'How it works', body: 'From one photo to a printed card with a chip inside, and a profile that grows every season.', href: '/how-it-works' },
-    {
-      label: 'For coaches and teams',
-      body: 'Your coach receives a free personalised card once 10 families in your squad have paid.',
-      href: '/football-cards-for-clubs',
-    },
-    { label: 'Privacy and safety', body: 'Private by default and controlled by parents.', href: '/trust-and-safeguarding' },
-  ];
-
   return (
     <main className="emh-page">
       <JsonLd data={[organizationJsonLd(), personalisedCardProductJsonLd()]} />
@@ -195,41 +184,6 @@ export default function Home() {
           How we protect players <Icon name="chevR" size={14} />
         </Link>
       </section>
-
-      <section id="gifts" className="emh-section emh-gift-promo" aria-labelledby="emh-gift-heading">
-        <div>
-          <p className="emh-eyebrow">Christmas</p>
-          <h2 id="emh-gift-heading">The football gift that keeps going.</h2>
-          <p>A personalised football card they can hold, with a profile that keeps growing long after Christmas.</p>
-        </div>
-        <Link className="emh-btn emh-btn-primary" href="/football-gifts-for-kids" data-track="gift_promo">
-          Football gifts for kids
-        </Link>
-      </section>
-
-      <section id="explore" className="emh-section emh-explore">
-        <h2>Want the full picture?</h2>
-        <div className="emh-explore-grid">
-          {explore.map((item) => (
-            <Link key={item.href} className="emh-explore-card" href={item.href} data-track={`explore_${item.href.replace(/\W+/g, '_')}`}>
-              <span className="emh-explore-title">
-                {item.label}
-                <Icon name="chevR" size={16} />
-              </span>
-              <span className="emh-explore-body">{item.body}</span>
-            </Link>
-          ))}
-        </div>
-        <div className="emh-explore-cta">
-          <Link className="emh-btn emh-btn-primary" href="/builder?mode=single" data-track="explore_build">
-            Build my card · {PRICES.single}
-          </Link>
-          <Link className="emh-explore-faq" href="/faq" data-track="explore_faq">
-            Questions? Read the FAQ
-          </Link>
-        </div>
-      </section>
-
     </main>
   );
 }

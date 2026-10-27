@@ -10731,21 +10731,15 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 .emh-phone-screen {
   position: relative;
   height: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 2.2cqw;
-  padding: 7cqw 3cqw 3cqw;
   border-radius: 5.2cqw;
   overflow: hidden;
-  background: radial-gradient(120% 60% at 100% 0%, color-mix(in srgb, var(--stage-accent) 30%, transparent), transparent 60%), #0c0d10;
-  color: #f4f4f2;
-  text-align: left;
-  font-size: 2.3cqw;
-  line-height: 1.25;
-  transition: background 0.6s ease;
+  background: #f3f1ec;
 }
+/* The captured app screen fills the glass, top-aligned like a real viewport. */
+.emh-phone-screen img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
 .emh-phone-notch {
   position: absolute;
+  z-index: 1;
   top: 2cqw;
   left: 50%;
   width: 30%;
@@ -10753,70 +10747,6 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   transform: translateX(-50%);
   border-radius: 99px;
   background: #000;
-}
-.emh-phone-kicker {
-  margin: 0;
-  color: var(--stage-accent);
-  font-family: var(--font-jbmono), monospace;
-  font-size: 1.7cqw;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  transition: color 0.6s ease;
-}
-.emh-phone-id { display: flex; align-items: center; gap: 2cqw; }
-.emh-phone-id b { display: block; font-size: 3.1cqw; font-weight: 800; letter-spacing: -0.01em; }
-.emh-phone-id small,
-.emh-phone-moment small { display: block; color: rgba(244, 244, 242, 0.6); font-size: 1.8cqw; }
-.emh-phone-avatar {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 7.4cqw;
-  height: 7.4cqw;
-  border-radius: 50%;
-  border: 0.4cqw solid var(--stage-accent);
-  background: #1b1c21;
-  font-size: 2.4cqw;
-  font-weight: 800;
-  transition: border-color 0.6s ease;
-}
-.emh-phone-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.2cqw; }
-.emh-phone-stats span {
-  display: grid;
-  padding: 1.6cqw 0.8cqw;
-  border-radius: 1.8cqw;
-  background: rgba(255, 255, 255, 0.06);
-  border: 0.2cqw solid rgba(255, 255, 255, 0.08);
-  text-align: center;
-}
-.emh-phone-stats b { font-size: 3.6cqw; font-weight: 800; }
-.emh-phone-stats small { color: rgba(244, 244, 242, 0.6); font-size: 1.6cqw; text-transform: uppercase; letter-spacing: 0.06em; }
-.emh-phone-moment {
-  padding: 2cqw;
-  border-radius: 2cqw;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--stage-accent) 26%, #17181c), #17181c);
-  transition: background 0.6s ease;
-}
-.emh-phone-moment b { display: block; margin: 0.4cqw 0; font-size: 2.6cqw; }
-.emh-phone-tap {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 1.4cqw;
-  padding: 1.6cqw 2cqw;
-  border-radius: 99px;
-  background: rgba(241, 96, 29, 0.16);
-  color: #ffb48f;
-  font-size: 1.8cqw;
-  font-weight: 700;
-}
-.emh-phone-tap i {
-  width: 1.6cqw;
-  height: 1.6cqw;
-  border-radius: 50%;
-  background: #f1601d;
-  box-shadow: 0 0 0 0.8cqw rgba(241, 96, 29, 0.25);
 }
 .emh-stage-controls {
   display: flex;
@@ -10900,11 +10830,7 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 @media (prefers-reduced-motion: reduce) {
   .emh-stage-nfc path { animation: none; opacity: 0.85; }
   .emh-stage-card img,
-  .emh-stage::before,
-  .emh-phone-screen,
-  .emh-phone-kicker,
-  .emh-phone-avatar,
-  .emh-phone-moment { transition: none; }
+  .emh-stage::before { transition: none; }
 }
 
 
@@ -12053,15 +11979,9 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 .emh-home-hero .emh-home-hero-demo { margin-top: 12px; min-height: 32px; }
 .emh-home-hero .emh-hero-steps { margin: 20px auto 12px; }
 
-/* Phones: the showcase uses some of the side gutter, and the phone
-   preview's smallest labels keep a readable floor. */
+/* Phones: the showcase uses some of the side gutter. */
 @media (max-width: 999px) {
   .emh-home-hero .emh-stage-wrap { width: calc(100% + 20px); max-width: 580px; margin-left: -10px; margin-right: -10px; }
-  .emh-home-hero :is(.emh-phone-id small, .emh-phone-moment small, .emh-phone-stats small, .emh-phone-tap, .emh-phone-kicker) { font-size: max(1.8cqw, 7.5px); }
-  .emh-home-hero .emh-phone-screen { gap: 1.8cqw; }
-  .emh-home-hero .emh-phone-stats { gap: 0.8cqw; }
-  .emh-home-hero .emh-phone-stats span { padding-inline: 0.2cqw; }
-  .emh-home-hero .emh-phone-stats small { letter-spacing: 0; }
 }
 @media (min-width: 1000px) {
   .emh-hero.emh-home-hero {

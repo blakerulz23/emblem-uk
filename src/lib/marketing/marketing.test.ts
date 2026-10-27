@@ -241,7 +241,7 @@ describe('grassroots club landing page', () => {
     }
   });
 
-  it('is linked from the nav Teams tab, the footer club link and the homepage coach link', async () => {
+  it('is linked from the nav Teams tab and the footer club link', async () => {
     expect(await read('../../components/Footer.tsx')).toContain("{ href: '/football-cards-for-clubs', label: 'Clubs & coaches' }");
     // The shared desktop/mobile nav links to it as "Teams"; gifts stays reachable from the footer.
     const nav = await read('../../components/Navbar.tsx');
@@ -252,13 +252,10 @@ describe('grassroots club landing page', () => {
     expect(nav).toContain('href="/" className="flex items-center" aria-label="Emblem home"');
     expect(await read('../../components/Footer.tsx')).toContain("href: '/#cards'");
     expect(await read('../../components/Footer.tsx')).toContain("href: '/football-gifts-for-kids'");
-    expect(await read('../../app/page.tsx')).toContain("href: '/football-cards-for-clubs'");
   });
 
   it('qualifies the Squad Invite free coach card by 10 paid families', async () => {
     expect(await read('../../components/AnnouncementBar.tsx')).toContain('FREE COACH CARD WHEN 10 FAMILIES HAVE PAID');
-    const home = await read('../../app/page.tsx');
-    expect(home).toContain('Your coach receives a free personalised card once 10 families in your squad have paid.');
-    expect(home).not.toMatch(/free coach card on full-squad orders/i);
+    expect(await read('../../app/page.tsx')).not.toMatch(/free coach card on full-squad orders/i);
   });
 });
