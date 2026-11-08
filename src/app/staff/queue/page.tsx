@@ -6,7 +6,7 @@ import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
 import { positionCardLabel } from '@/lib/player-position';
-import { chooseProfileInviteRecipient, isGiftAuthorityStatus } from '@/lib/gift-order-guardian';
+import { chooseProfileInviteRecipient, isGiftAuthorityStatus, normaliseEmail } from '@/lib/gift-order-guardian';
 import {
   APPROVED_SORT_OPTIONS,
   buildStaffQueueUrl,
@@ -291,7 +291,20 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
       .select('order_id, guardian_email')
       .eq('status', 'approved')
       .in('order_id', giftOrderIds);
+    // An approval from the buyer's own address doesn't count (same rule as
+    // loadApprovedGuardianEmail): shown as withheld, matching what the
+    // approve and resend routes do.
+    const { data: declarations } = await supabase
+      .from('builder_order_authority_declarations')
+      .select('order_id, adult_email')
+      .in('order_id', giftOrderIds);
+    const buyerEmails = new Map<string, Set<string>>();
+    for (const o of page.items) buyerEmails.set(o.id, new Set([normaliseEmail(o.purchaser_email)].filter(Boolean)));
+    for (const d of (declarations ?? []) as Array<{ order_id: string; adult_email: string | null }>) {
+      buyerEmails.get(d.order_id)?.add(normaliseEmail(d.adult_email));
+    }
     for (const a of (approvals ?? []) as Array<{ order_id: string; guardian_email: string }>) {
+      if (buyerEmails.get(a.order_id)?.has(normaliseEmail(a.guardian_email))) continue;
       approvedGuardianByOrder.set(a.order_id, a.guardian_email);
     }
   }
