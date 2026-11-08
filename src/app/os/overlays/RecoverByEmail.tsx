@@ -21,6 +21,7 @@ type RecoverOrder = { orderId: string; orderRef: string; source: string; cards: 
 export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boolean; onBack?: () => void }) {
   const router = useRouter();
   const [orders, setOrders] = useState<RecoverOrder[] | null>(null);
+  const [heldForGuardian, setHeldForGuardian] = useState<string[]>([]);
   const [handoffCardId, setHandoffCardId] = useState<string | null>(null);
   const [handoffEmail, setHandoffEmail] = useState('');
   const [busyCardId, setBusyCardId] = useState<string | null>(null);
@@ -30,7 +31,10 @@ export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boo
     if (!hasSession) return;
     fetch('/api/os/recover')
       .then((res) => res.json())
-      .then((data) => setOrders(data.orders ?? []));
+      .then((data) => {
+        setOrders(data.orders ?? []);
+        setHeldForGuardian(Array.isArray(data.heldForGuardian) ? data.heldForGuardian : []);
+      });
   }, [hasSession]);
 
   if (!hasSession) {
@@ -96,7 +100,13 @@ export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boo
 
       {orders === null && <p style={{ fontSize: 14, color: '#B8AE9F' }}>Looking…</p>}
 
-      {orders !== null && allCards.length === 0 && (
+      {heldForGuardian.length > 0 && (
+        <p style={{ fontSize: 14, lineHeight: 1.55, color: '#B8AE9F', maxWidth: 300, marginBottom: 14 }}>
+          Order {heldForGuardian.join(', ')}: the player&apos;s profile is set up by the parent or guardian who approved the card. We&apos;ve emailed them an invite, so there&apos;s nothing you need to do.
+        </p>
+      )}
+
+      {orders !== null && allCards.length === 0 && heldForGuardian.length === 0 && (
         <p style={{ fontSize: 14, lineHeight: 1.55, color: '#B8AE9F', maxWidth: 280 }}>
           Nothing available to recover yet — your order may still be waiting on approval, or you may not have any orders under this email.
         </p>

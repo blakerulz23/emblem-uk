@@ -8,6 +8,7 @@ import { resolveOrCreateSeason } from '@/lib/resolve-season';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
 import { sendSquadInviteEarlyPreviewEmail } from '@/lib/send-squad-invite-early-preview-email';
 import { gate3PaymentGateEnabled } from '@/lib/shopify';
+import { resolveProfileInviteRecipient } from '@/lib/gift-order-guardian';
 
 export const runtime = 'nodejs';
 
@@ -334,13 +335,28 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   let inviteTriggered = false;
+  let inviteSkippedReason: string | undefined;
 
   if (linkedCards.length === 1) {
     const playerId = linkedCards[0].player_id;
-    const recipient = order.intended_guardian_email?.trim() || order.purchaser_email?.trim();
-    if (playerId && recipient) {
-      await createGuardianInvite(serviceRole, playerId, null, recipient, 'order_approval', order.id);
+    // Who gets control of the child's profile. A gift order (placed by a
+    // coach, organiser or other adult) goes only to the guardian who
+    // approved it, never to the buyer; every other order is unchanged
+    // (intended guardian, else purchaser). See gift-order-guardian.ts.
+    const recipient = await resolveProfileInviteRecipient(serviceRole, {
+      id: order.id,
+      authority_status: sourceRow.authority_status ?? null,
+      purchaser_email: order.purchaser_email ?? null,
+      intended_guardian_email: order.intended_guardian_email ?? null,
+    });
+    if (playerId && recipient.ok) {
+      await createGuardianInvite(serviceRole, playerId, null, recipient.email, 'order_approval', order.id);
       inviteTriggered = true;
+    } else if (!recipient.ok && recipient.reason !== 'no_recipient') {
+      // Fail closed: production is approved, but no profile invite goes to
+      // anyone until the approving guardian is resolved (never the buyer).
+      console.error('orders/approve: profile invite withheld', recipient.reason);
+      inviteSkippedReason = recipient.reason;
     }
   } else if (linkedCards.length > 1 && resolvedTeamId) {
     const recipient = order.purchaser_email?.trim();
@@ -350,5 +366,5 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
   }
 
-  return NextResponse.json({ ok: true, orderId: order.id, inviteTriggered });
+  return NextResponse.json({ ok: true, orderId: order.id, inviteTriggered, ...(inviteSkippedReason ? { inviteSkippedReason } : {}) });
 }

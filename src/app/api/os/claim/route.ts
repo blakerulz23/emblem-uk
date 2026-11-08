@@ -6,6 +6,7 @@ import { claimPlayerForCard } from '@/lib/claim-player';
 import { ensurePublicPlayerId } from '@/lib/public-player-id';
 import { resolveCardCode } from '@/lib/card-lookup';
 import { generateStoryUpdate } from '@/lib/story-updates';
+import { checkGiftFirstGuardianClaim, GIFT_PROFILE_REFUSED_MESSAGE } from '@/lib/gift-order-guardian';
 
 export const runtime = 'nodejs';
 
@@ -101,6 +102,19 @@ export async function POST(request: NextRequest) {
 
   if (!card) {
     return NextResponse.json({ error: "This code isn't valid or has already been claimed" }, { status: 400 });
+  }
+
+  // Before any write: a gift order's card is delivered to the buyer, so
+  // holding the card is not enough to become the child's first guardian.
+  // Only the guardian who approved the order may claim it this way.
+  if (card.player_id) {
+    const giftCheck = await checkGiftFirstGuardianClaim(serviceRole, card.player_id, user);
+    if (giftCheck.outcome === 'failed') {
+      return NextResponse.json({ error: 'Could not claim this player. Please try again.' }, { status: 500 });
+    }
+    if (giftCheck.outcome === 'refused') {
+      return NextResponse.json({ error: GIFT_PROFILE_REFUSED_MESSAGE }, { status: 403 });
+    }
   }
 
   // guardians.profile_id is a foreign key into profiles — a brand-new

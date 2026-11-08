@@ -6,6 +6,7 @@ import { maskEmail } from '@/lib/mask-email';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { ensurePublicPlayerId } from '@/lib/public-player-id';
 import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
+import { checkGiftFirstGuardianClaim, GIFT_PROFILE_REFUSED_MESSAGE } from '@/lib/gift-order-guardian';
 
 export const runtime = 'nodejs';
 
@@ -113,6 +114,18 @@ export async function POST(request: NextRequest) {
 
   if (!invite || invite.used_at || new Date(invite.expires_at) <= new Date()) {
     return NextResponse.json({ error: "This invite isn't valid or has expired" }, { status: 400 });
+  }
+
+  // Before any write: a child whose card came from a gift order (made by a
+  // coach, organiser or other adult) gets its first guardian only through
+  // the guardian who approved it, so an invite that reached the buyer, or
+  // was forwarded, can't make them the child's guardian.
+  const giftCheck = await checkGiftFirstGuardianClaim(serviceRole, invite.player_id, user);
+  if (giftCheck.outcome === 'failed') {
+    return NextResponse.json({ error: 'Could not accept this invite. Please try again.' }, { status: 500 });
+  }
+  if (giftCheck.outcome === 'refused') {
+    return NextResponse.json({ error: GIFT_PROFILE_REFUSED_MESSAGE }, { status: 403 });
   }
 
   // guardians.profile_id is a foreign key into profiles — must exist
