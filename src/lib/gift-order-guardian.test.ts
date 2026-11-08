@@ -191,6 +191,39 @@ describe('checkGiftFirstGuardianClaim', () => {
   });
 });
 
+describe('an approval given from the buyer’s own address (approved before the guardian-email check existed)', () => {
+  const selfApproved = (where: 'purchaser' | 'declaration'): Tables => {
+    const t = giftWorld('guardian_approved', { approvedEmail: 'Grandparent@Example.test' });
+    if (where === 'purchaser') t.orders = [{ id: 'order-1', authority_status: 'guardian_approved', purchaser_email: 'grandparent@example.test' }];
+    else { t.orders = [{ id: 'order-1', authority_status: 'guardian_approved', purchaser_email: 'other-address@example.test' }]; t.builder_order_authority_declarations = [{ order_id: 'order-1', adult_email: 'GRANDPARENT@example.test' }]; }
+    return t;
+  };
+
+  it.each([['purchaser'], ['declaration']] as const)('matching the %s email: the profile invite is withheld, never sent to the buyer', async (where) => {
+    const { client } = fakeService(selfApproved(where));
+    const r = await resolveProfileInviteRecipient(client, { id: 'order-1', authority_status: 'guardian_approved', purchaser_email: 'grandparent@example.test', intended_guardian_email: null });
+    expect(r).toEqual({ ok: false, reason: 'approved_guardian_missing' });
+  });
+
+  it.each([['purchaser'], ['declaration']] as const)('matching the %s email: the buyer cannot become first guardian', async (where) => {
+    const { client } = fakeService(selfApproved(where));
+    expect(await checkGiftFirstGuardianClaim(client, 'player-1', buyer)).toEqual({ outcome: 'refused' });
+  });
+
+  it('a genuine approval from a different address is unaffected', async () => {
+    const t = giftWorld('guardian_approved');
+    t.orders = [{ id: 'order-1', authority_status: 'guardian_approved', purchaser_email: 'grandparent@example.test' }];
+    t.builder_order_authority_declarations = [{ order_id: 'order-1', adult_email: 'grandparent@example.test' }];
+    const { client } = fakeService(t);
+    expect(await checkGiftFirstGuardianClaim(client, 'player-1', guardian)).toEqual({ outcome: 'allowed' });
+  });
+
+  it('a failed buyer-address read fails closed', async () => {
+    const { client } = fakeService(giftWorld('guardian_approved'), ['builder_order_authority_declarations']);
+    expect(await checkGiftFirstGuardianClaim(client, 'player-1', guardian)).toEqual({ outcome: 'failed' });
+  });
+});
+
 describe('retireOtherOrderApprovalInvites', () => {
   it('expires unused order-approval invites not sent to the approving guardian, and nothing else', async () => {
     const tables: Tables = {

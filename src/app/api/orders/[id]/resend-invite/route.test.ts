@@ -33,6 +33,10 @@ vi.mock('@/lib/supabase/server', () => ({
         };
         return chain;
       }
+      if (table === 'builder_order_authority_declarations') {
+        // The buyer's verified declaration address (an approval from it is not a guardian's).
+        return { select: () => ({ eq: async () => ({ data: [{ adult_email: 'declared-buyer@example.test' }], error: null }) }) };
+      }
       throw new Error(`unexpected table ${table}`);
     },
   }),
@@ -65,6 +69,13 @@ describe('POST /api/orders/[id]/resend-invite', () => {
     ];
     await resend();
     expect(expired).toEqual(['buyer-invite']);
+  });
+
+  it.each([['the purchaser', 'grandparent@example.test'], ['the declared buyer', 'Declared-Buyer@example.test']])('gift order approved from %s address: treated as unapproved — 409, nothing sent', async (_who, email) => {
+    approvedGuardianEmail = email;
+    const res = await resend();
+    expect(res.status).toBe(409);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
   });
 
   it('gift order with no approving guardian on record: 409, nothing sent', async () => {

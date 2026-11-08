@@ -51,7 +51,7 @@ type ApprovedGuardianLookup = { ok: true; email: string | null } | { ok: false }
  * The address that approved this order, from the approval request itself
  * (status 'approved'), never from anything the buyer can edit afterwards.
  */
-export async function loadApprovedGuardianEmail(service: SupabaseClient, orderId: string): Promise<ApprovedGuardianLookup> {
+export async function loadApprovedGuardianEmail(service: SupabaseClient, orderId: string, purchaserEmail: string | null): Promise<ApprovedGuardianLookup> {
   const { data, error } = await service
     .from('builder_guardian_approval_requests')
     .select('guardian_email, responded_at')
@@ -62,7 +62,26 @@ export async function loadApprovedGuardianEmail(service: SupabaseClient, orderId
   if (error) return { ok: false };
   const row = (Array.isArray(data) ? data[0] : data) as { guardian_email?: string } | undefined;
   const email = normaliseEmail(row?.guardian_email);
-  return { ok: true, email: email || null };
+  if (!email) return { ok: true, email: null };
+
+  // An approval given from the buyer's own address is not a guardian's
+  // approval. The guardian-email route now refuses the buyer's own verified
+  // email, but an order approved before that check existed may still carry
+  // one. Treat it as having no approving guardian: the profile invite is
+  // withheld and no first-guardian claim is allowed, so staff must obtain a
+  // genuine guardian approval first.
+  if (normaliseEmail(purchaserEmail) === email) return { ok: true, email: null };
+  const buyers = await loadDeclaredBuyerEmails(service, orderId);
+  if (!buyers.ok) return { ok: false };
+  if (buyers.emails.includes(email)) return { ok: true, email: null };
+  return { ok: true, email };
+}
+
+/** Every authority declaration's verified adult (buyer) email for an order. */
+async function loadDeclaredBuyerEmails(service: SupabaseClient, orderId: string): Promise<{ ok: true; emails: string[] } | { ok: false }> {
+  const { data, error } = await service.from('builder_order_authority_declarations').select('adult_email').eq('order_id', orderId);
+  if (error) return { ok: false };
+  return { ok: true, emails: ((data ?? []) as Array<{ adult_email?: string | null }>).map((r) => normaliseEmail(r.adult_email)).filter(Boolean) };
 }
 
 export type ProfileInviteOrder = {
@@ -100,7 +119,7 @@ export function chooseProfileInviteRecipient(
 
 export async function resolveProfileInviteRecipient(service: SupabaseClient, order: ProfileInviteOrder): Promise<ProfileInviteRecipient> {
   if (order.authority_status !== 'guardian_approved') return chooseProfileInviteRecipient(order, null);
-  const lookup = await loadApprovedGuardianEmail(service, order.id);
+  const lookup = await loadApprovedGuardianEmail(service, order.id, order.purchaser_email);
   if (!lookup.ok) return { ok: false, reason: 'lookup_failed' };
   return chooseProfileInviteRecipient(order, lookup.email);
 }
@@ -172,9 +191,9 @@ export async function checkGiftFirstGuardianClaim(
   );
   if (orderIds.length === 0) return { outcome: 'not_gift' };
 
-  const { data: orders, error: ordersError } = await service.from('orders').select('id, authority_status').in('id', orderIds);
+  const { data: orders, error: ordersError } = await service.from('orders').select('id, authority_status, purchaser_email').in('id', orderIds);
   if (ordersError) return { outcome: 'failed' };
-  const giftOrders = ((orders ?? []) as Array<{ id: string; authority_status: string | null }>).filter((o) =>
+  const giftOrders = ((orders ?? []) as Array<{ id: string; authority_status: string | null; purchaser_email?: string | null }>).filter((o) =>
     isGiftAuthorityStatus(o.authority_status)
   );
   if (giftOrders.length === 0) return { outcome: 'not_gift' };
@@ -200,7 +219,7 @@ export async function checkGiftFirstGuardianClaim(
 
   for (const order of singleChildGiftOrders) {
     if (order.authority_status !== 'guardian_approved') return { outcome: 'refused' };
-    const lookup = await loadApprovedGuardianEmail(service, order.id);
+    const lookup = await loadApprovedGuardianEmail(service, order.id, order.purchaser_email ?? null);
     if (!lookup.ok) return { outcome: 'failed' };
     if (!lookup.email || lookup.email !== own) return { outcome: 'refused' };
   }
