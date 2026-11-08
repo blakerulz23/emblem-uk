@@ -1,5 +1,6 @@
 ﻿import type { Metadata } from 'next';
 import Link from 'next/link';
+import PlayerMomentSection from '@/components/PlayerMomentSection';
 import Icon from '@/components/builder/emblem/Icon';
 import HeroStage from '@/components/marketing/HeroStage';
 import JsonLd from '@/components/marketing/JsonLd';
@@ -8,7 +9,7 @@ import { organizationJsonLd, personalisedCardProductJsonLd } from '@/lib/marketi
 
 // Homepage layout follows the shorter Canadian page (buy action and price
 // directly under the headline, card designs shown inside the hero, then
-// pricing and links out); copy targets the UK DataForSEO research.
+// pricing, then trust); copy targets the UK DataForSEO research.
 // The long story sections live on /how-it-works, the full FAQ (and its
 // FAQPage structured data) on /faq, the design gallery on the gift page.
 export const metadata: Metadata = {
@@ -67,46 +68,45 @@ const trustItems = [
 ];
 
 export default function Home() {
-  const explore = [
-    { label: 'Try the app', body: 'Open the private profile a card unlocks, with sample data. No sign-in needed.', href: '/os/demo' },
-    { label: 'How it works', body: 'From one photo to a printed card with a chip inside, and a profile that grows every season.', href: '/how-it-works' },
-    {
-      label: 'For coaches and teams',
-      body: 'One invite for the whole squad, with a free coach card on full-squad orders.',
-      href: '/football-cards-for-clubs',
-    },
-    { label: 'Privacy and safety', body: 'Private by default and controlled by parents.', href: '/trust-and-safeguarding' },
-  ];
-
   return (
     <main className="emh-page">
       <JsonLd data={[organizationJsonLd(), personalisedCardProductJsonLd()]} />
 
       <section id="top" className="emh-hero-section">
         <div className="emh-glow" aria-hidden="true" />
-        <div className="emh-hero">
-          <div className="emh-hero-copy">
+        {/* Copy left and the card-and-phone showcase right on desktop; on
+            phones the blocks stack as intro → showcase → actions (DOM order). */}
+        <div className="emh-hero emh-home-hero">
+          <div className="emh-home-hero-intro">
             <p className="emh-eyebrow">Personalised football cards</p>
-            <h1>Personalised football cards that come to life with a tap.</h1>
-            <div className="emh-actions emh-hero-actions-single">
-              <Link className="emh-btn emh-btn-primary emh-hero-cta" href="/builder?mode=single" data-track="hero_build">
-                BUILD MY CARD
-                <span aria-hidden="true" className="emh-hero-cta-icon">
-                  <Icon name="chevR" size={18} />
-                </span>
-              </Link>
-            </div>
-            <p className="emh-hero-price">{PRICES.single} · digital player profile included · UK delivery shown at checkout</p>
-            <Link className="emh-hero-demo" href="/os/demo" data-track="hero_try_app">
-              Or try the app first
-              <Icon name="chevR" size={14} />
-            </Link>
-            <p className="emh-hero-lede emh-hero-lede-after">
-              Send us their best football photo. We print it on a premium card with a chip inside, so tapping the card opens a private profile that grows with every match, goal and season.
+            <h1>
+              Their own football card.
+              <br />
+              Their season brought to life.
+            </h1>
+            <p className="emh-home-hero-desc">
+              Put your young footballer on a premium personalised card. A phone tap opens their private profile, where their family can collect season memories and celebrate achievements.
             </p>
           </div>
 
-          <HeroStage />
+          <div className="emh-home-hero-visual">
+            <HeroStage />
+          </div>
+
+          <div className="emh-home-hero-actions">
+            <Link className="emh-btn emh-btn-primary emh-home-hero-cta" href="/builder?mode=single" data-track="hero_build">
+              Build My Card
+              <span aria-hidden="true" className="emh-hero-cta-icon">
+                <Icon name="chevR" size={18} />
+              </span>
+            </Link>
+            <p className="emh-home-hero-price">{PRICES.single} · Private digital profile included</p>
+            <p className="emh-home-hero-delivery">UK delivery calculated at checkout.</p>
+            <Link className="emh-hero-demo emh-home-hero-demo" href="/os/demo" data-track="hero_try_app">
+              Explore the app
+              <Icon name="chevR" size={14} />
+            </Link>
+          </div>
 
           <div className="emh-hero-footer">
             <ol className="emh-hero-steps">
@@ -134,6 +134,8 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      <PlayerMomentSection ctaTrack="home_moment_build" />
 
       <section id="pricing" className="emh-section emh-pricing">
         <p className="emh-eyebrow">Pricing</p>
@@ -182,41 +184,6 @@ export default function Home() {
           How we protect players <Icon name="chevR" size={14} />
         </Link>
       </section>
-
-      <section id="gifts" className="emh-section emh-gift-promo" aria-labelledby="emh-gift-heading">
-        <div>
-          <p className="emh-eyebrow">Christmas</p>
-          <h2 id="emh-gift-heading">The football gift that keeps going.</h2>
-          <p>A personalised football card they can hold, with a profile that keeps growing long after Christmas.</p>
-        </div>
-        <Link className="emh-btn emh-btn-primary" href="/football-gifts-for-kids" data-track="gift_promo">
-          Football gifts for kids
-        </Link>
-      </section>
-
-      <section id="explore" className="emh-section emh-explore">
-        <h2>Want the full picture?</h2>
-        <div className="emh-explore-grid">
-          {explore.map((item) => (
-            <Link key={item.href} className="emh-explore-card" href={item.href} data-track={`explore_${item.href.replace(/\W+/g, '_')}`}>
-              <span className="emh-explore-title">
-                {item.label}
-                <Icon name="chevR" size={16} />
-              </span>
-              <span className="emh-explore-body">{item.body}</span>
-            </Link>
-          ))}
-        </div>
-        <div className="emh-explore-cta">
-          <Link className="emh-btn emh-btn-primary" href="/builder?mode=single" data-track="explore_build">
-            Build my card · {PRICES.single}
-          </Link>
-          <Link className="emh-explore-faq" href="/faq" data-track="explore_faq">
-            Questions? Read the FAQ
-          </Link>
-        </div>
-      </section>
-
     </main>
   );
 }

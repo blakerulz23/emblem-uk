@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PRICES } from '@/lib/marketing/site';
 import SquadInviteCopyLinkButton from './SquadInviteCopyLinkButton';
 
 /**
@@ -8,16 +9,17 @@ import SquadInviteCopyLinkButton from './SquadInviteCopyLinkButton';
  * Coach OS" narrative with Emblem's current, safer model: one organiser
  * starts a Squad Invite; each family builds and confirms its own child's
  * card; the organiser only ever sees aggregate progress, never a real
- * roster of names/photos/guardians; completed cards are printed and
- * delivered together once the squad target is reached.
+ * roster of names/photos/guardians. At the deadline the price is set by
+ * the number of families committed, each family pays for its own card,
+ * and paid cards are printed and delivered together. The free coach card
+ * needs 10 paid families.
  *
  * Static synthetic homepage demonstration content — every name, date,
- * status, count and photo below is illustrative marketing material, not
- * read from any real Squad Invite, order or database record. The Stage 2
- * family-card photos (squad-invite-family-card-*.png) are owner-approved
- * synthetic marketing personas already used elsewhere on this site, used
- * here to make the illustrative example feel concrete — never real
- * organiser-visible data. A real Squad Invite organiser view still never
+ * status, count and card below is illustrative marketing material, not
+ * read from any real Squad Invite, order or database record, and is
+ * labelled as an example on the page. The cards are the current homepage
+ * card designs: the sample player Riley Hart and blank templates. A real
+ * Squad Invite organiser view still never
  * shows individual child names/photos/guardian details; only this
  * marketing illustration does. Review this whole object together (not
  * just individual fields) if the underlying Squad Invite product flow
@@ -35,49 +37,51 @@ const SQUAD_INVITE_JOURNEY_DEMO = {
   eyebrow: 'FOR COACHES & TEAMS',
   headline: 'One invite. A whole squad connected.',
   supporting:
-    'Start a Squad Invite and share it with the team. Each family creates and confirms their own player’s card, while the organiser follows progress and receives the completed squad order together.',
+    'Request a Squad Invite and, once it’s approved, share one private link with your team’s families. Each family creates and approves their own child’s card, and you follow the squad’s progress in one place.',
   ctaLabel: 'REQUEST A SQUAD INVITE',
-  offerPill: '10+ DIFFERENT PLAYERS UNLOCK FULL-SQUAD PRICING AND A FREE COACH CARD',
+  offerPill: `${PRICES.squad} per card when 10 or more families commit. Free coach card once 10 families have paid.`,
+  exampleTag: 'Illustrative example',
   progress: {
-    ready: 8,
+    committed: 8,
     target: 10,
     percent: 80,
-    label: '8 / 10 PLAYERS READY',
-    note: 'Once the squad target is reached and confirmed, we’ll print and deliver the cards together.',
+    label: '8 / 10 FAMILIES COMMITTED',
+    note: 'At the deadline, your price is set by the number of families committed. Each family then pays for their own card.',
   },
   organiserPanel: {
     label: 'SQUAD INVITE',
     status: 'APPROVED',
-    team: 'AFC Oldham U12s',
+    team: 'Westbrook Juniors U12',
     deadlineLabel: 'Deadline',
     deadline: '30 SEPT',
     reassurance: 'Share this link with your team’s families. Keep it private.',
   },
+  // Left to right: behind-left, front, behind-right.
   familyTiles: [
-    { id: 'confirmed', status: 'CARD CONFIRMED', variant: 'confirmed', photo: '/assets/marketing/squad-invite-family-card-1.png' },
-    { id: 'ready', status: 'READY', variant: 'ready', photo: '/assets/marketing/squad-invite-family-card-2.png' },
-    { id: 'in-progress', status: 'IN PROGRESS', variant: 'in-progress', photo: '/assets/marketing/squad-invite-family-card-3.png' },
+    { id: 'personalising', position: 'left', tone: 'progress', status: 'EDITING', photo: '/assets/home/gallery/custom-emerald.webp', badge: false },
+    { id: 'approved', position: 'front', tone: 'approved', status: 'APPROVED', photo: '/assets/home/hero/card-royal-400.webp', badge: true },
+    { id: 'not-started', position: 'right', tone: 'waiting', status: 'WAITING', photo: '/assets/home/gallery/custom-galaxy.webp', badge: false },
   ] as const,
   stages: [
     {
       id: 'start',
       number: '1',
-      heading: 'START THE INVITE',
-      description: 'Create your Squad Invite and share the private link with your team’s families.',
+      heading: 'REQUEST YOUR INVITE',
+      description: 'Tell us about your team. Once your Squad Invite is approved, share the private link with your team’s families.',
     },
     {
       id: 'families',
       number: '2',
-      heading: 'FAMILIES BUILD THEIR OWN',
-      description: 'Each family creates and confirms their own player’s card, at their own pace.',
-      supporting: 'Three families. One growing squad.',
+      heading: 'FAMILIES MAKE THEIR OWN',
+      description: 'Each family creates and approves their own child’s card, at their own pace.',
+      supporting: 'At the deadline, the price is set by the number of families committed, and each family pays individually.',
     },
     {
       id: 'delivered',
       number: '3',
       heading: 'DELIVERED TOGETHER',
-      description: 'Once the squad target is reached and confirmed, we print and deliver the cards together.',
-      supporting: 'A premium set of player cards, delivered together for the squad.',
+      description: 'Paid cards are printed and delivered together to your club’s chosen contact.',
+      supporting: 'Free coach card once 10 families have paid.',
     },
   ],
 };
@@ -91,7 +95,9 @@ function OrganiserPanel() {
         <span className="sqi-organiser-label">{p.label}</span>
         <span className="sqi-organiser-status">{p.status}</span>
       </div>
-      <p className="sqi-organiser-team">{p.team}</p>
+      <p className="sqi-organiser-team">
+        {p.team} <span className="sqi-example-tag">Example</span>
+      </p>
       <div className="sqi-organiser-deadline">
         <span>{p.deadlineLabel}</span>
         <strong>{p.deadline}</strong>
@@ -102,11 +108,13 @@ function OrganiserPanel() {
   );
 }
 
-function FamilyPhoto({ variant, photo }: { variant: 'confirmed' | 'ready' | 'in-progress'; photo: string }) {
+type FamilyTile = (typeof SQUAD_INVITE_JOURNEY_DEMO.familyTiles)[number];
+
+function FamilyPhoto({ tile }: { tile: FamilyTile }) {
   return (
-    <span className={`sqi-family-photo-wrap sqi-family-photo-wrap--${variant}`} aria-hidden="true">
-      <img className="sqi-family-photo" src={photo} alt="" loading="lazy" decoding="async" />
-      {variant === 'confirmed' && (
+    <span className={`sqi-family-photo-wrap sqi-family-photo-wrap--${tile.position} sqi-family-photo-wrap--${tile.tone}`} aria-hidden="true">
+      <img className="sqi-family-photo" src={tile.photo} alt="" loading="lazy" decoding="async" />
+      {tile.badge && (
         <span className="sqi-family-badge">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <path d="M5 12.5l4.5 4.5L19 7" />
@@ -118,52 +126,56 @@ function FamilyPhoto({ variant, photo }: { variant: 'confirmed' | 'ready' | 'in-
 }
 
 /**
- * A layered, three-card composition (not three separate boxed thumbnails):
- * the "ready" card (Custom Collection Solar — the real purple "Galaxy"
- * design) sits largest, upright and in front; "confirmed" (EMJFL red) and
- * "in-progress" (Custom Collection Galaxy id — orange) sit behind it,
- * rotated away from centre and partially overlapped, each still showing
- * enough of its own frame/photo/number to read as a distinct real Emblem
- * card. All three use the exact same real card-preview assets the old
- * boxed-thumbnail row already used — no new artwork, no renderer
- * duplication. Sizing is percentage/aspect-ratio based (of this
- * composition's own flex container), so it scales with the panel at every
- * breakpoint rather than via fixed device-width coordinates.
+ * A layered three-card composition: the sample player's approved card in
+ * front, with two blank card templates behind it standing in for families
+ * still personalising or not yet started. Sizing is percentage based (of
+ * this composition's own flex container), so it scales with the panel.
  */
 function FamilyTiles() {
   return (
     <div className="sqi-family-stack">
-      <span className="sqi-sr-only">Example family progress — three sample cards illustrating how each family’s own card moves through the journey; not real Squad Invite participants —</span>
+      <span className="sqi-sr-only">Illustrative example of family progress: one card approved, one still being edited, one not started yet. Not real Squad Invite participants —</span>
       {SQUAD_INVITE_JOURNEY_DEMO.familyTiles.map((tile) => (
-        <div key={tile.id} className={`sqi-family-card sqi-family-card--${tile.variant}`}>
-          <FamilyPhoto variant={tile.variant} photo={tile.photo} />
-          <span className={`sqi-family-status sqi-family-status--${tile.variant}`}>{tile.status}</span>
+        <div key={tile.id} className={`sqi-family-card sqi-family-card--${tile.position}`}>
+          <FamilyPhoto tile={tile} />
+          <span className={`sqi-family-status sqi-family-status--${tile.tone}`}>{tile.status}</span>
         </div>
       ))}
     </div>
   );
 }
 
-function CardStack() {
+/** A neutral, squared-up set of current card designs; no packaging is shown. */
+const CARD_SET = [
+  '/assets/home/gallery/custom-solar.webp',
+  '/assets/home/gallery/custom-glacier.webp',
+  '/assets/home/gallery/custom-crimson.webp',
+  '/assets/home/gallery/custom-emerald.webp',
+  '/assets/home/hero/card-royal-400.webp',
+];
+
+function CardSet() {
   return (
-    <img
-      className="sqi-stack-photo"
-      src="/assets/marketing/squad-invite-card-stack-box.png"
-      alt="A finished set of printed Emblem player cards beside their presentation box"
-      loading="lazy"
-      decoding="async"
-    />
+    <div className="sqi-card-set" role="img" aria-label="Illustration: a set of personalised Emblem cards stacked together">
+      {CARD_SET.map((src, i) => (
+        <img key={src} className="sqi-card-set-card" style={{ ['--i' as string]: i }} src={src} alt="" loading="lazy" decoding="async" />
+      ))}
+    </div>
   );
 }
 
 export default function SquadInviteJourneySection({
   squadInviteEnabled,
   ctaHref,
+  eyebrow = SQUAD_INVITE_JOURNEY_DEMO.eyebrow,
+  ctaTrack,
 }: {
   squadInviteEnabled: boolean;
   ctaHref: string;
+  eyebrow?: string;
+  ctaTrack?: string;
 }) {
-  const { eyebrow, headline, supporting, ctaLabel, offerPill, progress, stages } = SQUAD_INVITE_JOURNEY_DEMO;
+  const { headline, supporting, ctaLabel, offerPill, exampleTag, progress, stages } = SQUAD_INVITE_JOURNEY_DEMO;
 
   return (
     <section id="squad" className="emh-section sqi-section" aria-labelledby="sqi-heading">
@@ -218,34 +230,34 @@ export default function SquadInviteJourneySection({
            container's own width (itself already responsive inside
            .sqi-stage-visual), so the whole thing scales with the panel
            rather than via fixed device-width coordinates. The centre
-           ("ready") card is ~18% wider than the side cards (15-20% target)
+           (front, approved) card is ~18% wider than the side cards (15-20% target)
            and z-indexed in front; side cards use a negative percentage
            margin to overlap toward centre without ever risking horizontal
            overflow, since the margin is a fraction of the same container
            the widths are a fraction of. */
         .sqi-family-stack { position: relative; display: flex; align-items: flex-end; justify-content: center; padding-top: clamp(10px, 3vw, 20px); }
         .sqi-family-card { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 10px; flex: 0 0 30%; max-width: 132px; }
-        .sqi-family-card--ready { z-index: 3; flex-basis: 35.5%; max-width: 156px; }
-        .sqi-family-card--confirmed { margin-right: -9%; }
-        .sqi-family-card--in-progress { margin-left: -9%; }
-        .sqi-family-photo-wrap { position: relative; display: block; width: 100%; aspect-ratio: 153 / 216; border-radius: 10px; overflow: visible; }
-        .sqi-family-card--confirmed .sqi-family-photo-wrap { transform: rotate(-7deg); }
-        .sqi-family-card--in-progress .sqi-family-photo-wrap { transform: rotate(7deg); }
+        .sqi-family-card--front { z-index: 3; flex-basis: 35.5%; max-width: 156px; }
+        .sqi-family-card--left { margin-right: -9%; }
+        .sqi-family-card--right { margin-left: -9%; }
+        .sqi-family-photo-wrap { position: relative; display: block; width: 100%; aspect-ratio: 400 / 560; border-radius: 10px; overflow: visible; }
+        .sqi-family-photo-wrap--left { transform: rotate(-7deg); }
+        .sqi-family-photo-wrap--right { transform: rotate(7deg); }
         .sqi-family-photo { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 10px; box-shadow: 0 16px 32px -16px rgba(20,17,15,.5); }
-        .sqi-family-photo-wrap--ready .sqi-family-photo { outline: 2.5px solid rgba(241,96,29,.6); outline-offset: 2px; box-shadow: 0 20px 40px -14px rgba(20,17,15,.55); }
-        .sqi-family-photo-wrap--in-progress .sqi-family-photo { opacity: .6; filter: grayscale(.15); }
-        /* left, not right: the confirmed card is the one positioned behind
-           and to the left of centre, overlapped on its own right-hand side
-           by the ready card in front — a right-corner badge would render
-           underneath that overlap and be invisible. Left keeps it in the
-           card's own always-visible portion. */
+        .sqi-family-photo-wrap--approved .sqi-family-photo { outline: 2.5px solid rgba(23,169,104,.65); outline-offset: 2px; box-shadow: 0 20px 40px -14px rgba(20,17,15,.55); }
+        .sqi-family-photo-wrap--waiting .sqi-family-photo { opacity: .55; filter: grayscale(.35); }
         .sqi-family-badge { position: absolute; left: -6px; bottom: -6px; display: grid; place-items: center; width: clamp(22px, 6vw, 28px); height: clamp(22px, 6vw, 28px); border-radius: 999px; background: #17a968; border: 2px solid #fff; box-shadow: 0 3px 8px rgba(20,17,15,.3); }
         .sqi-family-status { font-family: var(--font-jbmono), monospace; font-size: clamp(10px, 2.6vw, 11.5px); font-weight: 700; letter-spacing: .04em; text-align: center; color: #5f574f; }
-        .sqi-family-status--confirmed { color: #147a4c; }
-        .sqi-family-status--ready { color: #b3480f; }
-        .sqi-family-status--in-progress { color: #8b8478; font-style: italic; }
+        .sqi-family-status--approved { color: #147a4c; }
+        .sqi-family-status--progress { color: #b3480f; }
+        .sqi-family-status--waiting { color: #8b8478; font-style: italic; }
 
-        .sqi-stack-photo { display: block; width: 100%; max-width: 220px; height: auto; margin: 4px auto 10px; }
+        /* Neutral set of cards, squared up with a small offset per card. */
+        .sqi-card-set { position: relative; width: 46%; max-width: 132px; aspect-ratio: 400 / 560; margin: 6px auto 22px; }
+        .sqi-card-set-card { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 9px; box-shadow: 0 10px 22px -12px rgba(20,17,15,.55); transform: translate(calc((var(--i) - 2) * 9%), calc((2 - var(--i)) * 3.5%)) rotate(calc((var(--i) - 2) * 3deg)); }
+
+        .sqi-example-tag { display: inline-block; padding: 2px 8px; border: 1px dashed rgba(20,17,15,.3); border-radius: 999px; color: #756c62; font-family: var(--font-jbmono), monospace; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; vertical-align: middle; }
+        .sqi-progress-tag { margin-bottom: 10px; }
 
         .sqi-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
@@ -292,7 +304,8 @@ export default function SquadInviteJourneySection({
           <p>{supporting}</p>
         </div>
 
-        <div className="sqi-progress" role="group" aria-label="Squad progress example">
+        <div className="sqi-progress" role="group" aria-label="Illustrative squad progress example">
+          <span className="sqi-example-tag sqi-progress-tag">{exampleTag}</span>
           <span className="sqi-progress-percent">{progress.percent}%</span>
           <span className="sqi-progress-label">{progress.label}</span>
           <div
@@ -301,7 +314,7 @@ export default function SquadInviteJourneySection({
             aria-valuenow={progress.percent}
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuetext={`${progress.ready} of ${progress.target} players ready`}
+            aria-valuetext={`Example: ${progress.committed} of ${progress.target} families committed`}
           >
             <span className="sqi-progress-fill" style={{ width: `${progress.percent}%` }} />
           </div>
@@ -320,13 +333,13 @@ export default function SquadInviteJourneySection({
             <div className="sqi-stage-visual">
               {stage.id === 'start' && <OrganiserPanel />}
               {stage.id === 'families' && <FamilyTiles />}
-              {stage.id === 'delivered' && <CardStack />}
+              {stage.id === 'delivered' && <CardSet />}
               {'supporting' in stage && stage.supporting && <p className="sqi-stage-supporting">{stage.supporting}</p>}
             </div>
             {stage.id === 'start' && (
               <div className="sqi-actions">
                 {squadInviteEnabled && (
-                  <Link className="emh-btn emh-btn-primary sqi-cta" href={ctaHref}>
+                  <Link className="emh-btn emh-btn-primary sqi-cta" href={ctaHref} data-track={ctaTrack}>
                     {ctaLabel}
                   </Link>
                 )}

@@ -54,6 +54,10 @@ type Fixture = {
   squadInviteCard?: { claim_token: string } | null;
   // a recorded Shopify orders/cancelled delivery for this order's order_ref
   shopifyCancelled?: boolean;
+  // gift orders: the approving guardian's address on the approved
+  // builder_guardian_approval_requests row (undefined: no such row)
+  approvedGuardianEmail?: string;
+  approvalLookupFails?: boolean;
 };
 
 let fixture: Fixture;
@@ -146,6 +150,18 @@ vi.mock('@/lib/supabase/server', () => ({
             }),
           }),
         };
+      }
+      if (table === 'builder_guardian_approval_requests') {
+        const chain = {
+          select: () => chain,
+          eq: () => chain,
+          order: () => chain,
+          limit: async () =>
+            fixture.approvalLookupFails
+              ? { data: null, error: { message: 'boom' } }
+              : { data: fixture.approvedGuardianEmail ? [{ guardian_email: fixture.approvedGuardianEmail, responded_at: '2026-11-01T00:00:00Z' }] : [], error: null },
+        };
+        return chain;
       }
       throw new Error(`unexpected table ${table}`);
     },
@@ -259,10 +275,63 @@ describe('POST /api/orders/[id]/approve — ordinary-builder safeguarding gate (
   });
 
   it('allows approval once a guardian has approved', async () => {
-    fixture = { ...baseFixture(), orderAuthorityStatus: 'guardian_approved' };
+    fixture = { ...baseFixture(), orderAuthorityStatus: 'guardian_approved', approvedGuardianEmail: 'guardian@example.test' };
     const res = await approve();
     expect(res.status).toBe(200);
     expect(orderUpdates).toHaveLength(1);
+  });
+
+  it('gift order: sends the profile invite to the approving guardian, never the buyer', async () => {
+    fixture = {
+      ...baseFixture(),
+      orderAuthorityStatus: 'guardian_approved',
+      approvedGuardianEmail: 'Guardian@Example.test',
+      orderRow: { id: ORDER_ID, purchaser_email: 'grandparent@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect((await res.json()).inviteTriggered).toBe(true);
+    expect(mockCreateGuardianInvite).toHaveBeenCalledTimes(1);
+    expect(mockCreateGuardianInvite).toHaveBeenCalledWith(expect.anything(), 'player-1', null, 'guardian@example.test', 'order_approval', ORDER_ID);
+  });
+
+  it('gift order: a buyer-supplied intended_guardian_email never overrides the approving guardian', async () => {
+    fixture = {
+      ...baseFixture(),
+      orderAuthorityStatus: 'guardian_approved',
+      approvedGuardianEmail: 'guardian@example.test',
+      orderRow: { id: ORDER_ID, purchaser_email: 'grandparent@example.test', intended_guardian_email: 'someone-else@example.test' },
+    };
+    await approve();
+    expect(mockCreateGuardianInvite.mock.calls[0][3]).toBe('guardian@example.test');
+  });
+
+  it('gift order with no approved request on record: approves production but withholds the invite (no buyer fallback)', async () => {
+    fixture = {
+      ...baseFixture(),
+      orderAuthorityStatus: 'guardian_approved',
+      orderRow: { id: ORDER_ID, purchaser_email: 'grandparent@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.inviteTriggered).toBe(false);
+    expect(body.inviteSkippedReason).toBe('approved_guardian_missing');
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
+  it('gift order: a failed approval lookup withholds the invite (fails closed)', async () => {
+    fixture = { ...baseFixture(), orderAuthorityStatus: 'guardian_approved', approvalLookupFails: true };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect((await res.json()).inviteSkippedReason).toBe('lookup_failed');
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
+  it('confirmed (parent placed it) order: invite still goes to the purchaser exactly as before', async () => {
+    fixture = { ...baseFixture(), orderAuthorityStatus: 'confirmed' };
+    await approve();
+    expect(mockCreateGuardianInvite).toHaveBeenCalledWith(expect.anything(), 'player-1', null, 'parent@example.test', 'order_approval', ORDER_ID);
   });
 
   it('never applies this gate to a squad_invite order', async () => {

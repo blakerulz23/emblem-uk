@@ -234,13 +234,28 @@ describe('grassroots club landing page', () => {
     expect(page).toContain("'/squad-invite/start'");
     expect(page).not.toMatch(/free (uk )?delivery|free shipping|delivered (with)?in \d|working days/i);
     expect(page).toContain("canonical: '/football-cards-for-clubs'");
-    for (const id of ['clubs_hero_start', 'clubs_final_start', 'clubs_hero_coach_demo', 'clubs_coach_demo', 'clubs_safeguarding', 'clubs_email']) {
+    // The hero's "See the coach view" link (clubs_hero_coach_demo) was removed
+    // in the two-column hero; the coach demo stays linked from the coach section.
+    for (const id of ['clubs_hero_start', 'clubs_final_start', 'clubs_coach_demo', 'clubs_safeguarding', 'clubs_email']) {
       expect(page).toContain(`data-track="${id}"`);
     }
   });
 
-  it('is linked from the footer club link and the homepage coach link', async () => {
+  it('is linked from the nav Teams tab and the footer club link', async () => {
     expect(await read('../../components/Footer.tsx')).toContain("{ href: '/football-cards-for-clubs', label: 'Clubs & coaches' }");
-    expect(await read('../../app/page.tsx')).toContain("href: '/football-cards-for-clubs'");
+    // The shared desktop/mobile nav links to it as "Teams"; gifts stays reachable from the footer.
+    const nav = await read('../../components/Navbar.tsx');
+    expect(nav).toContain("{ href: '/football-cards-for-clubs', label: 'Teams' }");
+    expect(nav).not.toContain("label: 'Gifts'");
+    // "The Cards" left the nav; the logo is the way home. The footer keeps /#cards.
+    expect(nav).not.toContain("'/#cards'");
+    expect(nav).toContain('href="/" className="flex items-center" aria-label="Emblem home"');
+    expect(await read('../../components/Footer.tsx')).toContain("href: '/#cards'");
+    expect(await read('../../components/Footer.tsx')).toContain("href: '/football-gifts-for-kids'");
+  });
+
+  it('qualifies the Squad Invite free coach card by 10 paid families', async () => {
+    expect(await read('../../components/AnnouncementBar.tsx')).toContain('FREE COACH CARD WHEN 10 FAMILIES HAVE PAID');
+    expect(await read('../../app/page.tsx')).not.toMatch(/free coach card on full-squad orders/i);
   });
 });

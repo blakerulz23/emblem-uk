@@ -6,6 +6,7 @@ import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
 import { positionCardLabel } from '@/lib/player-position';
+import { chooseProfileInviteRecipient, isGiftAuthorityStatus } from '@/lib/gift-order-guardian';
 import {
   APPROVED_SORT_OPTIONS,
   buildStaffQueueUrl,
@@ -226,7 +227,7 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
 
   const { data: orders } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name, source')
+    .select('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name, source, authority_status')
     .eq('payment_status', 'fulfilled')
     .order('approved_at', { ascending: false })
     // Not-searching keeps today's existing raw-fetch size (bounded, cheap);
@@ -279,8 +280,34 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
     if (invite.order_id) inviteByOrder.set(invite.order_id, invite);
   }
 
+  // Gift orders: the profile invite goes to the guardian who approved the
+  // order (gift-order-guardian.ts), so that is the recipient staff see and
+  // resend to — never the buyer. Read from the approval request itself.
+  const giftOrderIds = page.items.filter((o) => isGiftAuthorityStatus(o.authority_status)).map((o) => o.id);
+  const approvedGuardianByOrder = new Map<string, string>();
+  if (giftOrderIds.length) {
+    const { data: approvals } = await supabase
+      .from('builder_guardian_approval_requests')
+      .select('order_id, guardian_email')
+      .eq('status', 'approved')
+      .in('order_id', giftOrderIds);
+    for (const a of (approvals ?? []) as Array<{ order_id: string; guardian_email: string }>) {
+      approvedGuardianByOrder.set(a.order_id, a.guardian_email);
+    }
+  }
+
   return {
-    orders: page.items.map((order) => ({ ...order, invite: inviteByOrder.get(order.id) ?? null })),
+    orders: page.items.map((order) => {
+      const recipient = chooseProfileInviteRecipient(order, approvedGuardianByOrder.get(order.id) ?? null);
+      return {
+        ...order,
+        invite: inviteByOrder.get(order.id) ?? null,
+        inviteRecipient: recipient.ok ? recipient.email : null,
+        inviteRecipientLabel: recipient.ok
+          ? recipient.source === 'approved_guardian' ? 'Approving guardian' : null
+          : 'No approving guardian on record — invite withheld',
+      };
+    }),
     total: page.total,
     page: page.page,
     pageSize: page.pageSize,
@@ -709,7 +736,7 @@ export default async function StaffQueuePage({
           ))}
         {approved.orders.map((order) => {
           const badge = order.invite?.email_status ? INVITE_BADGE[order.invite.email_status] : null;
-          const recipient = order.intended_guardian_email || order.purchaser_email;
+          const recipient = order.inviteRecipient;
           return (
             <div
               key={order.id}
@@ -738,6 +765,7 @@ export default async function StaffQueuePage({
                   </span>
                 )}
                 <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
+                  {order.inviteRecipientLabel ? `${order.inviteRecipientLabel}${recipient ? ': ' : ''}` : ''}
                   {recipient}
                 </div>
                 {badge && (

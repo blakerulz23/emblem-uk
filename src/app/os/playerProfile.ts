@@ -106,7 +106,7 @@ export type CoachSummary = {
 };
 
 // ---------------------------------------------------------------------------
-// Ollie Harrison — demo data
+// Riley Hart — demo data (fictional)
 // ---------------------------------------------------------------------------
 
 export const SKILL_CATEGORIES: SkillCategory[] = [
@@ -281,7 +281,7 @@ export const SKILL_CATEGORIES: SkillCategory[] = [
         score: 80,
         seasonalChange: 2,
         coachConfidence: 'Developing',
-        evidence: ['Organised the midfield line during the second half vs Denton FC'],
+        evidence: ['Pressed from the front through the second half vs Oakfield Athletic'],
         coachComments: ['Still developing his voice on the pitch — encouraging him to talk more.'],
         recognitions: [],
       },
@@ -393,9 +393,9 @@ const overallScore = computeOverallScore(
 );
 
 export const PLAYER_PROFILE: PlayerProfile = {
-  name: 'Ollie Harrison',
-  position: 'Midfielder',
-  club: 'Curzon Ashton Juniors U10',
+  name: 'Riley Hart',
+  position: 'Striker',
+  club: 'Westbrook Juniors U10',
   heightCm: 142,
   preferredFoot: 'Right',
   overallScore,
@@ -403,7 +403,7 @@ export const PLAYER_PROFILE: PlayerProfile = {
   // Demo mode keeps its own hardcoded card-front image regardless of this
   // field — real mode is the only branch that reads photoUrl.
   photoUrl: null,
-  squadNumber: 7,
+  squadNumber: 9,
   footballAgeGroup: 'U10',
   memberSinceYear: 2026,
   season: '2026/27',
@@ -425,13 +425,13 @@ export const DEVELOPMENT_SEASONS: DevelopmentSeason[] = [
 export const COACH_SUMMARY: CoachSummary = {
   name: 'Coach Danny',
   role: 'Head Coach',
-  club: 'Curzon Ashton U10',
+  club: 'Westbrook Juniors U10',
   rating: 8.7,
   verified: true,
-  latestFeedback: 'Ollie is becoming much more confident in possession. His vision and passing have improved significantly this season.',
+  latestFeedback: 'Riley is becoming much more confident in possession. His vision and passing have improved significantly this season.',
   strengths: ['Passing', 'Vision', 'Work rate'],
   currentFocus: ['Weak foot', 'Communication', 'Defensive positioning'],
-  playingStyle: ['Creative midfielder', 'Playmaker', 'Possession-focused'],
+  playingStyle: ['Creative forward', 'Link-up play', 'Presses from the front'],
   seasonTargets: [
     { label: 'Score 5 goals', current: 5, target: 5, status: 'completed' },
     { label: 'Register 8 assists', current: 6, target: 8, status: 'in-progress' },

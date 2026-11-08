@@ -29,11 +29,11 @@ export default function CoachHome({ actions, storyUpdates }: { actions: OsAction
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#15130F', borderRadius: 18, padding: '16px 18px', marginBottom: 20 }}>
         <div style={{ width: 46, height: 46, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
-          <img src={`${osAssetPath}/club-badge.png`} alt={isReal ? (coachClub?.name ?? 'Your club') : 'Curzon Ashton Juniors'} style={{ width: 42, height: 42, objectFit: 'contain' }} />
+          <img src={isReal ? `${osAssetPath}/club-badge.png` : `${osAssetPath}/demo-club-badge.svg`} alt={isReal ? (coachClub?.name ?? 'Your club') : 'Westbrook Juniors'} style={{ width: 42, height: 42, objectFit: 'contain' }} />
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435' }}>{isReal ? (coachDisplayName ?? 'COACH').toUpperCase() : 'COACH DANNY · HEAD COACH'}</div>
-          <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 19, color: '#fff' }}>{isReal ? (coachClub?.name ?? 'Your club') : 'Curzon Ashton U10'}</div>
+          <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 19, color: '#fff' }}>{isReal ? (coachClub?.name ?? 'Your club') : 'Westbrook Juniors U10'}</div>
           <div style={{ fontSize: 12, color: '#9A9082' }}>{isReal ? `${totalPlayers} players · ${teamsLabel}` : '14 players · 2026/27 season'}</div>
         </div>
       </div>
@@ -65,7 +65,7 @@ export default function CoachHome({ actions, storyUpdates }: { actions: OsAction
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#E97435" strokeWidth={1.8}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>vs Hyde United</div>
+              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>vs Millbrook Rangers</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#E97435', fontWeight: 700, margin: '2px 0' }}>⏱ 10:30 · Home</div>
               <div style={{ fontSize: 12.5, color: '#6B6357' }}>EMJFL U10 Division One</div>
             </div>
