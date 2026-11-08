@@ -32,6 +32,8 @@ function table(name: string) {
     in: () => chain,
     not: () => chain,
     limit: () => chain,
+    // Awaited directly only by the one-card order count in recover self.
+    then: (f: (v: unknown) => unknown) => Promise.resolve({ data: [], count: 1, error: null }).then(f),
     maybeSingle: async () => ({ data: single, error: null }),
     insert: async (row: unknown) => { writes.push({ table: name, op: 'insert', row }); return { error: null }; },
     upsert: async (row: unknown) => { writes.push({ table: name, op: 'upsert', row }); return { error: null }; },
@@ -52,6 +54,23 @@ vi.mock('@/lib/public-player-id', () => ({ ensurePublicPlayerId: async () => {} 
 vi.mock('@/lib/story-updates', () => ({ generateStoryUpdate: async () => {} }));
 vi.mock('@/lib/player-capabilities', () => ({ getEligibleCoachProfileIds: async () => [] }));
 vi.mock('@/lib/card-lookup', () => ({ resolveCardCode: async () => ({ status: 'not_found' }) }));
+// The relationship authorization checks (release/authorization-relationship-lockdown)
+// run first and are pinned in their own route tests; here they allow, so this
+// file isolates the gift gate. ensureProfileRole is the trusted role write.
+const mockFirstGuardian = vi.fn();
+const mockInviteRedemption = vi.fn();
+vi.mock('@/lib/guardian-invite-eligibility', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/guardian-invite-eligibility')>();
+  return {
+    ...actual,
+    redeemerMatchesInvitedEmail: () => true,
+    checkFirstGuardianClaim: (...a: unknown[]) => mockFirstGuardian(...a),
+    checkGuardianInviteRedemption: (...a: unknown[]) => mockInviteRedemption(...a),
+  };
+});
+vi.mock('@/lib/relationship-writes', () => ({
+  ensureProfileRole: async (_s: unknown, id: string, role: string) => { writes.push({ table: 'profiles', op: 'ensure_profile_role', row: { id, role } }); return { ok: true }; },
+}));
 
 import { POST as claimPOST } from './claim/route';
 import { POST as recoverPOST } from './recover/route';
@@ -64,6 +83,8 @@ const guardianLinks = () => writes.filter((w) => w.table === 'guardians');
 beforeEach(() => {
   writes.length = 0;
   mockGiftCheck.mockReset();
+  mockFirstGuardian.mockReset().mockResolvedValue({ outcome: 'eligible' });
+  mockInviteRedemption.mockReset().mockResolvedValue({ outcome: 'eligible', authority: 'order' });
   mockCreateGuardianInvite.mockReset().mockResolvedValue({ ok: true, code: 'X', reused: false });
 });
 
@@ -126,5 +147,18 @@ describe('non-gift and allowed outcomes carry on exactly as before', () => {
     const res = await recoverPOST(json('http://localhost/api/os/recover', { cardId: 'card-1', decision: 'handoff', handoffEmail: 'other@example.test' }));
     expect(res.status).toBe(200);
     expect(mockCreateGuardianInvite).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('authorization check runs before the gift check', () => {
+  it.each(routes.filter(([label]) => label !== 'recover handoff'))('%s: an authorization refusal stops before the gift check, with no writes', async (_label, call) => {
+    mockFirstGuardian.mockResolvedValue({ outcome: 'refused' });
+    mockInviteRedemption.mockResolvedValue({ outcome: 'refused' });
+    mockGiftCheck.mockResolvedValue({ outcome: 'allowed' });
+    const res = await call();
+    expect([400, 403]).toContain(res.status);
+    expect((await res.json()).error).not.toBe(GIFT_PROFILE_REFUSED_MESSAGE);
+    expect(mockGiftCheck).not.toHaveBeenCalled();
+    expect(writes).toHaveLength(0);
   });
 });

@@ -9,6 +9,13 @@ const CARD = 'eeeeeeee-0000-4000-8000-000000000005';
 
 let session: ReturnType<typeof createFakeSupabase>;
 let service: ReturnType<typeof createFakeSupabase>;
+// The gift-order guardian gate (fix/gift-guardian-handoff) is pinned in
+// gift-order-profile-gate.test.ts; here it is neutral so this file tests
+// the relationship authorization checks on their own.
+vi.mock('@/lib/gift-order-guardian', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/gift-order-guardian')>();
+  return { ...actual, checkGiftFirstGuardianClaim: vi.fn(async () => ({ outcome: 'not_gift' })) };
+});
 vi.mock('@/lib/supabase/server', () => ({ createClient: () => session.client, createServiceRoleClient: () => service.client }));
 const createGuardianInvite = vi.fn();
 vi.mock('@/lib/create-guardian-invite', () => ({ createGuardianInvite: (...args: unknown[]) => createGuardianInvite(...args) }));
