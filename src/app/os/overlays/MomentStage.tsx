@@ -189,7 +189,7 @@ export default function MomentStage({ state, actions }: { state: OsState; action
                   <div style={{ letterSpacing: '.12em', fontSize: 9, fontWeight: 700, color: '#CFC7B8', marginTop: 5, textTransform: 'uppercase' }}>{rc.sub}</div>
                 </div>
                 <div style={{ position: 'absolute', left: 14, right: 14, bottom: 12, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-                  <div><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 17, color: '#fff' }}>OLLIE HARRISON</div><div style={{ fontSize: 9, color: '#9C948A', letterSpacing: '.04em' }}>CURZON ASHTON JUNIORS U10</div></div>
+                  <div><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 17, color: '#fff' }}>RILEY HART</div><div style={{ fontSize: 9, color: '#9C948A', letterSpacing: '.04em' }}>CURZON ASHTON JUNIORS U10</div></div>
                   <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 30, color: '#E9B14C' }}>7</div>
                 </div>
               </div>

@@ -36,11 +36,11 @@ export default function CoachProfile() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             {!isReal && (
               <div style={{ width: 46, height: 46, borderRadius: '50%', background: '#fff', border: '1px solid var(--os-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
-                <img src={`${osAssetPath}/club-badge.png`} alt="Curzon Ashton Juniors" style={{ width: 42, height: 42, objectFit: 'contain' }} />
+                <img src={isReal ? `${osAssetPath}/club-badge.png` : `${osAssetPath}/demo-club-badge.svg`} alt={isReal ? (coachClub?.name ?? 'Your club') : 'Westbrook Juniors'} style={{ width: 42, height: 42, objectFit: 'contain' }} />
               </div>
             )}
             <div>
-              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>{isReal ? coachClub?.name : 'Curzon Ashton Juniors'}</div>
+              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>{isReal ? coachClub?.name : 'Westbrook Juniors'}</div>
               {!isReal && <div style={{ fontSize: 12.5, color: '#6B6357' }}>Manchester, England</div>}
             </div>
           </div>
@@ -63,8 +63,8 @@ export default function CoachProfile() {
           ))
         ) : (
           <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(0,0,0,.05)' }}><span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--os-ink)' }}>Curzon Ashton U10</span><span style={{ fontSize: 12.5, color: 'var(--os-muted)' }}>14 players</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(0,0,0,.05)' }}><span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--os-ink)' }}>Curzon Ashton U8</span><span style={{ fontSize: 12.5, color: 'var(--os-muted)' }}>11 players</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(0,0,0,.05)' }}><span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--os-ink)' }}>Westbrook Juniors U10</span><span style={{ fontSize: 12.5, color: 'var(--os-muted)' }}>14 players</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(0,0,0,.05)' }}><span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--os-ink)' }}>Westbrook Juniors U8</span><span style={{ fontSize: 12.5, color: 'var(--os-muted)' }}>11 players</span></div>
           </>
         )}
       </div>

@@ -7,13 +7,17 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
  *
  * Card presentation pattern from ca.emblem.cards (designs rotate inside the
  * hero), rebuilt light: Canada renders every card live from full print
- * templates (~30 MB); here each design is one pre-rendered WebP (40–80 KB)
- * and the phone is plain HTML/CSS, so nothing heavy ships.
+ * templates (~30 MB); here each design is one pre-rendered WebP (40–80 KB).
+ *
+ * The phone shows the real app: a capture of the /os/demo Collection screen
+ * (fictional sample player, demo banner hidden, 390 × 751 at 2x, the phone
+ * screen's own ratio) as a 15–25 KB WebP, so no app code or backend request
+ * ships with the homepage. The app has no per-design theme, so the phone
+ * keeps its colours when the card design changes.
  *
  * - Only the first design is in the server HTML. The others mount after the
  *   page has loaded, so they never compete with first paint.
- * - The card rotates; the phone and NFC link stay put, and the phone's accent
- *   follows the card so the connection reads at a glance.
+ * - The card rotates; the phone and NFC link stay put.
  * - Rotation pauses on hover, when the tab is hidden or the hero is off
  *   screen, and has a visible pause button. With reduced motion it never
  *   auto-rotates; the design buttons still switch cards.
@@ -30,7 +34,7 @@ const DESIGNS = [
 ] as const;
 
 const ROTATE_MS = 4500;
-const PLAYER = { name: 'Riley Hart', role: 'Striker', club: 'Westbrook Juniors U12', initials: 'RH' };
+const PLAYER = { name: 'Riley Hart' };
 
 function usePrefersReducedMotion() {
   const [reduced, setReduced] = useState(false);
@@ -131,35 +135,20 @@ export default function HeroStage() {
           <path d="M34 2a41 41 0 0 1 0 56" />
         </svg>
 
-        <div
-          className="emh-stage-phone"
-          role="img"
-          aria-label={`The card opens ${PLAYER.name}'s private player profile on a phone: 24 appearances, 11 goals, 6 assists and a Player of the Match award.`}
-        >
-          <div className="emh-phone-screen" aria-hidden="true">
-            <div className="emh-phone-notch" />
-            <p className="emh-phone-kicker">Player profile</p>
-            <div className="emh-phone-id">
-              <span className="emh-phone-avatar">{PLAYER.initials}</span>
-              <span>
-                <b>{PLAYER.name}</b>
-                <small>{PLAYER.role} · {PLAYER.club}</small>
-              </span>
-            </div>
-            <div className="emh-phone-stats">
-              <span><b>24</b><small>Apps</small></span>
-              <span><b>11</b><small>Goals</small></span>
-              <span><b>6</b><small>Assists</small></span>
-            </div>
-            <div className="emh-phone-moment">
-              <small>Latest</small>
-              <b>Player of the Match</b>
-              <small>From the coach · Saturday</small>
-            </div>
-            <div className="emh-phone-tap">
-              <i />
-              Opened with a tap
-            </div>
+        <div className="emh-stage-phone">
+          <div className="emh-phone-screen">
+            <img
+              src="/assets/home/hero/app-collection-300.webp"
+              srcSet="/assets/home/hero/app-collection-300.webp 300w, /assets/home/hero/app-collection-480.webp 480w"
+              sizes="(max-width: 760px) 34vw, 224px"
+              width={480}
+              height={924}
+              alt={`The Emblem app on a phone, showing ${PLAYER.name}'s collection: eight memories across three seasons, with coach-verified season albums.`}
+              loading="eager"
+              fetchPriority="low"
+              decoding="async"
+            />
+            <div className="emh-phone-notch" aria-hidden="true" />
           </div>
         </div>
       </div>

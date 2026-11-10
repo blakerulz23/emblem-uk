@@ -12,7 +12,7 @@ import Link from 'next/link';
  * Rendered only on the public /os/demo route (OsApp's `demo` prop), never on
  * a real /os session, even one that falls back to sample data.
  */
-export default function DemoBanner({ isCoach, onToggleRole }: { isCoach: boolean; onToggleRole: () => void }) {
+export default function DemoBanner({ isCoach, onToggleRole, embedded = false }: { isCoach: boolean; onToggleRole: () => void; embedded?: boolean }) {
   return (
     <div
       role="note"
@@ -33,32 +33,35 @@ export default function DemoBanner({ isCoach, onToggleRole }: { isCoach: boolean
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <Link
-          href="/"
-          aria-label="Exit the demo and go back to emblem.cards"
-          data-track="demo_exit"
-          style={{
-            flex: '0 0 auto',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 3,
-            minHeight: 32,
-            borderRadius: 999,
-            padding: '5px 11px 5px 7px',
-            border: '1px solid rgba(244,241,236,.22)',
-            color: '#D9D1C5',
-            fontFamily: 'Roboto, system-ui, sans-serif',
-            fontWeight: 700,
-            fontSize: 12.5,
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M15 5l-7 7 7 7" />
-          </svg>
-          Exit
-        </Link>
+        {/* Embedded in the clubs-page portal, which has its own Back to card. */}
+        {!embedded && (
+          <Link
+            href="/"
+            aria-label="Exit the demo and go back to emblem.cards"
+            data-track="demo_exit"
+            style={{
+              flex: '0 0 auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 3,
+              minHeight: 32,
+              borderRadius: 999,
+              padding: '5px 11px 5px 7px',
+              border: '1px solid rgba(244,241,236,.22)',
+              color: '#D9D1C5',
+              fontFamily: 'Roboto, system-ui, sans-serif',
+              fontWeight: 700,
+              fontSize: 12.5,
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M15 5l-7 7 7 7" />
+            </svg>
+            Exit
+          </Link>
+        )}
 
         {/* Previewing control (parent vs coach view), moved here from the app's own top bar. */}
         <button
@@ -115,6 +118,7 @@ export default function DemoBanner({ isCoach, onToggleRole }: { isCoach: boolean
         <Link
           href="/builder?mode=single"
           data-track="demo_build"
+          target={embedded ? '_top' : undefined}
           className="os-demo-cta"
           style={{
             flex: '0 0 auto',

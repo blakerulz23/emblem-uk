@@ -39,6 +39,17 @@ const nextConfig = {
       { source: '/review/squad-invite', headers: privateHeaders },
       { source: '/dev/squad-invite-preview', headers: privateHeaders },
       { source: '/squad-invite/access', headers: privateHeaders },
+      // The public app demo, framed by the clubs-page card portal. Only this
+      // exact path may be framed, and only by this site; /os/demo itself and
+      // every other route keep X-Frame-Options DENY.
+      {
+        source: '/os/demo/embed',
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
+        ],
+      },
     ];
   },
   async redirects() {
