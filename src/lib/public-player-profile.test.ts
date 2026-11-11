@@ -49,3 +49,17 @@ describe('getPublicPlayerProfile — moment notes', () => {
     expect(selects.moments).toContain('trust');
   });
 });
+
+describe('getPublicPlayerProfile — historical recognitions', () => {
+  it('still shows coach recognitions saved under retired Celebrate categories exactly as saved', async () => {
+    const retired = ['Player of the Match', 'First Goal', 'Hardest Worker', 'Most Improved', "Coach's Award"];
+    tableResults.moments = {
+      data: retired.map((title, i) => ({ id: `old-${i}`, title, occurred_on: null, note: null, trust: 'coach', verification_status: 'coach_verified', moment_media: [] })),
+      error: null,
+    };
+    const result = await getPublicPlayerProfile('PUB123');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.profile.moments.map((m) => m.title)).toEqual(retired);
+  });
+});

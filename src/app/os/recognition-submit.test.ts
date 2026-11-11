@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { submitRecognition } from './recognition-submit';
 
-const PAYLOAD = { playerId: '30000000-0000-4000-8000-000000000001', award: 'Man of the Match', message: 'Brilliant today' };
+const PAYLOAD = { playerId: '30000000-0000-4000-8000-000000000001', award: 'Great Teammate', message: 'Brilliant today' };
 const respond = (status: number, body: unknown) => vi.fn().mockResolvedValue(new Response(typeof body === 'string' ? body : JSON.stringify(body), { status }));
 
 describe('submitRecognition', () => {

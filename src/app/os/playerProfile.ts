@@ -125,7 +125,7 @@ export const SKILL_CATEGORIES: SkillCategory[] = [
         coachConfidence: 'High',
         evidence: ['6 assists this season', '14 key passes logged', '87% pass completion across the last 5 matches'],
         coachComments: ['Excellent through balls and much better decision-making under pressure.'],
-        recognitions: ['Player of the Match', 'Great Teammate'],
+        recognitions: ['Leadership', 'Great Teammate'],
       },
       {
         id: 'dribbling',
@@ -145,7 +145,7 @@ export const SKILL_CATEGORIES: SkillCategory[] = [
         coachConfidence: 'High',
         evidence: ['Spotted the direct pass to the striker in behind on 5 separate occasions this month'],
         coachComments: ['Sees passes most players his age don’t — this is the sharpest improvement in his game this season.'],
-        recognitions: ['Player of the Match'],
+        recognitions: ['Leadership'],
       },
       {
         id: 'finishing',
@@ -253,7 +253,7 @@ export const SKILL_CATEGORIES: SkillCategory[] = [
         coachConfidence: 'High',
         evidence: ['Kept possession under direct pressure in the box on 6 occasions this month'],
         coachComments: ['Doesn’t rush the ball anymore, even when closed down quickly.'],
-        recognitions: ['Player of the Match'],
+        recognitions: ['Leadership'],
       },
       {
         id: 'concentration',
