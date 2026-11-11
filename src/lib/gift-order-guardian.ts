@@ -169,7 +169,9 @@ type Redeemer = { email?: string | null; email_confirmed_at?: string | null };
  * - 'not_gift': the child has no gift order, the gift order covers several
  *   children, or the child already has a guardian (adding another guardian
  *   is the existing guardian's decision, governed by the normal invite
- *   rules). The caller carries on exactly as before.
+ *   rules; an invite that carries a gift order's order_id is still checked
+ *   by checkGiftOrderInviteRedemption). The caller carries on exactly as
+ *   before.
  * - 'allowed': a guardian_approved order and the redeemer's confirmed
  *   account email is the approving guardian's address.
  * - 'refused': anything else — pending or declined orders, the buyer, an
@@ -223,5 +225,70 @@ export async function checkGiftFirstGuardianClaim(
     if (!lookup.ok) return { outcome: 'failed' };
     if (!lookup.email || lookup.email !== own) return { outcome: 'refused' };
   }
+  return { outcome: 'allowed' };
+}
+
+export type GiftOrderInviteCheck =
+  | { outcome: 'not_gift' }
+  | { outcome: 'allowed' }
+  | { outcome: 'refused' }
+  | { outcome: 'failed' };
+
+/**
+ * Whether `redeemer` may redeem a guardian invite that carries `orderId`.
+ * Unlike checkGiftFirstGuardianClaim, this does not stop applying once the
+ * child has a guardian: the invite's own order decides it.
+ *
+ * An invite tied to a single-card gift order can have been addressed to the
+ * buyer by an earlier version of the app (an order_approval invite, or a
+ * purchaser recovery handoff to any address the buyer chose). Once the
+ * approving guardian links, the first-guardian gate no longer applies, and
+ * such an invite would otherwise still carry 'order' authority and let its
+ * holder become a second guardian. So for a gift order the invite is
+ * redeemable only by the approving guardian's confirmed email.
+ *
+ * - 'not_gift': no order_id, the order does not exist, it is not a gift
+ *   order (confirmed, NULL/historical, squad), or it covers several children
+ *   (multi-card gift orders are held by staff, amendment A2). The caller
+ *   carries on exactly as before.
+ * - 'allowed': a guardian_approved order and the redeemer's confirmed email
+ *   is the approving guardian's address.
+ * - 'refused': anything else, including pending/declined orders, the buyer,
+ *   an unconfirmed email, or no approval on record. A gift order with no
+ *   linked card is also refused (fails closed rather than treated as
+ *   multi-card).
+ * - 'failed': a read failed; callers fail closed.
+ *
+ * Invites an existing guardian creates (POST /api/os/invites) never carry
+ * order_id, so a genuine guardian inviting a second guardian is unaffected.
+ */
+export async function checkGiftOrderInviteRedemption(
+  service: SupabaseClient,
+  orderId: string | null | undefined,
+  redeemer: Redeemer
+): Promise<GiftOrderInviteCheck> {
+  if (!orderId) return { outcome: 'not_gift' };
+
+  const { data: order, error: orderError } = await service
+    .from('orders')
+    .select('id, authority_status, purchaser_email')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (orderError) return { outcome: 'failed' };
+  const row = order as { id?: string; authority_status?: string | null; purchaser_email?: string | null } | null;
+  if (!row || row.id !== orderId || !isGiftAuthorityStatus(row.authority_status)) return { outcome: 'not_gift' };
+
+  const { data: orderCards, error: cardsError } = await service.from('cards').select('player_id').eq('order_id', orderId).not('player_id', 'is', null);
+  if (cardsError) return { outcome: 'failed' };
+  const children = new Set(((orderCards ?? []) as Array<{ player_id: string | null }>).map((c) => c.player_id).filter(Boolean));
+  if (children.size > 1) return { outcome: 'not_gift' };
+
+  const own = normaliseEmail(redeemer.email);
+  if (!own || !redeemer.email_confirmed_at) return { outcome: 'refused' };
+  if (row.authority_status !== 'guardian_approved') return { outcome: 'refused' };
+
+  const lookup = await loadApprovedGuardianEmail(service, orderId, row.purchaser_email ?? null);
+  if (!lookup.ok) return { outcome: 'failed' };
+  if (!lookup.email || lookup.email !== own) return { outcome: 'refused' };
   return { outcome: 'allowed' };
 }

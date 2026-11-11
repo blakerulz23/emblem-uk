@@ -9,7 +9,7 @@ import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
 import { ensureProfileRole } from '@/lib/relationship-writes';
 import { logRouteFailure, type DbError } from '@/lib/route-failure';
 import { checkGuardianInviteRedemption, GUARDIAN_INVITE_REDEEM_REFUSED_MESSAGE, redeemerMatchesInvitedEmail } from '@/lib/guardian-invite-eligibility';
-import { checkGiftFirstGuardianClaim, GIFT_PROFILE_REFUSED_MESSAGE } from '@/lib/gift-order-guardian';
+import { checkGiftFirstGuardianClaim, checkGiftOrderInviteRedemption, GIFT_PROFILE_REFUSED_MESSAGE } from '@/lib/gift-order-guardian';
 
 export const runtime = 'nodejs';
 
@@ -154,6 +154,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Could not accept this invite. Please try again.' }, { status: 500 });
   }
   if (giftCheck.outcome === 'refused') {
+    return NextResponse.json({ error: GIFT_PROFILE_REFUSED_MESSAGE }, { status: 403 });
+  }
+
+  // Before any write, and whether or not the child already has a guardian:
+  // an invite tied to a single-card gift order is redeemable only by the
+  // guardian who approved that order. An older invite held by the buyer (an
+  // order_approval invite, or a recovery handoff they addressed) must not
+  // add them as a second guardian once the real guardian has linked.
+  const giftOrderCheck = await checkGiftOrderInviteRedemption(serviceRole, invite.order_id ?? null, user);
+  if (giftOrderCheck.outcome === 'failed') {
+    return NextResponse.json({ error: 'Could not accept this invite. Please try again.' }, { status: 500 });
+  }
+  if (giftOrderCheck.outcome === 'refused') {
     return NextResponse.json({ error: GIFT_PROFILE_REFUSED_MESSAGE }, { status: 403 });
   }
 

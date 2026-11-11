@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   checkGiftFirstGuardianClaim,
+  checkGiftOrderInviteRedemption,
   chooseProfileInviteRecipient,
   isGiftAuthorityStatus,
   resolveProfileInviteRecipient,
@@ -240,5 +241,72 @@ describe('retireOtherOrderApprovalInvites', () => {
     expect(updates).toHaveLength(1);
     expect(updates[0].ids).toEqual(['buyer-invite']);
     expect(tables.player_invites.find((r) => r.id === 'guardian-invite')?.expires_at).toBeUndefined();
+  });
+});
+
+describe('checkGiftOrderInviteRedemption (F-1: an order-bearing invite on a gift order)', () => {
+  const withBuyer = (t: Tables) => {
+    (t.orders[0] as Row).purchaser_email = buyer.email;
+    t.builder_order_authority_declarations = [{ order_id: 'order-1', adult_email: buyer.email }];
+    return t;
+  };
+
+  it('no order_id: not a gift invite, nothing queried', async () => {
+    const { client } = fakeService({}, ['orders', 'cards']);
+    expect(await checkGiftOrderInviteRedemption(client, null, buyer)).toEqual({ outcome: 'not_gift' });
+  });
+
+  it('the approving guardian is allowed even once the child has a guardian', async () => {
+    const { client } = fakeService(withBuyer(giftWorld('guardian_approved', { guardianRow: true })));
+    expect(await checkGiftOrderInviteRedemption(client, 'order-1', guardian)).toEqual({ outcome: 'allowed' });
+  });
+
+  it('the buyer is refused even once the child has a guardian (where checkGiftFirstGuardianClaim says not_gift)', async () => {
+    const tables = withBuyer(giftWorld('guardian_approved', { guardianRow: true }));
+    expect(await checkGiftFirstGuardianClaim(fakeService(tables).client, 'player-1', buyer)).toEqual({ outcome: 'not_gift' });
+    expect(await checkGiftOrderInviteRedemption(fakeService(tables).client, 'order-1', buyer)).toEqual({ outcome: 'refused' });
+  });
+
+  it('any other address, or the right address unconfirmed, is refused', async () => {
+    const { client } = fakeService(withBuyer(giftWorld('guardian_approved', { guardianRow: true })));
+    expect(await checkGiftOrderInviteRedemption(client, 'order-1', { email: 'someone@example.test', email_confirmed_at: CONFIRMED })).toEqual({ outcome: 'refused' });
+    expect(await checkGiftOrderInviteRedemption(client, 'order-1', { email: guardian.email, email_confirmed_at: null })).toEqual({ outcome: 'refused' });
+  });
+
+  it('pending and declined orders refuse everyone', async () => {
+    for (const status of ['guardian_approval_pending', 'guardian_declined']) {
+      const { client } = fakeService(withBuyer(giftWorld(status, { guardianRow: true })));
+      expect(await checkGiftOrderInviteRedemption(client, 'order-1', guardian)).toEqual({ outcome: 'refused' });
+    }
+  });
+
+  it('an approval from the buyer’s own address counts as no approval: refused', async () => {
+    const { client } = fakeService(withBuyer(giftWorld('guardian_approved', { guardianRow: true, approvedEmail: buyer.email })));
+    expect(await checkGiftOrderInviteRedemption(client, 'order-1', buyer)).toEqual({ outcome: 'refused' });
+  });
+
+  it('confirmed and historical (NULL) orders are not gift orders', async () => {
+    for (const status of ['confirmed', null]) {
+      const tables = giftWorld('confirmed', { guardianRow: true });
+      (tables.orders[0] as Row).authority_status = status;
+      expect(await checkGiftOrderInviteRedemption(fakeService(tables).client, 'order-1', buyer)).toEqual({ outcome: 'not_gift' });
+    }
+  });
+
+  it('multi-child gift orders are unchanged (held by staff, A2)', async () => {
+    const { client } = fakeService(withBuyer(giftWorld('guardian_approved', { extraChild: true, guardianRow: true })));
+    expect(await checkGiftOrderInviteRedemption(client, 'order-1', buyer)).toEqual({ outcome: 'not_gift' });
+  });
+
+  it('an unknown order id is not a gift order', async () => {
+    const { client } = fakeService(withBuyer(giftWorld('guardian_approved')));
+    expect(await checkGiftOrderInviteRedemption(client, 'order-404', buyer)).toEqual({ outcome: 'not_gift' });
+  });
+
+  it('every failed read fails closed', async () => {
+    for (const t of ['orders', 'cards', 'builder_guardian_approval_requests', 'builder_order_authority_declarations']) {
+      const { client } = fakeService(withBuyer(giftWorld('guardian_approved', { guardianRow: true })), [t]);
+      expect(await checkGiftOrderInviteRedemption(client, 'order-1', guardian)).toEqual({ outcome: 'failed' });
+    }
   });
 });
