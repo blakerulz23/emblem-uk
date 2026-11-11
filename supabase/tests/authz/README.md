@@ -20,6 +20,7 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `migration_0089_test.mjs` | Migration 0089 and its rollback, on fresh 0088 databases with fictional rows. |
 | `migration_0090_test.mjs` | Migration 0090 (guardian-invite write lockdown) and its rollback, on a fresh 0089 database with fictional rows. |
 | `migration_0091_test.mjs` | Migration 0091 (guardian-invite code confidentiality) and its rollback, on a fresh 0090 database with fictional rows. |
+| `migration_0097_test.mjs` | Migration 0097 (coach account deletion keeps coach-verified moments): every coach/parent deletion path on the final schema, the consistency rule, who can set the marker, apply on a 0096 database, re-run refusal and rollback. |
 | `rollback_order_test.mjs` | The rollback chain 0091 → 0090 → 0089: the 0089 rollback refuses, changing nothing, while 0091 or 0090 is applied; in order it reaches the exact 0088 catalog; 0089–0091 re-apply to the exact final catalog; no acknowledgement persists. |
 | `guardian_account_control_test.mjs` | Card suspend/unsuspend and child-deletion request/cancel on the final schema: every refusal the routes report leaves no state behind; each success and idempotent repeat makes exactly its intended change. |
 | `guardian_invite_redemption_test.mjs` | Who may redeem a guardian invite: runs the app's `src/lib/guardian-invite-eligibility.ts` against the final schema, read-only as `service_role`. |
@@ -878,6 +879,33 @@ It restores the exact 0090 catalog (the disclosure is then genuinely back),
 changes no data, and clears the acknowledgement before committing. 0091 can
 then be re-applied to the identical catalog.
 
+## Migration 0097 (coach account deletion keeps coach-verified moments)
+
+```powershell
+node --no-warnings supabase/tests/authz/migration_0097_test.mjs
+```
+
+Until 0097, `delete_own_guardian_account` failed, and rolled back, for every
+coach who had ever verified a moment or sent a recognition: it set
+`moments.verified_by` to NULL, which `moments_verification_status_consistency`
+forbids on a `coach_verified` moment. 0097 adds
+`moments.verifier_account_deleted_at`; a `coach_verified` moment now needs
+`verified_at` and exactly one of `verified_by` or the marker. The deletion
+function (the 0076 body with one statement changed) sets the marker and
+clears `verified_by`, so the child's moment stays `coach_verified` with its
+original `verified_at`. A restrictive insert policy keeps the marker out of
+every insert a signed-in user can make; `authenticated` has no UPDATE on it.
+The catalog delta from 0096 is exactly that column, that policy, the
+constraint and the function; no row changes. A precondition refuses unless
+the 0020 rule and the 0076 function are in place, and refuses a second
+application.
+
+**Rollback: emergency only.** `supabase/rollback/0097_rollback.sql` breaks
+coach account deletion again. It needs, in the same transaction,
+`select set_config('emblem.acknowledge_0097_rollback', 'BREAK-COACH-ACCOUNT-DELETION', true);`,
+and refuses, changing nothing, once any moment carries the marker (those
+rows cannot satisfy the 0020 rule). It restores the exact 0096 catalog.
+
 ## Guardian-invite redemption: no self-escalation
 
 ```powershell
@@ -1093,7 +1121,7 @@ when two migrations share a number, a file isn't `NNNN_name.sql`, or a
 reserved number is used by a different migration. Reserved: 0088–0091 for
 this security release, 0092 for `test_card_archive`, 0093 for
 `achievement_card_reveals` (those feature branches must be renumbered
-before they merge).
+before they merge), 0097 for `coach_account_deletion_verified_moments`.
 `scripts/check-migration-numbers.test.ts` runs it against the real folder
 and against synthetic temporary folders. There is no CI workflow in this
 repository yet. Running it on every push and pull request is a follow-up.

@@ -44,7 +44,7 @@ describe('migration number uniqueness', () => {
     expect(error?.stderr.toString()).toContain('Duplicate migration number 0088: 0088_relationship_authorization_foundation.sql, 0088_test_card_archive.sql');
   });
 
-  it('reserves 0088–0091 for the security release, 0092 for test-card archive and 0093 for achievement reveals', () => {
+  it('reserves 0088–0091 for the security release, 0092 for test-card archive, 0093 for achievement reveals and 0097 for the coach account-deletion fix', () => {
     expect(RESERVED_NUMBERS).toEqual({
       '0088': 'relationship_authorization_foundation',
       '0089': 'relationship_authorization_lockdown',
@@ -52,6 +52,7 @@ describe('migration number uniqueness', () => {
       '0091': 'guardian_invite_code_confidentiality',
       '0092': 'test_card_archive',
       '0093': 'achievement_card_reveals',
+      '0097': 'coach_account_deletion_verified_moments',
     });
     expect(findReservedNumberProblems(fs.readdirSync('supabase/migrations'))).toEqual([]);
   });
@@ -73,6 +74,12 @@ describe('migration number uniqueness', () => {
     }
     expect(error?.status).toBe(1);
     expect(error?.stderr.toString()).toContain('Migration number 0092 is reserved for 0092_test_card_archive.sql: 0092_achievement_card_reveals.sql');
+  });
+
+  it('rejects an unmerged branch 0097 file, which must be renumbered', () => {
+    expect(findReservedNumberProblems(['0097_coach_account_deletion_verified_moments.sql', '0097_erase_print_pdfs_on_player_deletion.sql'])).toEqual([
+      { number: '0097', file: '0097_erase_print_pdfs_on_player_deletion.sql', reservedFor: '0097_coach_account_deletion_verified_moments.sql' },
+    ]);
   });
 
   it('the command exits zero when every number is used once', () => {

@@ -13,7 +13,9 @@ import { fileURLToPath } from 'url';
 const MIGRATION_FILE = /^(\d{4})_[a-z0-9_]+\.sql$/;
 
 // Reserved numbers: the authorization security release owns 0088–0091; the
-// archive-test-cards and achievement-reveal features move to 0092 and 0093.
+// archive-test-cards and achievement-reveal features move to 0092 and 0093;
+// 0097 is the coach account-deletion fix (an unmerged branch's
+// 0097_erase_print_pdfs_on_player_deletion.sql must take another number).
 export const RESERVED_NUMBERS = {
   '0088': 'relationship_authorization_foundation',
   '0089': 'relationship_authorization_lockdown',
@@ -21,6 +23,7 @@ export const RESERVED_NUMBERS = {
   '0091': 'guardian_invite_code_confidentiality',
   '0092': 'test_card_archive',
   '0093': 'achievement_card_reveals',
+  '0097': 'coach_account_deletion_verified_moments',
 };
 
 /** Files that use a reserved number for a different migration. */
