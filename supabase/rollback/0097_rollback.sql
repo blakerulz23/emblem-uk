@@ -52,6 +52,10 @@ begin
          and table_name in ('player_deletion_requests', 'squad_invite_participation_deletion_requests')) <> 2 then
     raise exception '0097 rollback refused: 0097 is not applied';
   end if;
+  -- 0098 builds on 0097's function body; roll it back first.
+  if to_regclass('public.deletion_review_access_suspensions') is not null then
+    raise exception '0097 rollback refused: 0098 is still applied; roll back 0098 first';
+  end if;
   select p.prosrc into v_body from pg_proc p where p.oid = to_regprocedure('public.delete_own_guardian_account()');
   if v_body is null or v_body not like '%verifier_account_deleted_at = now()%' then
     raise exception '0097 rollback refused: delete_own_guardian_account() is not the 0097 definition';
