@@ -41,13 +41,17 @@ export default function ClaimCodeEntry({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [code, setCode] = useState('');
-  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error' | 'rateLimited'>('idle');
 
   const attemptLookup = async (trimmed: string) => {
     if (!trimmed) return;
     setStatus('loading');
     try {
       const cardRes = await fetch(`/api/os/claim?code=${encodeURIComponent(trimmed)}`);
+      if (cardRes.status === 429) {
+        setStatus('rateLimited');
+        return;
+      }
       const cardData = await cardRes.json();
       if (cardData.found) {
         // Manually typing an already-claimed card's code (the physical-tap
@@ -68,6 +72,10 @@ export default function ClaimCodeEntry({
       }
 
       const inviteRes = await fetch(`/api/os/invites/redeem?code=${encodeURIComponent(trimmed)}`);
+      if (inviteRes.status === 429) {
+        setStatus('rateLimited');
+        return;
+      }
       const inviteData = await inviteRes.json();
       if (inviteData.found) {
         onFound({
@@ -176,6 +184,11 @@ export default function ClaimCodeEntry({
       {status === 'error' && (
         <p role="alert" style={{ fontSize: 13, color: '#E9745C', marginTop: 14, maxWidth: 280 }}>
           That code isn&apos;t recognised — check it and try again.
+        </p>
+      )}
+      {status === 'rateLimited' && (
+        <p role="alert" style={{ fontSize: 13, color: '#E9745C', marginTop: 14, maxWidth: 280 }}>
+          Too many attempts. Please wait 15 minutes, then try again.
         </p>
       )}
 

@@ -36,7 +36,7 @@ export default function CoachProfile() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             {!isReal && (
               <div style={{ width: 46, height: 46, borderRadius: '50%', background: '#fff', border: '1px solid var(--os-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
-                <img src={isReal ? `${osAssetPath}/club-badge.png` : `${osAssetPath}/demo-club-badge.svg`} alt={isReal ? (coachClub?.name ?? 'Your club') : 'Westbrook Juniors'} style={{ width: 42, height: 42, objectFit: 'contain' }} />
+                <img src={`${osAssetPath}/demo-club-badge.svg`} alt="Westbrook Juniors" style={{ width: 42, height: 42, objectFit: 'contain' }} />
               </div>
             )}
             <div>
