@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { resolveOrCreateSeason } from '@/lib/resolve-season';
-import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
+import { RATE_LIMIT_MESSAGE, getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
 
   const identifier = getRequestIdentifier(request.headers);
   if (!(await isWithinRateLimit(identifier))) {
-    return NextResponse.json({ error: 'Too many attempts — try again later' }, { status: 429 });
+    return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
   }
 
   const body = await request.json().catch(() => ({}) as Record<string, unknown>);

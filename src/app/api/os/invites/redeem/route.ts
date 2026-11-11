@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { normalizeClaimCode } from '@/lib/claim-code';
-import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
+import { RATE_LIMIT_MESSAGE, getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 import { maskEmail } from '@/lib/mask-email';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { ensurePublicPlayerId } from '@/lib/public-player-id';
@@ -39,7 +39,7 @@ type InviteLookupRow = {
 export async function GET(request: NextRequest) {
   const identifier = getRequestIdentifier(request.headers);
   if (!(await isWithinRateLimit(identifier))) {
-    return NextResponse.json({ error: 'Too many attempts — try again later' }, { status: 429 });
+    return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
   }
 
   const rawCode = request.nextUrl.searchParams.get('code');

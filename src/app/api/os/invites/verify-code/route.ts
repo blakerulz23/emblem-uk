@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { normalizeClaimCode } from '@/lib/claim-code';
-import { getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
+import { RATE_LIMIT_MESSAGE, getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 
@@ -29,7 +29,7 @@ export const runtime = 'nodejs';
 export async function POST(request: NextRequest) {
   const identifier = getRequestIdentifier(request.headers);
   if (!(await isWithinRateLimit(identifier))) {
-    return NextResponse.json({ error: 'Too many attempts — try again later' }, { status: 429 });
+    return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
   }
 
   const body = await request.json().catch(() => ({}) as Record<string, unknown>);
@@ -48,9 +48,9 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   const valid = !!invite && !invite.used_at && new Date(invite.expires_at) > new Date() && !!invite.invited_email;
-  await logClaimAttempt(identifier, code, valid);
 
   if (!valid) {
+    await logClaimAttempt(identifier, code, false);
     return NextResponse.json({ error: 'Invalid or expired code' }, { status: 400 });
   }
 
@@ -75,6 +75,10 @@ export async function POST(request: NextRequest) {
     token,
     type: 'email',
   });
+
+  // Logged only now, so a wrong sign-in code counts as a failure against
+  // the rate limit (only failures count; see src/lib/rate-limit.ts).
+  await logClaimAttempt(identifier, code, !error);
 
   if (error) {
     return NextResponse.json({ error: 'Invalid or expired code' }, { status: 400 });

@@ -3,6 +3,7 @@
 import { onActivateKey } from '../a11y';
 import { JIC, osAssetPath } from '../data';
 import { useOsData } from '../OsDataContext';
+import { clubMonogram } from '../clubMonogram';
 import type { OsActions } from '../OsApp';
 import type { StoryUpdate } from '../osData';
 
@@ -29,7 +30,15 @@ export default function CoachHome({ actions, storyUpdates }: { actions: OsAction
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: '#15130F', borderRadius: 18, padding: '16px 18px', marginBottom: 20 }}>
         <div style={{ width: 46, height: 46, borderRadius: '50%', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
-          <img src={isReal ? `${osAssetPath}/club-badge.png` : `${osAssetPath}/demo-club-badge.svg`} alt={isReal ? (coachClub?.name ?? 'Your club') : 'Westbrook Juniors'} style={{ width: 42, height: 42, objectFit: 'contain' }} />
+          {isReal ? (
+            // No real club has a badge yet, so show its initials. Never
+            // another club's crest.
+            <span aria-hidden="true" style={{ fontFamily: 'Barlow Condensed', fontWeight: 800, fontSize: 18, letterSpacing: '.04em', color: '#15130F' }}>
+              {clubMonogram(coachClub?.name)}
+            </span>
+          ) : (
+            <img src={`${osAssetPath}/demo-club-badge.svg`} alt="Westbrook Juniors" style={{ width: 42, height: 42, objectFit: 'contain' }} />
+          )}
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: '#E97435' }}>{isReal ? (coachDisplayName ?? 'COACH').toUpperCase() : 'COACH DANNY · HEAD COACH'}</div>
