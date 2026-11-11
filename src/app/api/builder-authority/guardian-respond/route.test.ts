@@ -3,7 +3,14 @@ import { NextRequest } from 'next/server';
 
 const mockRpc = vi.fn();
 vi.mock('@/lib/supabase/server', () => ({
-  createServiceRoleClient: () => ({ rpc: mockRpc }),
+  createServiceRoleClient: () => ({
+    rpc: mockRpc,
+    // buyer notification lookups (covered in buyer-notification.test.ts)
+    from: () => {
+      const chain = { select: () => chain, eq: () => chain, order: () => chain, limit: () => chain, maybeSingle: async () => ({ data: null, error: null }) };
+      return chain;
+    },
+  }),
 }));
 
 const mockConsumeAnonymousRequestRateLimit = vi.fn();
