@@ -5,7 +5,7 @@ import type { OsState } from '../types';
 
 export default function CelebrateSheet({ state, actions }: { state: OsState; actions: OsActions }) {
   const { squad } = useOsData();
-  const sendBg = state.award ? '#E97435' : '#C9C2B6';
+  const sendBg = state.award && !state.celebSending ? '#E97435' : '#C9C2B6';
   // state.celeb holds a player id (not a display name) so the celebrate
   // API route can target a real playerId — resolve the name to show here.
   const playerName = squad.find((p) => p.id === state.celeb)?.name ?? '';
@@ -33,7 +33,12 @@ export default function CelebrateSheet({ state, actions }: { state: OsState; act
         ))}
         <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: 'var(--os-muted)', margin: '0 0 8px 2px' }}>COACH MESSAGE · OPTIONAL</div>
         <textarea value={state.coachMsg} onChange={actions.setCoachMsg} placeholder="Add a message — it becomes part of their collectible." style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--os-border)', borderRadius: 14, padding: 13, fontFamily: 'Roboto', fontSize: 13.5, color: 'var(--os-ink)', background: '#fff', resize: 'none', minHeight: 64, marginBottom: 18 }} />
-        <div onClick={actions.sendRecognition} style={{ textAlign: 'center', padding: 14, borderRadius: 12, background: sendBg, color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>Send Recognition</div>
+        {state.celebError && (
+          <div role="alert" style={{ textAlign: 'center', fontSize: 12.5, color: '#A63426', marginBottom: 10 }}>
+            Couldn&apos;t send this recognition — check your connection and try again.
+          </div>
+        )}
+        <div onClick={state.celebSending ? undefined : actions.sendRecognition} aria-disabled={state.celebSending} style={{ textAlign: 'center', padding: 14, borderRadius: 12, background: sendBg, color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, cursor: state.celebSending ? 'default' : 'pointer' }}>{state.celebSending ? 'Sending…' : 'Send Recognition'}</div>
       </div>
     </div>
   );

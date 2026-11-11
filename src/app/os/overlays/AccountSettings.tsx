@@ -25,31 +25,42 @@ function SectionCard({ title, children }: { title: string; children: React.React
 }
 
 /**
- * Real, functional MVP Account Settings — replaces the dead "Account
- * Settings" label in Profile.tsx's ACCOUNT MANAGEMENT card. Scoped to the
- * currently-selected player for the photo/media/deletion-request
- * sections (this OS shell is always one-player-at-a-time already), and to
- * the whole guardian account for sign-out/delete-account. Deliberately
- * only: account info + sign out, public profile control, media/privacy,
- * delete account — no themes, notifications, subscriptions, or connected
- * apps, per the explicit MVP scope.
+ * Real, functional MVP Account Settings — opened from Profile.tsx's
+ * ACCOUNT MANAGEMENT card (parent view, scoped to the selected player) and
+ * from CoachProfile's Account row (coach view, no player). Account info,
+ * sign out and delete account always; the player-scoped sections (public
+ * profile, photo, player-data deletion request) only with a player.
+ * Deliberately no themes, notifications, subscriptions, or connected apps,
+ * per the explicit MVP scope.
+ *
+ * Delete account is the same flow for everyone: OTP re-auth, then
+ * /api/os/account/delete (delete_own_guardian_account, which also removes a
+ * coach's own coach_team rows, direct links and team requests by cascade).
  */
-export default function AccountSettings({
-  playerId,
-  playerName,
-  publicIdEnabled,
-  publicPlayerId,
-  onClose,
-  onPublicVisibilityChanged,
-}: {
+type PlayerScope = {
   playerId: string;
   playerName: string;
   publicIdEnabled: boolean;
   publicPlayerId: string | null;
-  onClose: () => void;
   onPublicVisibilityChanged: () => void;
-}) {
-  const router = useRouter();
+};
+
+export type AccountSettingsProps = { onClose: () => void } & (
+  | (PlayerScope & { audience?: 'guardian' })
+  | {
+      /** Coach view: account-wide only, no player sections. */
+      audience: 'coach';
+      /** The account also has guardian links (a dual-role person), so deletion copy mentions them. */
+      alsoGuardian?: boolean;
+      playerId?: undefined;
+    }
+);
+
+export default function AccountSettings(props: AccountSettingsProps) {
+  const { onClose } = props;
+  const player: PlayerScope | null = props.audience === 'coach' ? null : props;
+  const alsoGuardian = props.audience === 'coach' ? !!props.alsoGuardian : true;
+  const playerName = player?.playerName ?? '';
   const closeButtonRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -83,115 +94,6 @@ export default function AccountSettings({
     window.location.assign('/os');
   };
 
-  // --- Public profile control (same route/RPC as Profile.tsx's own Share Profile) ---
-  const [publicBusy, setPublicBusy] = useState(false);
-  const [publicError, setPublicError] = useState<string | null>(null);
-  const togglePublicVisibility = async () => {
-    if (publicBusy) return;
-    setPublicBusy(true);
-    setPublicError(null);
-    try {
-      const res = await fetch(`/api/os/players/${playerId}/public-profile`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled: !publicIdEnabled }),
-      });
-      if (!res.ok) {
-        setPublicError("Couldn't update the public profile setting — try again.");
-        return;
-      }
-      onPublicVisibilityChanged();
-      router.refresh();
-    } catch {
-      setPublicError('Could not reach the server — check your connection and try again.');
-    } finally {
-      setPublicBusy(false);
-    }
-  };
-
-  // --- Photo ---
-  const { status: uploadStatus, error: uploadError, uploadPhoto, removeStatus, removeError, removePhoto } = useOsPhotoUpload(playerId);
-  const photoInputRef = useRef<HTMLInputElement>(null);
-  const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false);
-
-  // --- Request player-data deletion ---
-  const [confirmRequestDeletion, setConfirmRequestDeletion] = useState(false);
-  const [deletionRequestStatus, setDeletionRequestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-  const [deletionRequestError, setDeletionRequestError] = useState<string | null>(null);
-  const [deletionRequestId, setDeletionRequestId] = useState<string | null>(null);
-  const requestPlayerDeletion = async () => {
-    if (deletionRequestStatus === 'sending') return;
-    setDeletionRequestStatus('sending');
-    setDeletionRequestError(null);
-    try {
-      const res = await fetch(`/api/os/players/${playerId}/deletion-request`, { method: 'POST' });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        setDeletionRequestStatus('error');
-        setDeletionRequestError((body && typeof body.error === 'string' && body.error) || 'Could not send the request — try again.');
-        return;
-      }
-      const body = await res.json().catch(() => null);
-      setDeletionRequestId(typeof body?.requestId === 'string' ? body.requestId : null);
-      setDeletionRequestStatus('sent');
-    } catch {
-      setDeletionRequestStatus('error');
-      setDeletionRequestError('Could not reach the server — check your connection and try again.');
-    }
-  };
-
-  // On open, check for an already-pending request from an earlier session
-  // — deletionRequestStatus above only knows about one filed just now,
-  // not one that already existed before this Account Settings visit. RLS
-  // ("guardians can view their own requests", 0041) already scopes this
-  // select to the caller, so no extra server check is needed for the read.
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-    supabase
-      .from('player_deletion_requests')
-      .select('id')
-      .eq('player_id', playerId)
-      .eq('status', 'pending')
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!cancelled && data?.id) {
-          setDeletionRequestId(data.id);
-          setDeletionRequestStatus('sent');
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [playerId]);
-
-  // --- Cancel a pending player-data deletion request ---
-  const [confirmCancelDeletion, setConfirmCancelDeletion] = useState(false);
-  const [cancelDeletionStatus, setCancelDeletionStatus] = useState<'idle' | 'cancelling' | 'cancelled' | 'error'>('idle');
-  const [cancelDeletionError, setCancelDeletionError] = useState<string | null>(null);
-  const cancelPlayerDeletionRequest = async () => {
-    if (cancelDeletionStatus === 'cancelling') return;
-    setCancelDeletionStatus('cancelling');
-    setCancelDeletionError(null);
-    try {
-      const res = await fetch(`/api/os/players/${playerId}/deletion-request/cancel`, { method: 'POST' });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        setCancelDeletionStatus('error');
-        setCancelDeletionError((body && typeof body.error === 'string' && body.error) || 'Could not cancel the request — try again.');
-        return;
-      }
-      // Nothing else changes — no player, media, account or card data is
-      // touched by a cancellation, and public profile visibility is left
-      // exactly as it was (this action never reads or writes it).
-      setCancelDeletionStatus('cancelled');
-      setConfirmCancelDeletion(false);
-    } catch {
-      setCancelDeletionStatus('error');
-      setCancelDeletionError('Could not reach the server — check your connection and try again.');
-    }
-  };
-
   // --- Delete guardian account: two-step destructive confirm, OTP re-auth ---
   type DeleteStep = 'idle' | 'explain' | 'reauth-code' | 'confirm' | 'done';
   const [deleteStep, setDeleteStep] = useState<DeleteStep>('idle');
@@ -204,6 +106,7 @@ export default function AccountSettings({
   // sign-in revocation still finishing (see the route's own doc comment).
   // Must never be papered over as a flat "deleted" success.
   const [deleteAccountPartial, setDeleteAccountPartial] = useState(false);
+  const [deleteAccountPartialMessage, setDeleteAccountPartialMessage] = useState<string | null>(null);
 
   const sendReauthCode = async () => {
     if (!email || reauthStatus === 'sending') return;
@@ -251,11 +154,25 @@ export default function AccountSettings({
           return;
         }
         setDeleteAccountStatus('error');
-        setDeleteAccountError((body && typeof body.error === 'string' && body.error) || 'Could not delete your account — try again.');
+        const message = (body && typeof body.error === 'string' && body.error) || 'Could not delete your account — try again.';
+        // Coach accounts: a deletion that keeps failing is currently a known
+        // database-side limit for coaches who have verified moments or sent
+        // recognitions (see supabase/tests/authz/coach_account_deletion_test.mjs,
+        // scenario D) — give them a way that always works.
+        setDeleteAccountError(player ? message : `${message} If it keeps failing, email hello@emblem.cards and we'll delete it for you.`);
         return;
       }
       const body = await res.json().catch(() => null);
       setDeleteAccountPartial(!!body?.partial);
+      // identityRetained: delete_own_guardian_account stopped before removing
+      // the profile (coach-authored player records or squad-invite history
+      // must be kept), so staff finish it by hand — say exactly that rather
+      // than claiming the account or its access is already gone.
+      setDeleteAccountPartialMessage(
+        body?.partial && body?.identityRetained
+          ? "We've signed you out and started deleting your account. Because it's linked to records we have to keep (such as player assessments you wrote), our team needs to finish the removal by hand — we'll be in touch."
+          : null
+      );
       setDeleteStep('done');
       setTimeout(() => window.location.assign('/os'), body?.partial ? 3200 : 2200);
     } catch {
@@ -302,6 +219,164 @@ export default function AccountSettings({
           </div>
         </SectionCard>
 
+        {player && <PlayerPublicAndMediaSections player={player} />}
+
+        <SectionCard title="Delete account">
+          {deleteStep === 'idle' && (
+            <>
+              <p style={{ fontSize: 12.5, lineHeight: 1.55, color: COLORS.muted, margin: '0 0 12px' }}>
+                {player
+                  ? <>Permanently deletes your guardian login and access. This is separate from deleting {playerName}&apos;s data — see below.</>
+                  : 'Permanently deletes your Emblem login and your coach access.'}
+              </p>
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label="Delete account"
+                onClick={() => setDeleteStep('explain')}
+                onKeyDown={onActivateKey(() => setDeleteStep('explain'))}
+                style={{ display: 'inline-flex', padding: '10px 16px', borderRadius: 11, border: `1px solid ${COLORS.danger}`, fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: COLORS.danger, cursor: 'pointer' }}
+              >
+                Delete account
+              </div>
+
+              {player && <PlayerDataDeletionRequest player={player} />}
+            </>
+          )}
+
+          {deleteStep === 'explain' && (
+            <div>
+              <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 16, color: COLORS.ink, marginBottom: 10 }}>Before you delete your account</div>
+              {player ? (
+                <ul style={{ fontSize: 12.5, lineHeight: 1.6, color: COLORS.muted, margin: '0 0 14px', paddingLeft: 18 }}>
+                  <li>This deletes <b>your own guardian login</b> — the email you sign in with, and your access to Emblem OS.</li>
+                  <li>It does <b>not</b> delete {playerName}&apos;s profile, moments or photos — those belong to {playerName}, not your account.</li>
+                  <li>If another guardian is also linked to {playerName}, they keep their own full access — nothing changes for them, and {playerName}&apos;s data is not touched.</li>
+                  <li>If you&apos;re {playerName}&apos;s only guardian, deleting your account also removes your link to them — we file a request to delete their data too, which our team reviews and carries out by hand rather than deleting it instantly.</li>
+                  <li>Records that must stay connected to a physical card, an order, or another guardian&apos;s account are kept, as they are for any other guardian.</li>
+                </ul>
+              ) : (
+                <ul style={{ fontSize: 12.5, lineHeight: 1.6, color: COLORS.muted, margin: '0 0 14px', paddingLeft: 18 }}>
+                  <li>This deletes <b>your own login</b> — the email you sign in with — and your coach access to every team and player.</li>
+                  <li>Players&apos; cards, moments and the recognitions you gave stay with their families.</li>
+                  <li>Any team request you sent is withdrawn.</li>
+                  {alsoGuardian && (
+                    <li>You&apos;re also a parent or guardian on Emblem: your guardian access goes too. Another guardian keeps full access; if you&apos;re a child&apos;s only guardian, we file a request to delete their data, which our team reviews by hand.</li>
+                  )}
+                  <li>If you&apos;ve written player assessments, goals, strengths or season focus, those records are kept for the player, so our team finishes deleting your account by hand and will be in touch.</li>
+                </ul>
+              )}
+              {deleteAccountError && <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 12 }}>{deleteAccountError}</p>}
+              <p style={{ fontSize: 12, color: COLORS.muted, marginBottom: 10 }}>To confirm, we&apos;ll send a fresh code to {email ?? 'your email'}.</p>
+              <div style={{ display: 'flex', gap: 9 }}>
+                <div role="button" tabIndex={0} aria-label="Cancel" onClick={() => setDeleteStep('idle')} onKeyDown={onActivateKey(() => setDeleteStep('idle'))} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: COLORS.ink, cursor: 'pointer' }}>
+                  Cancel
+                </div>
+                <div role="button" tabIndex={0} aria-label="Send verification code" onClick={sendReauthCode} onKeyDown={onActivateKey(sendReauthCode)} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, background: COLORS.danger, color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: reauthStatus === 'sending' ? 'default' : 'pointer' }}>
+                  {reauthStatus === 'sending' ? 'Sending…' : 'Send code'}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {deleteStep === 'reauth-code' && (
+            <form onSubmit={verifyReauthCode}>
+              <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 16, color: COLORS.ink, marginBottom: 8 }}>Enter your code</div>
+              <p style={{ fontSize: 12.5, color: COLORS.muted, margin: '0 0 10px' }}>We sent a fresh code to {email}. Enter it to confirm it&apos;s really you before we delete anything.</p>
+              <input
+                type="text"
+                inputMode="numeric"
+                required
+                value={reauthCode}
+                onChange={(e) => setReauthCode(e.target.value)}
+                placeholder="6-digit code"
+                style={{ width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 10, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontSize: 14, marginBottom: 10 }}
+              />
+              {reauthError && <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 10 }}>{reauthError}</p>}
+              <div style={{ display: 'flex', gap: 9 }}>
+                <div role="button" tabIndex={0} aria-label="Cancel" onClick={() => setDeleteStep('idle')} onKeyDown={onActivateKey(() => setDeleteStep('idle'))} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: COLORS.ink, cursor: 'pointer' }}>
+                  Cancel
+                </div>
+                <button type="submit" disabled={reauthStatus === 'verifying'} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, background: COLORS.danger, color: '#fff', border: 'none', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: reauthStatus === 'verifying' ? 'default' : 'pointer' }}>
+                  {reauthStatus === 'verifying' ? 'Verifying…' : 'Verify'}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {deleteStep === 'confirm' && (
+            <div>
+              <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 16, color: COLORS.ink, marginBottom: 10 }}>Permanently delete your account?</div>
+              <p style={{ fontSize: 12.5, lineHeight: 1.55, color: COLORS.muted, margin: '0 0 14px' }}>
+                {player
+                  ? 'This cannot be undone. Your sign-in and guardian access are removed immediately.'
+                  : 'This cannot be undone.'}
+              </p>
+              {deleteAccountError && <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 12 }}>{deleteAccountError}</p>}
+              <div style={{ display: 'flex', gap: 9 }}>
+                <div role="button" tabIndex={0} aria-label="Cancel" onClick={() => (deleteAccountStatus === 'deleting' ? null : setDeleteStep('idle'))} onKeyDown={deleteAccountStatus === 'deleting' ? undefined : onActivateKey(() => setDeleteStep('idle'))} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: COLORS.ink, cursor: deleteAccountStatus === 'deleting' ? 'default' : 'pointer' }}>
+                  Cancel
+                </div>
+                <div role="button" tabIndex={0} aria-label="Permanently delete my account" onClick={deleteAccountStatus === 'deleting' ? undefined : deleteAccount} onKeyDown={deleteAccountStatus === 'deleting' ? undefined : onActivateKey(deleteAccount)} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, background: deleteAccountStatus === 'deleting' ? 'rgba(192,57,43,.5)' : COLORS.danger, color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: deleteAccountStatus === 'deleting' ? 'default' : 'pointer' }}>
+                  {deleteAccountStatus === 'deleting' ? 'Deleting…' : 'Permanently delete'}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {deleteStep === 'done' && (
+            <p style={{ fontSize: 13.5, fontWeight: 700, color: '#2E9E5B', textAlign: 'center', padding: '10px 0', lineHeight: 1.5 }}>
+              {deleteAccountPartial
+                ? deleteAccountPartialMessage
+                  ? `${deleteAccountPartialMessage} Signing you out…`
+                  : "Your account data has been removed. We're still finishing the revocation of your sign-in — this happens automatically, no action needed. Signing you out…"
+                : 'Your account has been deleted. Signing you out…'}
+            </p>
+          )}
+        </SectionCard>
+      </div>
+    </div>
+  );
+}
+
+/** Public profile and photo controls for one player (parent view only). */
+function PlayerPublicAndMediaSections({ player }: { player: PlayerScope }) {
+  const { playerId, playerName, publicIdEnabled, publicPlayerId, onPublicVisibilityChanged } = player;
+  const router = useRouter();
+  // --- Public profile control (same route/RPC as Profile.tsx's own Share Profile) ---
+  const [publicBusy, setPublicBusy] = useState(false);
+  const [publicError, setPublicError] = useState<string | null>(null);
+  const togglePublicVisibility = async () => {
+    if (publicBusy) return;
+    setPublicBusy(true);
+    setPublicError(null);
+    try {
+      const res = await fetch(`/api/os/players/${playerId}/public-profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !publicIdEnabled }),
+      });
+      if (!res.ok) {
+        setPublicError("Couldn't update the public profile setting — try again.");
+        return;
+      }
+      onPublicVisibilityChanged();
+      router.refresh();
+    } catch {
+      setPublicError('Could not reach the server — check your connection and try again.');
+    } finally {
+      setPublicBusy(false);
+    }
+  };
+
+  // --- Photo ---
+  const { status: uploadStatus, error: uploadError, uploadPhoto, removeStatus, removeError, removePhoto } = useOsPhotoUpload(playerId);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false);
+
+
+  return (
+    <>
         <SectionCard title="Public profile">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
             <div>
@@ -404,24 +479,93 @@ export default function AccountSettings({
             </p>
           </div>
         </SectionCard>
+    </>
+  );
+}
 
-        <SectionCard title="Delete account">
-          {deleteStep === 'idle' && (
-            <>
-              <p style={{ fontSize: 12.5, lineHeight: 1.55, color: COLORS.muted, margin: '0 0 12px' }}>
-                Permanently deletes your guardian login and access. This is separate from deleting {playerName}&apos;s data — see below.
-              </p>
-              <div
-                role="button"
-                tabIndex={0}
-                aria-label="Delete account"
-                onClick={() => setDeleteStep('explain')}
-                onKeyDown={onActivateKey(() => setDeleteStep('explain'))}
-                style={{ display: 'inline-flex', padding: '10px 16px', borderRadius: 11, border: `1px solid ${COLORS.danger}`, fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: COLORS.danger, cursor: 'pointer' }}
-              >
-                Delete account
-              </div>
+/** The "Delete <player>'s data" request (staff-reviewed), parent view only. */
+function PlayerDataDeletionRequest({ player }: { player: PlayerScope }) {
+  const { playerId, playerName } = player;
+  // --- Request player-data deletion ---
+  const [confirmRequestDeletion, setConfirmRequestDeletion] = useState(false);
+  const [deletionRequestStatus, setDeletionRequestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [deletionRequestError, setDeletionRequestError] = useState<string | null>(null);
+  const [deletionRequestId, setDeletionRequestId] = useState<string | null>(null);
+  const requestPlayerDeletion = async () => {
+    if (deletionRequestStatus === 'sending') return;
+    setDeletionRequestStatus('sending');
+    setDeletionRequestError(null);
+    try {
+      const res = await fetch(`/api/os/players/${playerId}/deletion-request`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setDeletionRequestStatus('error');
+        setDeletionRequestError((body && typeof body.error === 'string' && body.error) || 'Could not send the request — try again.');
+        return;
+      }
+      const body = await res.json().catch(() => null);
+      setDeletionRequestId(typeof body?.requestId === 'string' ? body.requestId : null);
+      setDeletionRequestStatus('sent');
+    } catch {
+      setDeletionRequestStatus('error');
+      setDeletionRequestError('Could not reach the server — check your connection and try again.');
+    }
+  };
 
+  // On open, check for an already-pending request from an earlier session
+  // — deletionRequestStatus above only knows about one filed just now,
+  // not one that already existed before this Account Settings visit. RLS
+  // ("guardians can view their own requests", 0041) already scopes this
+  // select to the caller, so no extra server check is needed for the read.
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    supabase
+      .from('player_deletion_requests')
+      .select('id')
+      .eq('player_id', playerId)
+      .eq('status', 'pending')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled && data?.id) {
+          setDeletionRequestId(data.id);
+          setDeletionRequestStatus('sent');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [playerId]);
+
+  // --- Cancel a pending player-data deletion request ---
+  const [confirmCancelDeletion, setConfirmCancelDeletion] = useState(false);
+  const [cancelDeletionStatus, setCancelDeletionStatus] = useState<'idle' | 'cancelling' | 'cancelled' | 'error'>('idle');
+  const [cancelDeletionError, setCancelDeletionError] = useState<string | null>(null);
+  const cancelPlayerDeletionRequest = async () => {
+    if (cancelDeletionStatus === 'cancelling') return;
+    setCancelDeletionStatus('cancelling');
+    setCancelDeletionError(null);
+    try {
+      const res = await fetch(`/api/os/players/${playerId}/deletion-request/cancel`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setCancelDeletionStatus('error');
+        setCancelDeletionError((body && typeof body.error === 'string' && body.error) || 'Could not cancel the request — try again.');
+        return;
+      }
+      // Nothing else changes — no player, media, account or card data is
+      // touched by a cancellation, and public profile visibility is left
+      // exactly as it was (this action never reads or writes it).
+      setCancelDeletionStatus('cancelled');
+      setConfirmCancelDeletion(false);
+    } catch {
+      setCancelDeletionStatus('error');
+      setCancelDeletionError('Could not reach the server — check your connection and try again.');
+    }
+  };
+
+
+  return (
               <div style={{ borderTop: `1px solid ${COLORS.border}`, marginTop: 18, paddingTop: 16 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: COLORS.ink, marginBottom: 4 }}>Delete {playerName}&apos;s data</div>
                 <p style={{ fontSize: 12, lineHeight: 1.5, color: COLORS.muted, margin: '0 0 10px' }}>
@@ -527,84 +671,5 @@ export default function AccountSettings({
                 )}
                 {deletionRequestError && <p style={{ fontSize: 12, color: COLORS.danger, marginTop: 8 }}>{deletionRequestError}</p>}
               </div>
-            </>
-          )}
-
-          {deleteStep === 'explain' && (
-            <div>
-              <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 16, color: COLORS.ink, marginBottom: 10 }}>Before you delete your account</div>
-              <ul style={{ fontSize: 12.5, lineHeight: 1.6, color: COLORS.muted, margin: '0 0 14px', paddingLeft: 18 }}>
-                <li>This deletes <b>your own guardian login</b> — the email you sign in with, and your access to Emblem OS.</li>
-                <li>It does <b>not</b> delete {playerName}&apos;s profile, moments or photos — those belong to {playerName}, not your account.</li>
-                <li>If another guardian is also linked to {playerName}, they keep their own full access — nothing changes for them, and {playerName}&apos;s data is not touched.</li>
-                <li>If you&apos;re {playerName}&apos;s only guardian, deleting your account also removes your link to them — we file a request to delete their data too, which our team reviews and carries out by hand rather than deleting it instantly.</li>
-                <li>Records that must stay connected to a physical card, an order, or another guardian&apos;s account are kept, as they are for any other guardian.</li>
-              </ul>
-              {deleteAccountError && <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 12 }}>{deleteAccountError}</p>}
-              <p style={{ fontSize: 12, color: COLORS.muted, marginBottom: 10 }}>To confirm, we&apos;ll send a fresh code to {email ?? 'your email'}.</p>
-              <div style={{ display: 'flex', gap: 9 }}>
-                <div role="button" tabIndex={0} aria-label="Cancel" onClick={() => setDeleteStep('idle')} onKeyDown={onActivateKey(() => setDeleteStep('idle'))} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: COLORS.ink, cursor: 'pointer' }}>
-                  Cancel
-                </div>
-                <div role="button" tabIndex={0} aria-label="Send verification code" onClick={sendReauthCode} onKeyDown={onActivateKey(sendReauthCode)} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, background: COLORS.danger, color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: reauthStatus === 'sending' ? 'default' : 'pointer' }}>
-                  {reauthStatus === 'sending' ? 'Sending…' : 'Send code'}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {deleteStep === 'reauth-code' && (
-            <form onSubmit={verifyReauthCode}>
-              <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 16, color: COLORS.ink, marginBottom: 8 }}>Enter your code</div>
-              <p style={{ fontSize: 12.5, color: COLORS.muted, margin: '0 0 10px' }}>We sent a fresh code to {email}. Enter it to confirm it&apos;s really you before we delete anything.</p>
-              <input
-                type="text"
-                inputMode="numeric"
-                required
-                value={reauthCode}
-                onChange={(e) => setReauthCode(e.target.value)}
-                placeholder="6-digit code"
-                style={{ width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 10, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontSize: 14, marginBottom: 10 }}
-              />
-              {reauthError && <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 10 }}>{reauthError}</p>}
-              <div style={{ display: 'flex', gap: 9 }}>
-                <div role="button" tabIndex={0} aria-label="Cancel" onClick={() => setDeleteStep('idle')} onKeyDown={onActivateKey(() => setDeleteStep('idle'))} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: COLORS.ink, cursor: 'pointer' }}>
-                  Cancel
-                </div>
-                <button type="submit" disabled={reauthStatus === 'verifying'} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, background: COLORS.danger, color: '#fff', border: 'none', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: reauthStatus === 'verifying' ? 'default' : 'pointer' }}>
-                  {reauthStatus === 'verifying' ? 'Verifying…' : 'Verify'}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {deleteStep === 'confirm' && (
-            <div>
-              <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 16, color: COLORS.ink, marginBottom: 10 }}>Permanently delete your account?</div>
-              <p style={{ fontSize: 12.5, lineHeight: 1.55, color: COLORS.muted, margin: '0 0 14px' }}>
-                This cannot be undone. Your sign-in and guardian access are removed immediately.
-              </p>
-              {deleteAccountError && <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 12 }}>{deleteAccountError}</p>}
-              <div style={{ display: 'flex', gap: 9 }}>
-                <div role="button" tabIndex={0} aria-label="Cancel" onClick={() => (deleteAccountStatus === 'deleting' ? null : setDeleteStep('idle'))} onKeyDown={deleteAccountStatus === 'deleting' ? undefined : onActivateKey(() => setDeleteStep('idle'))} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: COLORS.ink, cursor: deleteAccountStatus === 'deleting' ? 'default' : 'pointer' }}>
-                  Cancel
-                </div>
-                <div role="button" tabIndex={0} aria-label="Permanently delete my account" onClick={deleteAccountStatus === 'deleting' ? undefined : deleteAccount} onKeyDown={deleteAccountStatus === 'deleting' ? undefined : onActivateKey(deleteAccount)} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, background: deleteAccountStatus === 'deleting' ? 'rgba(192,57,43,.5)' : COLORS.danger, color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: deleteAccountStatus === 'deleting' ? 'default' : 'pointer' }}>
-                  {deleteAccountStatus === 'deleting' ? 'Deleting…' : 'Permanently delete'}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {deleteStep === 'done' && (
-            <p style={{ fontSize: 13.5, fontWeight: 700, color: '#2E9E5B', textAlign: 'center', padding: '10px 0', lineHeight: 1.5 }}>
-              {deleteAccountPartial
-                ? "Your account data has been removed. We're still finishing the revocation of your sign-in — this happens automatically, no action needed. Signing you out…"
-                : 'Your account has been deleted. Signing you out…'}
-            </p>
-          )}
-        </SectionCard>
-      </div>
-    </div>
   );
 }

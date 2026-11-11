@@ -1,9 +1,29 @@
-import { osAssetPath } from '../data';
-import { useOsData } from '../OsDataContext';
+'use client';
 
-export default function CoachProfile() {
+import { useState } from 'react';
+import { osAssetPath } from '../data';
+import AccountSettings from '../overlays/AccountSettings';
+import { useOsData } from '../OsDataContext';
+import CoachTeamRequestCard from './CoachTeamRequestCard';
+import CoachSettingsCard from './CoachSettingsCard';
+import type { TeamRequestSummary } from '@/lib/os-view';
+
+export default function CoachProfile({
+  teamRequest = null,
+  onRequestTeam,
+  alsoGuardian = false,
+}: {
+  /** The coach's latest team request, if any (getOsAccount). */
+  teamRequest?: TeamRequestSummary | null;
+  /** Opens the team-request flow; only set when the coach has no active team (canRequestTeam). */
+  onRequestTeam?: () => void;
+  /** The account also has a Parent view (dual-role), for Account Settings' deletion copy. */
+  alsoGuardian?: boolean;
+} = {}) {
   const { mode, coachDisplayName, coachClub, coachTeamsManaged } = useOsData();
   const isReal = mode !== 'demo';
+  const [showAccountSettings, setShowAccountSettings] = useState(false);
+  const openAccountSettings = () => setShowAccountSettings(true);
 
   return (
     <>
@@ -30,7 +50,7 @@ export default function CoachProfile() {
         {isReal && !coachClub ? (
           <div style={{ textAlign: 'center', padding: '10px 0' }}>
             <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>No club yet.</div>
-            <div style={{ fontSize: 12.5, color: '#6B6357', marginTop: 4 }}>Create your team to see it here.</div>
+            <div style={{ fontSize: 12.5, color: '#6B6357', marginTop: 4 }}>Your club appears here once your team is set up.</div>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -50,10 +70,13 @@ export default function CoachProfile() {
       <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: '4px 18px', boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 16 }}>
         <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', padding: '16px 0 6px' }}>TEAMS MANAGED</div>
         {isReal && coachTeamsManaged.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
-            <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>No teams yet.</div>
-            <div style={{ fontSize: 12.5, color: '#6B6357', marginTop: 4 }}>Create a team to start managing your roster.</div>
-          </div>
+          onRequestTeam ? (
+            <CoachTeamRequestCard request={teamRequest} onOpen={onRequestTeam} />
+          ) : (
+            <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
+              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>No teams yet.</div>
+            </div>
+          )
         ) : isReal ? (
           coachTeamsManaged.map((t) => (
             <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(0,0,0,.05)' }}>
@@ -69,11 +92,11 @@ export default function CoachProfile() {
         )}
       </div>
 
-      <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: '4px 18px', boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)' }}>
-        <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', padding: '16px 0 6px' }}>SETTINGS</div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 0', borderTop: '1px solid rgba(0,0,0,.05)', cursor: 'pointer' }}><span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--os-ink)' }}>Notifications</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg></div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 0', borderTop: '1px solid rgba(0,0,0,.05)', cursor: 'pointer' }}><span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--os-ink)' }}>Account</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#B8B0A4" strokeWidth={2.2} strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg></div>
-      </div>
+      <CoachSettingsCard isReal={isReal} onOpenAccount={openAccountSettings} />
+
+      {showAccountSettings && isReal && (
+        <AccountSettings audience="coach" alsoGuardian={alsoGuardian} onClose={() => setShowAccountSettings(false)} />
+      )}
     </>
   );
 }

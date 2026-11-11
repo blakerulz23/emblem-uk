@@ -6,8 +6,19 @@ import { useOsData } from '../OsDataContext';
 import { clubMonogram } from '../clubMonogram';
 import type { OsActions } from '../OsApp';
 import type { StoryUpdate } from '../osData';
+import type { TeamRequestSummary } from '@/lib/os-view';
+import CoachTeamRequestCard from './CoachTeamRequestCard';
 
-export default function CoachHome({ actions, storyUpdates }: { actions: OsActions; storyUpdates: StoryUpdate[] }) {
+export default function CoachHome({
+  actions,
+  storyUpdates,
+  teamRequest = null,
+}: {
+  actions: OsActions;
+  storyUpdates: StoryUpdate[];
+  /** The coach's latest team request, shown when they have no active team. */
+  teamRequest?: TeamRequestSummary | null;
+}) {
   const {
     mode,
     coachActivity: COACH_ACTIVITY,
@@ -46,6 +57,14 @@ export default function CoachHome({ actions, storyUpdates }: { actions: OsAction
           <div style={{ fontSize: 12, color: '#9A9082' }}>{isReal ? `${totalPlayers} players · ${teamsLabel}` : '14 players · 2026/27 season'}</div>
         </div>
       </div>
+
+      {/* No active team (direct links only, or an ended/expired assignment):
+          offer the staff-approved team request instead of a dead end. */}
+      {isReal && coachTeamsManaged.length === 0 && actions.openTeamRequest && (
+        <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: '8px 18px', boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 20 }}>
+          <CoachTeamRequestCard request={teamRequest} onOpen={actions.openTeamRequest} />
+        </div>
+      )}
 
       {newestUnread && (
         <div style={{ margin: '0 2px 20px' }}>
