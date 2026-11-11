@@ -3,6 +3,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { normalizeClaimCode } from '@/lib/claim-code';
 import { RATE_LIMIT_MESSAGE, getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 import { generateStoryUpdate } from '@/lib/story-updates';
+import { COACH_ACCESS_PAUSED_MESSAGE, DELETION_REVIEW_PENDING, isDeletionReviewPending } from '@/lib/deletion-review';
 
 export const runtime = 'nodejs';
 
@@ -155,9 +156,20 @@ export async function POST(request: NextRequest) {
     p_display_name: displayName?.trim() || null,
   });
   if (error) {
+    // 0098: a deletion review that began while this call ran (the database
+    // guard refused the link). Nothing changed and the invite stays unused.
+    if (isDeletionReviewPending(error)) {
+      return NextResponse.json({ error: COACH_ACCESS_PAUSED_MESSAGE }, { status: 409 });
+    }
     return NextResponse.json({ error: 'Could not redeem this invite — try again' }, { status: 500 });
   }
   const result = (Array.isArray(rows) ? rows[0] : rows) as { status: string; player_id: string | null } | undefined;
+
+  // 0098: this account's deletion request is under staff review, so it gets
+  // no coach access. Nothing changed and the invite stays unused.
+  if (result?.status === DELETION_REVIEW_PENDING) {
+    return NextResponse.json({ error: COACH_ACCESS_PAUSED_MESSAGE }, { status: 409 });
+  }
 
   if (result?.status === 'already_redeemed_by_you' && result.player_id) {
     // A retry of a redemption this coach already completed: nothing changed.

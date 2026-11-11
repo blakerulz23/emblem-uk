@@ -4,6 +4,7 @@ import { normalizeClaimCode } from '@/lib/claim-code';
 import { RATE_LIMIT_MESSAGE, getRequestIdentifier, isWithinRateLimit, logClaimAttempt } from '@/lib/rate-limit';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { logRouteFailure } from '@/lib/route-failure';
+import { COACH_ACCESS_PAUSED_MESSAGE, DELETION_REVIEW_PENDING, isDeletionReviewPending } from '@/lib/deletion-review';
 
 export const runtime = 'nodejs';
 
@@ -63,7 +64,14 @@ const TEAM_INVITE_UNUSABLE = "This invite isn't valid or has expired";
 const TEAM_INVITE_FAILED = 'Could not accept this invite. Please try again.';
 
 type RedeemTeamInviteRow = {
-  status: 'redeemed' | 'already_redeemed_by_you' | 'already_active' | 'stale_after_end' | 'stale_after_expiry' | 'invalid';
+  status:
+    | 'redeemed'
+    | 'already_redeemed_by_you'
+    | 'already_active'
+    | 'stale_after_end'
+    | 'stale_after_expiry'
+    | 'invalid'
+    | typeof DELETION_REVIEW_PENDING;
   team_id: string | null;
 };
 
@@ -75,6 +83,8 @@ type RedeemTeamInviteRow = {
  * issued at or before the moment this coach's previous access to the team
  * ended or expired never restores it. Every refusal reads the same as an
  * unknown or expired invite, so nothing is revealed about earlier access.
+ * The one exception is the account's own state (0098): while its deletion
+ * request is under staff review it gets the paused-access 409 instead.
  */
 export async function POST(request: NextRequest) {
   const supabase = createClient();
@@ -99,10 +109,21 @@ export async function POST(request: NextRequest) {
     p_display_name: typeof displayName === 'string' && displayName.trim() ? displayName.trim() : null,
   });
   if (error) {
+    // 0098: a deletion review that began while this call ran (the database
+    // guard refused the assignment). Nothing changed; the invite is unused.
+    if (isDeletionReviewPending(error)) {
+      return NextResponse.json({ error: COACH_ACCESS_PAUSED_MESSAGE }, { status: 409 });
+    }
     logRouteFailure('team invite redeem', error);
     return NextResponse.json({ error: TEAM_INVITE_FAILED }, { status: 500 });
   }
   const result = (Array.isArray(data) ? data[0] : data) as RedeemTeamInviteRow | null;
+
+  // 0098: this account's deletion request is under staff review, so it gets
+  // no coach access. Nothing changed and the invite stays unused.
+  if (result?.status === DELETION_REVIEW_PENDING) {
+    return NextResponse.json({ error: COACH_ACCESS_PAUSED_MESSAGE }, { status: 409 });
+  }
 
   if (result?.status === 'already_active') {
     return NextResponse.json({ error: "You're already managing this team" }, { status: 409 });
