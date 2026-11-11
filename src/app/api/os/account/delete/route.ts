@@ -6,6 +6,8 @@ import { logRouteFailure, raised } from '@/lib/route-failure';
 export const runtime = 'nodejs';
 
 const ACCOUNT_DELETE_FAILED_MESSAGE = 'Could not delete your account. Please try again.';
+const STAFF_ACCOUNT_DELETE_REFUSED_MESSAGE =
+  "Staff accounts can't be deleted here. Ask another member of staff to remove it.";
 
 // This app has no password — guardians sign in by email OTP
 // (src/app/os/overlays/SignIn.tsx), so "re-authentication" here can't mean
@@ -75,6 +77,11 @@ export async function POST() {
     // expected refusal (no session) is a 401; anything else a generic 500.
     if (raised(rpcError, 'Not authenticated')) {
       return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
+    }
+    // Migration 0098: staff accounts are removed by a manual, two-person
+    // procedure, never here. Nothing was changed.
+    if (raised(rpcError, 'Staff accounts cannot be deleted from the app')) {
+      return NextResponse.json({ error: STAFF_ACCOUNT_DELETE_REFUSED_MESSAGE }, { status: 403 });
     }
     logRouteFailure('account deletion: cleanup', rpcError);
     return NextResponse.json({ error: ACCOUNT_DELETE_FAILED_MESSAGE }, { status: 500 });
