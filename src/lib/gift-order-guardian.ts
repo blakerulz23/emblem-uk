@@ -45,6 +45,15 @@ export function normaliseEmail(value: unknown): string {
 export const GIFT_PROFILE_REFUSED_MESSAGE =
   "This player's profile can only be set up by the parent or guardian who approved the card. We've emailed them an invite.";
 
+/**
+ * Staff-facing refusal for a gift order with no genuine guardian approval on
+ * record (no approved request, or one given from the buyer's own address).
+ * Printing it would produce a card of a child that no parent or guardian
+ * agreed to, and its profile could never be set up.
+ */
+export const GIFT_APPROVAL_MISSING_MESSAGE =
+  "This gift order has no valid parent or guardian approval on record (the approval is missing, or came from the buyer's own email address). It can't go into production. Hold the order and get a genuine guardian approval first.";
+
 type ApprovedGuardianLookup = { ok: true; email: string | null } | { ok: false };
 
 /**

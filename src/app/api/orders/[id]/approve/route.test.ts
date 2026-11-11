@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { POST } from './route';
+import { GIFT_APPROVAL_MISSING_MESSAGE } from '@/lib/gift-order-guardian';
 
 /**
  * Same deviation-from-DI reasoning as every other route.test.ts in this
@@ -93,6 +94,8 @@ vi.mock('@/lib/supabase/server', () => ({
                       pricing_tier: fixture.orderPricingTier ?? null,
                       payment_status: fixture.orderPaymentStatus ?? null,
                       order_ref: 'EMB-APPROVE-1',
+                      purchaser_email: fixture.orderRow?.purchaser_email ?? null,
+                      intended_guardian_email: fixture.orderRow?.intended_guardian_email ?? null,
                     }
                   : fixture.orderRow,
               }),
@@ -310,26 +313,113 @@ describe('POST /api/orders/[id]/approve — ordinary-builder safeguarding gate (
     expect(mockCreateGuardianInvite.mock.calls[0][3]).toBe('guardian@example.test');
   });
 
-  it('gift order with no approved request on record: approves production but withholds the invite (no buyer fallback)', async () => {
+  // Changed for F-2 (C6 review): these two cases used to approve production
+  // and only withhold the invite. A gift order with no genuine guardian
+  // approval must not be printed at all, so they are now refused before any
+  // write: no order update, no invite, no production approval.
+  it('gift order with no approved request on record: refused with 409, nothing written, no invite', async () => {
     fixture = {
       ...baseFixture(),
       orderAuthorityStatus: 'guardian_approved',
       orderRow: { id: ORDER_ID, purchaser_email: 'grandparent@example.test', intended_guardian_email: null },
     };
     const res = await approve();
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.inviteTriggered).toBe(false);
-    expect(body.inviteSkippedReason).toBe('approved_guardian_missing');
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe(GIFT_APPROVAL_MISSING_MESSAGE);
+    expect(orderUpdates).toHaveLength(0);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+    expect(mockCreateTeamInvite).not.toHaveBeenCalled();
+    expect(builderAuthorityAuditInserts).toEqual([
+      { order_id: ORDER_ID, event_type: 'staff_approval_blocked', metadata: { authorityStatus: 'guardian_approved', reason: 'approved_guardian_missing' } },
+    ]);
+  });
+
+  it('gift order: a failed approval lookup refuses with 500 and writes nothing (fails closed)', async () => {
+    fixture = { ...baseFixture(), orderAuthorityStatus: 'guardian_approved', approvalLookupFails: true };
+    const res = await approve();
+    expect(res.status).toBe(500);
+    expect(orderUpdates).toHaveLength(0);
     expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
   });
 
-  it('gift order: a failed approval lookup withholds the invite (fails closed)', async () => {
-    fixture = { ...baseFixture(), orderAuthorityStatus: 'guardian_approved', approvalLookupFails: true };
+  it('gift order approved from the buyer’s own purchaser address (716e7eb): refused with 409, nothing written', async () => {
+    fixture = {
+      ...baseFixture(),
+      orderAuthorityStatus: 'guardian_approved',
+      approvedGuardianEmail: 'Grandparent@Example.test',
+      orderRow: { id: ORDER_ID, purchaser_email: 'grandparent@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe(GIFT_APPROVAL_MISSING_MESSAGE);
+    expect(orderUpdates).toHaveLength(0);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
+  it('gift order approved from the buyer’s declaration address: refused with 409, nothing written', async () => {
+    fixture = {
+      ...baseFixture(),
+      orderAuthorityStatus: 'guardian_approved',
+      approvedGuardianEmail: 'declared-buyer@example.test',
+      orderRow: { id: ORDER_ID, purchaser_email: 'grandparent@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect(orderUpdates).toHaveLength(0);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
+  it('gift order with no valid approval is refused before the payment gate, so staff see the real blocker', async () => {
+    mockGate3PaymentGateEnabled.mockReturnValue(true);
+    fixture = {
+      ...baseFixture(),
+      orderAuthorityStatus: 'guardian_approved',
+      orderPricingTier: 'single',
+      orderPaymentStatus: 'order_intent',
+      approvedGuardianEmail: 'grandparent@example.test',
+      orderRow: { id: ORDER_ID, purchaser_email: 'grandparent@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe(GIFT_APPROVAL_MISSING_MESSAGE);
+    expect(orderUpdates).toHaveLength(0);
+  });
+
+  it('gift order with a genuine approval and payment still approves when Gate 3 is on', async () => {
+    mockGate3PaymentGateEnabled.mockReturnValue(true);
+    fixture = {
+      ...baseFixture(),
+      orderAuthorityStatus: 'guardian_approved',
+      orderPricingTier: 'single',
+      orderPaymentStatus: 'paid',
+      approvedGuardianEmail: 'guardian@example.test',
+      orderRow: { id: ORDER_ID, purchaser_email: 'grandparent@example.test', intended_guardian_email: null },
+    };
     const res = await approve();
     expect(res.status).toBe(200);
-    expect((await res.json()).inviteSkippedReason).toBe('lookup_failed');
+    expect(orderUpdates).toHaveLength(1);
+    expect(mockCreateGuardianInvite).toHaveBeenCalledWith(expect.anything(), 'player-1', null, 'guardian@example.test', 'order_approval', ORDER_ID);
+  });
+
+  it('multi-card gift order is not affected by the single-card approval check (held by staff, amendment A2)', async () => {
+    fixture = {
+      ...baseFixture(),
+      orderAuthorityStatus: 'guardian_approved',
+      cards: [{ player_id: 'player-1' }, { player_id: 'player-2' }],
+      orderRow: { id: ORDER_ID, purchaser_email: 'organiser@example.test', intended_guardian_email: null },
+    };
+    // Reaches the existing multi-card club/team requirement (400), not the gift refusal (409).
+    const res = await approve();
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/Pick or create a club and team/);
     expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
+  it('non-gift (confirmed) order never runs the gift approval lookup', async () => {
+    fixture = { ...baseFixture(), orderAuthorityStatus: 'confirmed', approvalLookupFails: true };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect(mockCreateGuardianInvite).toHaveBeenCalledWith(expect.anything(), 'player-1', null, 'parent@example.test', 'order_approval', ORDER_ID);
   });
 
   it('confirmed (parent placed it) order: invite still goes to the purchaser exactly as before', async () => {
