@@ -72,12 +72,6 @@ describe('migration number uniqueness', () => {
     ]);
   });
 
-  it('rejects an unmerged branch 0097 file, which must be renumbered', () => {
-    expect(findReservedNumberProblems(['0097_coach_account_deletion_verified_moments.sql', '0097_erase_print_pdfs_on_player_deletion.sql'])).toEqual([
-      { number: '0097', file: '0097_erase_print_pdfs_on_player_deletion.sql', reservedFor: '0097_coach_account_deletion_verified_moments.sql' },
-    ]);
-  });
-
   it('reports any file using a retired number, including the old achievement-reveal name', () => {
     expect(findRetiredNumberProblems(['0092_test_card_archive.sql', '0093_achievement_card_reveals.sql', '0093_anything.sql', '0094_x.sql', '0095_uk_partner_programme.sql', 'notes.md'])).toEqual([
       { number: '0093', file: '0093_achievement_card_reveals.sql', reason: RETIRED_NUMBERS['0093'] },
@@ -108,6 +102,12 @@ describe('migration number uniqueness', () => {
     }
     expect(error?.status).toBe(1);
     expect(error?.stderr.toString()).toContain('Migration number 0092 is reserved for 0092_test_card_archive.sql: 0092_achievement_card_reveals.sql');
+  });
+
+  it('rejects an unmerged branch 0097 file, which must be renumbered', () => {
+    expect(findReservedNumberProblems(['0097_coach_account_deletion_verified_moments.sql', '0097_erase_print_pdfs_on_player_deletion.sql'])).toEqual([
+      { number: '0097', file: '0097_erase_print_pdfs_on_player_deletion.sql', reservedFor: '0097_coach_account_deletion_verified_moments.sql' },
+    ]);
   });
 
   it('the command exits zero when every number is used once', () => {
