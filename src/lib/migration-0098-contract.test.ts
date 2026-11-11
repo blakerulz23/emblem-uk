@@ -5,6 +5,7 @@ const sql = readFileSync('supabase/migrations/0098_deletion_review_suspension_an
 const rollback = readFileSync('supabase/rollback/0098_rollback.sql', 'utf8');
 const rollback0097 = readFileSync('supabase/rollback/0097_rollback.sql', 'utf8');
 const m0097 = readFileSync('supabase/migrations/0097_coach_account_deletion_verified_moments.sql', 'utf8');
+const m0088 = readFileSync('supabase/migrations/0088_relationship_authorization_foundation.sql', 'utf8');
 const code = sql.replace(/^\s*--.*$/gm, '');
 const rollbackCode = rollback.replace(/^\s*--.*$/gm, '');
 
@@ -89,6 +90,63 @@ describe('migration 0098 — deletion review suspension and verifier identity', 
   });
 });
 
+const GRANTING = [
+  ['approve_coach_team_request', 'uuid, uuid, uuid, timestamptz, uuid'],
+  ['redeem_coach_invite', 'text, uuid, text'],
+  ['redeem_team_invite', 'text, uuid, text'],
+] as const;
+/** A granting function's definition, from its create through its service_role grant, as 'create or replace'. */
+const grantingFnOf = (text: string, name: string, sig: string) => {
+  const start = text.search(new RegExp(String.raw`create (or replace )?function public\.${name}\(`));
+  const endMarker = `grant execute on function public.${name}(${sig}) to service_role;`;
+  return text.slice(start, text.indexOf(endMarker, start) + endMarker.length).replace(/^create function/, 'create or replace function');
+};
+
+describe('migration 0098 — no new coach access while a deletion is under review', () => {
+  it('a definer helper, executable by its owner only, reads only pending reviews', () => {
+    expect(squash(code)).toContain(squash(`create function public.profile_has_pending_deletion_review(p_profile_id uuid)
+      returns boolean language sql stable security definer set search_path = ''`));
+    expect(code).toContain("where auth_user_id = p_profile_id and status = 'pending'");
+    expect(code).toContain('revoke all on function public.profile_has_pending_deletion_review(uuid) from public, anon, authenticated, service_role;');
+    expect(code).toContain('revoke all on function public.refuse_coach_access_during_deletion_review() from public, anon, authenticated, service_role;');
+    expect(code).not.toMatch(/grant execute on function public\.(profile_has_pending_deletion_review|refuse_coach_access_during_deletion_review)/);
+  });
+
+  it('guards coach_team and coach_players inserts and updates, and team-request inserts, with SQLSTATE EMDRP', () => {
+    for (const [when, table] of [
+      ['before insert or update', 'coach_team'],
+      ['before insert or update', 'coach_players'],
+      ['before insert', 'coach_team_requests'],
+    ]) {
+      expect(squash(code)).toContain(
+        squash(`create trigger deletion_review_access_guard ${when} on public.${table} for each row execute function public.refuse_coach_access_during_deletion_review();`)
+      );
+    }
+    expect(code).toContain("raise exception using errcode = 'EMDRP', message = 'account_deletion_review_pending';");
+  });
+
+  it('each granting function is its 0088 body plus one early refusal, before anything changes', () => {
+    for (const [name, sig] of GRANTING) {
+      const before = grantingFnOf(m0088, name, sig);
+      const after = grantingFnOf(sql, name, sig);
+      const guard = after.indexOf(`public.profile_has_pending_deletion_review(`);
+      expect(guard, name).toBeGreaterThan(0);
+      // Removing the guard block gives back the 0088 definition exactly.
+      const guardBlock = /(?<=\n)\n?  -- 0098:[\s\S]*?end if;\n/.exec(after)?.[0] ?? '';
+      expect(guardBlock, name).toContain('profile_has_pending_deletion_review');
+      expect(after.replace(guardBlock, ''), name).toBe(before);
+      const firstWrite = after.search(/^\s*(update|insert into|perform public\.ensure_profile_role|select ti\.id)\b/m);
+      expect(guard, name).toBeLessThan(firstWrite);
+    }
+  });
+
+  it('delete_own_guardian_account locks the account first, so a racing grant is serialised', () => {
+    const fn = fnOf(sql);
+    expect(fn).toContain('perform 1 from public.profiles where id = v_uid for update;');
+    expect(fn.indexOf('for update;')).toBeLessThan(fn.indexOf('delete from public.guardians'));
+  });
+});
+
 describe('0098 rollback — emergency only', () => {
   it('warns prominently and refuses before any change unless acknowledged and unused', () => {
     expect(rollback.split('\n').slice(0, 5).join('\n')).toContain('EMERGENCY ONLY');
@@ -107,6 +165,18 @@ describe('0098 rollback — emergency only', () => {
 
   it('restores the 0097 function body exactly', () => {
     expect(fnOf(rollback)).toBe(fnOf(m0097));
+  });
+
+  it('removes the access guards and restores the three 0088 granting functions exactly', () => {
+    const drops = ['coach_team_requests', 'coach_players', 'coach_team'].map((t) => rollbackCode.indexOf(`drop trigger deletion_review_access_guard on public.${t};`));
+    const dropFn = rollbackCode.indexOf('drop function public.refuse_coach_access_during_deletion_review();');
+    const dropHelper = rollbackCode.indexOf('drop function public.profile_has_pending_deletion_review(uuid);');
+    for (const d of drops) {
+      expect(d).toBeGreaterThan(rollbackCode.indexOf("where status = 'rejected' or rejection_reason is not null"));
+      expect(d).toBeLessThan(dropFn);
+    }
+    expect(dropFn).toBeLessThan(dropHelper);
+    for (const [name, sig] of GRANTING) expect(grantingFnOf(rollback, name, sig), name).toBe(grantingFnOf(m0088, name, sig));
   });
 
   it('the 0097 rollback refuses while 0098 is applied', () => {

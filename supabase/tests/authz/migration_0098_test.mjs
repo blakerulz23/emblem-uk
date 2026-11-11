@@ -254,15 +254,17 @@ console.log('\n=== 5. Changes while under review: only still-restorable relation
     const result = await deleteAccount(w, coach);
     const pid = (await pendingOf(db, coach)).id;
     check('5: setup — three relationships suspended', result.coachAccessSuspended === 3, JSON.stringify(result));
-    // Meanwhile: staff reinstate then end the main assignment for another reason,
-    // the second team is deleted, and the parent's direct link is re-created by
-    // a fresh coach invite (so a link already exists).
+    // While under review the second team is deleted. Nothing can grant the
+    // account access while it is pending (section 11), so the other changes
+    // happen after staff reject and before they restore: staff reinstate then
+    // end the main assignment for another reason, and the parent's direct
+    // link is re-created by a fresh coach invite (so a link already exists).
+    await db.query(`delete from public.teams where id = $1`, [team2]);
+    await reject(w, pid, people.staff);
     const req = (await w.user(coach, `insert into public.coach_team_requests (club_name, team_name) values ('Fictional FC', 'U10b') returning id`)).rows[0].id;
     await w.service(`select public.approve_coach_team_request($1, $2, $3, null, null)`, [req, people.staff, w.team]);
     await w.service(`select public.end_coach_assignment($1, $2, $3, 'Left the club')`, [w.team, coach, people.staff]);
-    await db.query(`delete from public.teams where id = $1`, [team2]);
     await w.directLink(coach);
-    await reject(w, pid, people.staff);
     const r = await restore(w, pid, people.staff);
     const notes = (await db.query(`select resolution, resolution_note from public.deletion_review_access_suspensions where pending_deletion_id = $1 order by resolution_note`, [pid])).rows;
     check('5: nothing is restored over a newer state; each row says why',
@@ -382,13 +384,32 @@ let db9, c97, c98;
       'column:pending_profile_deletions.rejection_reason',
       'constraint:pending_profile_deletions.pending_profile_deletions_rejection_check',
       'function:moment_verifier_unchanged(p_moment_id uuid, p_verified_by uuid)',
+      'function:profile_has_pending_deletion_review(p_profile_id uuid)',
+      'function:refuse_coach_access_during_deletion_review()',
+      'trigger:coach_players.deletion_review_access_guard',
+      'trigger:coach_team.deletion_review_access_guard',
+      'trigger:coach_team_requests.deletion_review_access_guard',
       'function:reject_pending_profile_deletion(p_pending_deletion_id uuid, p_staff_profile_id uuid, p_reason text)',
       'function:restore_coach_access_after_deletion_rejection(p_pending_deletion_id uuid, p_staff_profile_id uuid, p_reason text)',
       'policy:moments.moments: a signed-in user can only name themselves as verifier',
       'policy:moments.moments: a verifier change can only name the caller as coach',
       'relation:deletion_review_access_suspensions',
     ].sort()) && d.removed.length === 0 &&
-    JSON.stringify(d.changed.sort()) === JSON.stringify(['constraint:pending_profile_deletions.pending_profile_deletions_status_check', 'function:delete_own_guardian_account()']), JSON.stringify(d));
+    JSON.stringify(d.changed.sort()) === JSON.stringify([
+      'constraint:pending_profile_deletions.pending_profile_deletions_status_check',
+      'function:approve_coach_team_request(p_request_id uuid, p_staff_profile_id uuid, p_team_id uuid, p_expires_at timestamp with time zone, p_season_id uuid)',
+      'function:delete_own_guardian_account()',
+      'function:redeem_coach_invite(p_code text, p_coach_profile_id uuid, p_display_name text)',
+      'function:redeem_team_invite(p_code text, p_coach_profile_id uuid, p_display_name text)',
+    ].sort()), JSON.stringify(d));
+  check('9: the redeem and approve functions keep SECURITY DEFINER, search_path, owner and EXECUTE for service_role only',
+    ['approve_coach_team_request(p_request_id uuid, p_staff_profile_id uuid, p_team_id uuid, p_expires_at timestamp with time zone, p_season_id uuid)',
+     'redeem_coach_invite(p_code text, p_coach_profile_id uuid, p_display_name text)', 'redeem_team_invite(p_code text, p_coach_profile_id uuid, p_display_name text)']
+      .every((f) => c98.get(`function:${f}`).split(' | ').slice(0, 5).join(' | ') === c97.get(`function:${f}`).split(' | ').slice(0, 5).join(' | ')));
+  check('9: the access guard helper and trigger function are executable by nobody but their owner',
+    ['profile_has_pending_deletion_review(p_profile_id uuid)', 'refuse_coach_access_during_deletion_review()']
+      .every((f) => { const acl = c98.get(`function:${f}`).split(' | ')[4]; return !acl.includes('service_role=') && !acl.includes('authenticated=') && !acl.includes('anon=') && !/(^|,)=X/.test(acl); }),
+    ['profile_has_pending_deletion_review(p_profile_id uuid)', 'refuse_coach_access_during_deletion_review()'].map((f) => c98.get(`function:${f}`).split(' | ')[4]).join(' ; '));
   check('9: delete_own_guardian_account keeps SECURITY DEFINER, empty search_path, owner and EXECUTE for authenticated only',
     c98.get('function:delete_own_guardian_account()').split(' | ').slice(0, 5).join(' | ') === c97.get('function:delete_own_guardian_account()').split(' | ').slice(0, 5).join(' | '));
   check('9: the staff functions are executable by service_role only', ['reject_pending_profile_deletion(p_pending_deletion_id uuid, p_staff_profile_id uuid, p_reason text)', 'restore_coach_access_after_deletion_rejection(p_pending_deletion_id uuid, p_staff_profile_id uuid, p_reason text)']
@@ -449,6 +470,174 @@ console.log('\n=== 10. Rollback ===');
   const r = await db.exec(ROLLBACK_0098).then(() => null).catch((e) => e.message);
   await db.exec('rollback;').catch(() => {});
   check('10: rollback is refused on a rejected deletion even with no suspension', res.coachAccessSuspended === 0 && r?.includes('1 rejected profile deletion(s) exist'), r);
+  await db.close();
+}
+
+const PRECHECK = fs.readFileSync(path.resolve(HERE, '../../verification/0098_precheck_pending_deletion_reviews.sql'), 'utf8');
+const errOf = (fn) => fn().then(() => null).catch((e) => `${e.code ?? ''}:${e.message}`);
+const PAUSED = 'EMDRP:account_deletion_review_pending';
+// Runs the pre-check exactly as the SQL Editor would (one script, one implicit
+// transaction) and returns its single row.
+async function precheck(db) {
+  const res = await db.exec(PRECHECK);
+  return res.at(-1).rows[0];
+}
+
+console.log('\n=== 11. While the deletion is pending, nothing grants the account coach access ===');
+{
+  const w = await world();
+  const { db, people } = w;
+  try {
+    const coach = await w.coach();
+    await w.directLink(coach);
+    await w.assess(coach);
+    const teamsBefore = await coachRows(db, coach), linksBefore = await linkRows(db, coach);
+    // A team request filed before the deletion, still waiting for staff.
+    const reqBefore = (await w.user(coach, `insert into public.coach_team_requests (club_name, team_name) values ('Fictional FC', 'U15') returning id`)).rows[0].id;
+    // A fresh coach invite for the direct player.
+    const coachCode = `COACH-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    await w.user(people.parent, `insert into public.coach_invites (player_id, code, created_by) values ($1, $2, $3)`, [w.directPlayer, coachCode, people.parent]);
+    const result = await deleteAccount(w, coach);
+    const pid = (await pendingOf(db, coach)).id;
+    check('11: setup — the deletion goes to staff review and suspends both relationships', result.canDeleteIdentity === false && result.coachAccessSuspended === 2, JSON.stringify(result));
+    // Two fresh team invites: another team, and the suspended team.
+    const teamCode = `TEAM-${crypto.randomUUID().slice(0, 8).toUpperCase()}`, mainCode = `TEAM-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    await w.service(`insert into public.team_invites (team_id, code) values ($1, $2), ($3, $4)`, [w.otherTeam, teamCode, w.team, mainCode]);
+    const state = () => rowsOf(db, `select
+        (select json_agg(c order by team_id) from public.coach_team c where profile_id = $1) ct,
+        (select json_agg(c order by player_id) from public.coach_players c where profile_id = $1) cp,
+        (select json_agg(r order by id) from public.coach_team_requests r where requester_profile_id = $1) req,
+        (select json_agg(i order by code) from public.coach_invites i where code = $2) ci,
+        (select json_agg(i order by code) from public.team_invites i where code in ($3, $4)) ti,
+        (select role from public.profiles where id = $1) role,
+        (select count(*) from public.clubs) clubs, (select count(*) from public.teams) teams,
+        (select count(*) from public.relationship_audit_events where profile_id = $1) audit`, [coach, coachCode, teamCode, mainCode]);
+    const frozen = await state();
+
+    const rc = (await w.service(`select status, player_id from public.redeem_coach_invite($1, $2)`, [coachCode, coach])).rows[0];
+    check('11: redeeming a direct coach invite returns account_deletion_review_pending', rc.status === 'account_deletion_review_pending' && rc.player_id === null, JSON.stringify(rc));
+    const rt = (await w.service(`select status, team_id from public.redeem_team_invite($1, $2)`, [teamCode, coach])).rows[0];
+    const rm = (await w.service(`select status, team_id from public.redeem_team_invite($1, $2)`, [mainCode, coach])).rows[0];
+    check('11: redeeming a team invite (another team, or the suspended team) returns account_deletion_review_pending',
+      rt.status === 'account_deletion_review_pending' && rt.team_id === null && rm.status === 'account_deletion_review_pending', JSON.stringify([rt, rm]));
+    check('11: …and no invite was used, no link or assignment created, no role, request, club, team or audit change', (await state()) === frozen);
+
+    const ap1 = await errOf(() => w.service(`select public.approve_coach_team_request($1, $2, $3, null, null)`, [reqBefore, people.staff, w.otherTeam]));
+    const ap2 = await errOf(() => w.service(`select public.approve_coach_team_request($1, $2, null, null, $3)`, [reqBefore, people.staff, w.season]));
+    check('11: staff approval of its team request (existing team, or a new club and team) is refused with EMDRP', ap1 === PAUSED && ap2 === PAUSED, `${ap1} / ${ap2}`);
+    check('11: …the request stays pending and undecided; no club or team was created', (await state()) === frozen &&
+      (await db.query(`select status, decided_by, decided_at, resulting_team_id from public.coach_team_requests where id = $1`, [reqBefore])).rows
+        .every((r) => r.status === 'pending' && r.decided_by === null && r.decided_at === null && r.resulting_team_id === null));
+    await w.user(coach, `select public.cancel_own_coach_team_request($1)`, [reqBefore]);
+    const nr = await errOf(() => w.user(coach, `insert into public.coach_team_requests (club_name, team_name) values ('Fictional FC', 'U16')`));
+    check('11: the coach can cancel the old request but cannot file a new one (EMDRP)', nr === PAUSED, nr);
+    const frozen2 = await state();
+
+    const act1 = await errOf(() => w.service(`select public.activate_coach_assignment($1, $2, 'staff', $3)`, [w.otherTeam, coach, people.staff]));
+    const act2 = await errOf(() => w.service(`select public.activate_coach_assignment($1, $2, 'team_invite', $2)`, [w.team, coach]));
+    check('11: activate_coach_assignment (new team, or reactivating the suspended one) is refused with EMDRP', act1 === PAUSED && act2 === PAUSED, `${act1} / ${act2}`);
+    const rawInsert = await errOf(() => db.query(`insert into public.coach_team (team_id, profile_id, created_via, created_by) values ($1, $2, 'staff', $3)`, [w.otherTeam, coach, people.staff]));
+    const rawReactivate = await errOf(() => db.query(`update public.coach_team set ended_at = null, ended_by = null, end_reason = null where team_id = $1 and profile_id = $2`, [w.team, coach]));
+    const rawLink = await errOf(() => db.query(`insert into public.coach_players (player_id, profile_id, created_via) values ($1, $2, 'guardian_invite')`, [w.directPlayer, coach]));
+    check('11: as the table owner, a raw coach_team insert, a raw reactivation and a raw coach_players insert are all refused with EMDRP',
+      rawInsert === PAUSED && rawReactivate === PAUSED && rawLink === PAUSED, `${rawInsert} / ${rawReactivate} / ${rawLink}`);
+    const svcInsert = await errOf(() => w.service(`insert into public.coach_team (team_id, profile_id) values ($1, $2)`, [w.otherTeam, coach]));
+    const svcLink = await errOf(() => w.service(`insert into public.coach_players (player_id, profile_id) values ($1, $2)`, [w.directPlayer, coach]));
+    check('11: as service_role, raw inserts are refused too', !!svcInsert && !!svcLink, `${svcInsert} / ${svcLink}`);
+    // Moving another coach's active assignment or link onto the account is a grant too.
+    const other = await w.coach();
+    await w.directLink(other);
+    const moveTeam = await errOf(() => db.query(`update public.coach_team set profile_id = $1 where team_id = $2 and profile_id = $3`, [coach, w.team, other]));
+    const moveLink = await errOf(() => db.query(`update public.coach_players set profile_id = $1 where player_id = $2 and profile_id = $3`, [coach, w.directPlayer, other]));
+    check('11: re-keying another coach\'s active assignment or link onto the account is refused with EMDRP', moveTeam === PAUSED && moveLink === PAUSED, `${moveTeam} / ${moveLink}`);
+    check('11: after every refused attempt the account\'s state is exactly as it was', (await state()) === frozen2);
+    const writers = (await db.query(`select array_agg(p.proname::text order by p.proname) fns from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public' and (p.prosrc ~* 'insert\\s+into\\s+public\\.coach_(team|players)\\M' or p.prosrc ~* 'update\\s+public\\.coach_(team|players)\\M')`)).rows[0].fns;
+    check('11: the only functions that write coach_team / coach_players are the known ones (no squad-invite path creates coach access)',
+      JSON.stringify(writers) === JSON.stringify(['activate_coach_assignment', 'approve_coach_team_request', 'delete_own_guardian_account', 'end_coach_assignment', 'redeem_coach_invite', 'redeem_team_invite', 'restore_coach_access_after_deletion_rejection']), JSON.stringify(writers));
+    check('11: the guard helper is not callable by signed-in users or service_role',
+      (await attempt(() => w.user(coach, `select public.profile_has_pending_deletion_review($1)`, [coach])))?.includes('permission denied') &&
+      (await attempt(() => w.service(`select public.profile_has_pending_deletion_review($1)`, [coach])))?.includes('permission denied'));
+
+    console.log('\n=== 12. Ordinary accounts are unaffected while another account is pending ===');
+    const fresh = id();
+    await w.person(fresh);
+    const fc = `COACH-${crypto.randomUUID().slice(0, 8).toUpperCase()}`, ft = `TEAM-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    await w.user(people.parent, `insert into public.coach_invites (player_id, code, created_by) values ($1, $2, $3)`, [w.directPlayer, fc, people.parent]);
+    await w.service(`insert into public.team_invites (team_id, code) values ($1, $2)`, [w.otherTeam, ft]);
+    const f1 = (await w.service(`select status from public.redeem_coach_invite($1, $2)`, [fc, fresh])).rows[0].status;
+    const f2 = (await w.service(`select status from public.redeem_team_invite($1, $2)`, [ft, fresh])).rows[0].status;
+    const freq = (await w.user(fresh, `insert into public.coach_team_requests (club_name, team_name) values ('Fictional FC', 'U17') returning id`)).rows[0].id;
+    const f3 = await errOf(() => w.service(`select public.approve_coach_team_request($1, $2, $3, null, null)`, [freq, people.staff, w.team]));
+    check('12: another coach redeems both invites, files a request and is approved as normal', f1 === 'redeemed' && f2 === 'redeemed' && f3 === null, `${f1} / ${f2} / ${f3}`);
+    // A deletion request staff resolved (not pending) does not block.
+    const resolvedAcct = id();
+    await w.person(resolvedAcct);
+    await w.service(`insert into public.pending_profile_deletions (auth_user_id, blocking_reason, status, resolved_by, resolved_at) values ($1, 'coach_authored_player_records', 'resolved', $2, now())`, [resolvedAcct, people.staff]);
+    const rt2 = `TEAM-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    await w.service(`insert into public.team_invites (team_id, code) values ($1, $2)`, [w.otherTeam, rt2]);
+    check('12: an account whose deletion request is resolved (not pending) is not blocked', (await w.service(`select status from public.redeem_team_invite($1, $2)`, [rt2, resolvedAcct])).rows[0].status === 'redeemed');
+
+    console.log('\n=== 13. After staff reject: restore is exact, then the normal routes work again ===');
+    await reject(w, pid, people.staff);
+    const r = await restore(w, pid, people.staff);
+    check('13: restore after rejection still restores exactly what was suspended', r.restored === 2 && r.notRestorable === 0 &&
+      (await coachRows(db, coach)) === teamsBefore && (await linkRows(db, coach)) === linksBefore, JSON.stringify(r));
+    // The direct link is back; remove it to show the same coach invite works again.
+    await w.service(`select public.remove_direct_coach_link($1, $2, $3, 'Test: re-link by invite')`, [w.directPlayer, coach, people.parent]);
+    const a1 = (await w.service(`select status from public.redeem_coach_invite($1, $2)`, [coachCode, coach])).rows[0].status;
+    const a2 = (await w.service(`select status from public.redeem_team_invite($1, $2)`, [teamCode, coach])).rows[0].status;
+    const req2 = (await w.user(coach, `insert into public.coach_team_requests (club_name, team_name) values ('Fictional FC', 'U18') returning id`)).rows[0].id;
+    const a3 = await errOf(() => w.service(`select public.approve_coach_team_request($1, $2, null, null, $3)`, [req2, people.staff, w.season]));
+    check('13: the same coach invite, the same team invite, a new request and its approval all work again', a1 === 'redeemed' && a2 === 'redeemed' && a3 === null, `${a1} / ${a2} / ${a3}`);
+  } catch (e) {
+    check('11–13: no coach access while pending', false, e.stack);
+  }
+  await db.close();
+}
+
+console.log('\n=== 14. A review pending before 0098: the read-only pre-check and the manual suspension ===');
+{
+  // A review filed under 0097 keeps its access when 0098 is applied (no
+  // retroactive suspension). The pre-check counts it; staff end it with the
+  // existing functions; the pre-check then reads 0.
+  const db = await readyDatabase('0097');
+  try {
+    const w = await world({ db });
+    const coach = await w.coach();
+    await w.directLink(coach);
+    await w.assess(coach);
+    const before97 = await precheck(db);
+    check('14: on 0097 the pre-check runs read-only and counts nothing before any review', before97.read_only_guard === 'on' && Number(before97.pending_reviews) === 0, JSON.stringify(before97));
+    const res97 = await deleteAccount(w, coach);
+    const p97 = await precheck(db);
+    const nums = (row) => JSON.stringify(Object.fromEntries(Object.entries(row).map(([k, v]) => [k, k === 'read_only_guard' ? v : Number(v)])));
+    check('14: a 0097 review keeps its access, and the pre-check counts it (counts only, no identifiers)',
+      res97.canDeleteIdentity === false && res97.coachAccessSuspended === undefined &&
+      nums(p97) === JSON.stringify({ read_only_guard: 'on', pending_reviews: 1, pending_accounts_with_active_team: 1, active_team_assignments: 1, pending_accounts_with_open_team: 1, open_team_assignments: 1, pending_accounts_with_direct_links: 1, direct_links: 1, pending_accounts_with_team_requests: 0, pending_staff_accounts: 0 }), nums(p97));
+    check('14: the pre-check\'s first statement makes the script unable to write',
+      (await db.exec(`set transaction read only; insert into public.clubs (name) values ('Read-only probe');`).then(() => null).catch((e) => e.message))?.includes('read-only transaction'));
+    const applied = await applyMigrations(db, { from: '0098', through: '0098' }).then(() => null).catch((e) => e.message);
+    const p98 = await precheck(db);
+    check('14: after 0098 is applied the earlier review still holds its access (not retroactive)', applied === null && Number(p98.active_team_assignments) === 1 && Number(p98.direct_links) === 1, applied ?? nums(p98));
+    const tc = `TEAM-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    await w.service(`insert into public.team_invites (team_id, code) values ($1, $2)`, [w.otherTeam, tc]);
+    check('14: …but it can gain nothing new', (await w.service(`select status from public.redeem_team_invite($1, $2)`, [tc, coach])).rows[0].status === 'account_deletion_review_pending');
+    // The manual suspension as the private procedure runs it: one account, one transaction.
+    await db.exec('begin;');
+    await db.query(`select public.end_coach_assignment(ct.team_id, ct.profile_id, $2, 'account_deletion_review_manual')
+      from public.coach_team ct where ct.profile_id = $1 and ct.ended_at is null`, [coach, w.people.staff]);
+    await db.query(`select public.remove_direct_coach_link(cp.player_id, cp.profile_id, $2, 'account_deletion_review_manual')
+      from public.coach_players cp where cp.profile_id = $1`, [coach, w.people.staff]);
+    await db.exec('commit;');
+    const after = await precheck(db);
+    check('14: the manual suspension (end_coach_assignment, remove_direct_coach_link) is allowed while pending, and the pre-check then reads 0',
+      Number(after.pending_reviews) === 1 && Number(after.open_team_assignments) === 0 && Number(after.direct_links) === 0 && Number(after.pending_accounts_with_open_team) === 0, nums(after));
+    check('14: both changes are audited to the staff member with the manual reason',
+      await n(db, `select count(*)::int n from public.relationship_audit_events where profile_id = $1 and actor_profile_id = $2 and reason = 'account_deletion_review_manual' and actor_source = 'trusted_function'`, [coach, w.people.staff]) === 2);
+  } catch (e) {
+    check('14: pre-check and manual suspension', false, e.stack);
+  }
   await db.close();
 }
 
