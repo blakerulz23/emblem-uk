@@ -2,20 +2,25 @@
 -- EMERGENCY ONLY: THIS ROLLBACK BREAKS ACCOUNT DELETION FOR COACHES AGAIN.
 -- ============================================================================
 -- Reverses 0097_coach_account_deletion_verified_moments.sql, returning
--- public.moments and delete_own_guardian_account() to exactly their 0096
--- state (the 0076 function body and the 0020 consistency rule). Once it runs,
--- self-service account deletion again fails, and rolls back, for every coach
--- who has ever verified a moment or sent a recognition. Prefer fixing
+-- public.moments, the two deletion-request tables and
+-- delete_own_guardian_account() to exactly their 0096 state (the 0076
+-- function body, the 0020 consistency rule and the original cancellation
+-- rules). Once it runs, self-service account deletion again fails, and rolls
+-- back, for every coach who has ever verified a moment or sent a
+-- recognition, and for every account that ever cancelled a deletion
+-- request. Prefer fixing
 -- forward. Use this only if 0097 breaks a legitimate flow that cannot be
 -- fixed quickly, and re-apply 0097 as soon as possible.
 --
 -- It refuses to run, changing nothing, unless:
 --   - 0097 is applied (the column, the policy and the 0097 function body are
 --     all present);
---   - NO moment carries the deleted-verifier marker. Once any account
---     deletion has used it, those moments have verified_by NULL and cannot
---     satisfy the 0020 rule; the verifier's account no longer exists, so
---     there is nothing honest to restore. Then the only way is forward.
+--   - NO row carries any 0097 marker (moments.verifier_account_deleted_at,
+--     or cancelled_by_account_deleted_at on either deletion-request table).
+--     Once any account deletion has used one, those rows have the actor
+--     NULL and cannot satisfy the original rules; the account no longer
+--     exists, so there is nothing honest to restore. Then the only way is
+--     forward.
 --   - the SAME TRANSACTION first sets this exact acknowledgement,
 --     transaction-local (third argument true):
 --
@@ -42,7 +47,9 @@ begin
   if not exists (select 1 from information_schema.columns
                  where table_schema = 'public' and table_name = 'moments' and column_name = 'verifier_account_deleted_at')
      or not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'moments'
-                    and policyname = 'moments: only account deletion marks a verifier as deleted') then
+                    and policyname = 'moments: only account deletion marks a verifier as deleted')
+     or (select count(*) from information_schema.columns where table_schema = 'public' and column_name = 'cancelled_by_account_deleted_at'
+         and table_name in ('player_deletion_requests', 'squad_invite_participation_deletion_requests')) <> 2 then
     raise exception '0097 rollback refused: 0097 is not applied';
   end if;
   select p.prosrc into v_body from pg_proc p where p.oid = to_regprocedure('public.delete_own_guardian_account()');
@@ -52,6 +59,12 @@ begin
   select count(*) into v_marked from public.moments where verifier_account_deleted_at is not null;
   if v_marked > 0 then
     raise exception '0097 rollback refused: % moment(s) were verified by a coach whose account has since been deleted; the 0020 rule cannot hold them. Fix forward instead.', v_marked;
+  end if;
+  select (select count(*) from public.player_deletion_requests where cancelled_by_account_deleted_at is not null)
+       + (select count(*) from public.squad_invite_participation_deletion_requests where cancelled_by_account_deleted_at is not null)
+    into v_marked;
+  if v_marked > 0 then
+    raise exception '0097 rollback refused: % cancelled deletion request(s) were cancelled by an account that has since been deleted; the original cancellation rules cannot hold them. Fix forward instead.', v_marked;
   end if;
 end;
 $$;
@@ -209,6 +222,17 @@ alter table public.moments add constraint moments_verification_status_consistenc
     or
     (verification_status in ('family_memory', 'pending_verification', 'system_generated') and verified_at is null and verified_by is null)
   );
+
+-- 5 reversed: the original cancellation rules (the columns are NULL everywhere).
+alter table public.player_deletion_requests drop constraint player_deletion_requests_cancellation_requires_actor;
+alter table public.player_deletion_requests drop column cancelled_by_account_deleted_at;
+alter table public.player_deletion_requests add constraint player_deletion_requests_cancellation_requires_actor
+  check (status <> 'cancelled' or (cancelled_by is not null and cancelled_at is not null));
+
+alter table public.squad_invite_participation_deletion_requests drop constraint sipdr_cancellation_requires_actor;
+alter table public.squad_invite_participation_deletion_requests drop column cancelled_by_account_deleted_at;
+alter table public.squad_invite_participation_deletion_requests add constraint sipdr_cancellation_requires_actor
+  check (status <> 'cancelled' or (cancelled_by is not null and cancelled_at is not null));
 
 -- Never let the acknowledgement outlive this transaction.
 select set_config('emblem.acknowledge_0097_rollback', '', false);

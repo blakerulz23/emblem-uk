@@ -48,7 +48,7 @@ async function readyDatabase(through) {
 
 // A fictional world: a staff member, a parent guarding two players, a
 // second parent co-guarding the first player, and coach accounts.
-async function world({ through = '9999', db: existing } = {}) {
+async function world({ through = '0097', db: existing } = {}) {
   const db = existing ?? (await readyDatabase(through));
   async function as(role, uid, fn) {
     await db.exec('begin;');
@@ -322,33 +322,110 @@ console.log('\n=== 6. Coach with authored records and recognitions (staff-review
   await db.close();
 }
 
-console.log('\n=== 7. Atomicity, and a separate defect found while testing ===');
-// A dual-role account (coach and guardian) who once cancelled a child
-// deletion request: deleting the profile sets player_deletion_requests.
-// cancelled_by to NULL (ON DELETE SET NULL), which the
-// player_deletion_requests_cancellation_requires_actor check forbids. That
-// is NOT fixed by 0097 (it affects parents too; see the evidence file). It
-// is used here to prove that when deletion fails, 0097's anonymisation
-// rolls back with it.
+console.log('\n=== 7. Expanded scope: accounts that cancelled a deletion request ===');
+// Before 0097, deleting the profile set cancelled_by to NULL (ON DELETE SET
+// NULL), which the cancellation rules forbid on a cancelled request, so the
+// whole deletion rolled back.
+//
+// A Squad Invite participation and its cancelled deletion request. Fixture
+// only: foreign-key triggers are skipped (session_replication_role) so the
+// campaign, order and payment rows the real flow needs aren't built; the
+// rows under test are the real tables with their real CHECK rules.
+async function cancelledParticipationRequest(db, guardian) {
+  await db.exec(`set session_replication_role = replica;`);
+  try {
+    const part = (await db.query(`insert into public.squad_invite_participations (campaign_id, guardian_profile_id, builder_token_hash) values ($1, $2, repeat('a', 64)) returning id`, [id(), guardian])).rows[0].id;
+    return (await db.query(`insert into public.squad_invite_participation_deletion_requests (participation_id, requested_by, status, cancelled_by, cancelled_at) values ($1, $2, 'cancelled', $2, now() - interval '1 day') returning id`, [part, guardian])).rows[0].id;
+  } finally {
+    await db.exec(`set session_replication_role = origin;`);
+  }
+}
+const pdr = (db, rid) => one(db, `select status, cancelled_by, cancelled_at, cancelled_by_account_deleted_at m from public.player_deletion_requests where id = $1`, [rid]);
+const sipdr = (db, rid) => one(db, `select status, cancelled_by, cancelled_at, cancelled_by_account_deleted_at m from public.squad_invite_participation_deletion_requests where id = $1`, [rid]);
 {
+  // 7a. A parent who cancelled a child-deletion request.
   const w = await world();
   const { db, people } = w;
+  try {
+    const rid = (await db.query(`insert into public.player_deletion_requests (player_id, requested_by, status, cancelled_by, cancelled_at) values ($1, $2, 'cancelled', $2, now() - interval '2 days') returning id`, [w.player, people.parent])).rows[0].id;
+    const before = await pdr(db, rid);
+    const result = await deleteAccount(w, people.parent);
+    check('7a: a parent who cancelled a child-deletion request now deletes (was: cancellation_requires_actor, rolled back)', result.canDeleteIdentity === true, JSON.stringify(result));
+    const after = await pdr(db, rid);
+    check('7a: the request is still cancelled with its original cancelled_at; canceller anonymised, marker set',
+      after.status === 'cancelled' && +after.cancelled_at === +before.cancelled_at && after.cancelled_by === null && after.m !== null, JSON.stringify(after));
+    check('7a: no row anywhere still references the deleted parent', (await danglingReferences(db, people.parent)) === 0);
+    // With only a cancellation marker in use, the 0097 rollback refuses on it.
+    await db.exec('begin;');
+    await db.query(`select set_config($1, $2, true)`, ACK);
+    const r = await db.exec(ROLLBACK).then(() => null).catch((e) => e.message);
+    await db.exec('rollback;').catch(() => {});
+    check('7a: the 0097 rollback refuses once a cancellation marker is in use, naming the count', r?.includes('1 cancelled deletion request(s) were cancelled by an account that has since been deleted'), r);
+  } catch (e) {
+    check('7a: parent who cancelled', false, e.message);
+  }
+  await db.close();
+}
+{
+  // 7b. A parent-coach (dual role) who cancelled a request and sent a recognition.
+  const w = await world();
+  const { db } = w;
   try {
     const coach = await w.coach();
     const rec = await w.recognise(coach);
     await w.service(`insert into public.guardians (player_id, profile_id, created_via, created_by) values ($1, $2, 'card_claim', $2)`, [w.directPlayer, coach]);
-    await db.query(`insert into public.player_deletion_requests (player_id, requested_by, status, cancelled_by, cancelled_at) values ($1, $2, 'cancelled', $2, now())`, [w.directPlayer, coach]);
+    const rid = (await db.query(`insert into public.player_deletion_requests (player_id, requested_by, status, cancelled_by, cancelled_at) values ($1, $2, 'cancelled', $3, now()) returning id`, [w.directPlayer, w.people.parent, coach])).rows[0].id;
+    const result = await deleteAccount(w, coach);
+    check('7b: a parent-coach who cancelled a request and sent a recognition deletes', result.canDeleteIdentity === true, JSON.stringify(result));
+    const m = await moment(db, rec), q = await pdr(db, rid);
+    check('7b: both records kept and anonymised (recognition coach_verified + marker; request cancelled + marker)',
+      m.verification_status === 'coach_verified' && m.verifier_account_deleted_at !== null && q.status === 'cancelled' && q.cancelled_by === null && q.m !== null);
+    check('7b: the other guardian still guards the direct player', await n(db, `select count(*)::int n from public.guardians where player_id = $1`, [w.directPlayer]) === 1);
+    check('7b: no row anywhere still references the deleted account', (await danglingReferences(db, coach)) === 0);
+  } catch (e) {
+    check('7b: parent-coach who cancelled', false, e.message);
+  }
+  await db.close();
+}
+{
+  // 7c. A guardian who cancelled a Squad Invite participation deletion request.
+  const w = await world();
+  const { db, people } = w;
+  try {
+    const rid = await cancelledParticipationRequest(db, people.coParent);
+    const before = await sipdr(db, rid);
+    const result = await deleteAccount(w, people.coParent);
+    check('7c: a guardian who cancelled a squad-participation deletion request now deletes', result.canDeleteIdentity === true, JSON.stringify(result));
+    const after = await sipdr(db, rid);
+    check('7c: the request stays cancelled with its cancelled_at; canceller anonymised, marker set',
+      after.status === 'cancelled' && +after.cancelled_at === +before.cancelled_at && after.cancelled_by === null && after.m !== null, JSON.stringify(after));
+    check('7c: no row anywhere still references the deleted guardian', (await danglingReferences(db, people.coParent)) === 0);
+  } catch (e) {
+    check('7c: squad-participation cancellation', false, e.message);
+  }
+  await db.close();
+}
+{
+  // 7d. Atomicity: if the final profile delete fails for any reason, every
+  // 0097 marker rolls back with it. The failure is injected with a
+  // test-only trigger.
+  const w = await world();
+  const { db } = w;
+  try {
+    const coach = await w.coach();
+    const rec = await w.recognise(coach);
+    const rid = (await db.query(`insert into public.player_deletion_requests (player_id, requested_by, status, cancelled_by, cancelled_at) values ($1, $2, 'cancelled', $2, now()) returning id`, [w.player, coach])).rows[0].id;
+    await db.exec(`create function public.test_only_refuse_delete() returns trigger language plpgsql as $f$ begin raise exception 'test-only injected failure'; end $f$;
+      create trigger test_only_refuse_delete before delete on public.profiles for each row execute function public.test_only_refuse_delete();`);
     let err = null;
     await deleteAccount(w, coach).catch((e) => { err = e.message; });
-    check('7: KNOWN SEPARATE DEFECT — deletion fails when the account cancelled a child-deletion request (cancellation_requires_actor)',
-      err?.includes('player_deletion_requests_cancellation_requires_actor'), err ?? 'deletion succeeded — the separate defect is fixed; update this scenario');
-    const m = await moment(db, rec);
-    check('7: …and the failure changes nothing: recognition still names the coach, no marker, profile and guardian link intact',
-      m.verified_by === coach && m.verifier_account_deleted_at === null &&
-      await n(db, `select (select count(*) from public.profiles where id = $1) + (select count(*) from public.guardians where profile_id = $1) as n`, [coach]) === 2);
-    check('7: (control) the other parent is unaffected', await n(db, `select count(*)::int n from public.guardians where profile_id = $1`, [people.parent]) === 2);
+    await db.exec(`drop trigger test_only_refuse_delete on public.profiles; drop function public.test_only_refuse_delete();`);
+    const m = await moment(db, rec), q = await pdr(db, rid);
+    check('7d: an injected failure at the profile delete rolls back every 0097 marker',
+      err?.includes('test-only injected failure') && m.verified_by === coach && m.verifier_account_deleted_at === null && q.cancelled_by === coach && q.m === null &&
+      await n(db, `select count(*)::int n from public.profiles where id = $1`, [coach]) === 1, err);
   } catch (e) {
-    check('7: atomicity', false, e.message);
+    check('7d: atomicity', false, e.message);
   }
   await db.close();
 }
@@ -378,6 +455,25 @@ console.log('\n=== 8. The consistency rule and who can set the marker ===');
     check('8: a guardian cannot insert the marker either', rls(await attempt(() => w.user(people.parent, `insert into public.moments (player_id, title, trust, uploaded_by, verification_status, verifier_account_deleted_at) values ($1, 'x', 'parent', $2, 'family_memory', now())`, [p, people.parent]))));
     const rec = await w.recognise(coach);
     check('8: no signed-in user can update the marker (no column privilege)', (await asCoach(`update public.moments set verifier_account_deleted_at = now() where id = $1`, [rec]))?.includes('permission denied'));
+    // The cancellation rules (both tables).
+    const pdrRaw = (status, by, at, marker) => attempt(() => db.query(`insert into public.player_deletion_requests (player_id, status, cancelled_by, cancelled_at, cancelled_by_account_deleted_at) values ($1, $2, $3, $4, $5)`, [p, status, by, at, marker]));
+    const pv = (e) => e?.includes('player_deletion_requests_cancellation_requires_actor');
+    check('8: still rejects a cancelled child-deletion request with no actor and no marker', pv(await pdrRaw('cancelled', null, now, null)));
+    check('8: rejects cancelled with both actor and marker, cancelled without cancelled_at, and a pending request with the marker',
+      pv(await pdrRaw('cancelled', people.parent, now, now)) && pv(await pdrRaw('cancelled', null, null, now)) && pv(await pdrRaw('pending', null, null, now)));
+    check('8: accepts cancelled with the actor, and cancelled with the marker (owner role)', (await pdrRaw('cancelled', people.parent, now, null)) === null && (await pdrRaw('cancelled', null, now, now)) === null);
+    await db.exec(`set session_replication_role = replica;`);
+    const part = (await db.query(`insert into public.squad_invite_participations (campaign_id, guardian_profile_id, builder_token_hash) values ($1, $2, repeat('b', 64)) returning id`, [id(), people.parent])).rows[0].id;
+    const sRaw = (status, by, at, marker) => attempt(() => db.query(`insert into public.squad_invite_participation_deletion_requests (participation_id, status, cancelled_by, cancelled_at, cancelled_by_account_deleted_at) values ($1, $2, $3, $4, $5)`, [part, status, by, at, marker]));
+    const sv = (e) => e?.includes('sipdr_cancellation_requires_actor');
+    const sChecks = [sv(await sRaw('cancelled', null, now, null)), sv(await sRaw('cancelled', people.parent, now, now)), sv(await sRaw('pending', null, null, now)), (await sRaw('cancelled', null, now, now)) === null];
+    await db.exec(`set session_replication_role = origin;`);
+    check('8: the squad-participation rule likewise rejects no-actor-no-marker, both, and a pending marker; accepts marker-only', sChecks.every(Boolean), JSON.stringify(sChecks));
+    const pdrRow = (await db.query(`select id from public.player_deletion_requests limit 1`)).rows[0].id;
+    check('8: no signed-in user can write either deletion-request table (so cannot set the marker)',
+      (await attempt(() => w.user(people.parent, `update public.player_deletion_requests set cancelled_by_account_deleted_at = now() where id = $1`, [pdrRow])))?.includes('permission denied') &&
+      (await attempt(() => w.user(people.parent, `insert into public.player_deletion_requests (player_id, status, cancelled_at, cancelled_by_account_deleted_at) values ($1, 'cancelled', now(), now())`, [p])))?.includes('permission denied') &&
+      (await attempt(() => w.user(people.parent, `update public.squad_invite_participation_deletion_requests set cancelled_by_account_deleted_at = now()`)))?.includes('permission denied'));
     check('8: an ordinary recognition and guardian submission still save', !!rec && !!(await w.submit('pending_verification', 'still works')));
   } catch (e) {
     check('8: constraint and marker', false, e.message);
@@ -409,13 +505,13 @@ let c96, c97, db9, w9, data96;
   check('9: 0097 applies on a 0096 database holding coach_verified, pending and family-memory rows', applied === null, applied);
   c97 = await snapshotCatalog(db9);
   check('9: no existing row changed; every row has the marker NULL', (await momentsRows()) === data96 && await n(db9, `select count(*)::int n from public.moments where verifier_account_deleted_at is not null`) === 0);
-  check('9: the constraint is validated', (await one(db9, `select convalidated from pg_constraint where conname = 'moments_verification_status_consistency'`)).convalidated === true);
+  check('9: all three rules are validated', await n(db9, `select count(*)::int n from pg_constraint where convalidated and conname in ('moments_verification_status_consistency', 'player_deletion_requests_cancellation_requires_actor', 'sipdr_cancellation_requires_actor')`) === 3);
   const d = diffCatalog(c96, c97);
   const expected = {
-    added: ['column:moments.verifier_account_deleted_at', 'policy:moments.moments: only account deletion marks a verifier as deleted'],
-    changed: ['constraint:moments.moments_verification_status_consistency', 'function:delete_own_guardian_account()'],
+    added: ['column:moments.verifier_account_deleted_at', 'column:player_deletion_requests.cancelled_by_account_deleted_at', 'column:squad_invite_participation_deletion_requests.cancelled_by_account_deleted_at', 'policy:moments.moments: only account deletion marks a verifier as deleted'].sort(),
+    changed: ['constraint:moments.moments_verification_status_consistency', 'constraint:player_deletion_requests.player_deletion_requests_cancellation_requires_actor', 'constraint:squad_invite_participation_deletion_requests.sipdr_cancellation_requires_actor', 'function:delete_own_guardian_account()'].sort(),
   };
-  check('9: the catalog change is exactly: one column, one restrictive policy, the constraint, the function',
+  check('9: the catalog change is exactly: three marker columns, one restrictive policy, three rules, the function',
     JSON.stringify(d.added.sort()) === JSON.stringify(expected.added) && JSON.stringify(d.changed.sort()) === JSON.stringify(expected.changed) && d.removed.length === 0, JSON.stringify(d));
   check('9: delete_own_guardian_account keeps SECURITY DEFINER, empty search_path, owner postgres, and EXECUTE for authenticated only',
     c97.get('function:delete_own_guardian_account()').split(' | ').slice(0, 5).join(' | ') === c96.get('function:delete_own_guardian_account()').split(' | ').slice(0, 5).join(' | '));

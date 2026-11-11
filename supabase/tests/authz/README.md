@@ -895,15 +895,21 @@ function (the 0076 body with one statement changed) sets the marker and
 clears `verified_by`, so the child's moment stays `coach_verified` with its
 original `verified_at`. A restrictive insert policy keeps the marker out of
 every insert a signed-in user can make; `authenticated` has no UPDATE on it.
-The catalog delta from 0096 is exactly that column, that policy, the
-constraint and the function; no row changes. A precondition refuses unless
-the 0020 rule and the 0076 function are in place, and refuses a second
-application.
+The same migration fixes the same failure for any account that ever
+cancelled a child-deletion or Squad Invite participation deletion request
+(`cancelled_by` was nulled into the cancellation rule): both tables get
+`cancelled_by_account_deleted_at`, a cancelled request needs `cancelled_at`
+and exactly one of `cancelled_by` or the marker, and the function sets it.
+Signed-in users hold no write privilege on either table (the precondition
+checks this). The catalog delta from 0096 is exactly the three marker
+columns, the policy, the three rules and the function; no row changes. A
+precondition refuses unless the 0020 rule, the original cancellation rules
+and the 0076 function are in place, and refuses a second application.
 
 **Rollback: emergency only.** `supabase/rollback/0097_rollback.sql` breaks
 coach account deletion again. It needs, in the same transaction,
 `select set_config('emblem.acknowledge_0097_rollback', 'BREAK-COACH-ACCOUNT-DELETION', true);`,
-and refuses, changing nothing, once any moment carries the marker (those
+and refuses, changing nothing, once any row carries any 0097 marker (those
 rows cannot satisfy the 0020 rule). It restores the exact 0096 catalog.
 
 ## Guardian-invite redemption: no self-escalation

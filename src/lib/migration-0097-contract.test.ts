@@ -32,7 +32,7 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(code).toContain('(0097 already applied)');
   });
 
-  it('changes delete_own_guardian_account only in the one moments.verified_by statement', () => {
+  it('changes delete_own_guardian_account only at the moments.verified_by statement (replaced, plus the two cancellation markers)', () => {
     const before = fnOf(m0076);
     const after = fnOf(sql);
     expect(before).toContain(OLD_STATEMENT);
@@ -42,7 +42,9 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(after.endsWith(tail)).toBe(true);
     const replaced = after.slice(head.length, after.length - tail.length);
     expect(replaced.replace(/^\s*--.*\n/gm, '')).toBe(
-      '  update public.moments\n     set verified_by = null, verifier_account_deleted_at = now()\n   where verified_by = v_uid;\n',
+      '  update public.moments\n     set verified_by = null, verifier_account_deleted_at = now()\n   where verified_by = v_uid;\n' +
+        '  update public.player_deletion_requests\n     set cancelled_by = null, cancelled_by_account_deleted_at = now()\n   where cancelled_by = v_uid and status = \'cancelled\';\n' +
+        '  update public.squad_invite_participation_deletion_requests\n     set cancelled_by = null, cancelled_by_account_deleted_at = now()\n   where cancelled_by = v_uid and status = \'cancelled\';\n',
     );
     expect(after).toContain('security definer');
     expect(after).toContain("set search_path = ''");
@@ -54,6 +56,22 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(code).toMatch(/verification_status = 'coach_verified' and verified_at is not null\s+and \(\(verified_by is not null and verifier_account_deleted_at is null\)\s+or \(verified_by is null and verifier_account_deleted_at is not null\)\)/);
     expect(code).toMatch(/and verified_at is null and verified_by is null and verifier_account_deleted_at is null/);
     expect(code).toMatch(/\) not valid;\s+alter table public\.moments validate constraint moments_verification_status_consistency;/);
+  });
+
+  it('keeps a cancelled deletion request cancelled: exactly one of cancelled_by or the marker, on both tables', () => {
+    for (const [table, rule] of [
+      ['player_deletion_requests', 'player_deletion_requests_cancellation_requires_actor'],
+      ['squad_invite_participation_deletion_requests', 'sipdr_cancellation_requires_actor'],
+    ]) {
+      expect(code).toContain(`alter table public.${table} add column cancelled_by_account_deleted_at timestamptz;`);
+      expect(code).toContain(`alter table public.${table} drop constraint ${rule};`);
+      expect(code).toContain(`alter table public.${table} validate constraint ${rule};`);
+      expect(rollbackCode).toContain(`alter table public.${table} drop column cancelled_by_account_deleted_at;`);
+      expect(rollbackCode).toContain(`alter table public.${table} add constraint ${rule}\n  check (status <> 'cancelled' or (cancelled_by is not null and cancelled_at is not null));`);
+    }
+    expect(code.match(/\(status = 'cancelled' and cancelled_at is not null\s+and \(\(cancelled_by is not null and cancelled_by_account_deleted_at is null\)\s+or \(cancelled_by is null and cancelled_by_account_deleted_at is not null\)\)\)/g)).toHaveLength(2);
+    // The precondition proves signed-in users cannot write either table.
+    expect(code).toContain("'authenticated can write a deletion request table'");
   });
 
   it('only account deletion can set the marker: a restrictive insert policy, and no new grant', () => {

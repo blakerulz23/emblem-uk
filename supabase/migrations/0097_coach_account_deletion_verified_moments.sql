@@ -39,11 +39,31 @@
 --      verified_by becomes NULL and verifier_account_deleted_at is set.
 --      Grants re-stated unchanged (authenticated only).
 --
+--
+-- Expanded scope (same defect class, same fix): a guardian, or a coach who
+-- is also a guardian, who ever cancelled a child-deletion request (or a
+-- Squad Invite participation deletion request) could not delete their
+-- account either. Deleting the profile sets cancelled_by to NULL (ON DELETE
+-- SET NULL), which player_deletion_requests_cancellation_requires_actor and
+-- sipdr_cancellation_requires_actor forbid on a cancelled request.
+--   5. Both tables get cancelled_by_account_deleted_at, and both
+--      cancellation rules (same names, NOT VALID then validated) become:
+--        cancelled: cancelled_at set, and EXACTLY ONE of cancelled_by or
+--          cancelled_by_account_deleted_at set;
+--        any other status: the marker NULL (cancelled_by unconstrained, as
+--          before).
+--      The precondition also proves authenticated holds no INSERT or UPDATE
+--      on either table, so no signed-in user can set the marker.
+--   6. delete_own_guardian_account marks this account's cancellations the
+--      same way it marks its verifications (the second "0097" block below):
+--      the record that a cancellation happened, and when, is kept.
+--
 -- No app code reads moments.verified_by (it is only written, by
 -- /api/os/celebrate and /api/os/moments/verify), so NULL is already safe in
--- every reader. This migration changes no existing row.
+-- every reader; cancelled_by is read by no app code either. This migration
+-- changes no existing row.
 -- Rollback: supabase/rollback/0097_rollback.sql (restores the defect, and
--- refuses once any account deletion has used the new state).
+-- refuses once any account deletion has used any of the new markers).
 
 begin;
 
@@ -62,6 +82,35 @@ begin
   if exists (select 1 from information_schema.columns
              where table_schema = 'public' and table_name = 'moments' and column_name = 'verifier_account_deleted_at') then
     raise exception '0097 refused: moments.verifier_account_deleted_at already exists (0097 already applied)';
+  end if;
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and column_name = 'cancelled_by_account_deleted_at'
+               and table_name in ('player_deletion_requests', 'squad_invite_participation_deletion_requests')) then
+    raise exception '0097 refused: cancelled_by_account_deleted_at already exists (0097 already applied)';
+  end if;
+  if to_regclass('public.player_deletion_requests') is null or to_regclass('public.squad_invite_participation_deletion_requests') is null then
+    raise exception '0097 refused: a deletion request table is missing';
+  end if;
+  select pg_get_constraintdef(oid) into v_def from pg_constraint
+  where conrelid = 'public.player_deletion_requests'::regclass and conname = 'player_deletion_requests_cancellation_requires_actor';
+  if v_def is distinct from 'CHECK (((status <> ''cancelled''::text) OR ((cancelled_by IS NOT NULL) AND (cancelled_at IS NOT NULL))))' then
+    v_problems := v_problems || ('player_deletion_requests_cancellation_requires_actor is not the 0041 rule: ' || coalesce(v_def, 'missing'));
+  end if;
+  select pg_get_constraintdef(oid) into v_def from pg_constraint
+  where conrelid = 'public.squad_invite_participation_deletion_requests'::regclass and conname = 'sipdr_cancellation_requires_actor';
+  if v_def is distinct from 'CHECK (((status <> ''cancelled''::text) OR ((cancelled_by IS NOT NULL) AND (cancelled_at IS NOT NULL))))' then
+    v_problems := v_problems || ('sipdr_cancellation_requires_actor is not the original rule: ' || coalesce(v_def, 'missing'));
+  end if;
+  -- The cancellation markers rely on signed-in users holding no write
+  -- privilege on these tables (writes go through security-definer
+  -- functions and the server's service role).
+  if has_table_privilege('authenticated', 'public.player_deletion_requests', 'insert')
+     or has_table_privilege('authenticated', 'public.player_deletion_requests', 'update')
+     or has_any_column_privilege('authenticated', 'public.player_deletion_requests', 'insert')
+     or has_any_column_privilege('authenticated', 'public.player_deletion_requests', 'update')
+     or has_any_column_privilege('authenticated', 'public.squad_invite_participation_deletion_requests', 'insert')
+     or has_any_column_privilege('authenticated', 'public.squad_invite_participation_deletion_requests', 'update') then
+    v_problems := v_problems || 'authenticated can write a deletion request table'::text;
   end if;
   select pg_get_constraintdef(oid) into v_def from pg_constraint
   where conrelid = 'public.moments'::regclass and conname = 'moments_verification_status_consistency';
@@ -129,8 +178,41 @@ create policy "moments: only account deletion marks a verifier as deleted"
   with check (verifier_account_deleted_at is null);
 
 -- ---------------------------------------------------------------------------
--- 4. delete_own_guardian_account: the 0076 body with one statement changed
---    (marked "0097" below)
+-- 5. Cancelled deletion requests whose canceller deleted their account
+-- ---------------------------------------------------------------------------
+alter table public.player_deletion_requests add column cancelled_by_account_deleted_at timestamptz;
+alter table public.squad_invite_participation_deletion_requests add column cancelled_by_account_deleted_at timestamptz;
+
+comment on column public.player_deletion_requests.cancelled_by_account_deleted_at is
+  'Set only by delete_own_guardian_account (0097) when the account that cancelled this request was deleted. The request stays cancelled with its original cancelled_at; cancelled_by is then NULL.';
+comment on column public.squad_invite_participation_deletion_requests.cancelled_by_account_deleted_at is
+  'Set only by delete_own_guardian_account (0097) when the account that cancelled this request was deleted. The request stays cancelled with its original cancelled_at; cancelled_by is then NULL.';
+
+alter table public.player_deletion_requests drop constraint player_deletion_requests_cancellation_requires_actor;
+alter table public.player_deletion_requests add constraint player_deletion_requests_cancellation_requires_actor
+  check (
+    (status <> 'cancelled' and cancelled_by_account_deleted_at is null)
+    or
+    (status = 'cancelled' and cancelled_at is not null
+      and ((cancelled_by is not null and cancelled_by_account_deleted_at is null)
+        or (cancelled_by is null and cancelled_by_account_deleted_at is not null)))
+  ) not valid;
+alter table public.player_deletion_requests validate constraint player_deletion_requests_cancellation_requires_actor;
+
+alter table public.squad_invite_participation_deletion_requests drop constraint sipdr_cancellation_requires_actor;
+alter table public.squad_invite_participation_deletion_requests add constraint sipdr_cancellation_requires_actor
+  check (
+    (status <> 'cancelled' and cancelled_by_account_deleted_at is null)
+    or
+    (status = 'cancelled' and cancelled_at is not null
+      and ((cancelled_by is not null and cancelled_by_account_deleted_at is null)
+        or (cancelled_by is null and cancelled_by_account_deleted_at is not null)))
+  ) not valid;
+alter table public.squad_invite_participation_deletion_requests validate constraint sipdr_cancellation_requires_actor;
+
+-- ---------------------------------------------------------------------------
+-- 4 and 6. delete_own_guardian_account: the 0076 body with one statement
+--    changed and one block added (both marked "0097" below)
 -- ---------------------------------------------------------------------------
 create or replace function public.delete_own_guardian_account()
 returns jsonb
@@ -213,6 +295,16 @@ begin
   update public.moments
      set verified_by = null, verifier_account_deleted_at = now()
    where verified_by = v_uid;
+  -- 0097: a cancellation this account made stays recorded as cancelled,
+  -- with its cancelled_at; only the canceller's identity is removed.
+  -- (Left to ON DELETE SET NULL, cancelled_by would break the
+  -- cancellation rule and roll the whole deletion back.)
+  update public.player_deletion_requests
+     set cancelled_by = null, cancelled_by_account_deleted_at = now()
+   where cancelled_by = v_uid and status = 'cancelled';
+  update public.squad_invite_participation_deletion_requests
+     set cancelled_by = null, cancelled_by_account_deleted_at = now()
+   where cancelled_by = v_uid and status = 'cancelled';
   update public.orders set approved_by = null where approved_by = v_uid;
   update public.team_invites set created_by = null where created_by = v_uid;
   update public.team_invites set used_by = null where used_by = v_uid;
