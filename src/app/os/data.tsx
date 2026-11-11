@@ -221,9 +221,10 @@ export const ADD_EVENTS: AddEvent[] = [
   { id: 'custom', label: 'Custom', emoji: '➕' },
 ];
 
+// Player of the Match was removed in Phase 0 (see src/lib/add-moment-titles.ts);
+// moments already saved with that title still display as saved.
 export const ADD_ACH: AddAchievement[] = [
   { id: 'goal', label: 'First Goal', emoji: '⚽', rank: 'e1' },
-  { id: 'potm', label: 'Player of the Match', emoji: '⭐', rank: 'e4' },
   { id: 'tournament', label: 'Tournament Winner', emoji: '🏆', rank: 'e6' },
   { id: 'photo', label: 'Team Photo', emoji: '📸', rank: 'e2' },
   { id: 'captain', label: 'Captain', emoji: '🧢', rank: 'e5' },

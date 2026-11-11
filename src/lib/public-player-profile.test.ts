@@ -63,3 +63,19 @@ describe('getPublicPlayerProfile — historical recognitions', () => {
     expect(result.profile.moments.map((m) => m.title)).toEqual(retired);
   });
 });
+
+describe('getPublicPlayerProfile — historical parent moments', () => {
+  it('still shows a family moment saved as "Player of the Match" exactly as saved (no relabel, no hiding)', async () => {
+    tableResults.moments = {
+      data: [
+        { id: 'fam-1', title: 'Player of the Match', occurred_on: '2025-03-01', note: 'Our note', trust: 'parent', verification_status: 'family_memory', moment_media: [] },
+        { id: 'fam-2', title: 'Player of the Match', occurred_on: null, note: null, trust: 'parent', verification_status: 'coach_verified', moment_media: [] },
+      ],
+      error: null,
+    };
+    const result = await getPublicPlayerProfile('PUB123');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.profile.moments.map((m) => m.title)).toEqual(['Player of the Match', 'Player of the Match']);
+  });
+});
