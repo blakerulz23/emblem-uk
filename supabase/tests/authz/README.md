@@ -24,6 +24,7 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `guardian_account_control_test.mjs` | Card suspend/unsuspend and child-deletion request/cancel on the final schema: every refusal the routes report leaves no state behind; each success and idempotent repeat makes exactly its intended change. |
 | `guardian_invite_redemption_test.mjs` | Who may redeem a guardian invite: runs the app's `src/lib/guardian-invite-eligibility.ts` against the final schema, read-only as `service_role`. |
 | `coach_recognition_test.mjs` | A coach's "Send Recognition" (`/api/os/celebrate`) on the final schema: the route's duplicate check, insert and follow-up reads succeed for an active coach and are refused, leaving nothing, for an ended or expired assignment or an unrelated account. |
+| `coach_account_deletion_test.mjs` | A coach-only account deletes itself (the two steps of `/api/os/account/delete`) on the final schema: active/ended `coach_team` rows, direct links and team requests are removed, history kept in `relationship_audit_events`. Also pins two current limits: identity deletion withheld when the coach wrote player records (access rows remain until staff act), and a KNOWN DEFECT: deletion fails for a coach with any `coach_verified` moment (`moments_verification_status_consistency`). |
 
 Related: `supabase/rollback/0088_rollback.sql`, `supabase/rollback/0089_rollback.sql`,
 `supabase/rollback/0090_rollback.sql`, `supabase/rollback/0091_rollback.sql`,

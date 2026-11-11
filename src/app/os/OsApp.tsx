@@ -981,7 +981,7 @@ export default function OsApp({
                   )}
                   {state.tab === 'celebrate' && <CoachCelebrate actions={actions} />}
                   {state.tab === 'verify' && <CoachVerify />}
-                  {state.tab === 'profile' && <CoachProfile teamRequest={teamRequest} onRequestTeam={actions.openTeamRequest} />}
+                  {state.tab === 'profile' && <CoachProfile teamRequest={teamRequest} onRequestTeam={actions.openTeamRequest} alsoGuardian={availableViews.includes('parent')} />}
                 </>
               ) : (
                 <>
