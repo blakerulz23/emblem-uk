@@ -1,7 +1,17 @@
 import { osAssetPath } from '../data';
 import { useOsData } from '../OsDataContext';
+import CoachTeamRequestCard from './CoachTeamRequestCard';
+import type { TeamRequestSummary } from '@/lib/os-view';
 
-export default function CoachProfile() {
+export default function CoachProfile({
+  teamRequest = null,
+  onRequestTeam,
+}: {
+  /** The coach's latest team request, if any (getOsAccount). */
+  teamRequest?: TeamRequestSummary | null;
+  /** Opens the team-request flow; only set when the coach has no active team (canRequestTeam). */
+  onRequestTeam?: () => void;
+} = {}) {
   const { mode, coachDisplayName, coachClub, coachTeamsManaged } = useOsData();
   const isReal = mode !== 'demo';
 
@@ -30,7 +40,7 @@ export default function CoachProfile() {
         {isReal && !coachClub ? (
           <div style={{ textAlign: 'center', padding: '10px 0' }}>
             <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>No club yet.</div>
-            <div style={{ fontSize: 12.5, color: '#6B6357', marginTop: 4 }}>Create your team to see it here.</div>
+            <div style={{ fontSize: 12.5, color: '#6B6357', marginTop: 4 }}>Your club appears here once your team is set up.</div>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -50,10 +60,13 @@ export default function CoachProfile() {
       <div style={{ background: 'var(--os-card)', borderRadius: 18, padding: '4px 18px', boxShadow: '0 8px 22px -16px rgba(0,0,0,.2)', marginBottom: 16 }}>
         <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 12, color: 'var(--os-muted)', padding: '16px 0 6px' }}>TEAMS MANAGED</div>
         {isReal && coachTeamsManaged.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
-            <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>No teams yet.</div>
-            <div style={{ fontSize: 12.5, color: '#6B6357', marginTop: 4 }}>Create a team to start managing your roster.</div>
-          </div>
+          onRequestTeam ? (
+            <CoachTeamRequestCard request={teamRequest} onOpen={onRequestTeam} />
+          ) : (
+            <div style={{ textAlign: 'center', padding: '10px 0 16px' }}>
+              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>No teams yet.</div>
+            </div>
+          )
         ) : isReal ? (
           coachTeamsManaged.map((t) => (
             <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderTop: '1px solid rgba(0,0,0,.05)' }}>

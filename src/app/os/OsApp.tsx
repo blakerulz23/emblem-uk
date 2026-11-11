@@ -38,6 +38,7 @@ import AddMomentFlow from './overlays/AddMomentFlow';
 import CelebrateSheet from './overlays/CelebrateSheet';
 import StoryUpdates from './overlays/StoryUpdates';
 import { sendRecognitionFlow, submitRecognition } from './recognition-submit';
+import { canRequestTeam } from './team-request-entry';
 
 import PlayerHome from './screens/PlayerHome';
 import DemoCollection from './screens/DemoCollection';
@@ -344,7 +345,14 @@ export default function OsApp({
   };
 
   const actions: OsActions = {
-    openTeamRequest: hasSession && !demo && view === 'parent' && !availableViews.includes('coach') ? () => setShowTeamRequest(true) : undefined,
+    openTeamRequest: canRequestTeam({
+      hasSession,
+      demo,
+      dataMode: (initialData ?? fallbackData).mode,
+      view,
+      availableViews,
+      coachTeamCount: (initialData ?? fallbackData).coachTeamsManaged.length,
+    }) ? () => setShowTeamRequest(true) : undefined,
     activate: () => patch({ activated: true }),
     toggleDark: () => patch((s) => ({ dark: !s.dark })),
     setTab: (t) => patch({ tab: t, moment: null, coachPlayerId: null, highlightMomentId: null }),
@@ -760,7 +768,9 @@ export default function OsApp({
             </div>
           )}
 
-          {/* A signed-in parent asking to coach a team too (Profile → Account management). */}
+          {/* The team-request flow opened from inside the app: a parent asking
+              to coach a team too (Profile → Account management), or a coach
+              with no active team (Coach Home / Coach Profile). */}
           {showTeamRequest && (
             <div style={{ position: 'fixed', inset: 0, zIndex: 90 }}>
               <TeamRequestOnboarding request={teamRequest} onClose={() => setShowTeamRequest(false)} />
@@ -963,7 +973,7 @@ export default function OsApp({
             >
               {isCoach ? (
                 <>
-                  {state.tab === 'home' && <CoachHome actions={actions} storyUpdates={storyUpdates} />}
+                  {state.tab === 'home' && <CoachHome actions={actions} storyUpdates={storyUpdates} teamRequest={teamRequest} />}
                   {state.tab === 'team' && (
                     showCoachPlayerDetail
                       ? <CoachPlayerDetail playerId={state.coachPlayerId as string} actions={actions} />
@@ -971,7 +981,7 @@ export default function OsApp({
                   )}
                   {state.tab === 'celebrate' && <CoachCelebrate actions={actions} />}
                   {state.tab === 'verify' && <CoachVerify />}
-                  {state.tab === 'profile' && <CoachProfile />}
+                  {state.tab === 'profile' && <CoachProfile teamRequest={teamRequest} onRequestTeam={actions.openTeamRequest} />}
                 </>
               ) : (
                 <>
