@@ -87,7 +87,9 @@ export async function GET() {
             // A gift order's card is listed only for the guardian who
             // approved it; the buyer is told who sets the profile up instead.
             if (c.player_id) {
-              const gift = await checkGiftFirstGuardianClaim(serviceRole, c.player_id, user);
+              // Applies even once a guardian has linked (a failed card lock
+              // must not reopen recovery to the buyer).
+              const gift = await checkGiftFirstGuardianClaim(serviceRole, c.player_id, user, { evenIfGuardianExists: true });
               if (gift.outcome === 'refused' || gift.outcome === 'failed') {
                 heldForGuardian.add(order.order_ref);
                 return null;
@@ -177,7 +179,10 @@ export async function POST(request: NextRequest) {
   // approved it. The buyer can neither claim it nor pick someone else to
   // send it to.
   const giftRefusal = async (): Promise<NextResponse | null> => {
-    const giftCheck = await checkGiftFirstGuardianClaim(serviceRole, card.player_id as string, user);
+    // evenIfGuardianExists: if the card lock after a guardian's invite
+    // redemption failed, the card is still unclaimed, so recovery must keep
+    // refusing the buyer rather than add them as a second guardian.
+    const giftCheck = await checkGiftFirstGuardianClaim(serviceRole, card.player_id as string, user, { evenIfGuardianExists: true });
     if (giftCheck.outcome === 'failed') {
       return NextResponse.json({ error: 'Could not recover this card. Please try again.' }, { status: 500 });
     }

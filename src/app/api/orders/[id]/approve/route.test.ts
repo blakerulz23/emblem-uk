@@ -59,6 +59,8 @@ type Fixture = {
   // builder_guardian_approval_requests row (undefined: no such row)
   approvedGuardianEmail?: string;
   approvalLookupFails?: boolean;
+  // R3a: the linked-cards read fails
+  cardsReadFails?: boolean;
 };
 
 let fixture: Fixture;
@@ -76,7 +78,7 @@ vi.mock('@/lib/supabase/server', () => ({
         return {
           select: () => ({
             eq: () => ({
-              not: async () => ({ data: fixture.cards ?? [] }),
+              not: async () => (fixture.cardsReadFails ? { data: null, error: { message: 'boom', code: 'XX000' } } : { data: fixture.cards ?? [], error: null }),
               maybeSingle: async () => ({ data: fixture.squadInviteCard ?? null }),
             }),
           }),
@@ -413,6 +415,76 @@ describe('POST /api/orders/[id]/approve — ordinary-builder safeguarding gate (
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/Pick or create a club and team/);
     expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
+  it('R3a: a failed linked-cards read refuses with 500 and writes nothing (gift order fails closed, no production)', async () => {
+    fixture = {
+      ...baseFixture(),
+      orderAuthorityStatus: 'guardian_approved',
+      cardsReadFails: true,
+      approvedGuardianEmail: 'grandparent@example.test',
+      orderRow: { id: ORDER_ID, purchaser_email: 'grandparent@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(500);
+    expect(orderUpdates).toHaveLength(0);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+    expect(mockCreateTeamInvite).not.toHaveBeenCalled();
+    expect(builderAuthorityAuditInserts).toHaveLength(0);
+  });
+
+  it('R3a: a failed linked-cards read also refuses a non-gift order (no approval on a partial read)', async () => {
+    fixture = { ...baseFixture(), orderAuthorityStatus: 'confirmed', cardsReadFails: true };
+    const res = await approve();
+    expect(res.status).toBe(500);
+    expect(orderUpdates).toHaveLength(0);
+  });
+
+  it('R3b: two card rows for the SAME child count as one child, so a buyer-address gift approval is still refused (no squad path)', async () => {
+    fixture = {
+      ...baseFixture(),
+      orderAuthorityStatus: 'guardian_approved',
+      cards: [{ player_id: 'player-1' }, { player_id: 'player-1' }],
+      approvedGuardianEmail: 'grandparent@example.test',
+      orderRow: { id: ORDER_ID, purchaser_email: 'grandparent@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe(GIFT_APPROVAL_MISSING_MESSAGE);
+    expect(orderUpdates).toHaveLength(0);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+    expect(mockCreateTeamInvite).not.toHaveBeenCalled();
+  });
+
+  it('R3b: two card rows for the same child with a GENUINE approval approve as a single-child order (invite to the approving guardian only)', async () => {
+    fixture = {
+      ...baseFixture(),
+      orderAuthorityStatus: 'guardian_approved',
+      cards: [{ player_id: 'player-1' }, { player_id: 'player-1' }],
+      approvedGuardianEmail: 'guardian@example.test',
+      orderRow: { id: ORDER_ID, purchaser_email: 'grandparent@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect(mockCreateGuardianInvite).toHaveBeenCalledWith(expect.anything(), 'player-1', null, 'guardian@example.test', 'order_approval', ORDER_ID);
+    expect(mockCreateTeamInvite).not.toHaveBeenCalled();
+  });
+
+  it('gift order with no linked child: refused with 409 and one blocked audit row, nothing else written', async () => {
+    fixture = {
+      ...baseFixture(),
+      orderAuthorityStatus: 'guardian_approved',
+      cards: [],
+      approvedGuardianEmail: 'guardian@example.test',
+      orderRow: { id: ORDER_ID, purchaser_email: 'grandparent@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect(orderUpdates).toHaveLength(0);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+    expect(builderAuthorityAuditInserts).toEqual([
+      { order_id: ORDER_ID, event_type: 'staff_approval_blocked', metadata: { authorityStatus: 'guardian_approved', reason: 'no_linked_child' } },
+    ]);
   });
 
   it('non-gift (confirmed) order never runs the gift approval lookup', async () => {

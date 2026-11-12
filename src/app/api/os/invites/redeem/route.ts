@@ -207,11 +207,16 @@ export async function POST(request: NextRequest) {
   // (e.g. a purchaser's "send to the right parent" handoff before anyone
   // used the original claim_token), lock it now too — the original code
   // shouldn't still work once a guardian is linked via any route.
-  await serviceRole
-    .from('cards')
-    .update({ status: 'claimed' })
-    .eq('player_id', invite.player_id)
-    .neq('status', 'claimed');
+  // Checked and retried once. If it still fails the guardian link stands
+  // (the invite is already used), so the failure is logged for staff; the
+  // card claim and purchaser recovery routes independently refuse a gift
+  // order's card to anyone but the approving guardian or an existing
+  // guardian, so an unlocked card can't add the buyer.
+  const lockCards = () =>
+    serviceRole.from('cards').update({ status: 'claimed' }).eq('player_id', invite.player_id).neq('status', 'claimed');
+  let { error: lockError } = await lockCards();
+  if (lockError) ({ error: lockError } = await lockCards());
+  if (lockError) logRouteFailure('guardian invite redeem: card lock', lockError);
 
   // This is the other of the two genuine "first guardian ever" paths
   // (alongside POST /api/os/claim's card-token path) — a player claimed

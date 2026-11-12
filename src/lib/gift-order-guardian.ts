@@ -167,7 +167,19 @@ export type GiftFirstGuardianCheck =
   | { outcome: 'refused' }
   | { outcome: 'failed' };
 
-type Redeemer = { email?: string | null; email_confirmed_at?: string | null };
+type Redeemer = { id?: string | null; email?: string | null; email_confirmed_at?: string | null };
+
+export type GiftClaimOptions = {
+  /**
+   * Card claim codes only. The physical card of a gift order is delivered to
+   * the buyer, so its code stays gift-checked even after the approving
+   * guardian has linked: if locking the card failed, the buyer must still
+   * not become a second guardian with it. Someone who is already one of the
+   * child's guardians is let through unchanged (the claim is a no-op for
+   * them).
+   */
+  evenIfGuardianExists?: boolean;
+};
 
 /**
  * Whether `redeemer` may become `playerId`'s FIRST guardian, when the child's
@@ -193,7 +205,8 @@ type Redeemer = { email?: string | null; email_confirmed_at?: string | null };
 export async function checkGiftFirstGuardianClaim(
   service: SupabaseClient,
   playerId: string,
-  redeemer: Redeemer
+  redeemer: Redeemer,
+  options: GiftClaimOptions = {}
 ): Promise<GiftFirstGuardianCheck> {
   const { data: playerCards, error: cardsError } = await service.from('cards').select('order_id').eq('player_id', playerId);
   if (cardsError) return { outcome: 'failed' };
@@ -221,9 +234,13 @@ export async function checkGiftFirstGuardianClaim(
   }
   if (singleChildGiftOrders.length === 0) return { outcome: 'not_gift' };
 
-  const { data: guardians, error: guardiansError } = await service.from('guardians').select('profile_id').eq('player_id', playerId).limit(1);
+  const { data: guardians, error: guardiansError } = await service.from('guardians').select('profile_id').eq('player_id', playerId);
   if (guardiansError) return { outcome: 'failed' };
-  if ((guardians ?? []).length > 0) return { outcome: 'not_gift' };
+  const guardianIds = ((guardians ?? []) as Array<{ profile_id: string }>).map((g) => g.profile_id);
+  if (guardianIds.length > 0) {
+    if (!options.evenIfGuardianExists) return { outcome: 'not_gift' };
+    if (redeemer.id && guardianIds.includes(redeemer.id)) return { outcome: 'not_gift' };
+  }
 
   const own = normaliseEmail(redeemer.email);
   if (!own || !redeemer.email_confirmed_at) return { outcome: 'refused' };

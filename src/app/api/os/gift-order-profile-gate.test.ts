@@ -17,6 +17,8 @@ vi.mock('@/lib/gift-order-guardian', async (importOriginal) => {
 });
 
 const writes: Array<{ table: string; op: string; row?: unknown }> = [];
+// R4: make the post-redeem card lock write fail
+let cardLockFails = false;
 const USER = { id: 'user-1', email: 'grandparent@example.test', email_confirmed_at: '2026-11-08T00:00:00Z' };
 const CARD = { id: 'card-1', status: 'assigned', player_id: 'player-1', access_status: null, order_id: 'order-1', orders: { purchaser_email: USER.email, payment_status: 'fulfilled' } };
 const INVITE = { id: 'invite-1', used_at: null, expires_at: '2999-01-01T00:00:00Z', player_id: 'player-1' };
@@ -37,7 +39,7 @@ function table(name: string) {
     maybeSingle: async () => ({ data: single, error: null }),
     insert: async (row: unknown) => { writes.push({ table: name, op: 'insert', row }); return { error: null }; },
     upsert: async (row: unknown) => { writes.push({ table: name, op: 'upsert', row }); return { error: null }; },
-    update: (row: unknown) => { writes.push({ table: name, op: 'update', row }); const r = { error: null, eq: () => r, neq: async () => ({ error: null }), in: async () => ({ error: null }), then: (f: (v: unknown) => unknown) => Promise.resolve({ error: null }).then(f) }; return r; },
+    update: (row: unknown) => { writes.push({ table: name, op: 'update', row }); const r = { error: null, eq: () => r, neq: async () => (name === 'cards' && cardLockFails ? { error: { message: 'boom', code: 'XX000' } } : { error: null }), in: async () => ({ error: null }), then: (f: (v: unknown) => unknown) => Promise.resolve({ error: null }).then(f) }; return r; },
   };
   return chain;
 }
@@ -82,6 +84,7 @@ const guardianLinks = () => writes.filter((w) => w.table === 'guardians');
 
 beforeEach(() => {
   writes.length = 0;
+  cardLockFails = false;
   mockGiftCheck.mockReset();
   mockFirstGuardian.mockReset().mockResolvedValue({ outcome: 'eligible' });
   mockInviteRedemption.mockReset().mockResolvedValue({ outcome: 'eligible', authority: 'order' });
@@ -116,7 +119,50 @@ describe.each(routes)('%s — gift order gate', (_label, call) => {
   it('is asked about the right child and the signed-in account', async () => {
     mockGiftCheck.mockResolvedValue({ outcome: 'refused' });
     await call();
-    expect(mockGiftCheck).toHaveBeenCalledWith(expect.anything(), 'player-1', USER);
+    expect(mockGiftCheck.mock.calls[0].slice(0, 3)).toEqual([expect.anything(), 'player-1', USER]);
+  });
+});
+
+describe('R4: the gift check on card claim codes survives a failed card lock', () => {
+  it('the card claim route asks the gift check to apply even when the child already has a guardian', async () => {
+    mockGiftCheck.mockResolvedValue({ outcome: 'refused' });
+    await claimPOST(json('http://localhost/api/os/claim', { claimToken: 'ABCD-EFGH' }));
+    expect(mockGiftCheck).toHaveBeenCalledWith(expect.anything(), 'player-1', USER, { evenIfGuardianExists: true });
+  });
+
+  it.each([
+    ['recover self', () => recoverPOST(json('http://localhost/api/os/recover', { cardId: 'card-1', decision: 'self' }))],
+    ['recover handoff', () => recoverPOST(json('http://localhost/api/os/recover', { cardId: 'card-1', decision: 'handoff', handoffEmail: 'other@example.test' }))],
+  ])('%s also applies the gift check after a guardian links (a failed lock must not reopen recovery to the buyer)', async (_l, call) => {
+    mockGiftCheck.mockResolvedValue({ outcome: 'refused' });
+    const res = await call();
+    expect(res.status).toBe(403);
+    expect(mockGiftCheck).toHaveBeenCalledWith(expect.anything(), 'player-1', USER, { evenIfGuardianExists: true });
+    expect(guardianLinks()).toHaveLength(0);
+  });
+
+  it('guardian invite redemption keeps the first-guardian-only gift check (its own order check covers later invites)', async () => {
+    mockGiftCheck.mockResolvedValue({ outcome: 'refused' });
+    await redeemPOST(json('http://localhost/api/os/invites/redeem', { inviteCode: 'ABCD-EFGH' }));
+    expect(mockGiftCheck.mock.calls[0]).toHaveLength(3);
+  });
+
+  it('invite redemption: a failed card lock is retried once and logged, not silently ignored', async () => {
+    cardLockFails = true;
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockGiftCheck.mockResolvedValue({ outcome: 'allowed' });
+    const res = await redeemPOST(json('http://localhost/api/os/invites/redeem', { inviteCode: 'ABCD-EFGH' }));
+    expect(res.status).toBe(200);
+    expect(guardianLinks()).toHaveLength(1);
+    expect(writes.filter((w) => w.table === 'cards' && w.op === 'update')).toHaveLength(2);
+    expect(errors.mock.calls.some((c) => String(c[0]).includes('card lock'))).toBe(true);
+    errors.mockRestore();
+  });
+
+  it('invite redemption: a successful card lock is written once', async () => {
+    mockGiftCheck.mockResolvedValue({ outcome: 'allowed' });
+    await redeemPOST(json('http://localhost/api/os/invites/redeem', { inviteCode: 'ABCD-EFGH' }));
+    expect(writes.filter((w) => w.table === 'cards' && w.op === 'update')).toHaveLength(1);
   });
 });
 
