@@ -209,8 +209,9 @@ export async function POST(request: NextRequest) {
   // shouldn't still work once a guardian is linked via any route.
   // Checked and retried once. If it still fails the guardian link stands
   // (the invite is already used), so the failure is logged for staff; the
-  // card claim route independently refuses a gift order's card to anyone
-  // but the approving guardian, so an unlocked code can't add the buyer.
+  // card claim and purchaser recovery routes independently refuse a gift
+  // order's card to anyone but the approving guardian or an existing
+  // guardian, so an unlocked card can't add the buyer.
   const lockCards = () =>
     serviceRole.from('cards').update({ status: 'claimed' }).eq('player_id', invite.player_id).neq('status', 'claimed');
   let { error: lockError } = await lockCards();

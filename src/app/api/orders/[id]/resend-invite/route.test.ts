@@ -8,6 +8,7 @@ vi.mock('@/lib/create-guardian-invite', () => ({ createGuardianInvite: (...a: un
 let order: Record<string, unknown>;
 let approvedGuardianEmail: string | null;
 let invites: Array<{ id: string; invited_email: string }>;
+let cardRows: Array<{ player_id: string }>;
 const expired: unknown[] = [];
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -18,7 +19,7 @@ vi.mock('@/lib/supabase/server', () => ({
         return { select: () => ({ eq: () => ({ single: async () => ({ data: order, error: null }) }) }) };
       }
       if (table === 'cards') {
-        return { select: () => ({ eq: () => ({ not: async () => ({ data: [{ player_id: 'player-1' }] }) }) }) };
+        return { select: () => ({ eq: () => ({ not: async () => ({ data: cardRows }) }) }) };
       }
       if (table === 'builder_guardian_approval_requests') {
         const chain = { select: () => chain, eq: () => chain, order: () => chain, limit: async () => ({ data: approvedGuardianEmail ? [{ guardian_email: approvedGuardianEmail }] : [], error: null }) };
@@ -52,10 +53,25 @@ beforeEach(() => {
   order = { id: 'order-1', payment_status: 'fulfilled', purchaser_email: 'grandparent@example.test', intended_guardian_email: null, authority_status: 'guardian_approved' };
   approvedGuardianEmail = 'guardian@example.test';
   invites = [];
+  cardRows = [{ player_id: 'player-1' }];
   expired.length = 0;
 });
 
 describe('POST /api/orders/[id]/resend-invite', () => {
+  it('counts children, not card rows (same rule as approve): two rows for one child still resend to the approving guardian', async () => {
+    cardRows = [{ player_id: 'player-1' }, { player_id: 'player-1' }];
+    const res = await resend();
+    expect(res.status).toBe(200);
+    expect(mockCreateGuardianInvite).toHaveBeenCalledWith(expect.anything(), 'player-1', null, 'guardian@example.test', 'order_approval', 'order-1');
+  });
+
+  it('two different children is still a multi-card order: 400, nothing sent', async () => {
+    cardRows = [{ player_id: 'player-1' }, { player_id: 'player-2' }];
+    const res = await resend();
+    expect(res.status).toBe(400);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
   it('gift order: resends to the approving guardian, never the buyer', async () => {
     const res = await resend();
     expect(res.status).toBe(200);

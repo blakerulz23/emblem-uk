@@ -132,10 +132,18 @@ describe('R4: the gift check on card claim codes survives a failed card lock', (
 
   it.each([
     ['recover self', () => recoverPOST(json('http://localhost/api/os/recover', { cardId: 'card-1', decision: 'self' }))],
-    ['guardian invite redeem', () => redeemPOST(json('http://localhost/api/os/invites/redeem', { inviteCode: 'ABCD-EFGH' }))],
-  ])('%s keeps the first-guardian-only gift check (no option passed)', async (_l, call) => {
+    ['recover handoff', () => recoverPOST(json('http://localhost/api/os/recover', { cardId: 'card-1', decision: 'handoff', handoffEmail: 'other@example.test' }))],
+  ])('%s also applies the gift check after a guardian links (a failed lock must not reopen recovery to the buyer)', async (_l, call) => {
     mockGiftCheck.mockResolvedValue({ outcome: 'refused' });
-    await call();
+    const res = await call();
+    expect(res.status).toBe(403);
+    expect(mockGiftCheck).toHaveBeenCalledWith(expect.anything(), 'player-1', USER, { evenIfGuardianExists: true });
+    expect(guardianLinks()).toHaveLength(0);
+  });
+
+  it('guardian invite redemption keeps the first-guardian-only gift check (its own order check covers later invites)', async () => {
+    mockGiftCheck.mockResolvedValue({ outcome: 'refused' });
+    await redeemPOST(json('http://localhost/api/os/invites/redeem', { inviteCode: 'ABCD-EFGH' }));
     expect(mockGiftCheck.mock.calls[0]).toHaveLength(3);
   });
 

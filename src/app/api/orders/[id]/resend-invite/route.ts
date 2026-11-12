@@ -46,7 +46,10 @@ export async function POST(_request: Request, { params }: { params: { id: string
     .eq('order_id', order.id)
     .not('player_id', 'is', null);
 
-  const linkedCards = cards ?? [];
+  // One entry per child, the same rule as the approve route.
+  const linkedCards = Array.from(
+    new Map(((cards ?? []) as Array<{ player_id: string }>).map((c) => [c.player_id, c])).values()
+  );
   if (linkedCards.length !== 1) {
     return NextResponse.json({ error: 'Resend is only available for single-card orders' }, { status: 400 });
   }
