@@ -9,6 +9,7 @@ import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
 import { ensureProfileRole } from '@/lib/relationship-writes';
 import { logRouteFailure, type DbError } from '@/lib/route-failure';
 import { checkGuardianInviteRedemption, GUARDIAN_INVITE_REDEEM_REFUSED_MESSAGE, redeemerMatchesInvitedEmail } from '@/lib/guardian-invite-eligibility';
+import { checkGiftFirstGuardianClaim, checkGiftOrderInviteRedemption, GIFT_PROFILE_REFUSED_MESSAGE } from '@/lib/gift-order-guardian';
 
 export const runtime = 'nodejs';
 
@@ -142,6 +143,31 @@ export async function POST(request: NextRequest) {
   }
   if (eligibility.outcome === 'refused') {
     return NextResponse.json({ error: GUARDIAN_INVITE_REDEEM_REFUSED_MESSAGE }, { status: 403 });
+  }
+
+  // Before any write: a child whose card came from a gift order (made by a
+  // coach, organiser or other adult) gets its first guardian only through
+  // the guardian who approved it, so an invite that reached the buyer, or
+  // was forwarded, can't make them the child's guardian.
+  const giftCheck = await checkGiftFirstGuardianClaim(serviceRole, invite.player_id, user);
+  if (giftCheck.outcome === 'failed') {
+    return NextResponse.json({ error: 'Could not accept this invite. Please try again.' }, { status: 500 });
+  }
+  if (giftCheck.outcome === 'refused') {
+    return NextResponse.json({ error: GIFT_PROFILE_REFUSED_MESSAGE }, { status: 403 });
+  }
+
+  // Before any write, and whether or not the child already has a guardian:
+  // an invite tied to a single-card gift order is redeemable only by the
+  // guardian who approved that order. An older invite held by the buyer (an
+  // order_approval invite, or a recovery handoff they addressed) must not
+  // add them as a second guardian once the real guardian has linked.
+  const giftOrderCheck = await checkGiftOrderInviteRedemption(serviceRole, invite.order_id ?? null, user);
+  if (giftOrderCheck.outcome === 'failed') {
+    return NextResponse.json({ error: 'Could not accept this invite. Please try again.' }, { status: 500 });
+  }
+  if (giftOrderCheck.outcome === 'refused') {
+    return NextResponse.json({ error: GIFT_PROFILE_REFUSED_MESSAGE }, { status: 403 });
   }
 
   // guardians.profile_id is a foreign key into profiles — must exist

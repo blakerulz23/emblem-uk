@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { createGuardianInvite } from '@/lib/create-guardian-invite';
+import { resolveProfileInviteRecipient, retireOtherOrderApprovalInvites } from '@/lib/gift-order-guardian';
 
 export const runtime = 'nodejs';
 
@@ -27,7 +28,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
 
   const { data: order, error } = await serviceRole
     .from('orders')
-    .select('id, payment_status, purchaser_email, intended_guardian_email')
+    .select('id, payment_status, purchaser_email, intended_guardian_email, authority_status')
     .eq('id', params.id)
     .single();
 
@@ -51,12 +52,35 @@ export async function POST(_request: Request, { params }: { params: { id: string
   }
 
   const playerId = linkedCards[0].player_id;
-  const recipient = order.intended_guardian_email?.trim() || order.purchaser_email?.trim();
-  if (!playerId || !recipient) {
+  // Same recipient rule as the approve route: a gift order's profile invite
+  // goes only to the guardian who approved it, never to the buyer, and a
+  // pending or declined gift order never gets one.
+  const recipient = await resolveProfileInviteRecipient(serviceRole, {
+    id: order.id,
+    authority_status: order.authority_status ?? null,
+    purchaser_email: order.purchaser_email ?? null,
+    intended_guardian_email: order.intended_guardian_email ?? null,
+  });
+  if (!recipient.ok && (recipient.reason === 'guardian_not_approved' || recipient.reason === 'approved_guardian_missing')) {
+    return NextResponse.json({ error: 'This order has no approving guardian on record, so no profile invite can be sent' }, { status: 409 });
+  }
+  if (!recipient.ok && recipient.reason === 'lookup_failed') {
+    return NextResponse.json({ error: 'Could not resend the invite. Please try again.' }, { status: 500 });
+  }
+  if (!playerId || !recipient.ok) {
     return NextResponse.json({ error: 'No player or recipient email on this order' }, { status: 400 });
   }
 
-  await createGuardianInvite(serviceRole, playerId, null, recipient, 'order_approval', order.id);
+  // A gift order approved before this fix may still have a live invite that
+  // went to the buyer. Retire it before sending the guardian's own one.
+  if (recipient.source === 'approved_guardian') {
+    const retired = await retireOtherOrderApprovalInvites(serviceRole, order.id, recipient.email);
+    if (!retired.ok) {
+      return NextResponse.json({ error: 'Could not resend the invite. Please try again.' }, { status: 500 });
+    }
+  }
+
+  await createGuardianInvite(serviceRole, playerId, null, recipient.email, 'order_approval', order.id);
 
   return NextResponse.json({ ok: true, resent: 1 });
 }

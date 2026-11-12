@@ -5,6 +5,7 @@ import { createGuardianInvite } from '@/lib/create-guardian-invite';
 import { ensureProfileRole } from '@/lib/relationship-writes';
 import { logRouteFailure, type DbError } from '@/lib/route-failure';
 import { checkFirstGuardianClaim } from '@/lib/guardian-invite-eligibility';
+import { checkGiftFirstGuardianClaim, GIFT_PROFILE_REFUSED_MESSAGE } from '@/lib/gift-order-guardian';
 
 export const runtime = 'nodejs';
 
@@ -68,6 +69,7 @@ export async function GET() {
   // Exclude a card if it's already claimed, or already has a pending
   // handoff invite outstanding (prevents the purchaser from also
   // self-claiming after choosing "send to the right parent").
+  const heldForGuardian = new Set<string>();
   const eligible = await Promise.all(
     orders.map(async (order) => {
       const orderCards = cardsByOrder.get(order.id) ?? [];
@@ -81,7 +83,17 @@ export async function GET() {
               .eq('player_id', c.player_id ?? '')
               .is('used_at', null)
               .gt('expires_at', new Date().toISOString());
-            return (count ?? 0) > 0 ? null : c;
+            if ((count ?? 0) > 0) return null;
+            // A gift order's card is listed only for the guardian who
+            // approved it; the buyer is told who sets the profile up instead.
+            if (c.player_id) {
+              const gift = await checkGiftFirstGuardianClaim(serviceRole, c.player_id, user);
+              if (gift.outcome === 'refused' || gift.outcome === 'failed') {
+                heldForGuardian.add(order.order_ref);
+                return null;
+              }
+            }
+            return c;
           })
       );
       return {
@@ -98,7 +110,11 @@ export async function GET() {
     })
   );
 
-  return NextResponse.json({ orders: eligible.filter((o) => o.cards.length > 0) });
+  return NextResponse.json({
+    orders: eligible.filter((o) => o.cards.length > 0),
+    // Order refs only (the buyer's own), never the child or guardian.
+    heldForGuardian: Array.from(heldForGuardian),
+  });
 }
 
 /**
@@ -156,6 +172,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'This card is not available to recover' }, { status: 400 });
   }
 
+  // Before any write, for both decisions (run after the authorization checks
+  // in each branch): a gift order's profile belongs to the guardian who
+  // approved it. The buyer can neither claim it nor pick someone else to
+  // send it to.
+  const giftRefusal = async (): Promise<NextResponse | null> => {
+    const giftCheck = await checkGiftFirstGuardianClaim(serviceRole, card.player_id as string, user);
+    if (giftCheck.outcome === 'failed') {
+      return NextResponse.json({ error: 'Could not recover this card. Please try again.' }, { status: 500 });
+    }
+    if (giftCheck.outcome === 'refused') {
+      return NextResponse.json({ error: GIFT_PROFILE_REFUSED_MESSAGE }, { status: 403 });
+    }
+    return null;
+  };
+
   // Both outcomes converge on the exact same shared operations the
   // primary card-code path uses — a verified purchaser email is just a
   // different way of identifying the same claimable card, not a separate
@@ -186,6 +217,8 @@ export async function POST(request: NextRequest) {
     if (eligibility.outcome === 'refused') {
       return NextResponse.json({ error: 'This card is not available to recover' }, { status: 400 });
     }
+    const selfGiftRefusal = await giftRefusal();
+    if (selfGiftRefusal) return selfGiftRefusal;
 
     const result = await claimPlayerForCard(serviceRole, card, user.id);
     if (!result.ok) {
@@ -199,6 +232,8 @@ export async function POST(request: NextRequest) {
   if (!handoffEmail?.trim()) {
     return NextResponse.json({ error: 'handoffEmail is required to send to the right parent' }, { status: 400 });
   }
+  const handoffGiftRefusal = await giftRefusal();
+  if (handoffGiftRefusal) return handoffGiftRefusal;
 
   // The card's own order is the handoff's provenance: redemption treats it as
   // trusted order authority only for a fulfilled single-card order whose card
