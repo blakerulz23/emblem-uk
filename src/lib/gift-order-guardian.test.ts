@@ -178,6 +178,34 @@ describe('checkGiftFirstGuardianClaim', () => {
     expect(await checkGiftFirstGuardianClaim(client, 'player-1', buyer)).toEqual({ outcome: 'not_gift' });
   });
 
+  describe('R4: card claim codes stay gift-checked after a guardian links (evenIfGuardianExists)', () => {
+    const opts = { evenIfGuardianExists: true };
+    it('the buyer is refused even though the child already has a guardian (the card lock may have failed)', async () => {
+      const { client } = fakeService(giftWorld('guardian_approved', { guardianRow: true }));
+      expect(await checkGiftFirstGuardianClaim(client, 'player-1', { id: 'buyer-id', ...buyer }, opts)).toEqual({ outcome: 'refused' });
+    });
+    it('an unrelated adult is refused too', async () => {
+      const { client } = fakeService(giftWorld('guardian_approved', { guardianRow: true }));
+      expect(await checkGiftFirstGuardianClaim(client, 'player-1', { id: 'x', email: 'x@example.test', email_confirmed_at: CONFIRMED }, opts)).toEqual({ outcome: 'refused' });
+    });
+    it('someone who is already one of the child’s guardians passes through unchanged', async () => {
+      const { client } = fakeService(giftWorld('guardian_approved', { guardianRow: true }));
+      expect(await checkGiftFirstGuardianClaim(client, 'player-1', { id: 'someone', email: 'second@example.test', email_confirmed_at: CONFIRMED }, opts)).toEqual({ outcome: 'not_gift' });
+    });
+    it('the approving guardian is still allowed', async () => {
+      const { client } = fakeService(giftWorld('guardian_approved', { guardianRow: true }));
+      expect(await checkGiftFirstGuardianClaim(client, 'player-1', { id: 'g-id', ...guardian }, opts)).toEqual({ outcome: 'allowed' });
+    });
+    it('non-gift and multi-child orders are unchanged', async () => {
+      expect(await checkGiftFirstGuardianClaim(fakeService(giftWorld('confirmed', { guardianRow: true })).client, 'player-1', { id: 'b', ...buyer }, opts)).toEqual({ outcome: 'not_gift' });
+      expect(await checkGiftFirstGuardianClaim(fakeService(giftWorld('guardian_approved', { guardianRow: true, extraChild: true })).client, 'player-1', { id: 'b', ...buyer }, opts)).toEqual({ outcome: 'not_gift' });
+    });
+    it('a failed guardians read fails closed', async () => {
+      const { client } = fakeService(giftWorld('guardian_approved', { guardianRow: true }), ['guardians']);
+      expect(await checkGiftFirstGuardianClaim(client, 'player-1', { id: 'b', ...buyer }, opts)).toEqual({ outcome: 'failed' });
+    });
+  });
+
   it('presenting the replacement card still finds the gift order through the child', async () => {
     const { client } = fakeService(giftWorld('guardian_approved'));
     // the check is per child, not per card, so the replacement card's missing order_id changes nothing

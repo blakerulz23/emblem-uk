@@ -125,8 +125,10 @@ export async function POST(request: NextRequest) {
 
     // Then: a gift order's card is delivered to the buyer, so holding the
     // card is not enough to become the child's first guardian. Only the
-    // guardian who approved the order may claim it this way.
-    const giftCheck = await checkGiftFirstGuardianClaim(serviceRole, card.player_id, user);
+    // guardian who approved the order may claim it this way. This stays true
+    // after a guardian has linked: if the card lock after an invite
+    // redemption failed, the buyer's code must still not add them.
+    const giftCheck = await checkGiftFirstGuardianClaim(serviceRole, card.player_id, user, { evenIfGuardianExists: true });
     if (giftCheck.outcome === 'failed') {
       return NextResponse.json({ error: 'Could not claim this player. Please try again.' }, { status: 500 });
     }

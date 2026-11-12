@@ -217,19 +217,42 @@ export async function POST(request: Request, { params }: { params: { id: string 
     );
   }
 
-  const { data: cards } = await serviceRole
+  const { data: cards, error: cardsError } = await serviceRole
     .from('cards')
     .select('player_id')
     .eq('order_id', params.id)
     .not('player_id', 'is', null);
 
-  const linkedCards = cards ?? [];
+  // Fail closed: every decision below (gift check, single vs squad) depends
+  // on this read. Treating a failed read as "no cards" would skip the gift
+  // check and approve production.
+  if (cardsError) {
+    console.error('orders/approve: could not read linked cards', { orderId: params.id, code: cardsError.code });
+    return NextResponse.json({ error: 'Could not check the cards on this order. Please try again.' }, { status: 500 });
+  }
 
-  // Gift order (placed by a coach, organiser or other adult), single card:
+  // One entry per child, not per card row: a stray second card row for the
+  // same child must not turn a single-child order into a "squad" and skip
+  // the gift check (same rule as checkGiftFirstGuardianClaim).
+  const linkedCards = Array.from(
+    new Map(((cards ?? []) as Array<{ player_id: string }>).map((c) => [c.player_id, c])).values()
+  );
+
+  // Gift order (placed by a coach, organiser or other adult), single child:
   // refuse production unless a genuine guardian approval is on record.
   // Checked before any write and before the payment gate, so staff see the
-  // real blocker even on an unpaid order. Non-gift and multi-card orders
-  // are unaffected (multi-card gift orders are held by staff, amendment A2).
+  // real blocker even on an unpaid order. Non-gift and multi-child orders
+  // are unaffected (multi-child gift orders are held by staff, amendment A2).
+  // A gift order with no linked child is refused too: there is nobody whose
+  // guardian could have approved it.
+  if (isGiftAuthorityStatus(sourceRow.authority_status) && linkedCards.length === 0) {
+    await serviceRole.from('builder_authority_audit_events').insert({
+      order_id: params.id,
+      event_type: 'staff_approval_blocked',
+      metadata: { authorityStatus: sourceRow.authority_status, reason: 'no_linked_child' },
+    });
+    return NextResponse.json({ error: GIFT_APPROVAL_MISSING_MESSAGE }, { status: 409 });
+  }
   let giftRecipient: ProfileInviteRecipient | null = null;
   if (isGiftAuthorityStatus(sourceRow.authority_status) && linkedCards.length === 1) {
     giftRecipient = await resolveProfileInviteRecipient(serviceRole, {
