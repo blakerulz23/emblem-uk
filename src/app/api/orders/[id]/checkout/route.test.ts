@@ -236,3 +236,32 @@ describe('POST /api/orders/[id]/checkout — resuming payment for an existing or
     expect(mockRpc).toHaveBeenLastCalledWith('begin_gate3_checkout', { p_order_id: ORDER_ID });
   });
 });
+
+// Migration 0099 (R5): begin_gate3_checkout refuses a gift order with no
+// genuine guardian approval, and refuses when that check itself fails. The
+// database behaviour is proven in supabase/tests/authz/migration_0099_test.mjs.
+describe('POST /api/orders/[id]/checkout — gift order without a genuine guardian approval (R5)', () => {
+  it('gift_approval_invalid: 409 with a plain explanation, and no checkout URL is ever built', async () => {
+    mockRpc.mockResolvedValue({ data: { ok: false, reason: 'gift_approval_invalid' }, error: null });
+    const res = await post();
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/parent or guardian needs to approve it from their own email address/);
+    expect(body.checkoutUrl).toBeUndefined();
+    expect(mockBuildUkCardCartUrl).not.toHaveBeenCalled();
+  });
+
+  it('gift_approval_unverified (the check failed): 503, fails closed, no checkout URL', async () => {
+    mockRpc.mockResolvedValue({ data: { ok: false, reason: 'gift_approval_unverified' }, error: null });
+    const res = await post();
+    expect(res.status).toBe(503);
+    expect((await res.json()).checkoutUrl).toBeUndefined();
+    expect(mockBuildUkCardCartUrl).not.toHaveBeenCalled();
+  });
+
+  it('the refusal never reads like "already paid", so payment recovery shows it as closed, not paid', async () => {
+    mockRpc.mockResolvedValue({ data: { ok: false, reason: 'gift_approval_invalid' }, error: null });
+    const body = await (await post()).json();
+    expect(body.error).not.toMatch(/already been paid/i);
+  });
+});

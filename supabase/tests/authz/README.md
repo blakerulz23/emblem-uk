@@ -24,9 +24,10 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `guardian_account_control_test.mjs` | Card suspend/unsuspend and child-deletion request/cancel on the final schema: every refusal the routes report leaves no state behind; each success and idempotent repeat makes exactly its intended change. |
 | `guardian_invite_redemption_test.mjs` | Who may redeem a guardian invite: runs the app's `src/lib/guardian-invite-eligibility.ts` against the final schema, read-only as `service_role`. |
 | `gift_order_invite_redemption_test.mjs` | Gift-order guardian invites: runs `guardian-invite-eligibility.ts` and `gift-order-guardian.ts` in the redeem route's order against the final schema, read-only as `service_role`. An invite carrying a single-card gift order's `order_id` is redeemable only by the approving guardian, even after the child has a guardian. |
+| `migration_0099_test.mjs` | Migration 0099 (R5: gift-order checkout and payment need a genuine guardian approval), its pre/post checks (`supabase/verification/0099_precheck.sql`, `0099_postcheck.sql`) and its rollback, on a fresh 0096 database with fictional rows. Self-approved and approval-missing gift orders can't open checkout or be marked paid; genuine gift, ordinary, historical and Squad Invite orders are unchanged; both paths fail closed when the approval read fails; the helper agrees with `gift-order-guardian.ts`; the rollback restores the exact 0096 catalog. |
 
 Related: `supabase/rollback/0088_rollback.sql`, `supabase/rollback/0089_rollback.sql`,
-`supabase/rollback/0090_rollback.sql`, `supabase/rollback/0091_rollback.sql`,
+`supabase/rollback/0090_rollback.sql`, `supabase/rollback/0091_rollback.sql`, `supabase/rollback/0099_rollback.sql`,
 `src/lib/migration-0088-contract.test.ts`, `src/lib/migration-0089-contract.test.ts`,
 `src/lib/migration-0090-contract.test.ts` and `src/lib/migration-0091-contract.test.ts`
 (structural, run with `npm test`), and `scripts/check-migration-numbers.mjs`
