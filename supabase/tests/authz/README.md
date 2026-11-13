@@ -20,11 +20,15 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `migration_0089_test.mjs` | Migration 0089 and its rollback, on fresh 0088 databases with fictional rows. |
 | `migration_0090_test.mjs` | Migration 0090 (guardian-invite write lockdown) and its rollback, on a fresh 0089 database with fictional rows. |
 | `migration_0091_test.mjs` | Migration 0091 (guardian-invite code confidentiality) and its rollback, on a fresh 0090 database with fictional rows. |
+| `migration_0097_test.mjs` | Migration 0097 (coach account deletion keeps coach-verified moments): every coach/parent deletion path on the final schema, the consistency rule, who can set the marker, apply on a 0096 database, re-run refusal and rollback. |
+| `migration_0098_test.mjs` | Migration 0098 (deletion-review suspension, staff refusal, verifier identity): access lost at once when a deletion goes to staff review, staff reject and exact restore, changes made while under review, staff self-deletion refused, verifier impersonation refused, ordinary deletions unchanged, apply, re-run refusal and rollback; no new coach access while a deletion is pending (invite redemption, staff approval, team requests, `activate_coach_assignment`, raw writes as owner and `service_role`), normal routes after rejection; the read-only pre-check `supabase/verification/0098_precheck_pending_deletion_reviews.sql` and the manual suspension of a review pending before 0098. |
 | `rollback_order_test.mjs` | The rollback chain 0091 → 0090 → 0089: the 0089 rollback refuses, changing nothing, while 0091 or 0090 is applied; in order it reaches the exact 0088 catalog; 0089–0091 re-apply to the exact final catalog; no acknowledgement persists. |
 | `guardian_account_control_test.mjs` | Card suspend/unsuspend and child-deletion request/cancel on the final schema: every refusal the routes report leaves no state behind; each success and idempotent repeat makes exactly its intended change. |
 | `guardian_invite_redemption_test.mjs` | Who may redeem a guardian invite: runs the app's `src/lib/guardian-invite-eligibility.ts` against the final schema, read-only as `service_role`. |
 | `gift_order_invite_redemption_test.mjs` | Gift-order guardian invites: runs `guardian-invite-eligibility.ts` and `gift-order-guardian.ts` in the redeem route's order against the final schema, read-only as `service_role`. An invite carrying a single-card gift order's `order_id` is redeemable only by the approving guardian, even after the child has a guardian. |
 | `migration_0101_test.mjs` | Migration 0101 (R5: gift-order checkout and payment need a genuine guardian approval), its pre/post checks (`supabase/verification/0101_precheck.sql`, `0101_postcheck.sql`) and its rollback, on a fresh 0096 database with fictional rows. Self-approved and approval-missing gift orders can't open checkout or be marked paid; genuine gift, ordinary, historical and Squad Invite orders are unchanged; both paths fail closed when the approval read fails; the helper agrees with `gift-order-guardian.ts`; the rollback restores the exact 0096 catalog. |
+| `migration_production_order_0101_0097_0098_test.mjs` | Production order for PR #140: 0101 reached production before 0097 and 0098. Builds through 0096, applies 0101, then 0097 and 0098, and proves the 0101 post-check stays 8/8 with unchanged counts and the whole public catalog equals a database built in filename order. Rolls back 0098 then 0097 (0097 first is refused) with 0101 intact and 8/8, each step restoring the exact intermediate catalog with the fixture order rows unchanged, then reapplies both. Finally rolls back 0101 with 0097/0098 applied (catalog equals a 0097 + 0098 build) and reapplies it. The tables 0097/0098 change are empty here; their data paths are in the 0097/0098 suites. |
+| `pr140_app_before_0097_0098_test.mjs` | Deployment order for PR #140: reads the six changed route files and, on a database with 0101 but without 0097/0098, proves every RPC they call binds with the argument names they send, every column they write exists, and no database function can yet produce the signals their new branches handle (`account_deletion_review_pending`, SQLSTATE `EMDRP`, the staff-deletion refusal). So the app can deploy before the migrations. After 0097 + 0098 the bindings still hold and the signals exist. |
 
 Related: `supabase/rollback/0088_rollback.sql`, `supabase/rollback/0089_rollback.sql`,
 `supabase/rollback/0090_rollback.sql`, `supabase/rollback/0091_rollback.sql`, `supabase/rollback/0101_rollback.sql`,
@@ -880,6 +884,65 @@ It restores the exact 0090 catalog (the disclosure is then genuinely back),
 changes no data, and clears the acknowledgement before committing. 0091 can
 then be re-applied to the identical catalog.
 
+## Migration 0097 (coach account deletion keeps coach-verified moments)
+
+```powershell
+node --no-warnings supabase/tests/authz/migration_0097_test.mjs
+```
+
+Until 0097, `delete_own_guardian_account` failed, and rolled back, for every
+coach who had ever verified a moment or sent a recognition: it set
+`moments.verified_by` to NULL, which `moments_verification_status_consistency`
+forbids on a `coach_verified` moment. 0097 adds
+`moments.verifier_account_deleted_at`; a `coach_verified` moment now needs
+`verified_at` and exactly one of `verified_by` or the marker. The deletion
+function (the 0076 body with one statement changed) sets the marker and
+clears `verified_by`, so the child's moment stays `coach_verified` with its
+original `verified_at`. A restrictive insert policy keeps the marker out of
+every insert a signed-in user can make; `authenticated` has no UPDATE on it.
+The same migration fixes the same failure for any account that ever
+cancelled a child-deletion or Squad Invite participation deletion request
+(`cancelled_by` was nulled into the cancellation rule): both tables get
+`cancelled_by_account_deleted_at`, a cancelled request needs `cancelled_at`
+and exactly one of `cancelled_by` or the marker, and the function sets it.
+Signed-in users hold no write privilege on either table (the precondition
+checks this). The catalog delta from 0096 is exactly the three marker
+columns, the policy, the three rules and the function; no row changes. A
+precondition refuses unless the 0020 rule, the original cancellation rules
+and the 0076 function are in place, and refuses a second application.
+
+**Rollback: emergency only.** `supabase/rollback/0097_rollback.sql` breaks
+coach account deletion again. It needs, in the same transaction,
+`select set_config('emblem.acknowledge_0097_rollback', 'BREAK-COACH-ACCOUNT-DELETION', true);`,
+and refuses, changing nothing, once any row carries any 0097 marker (those
+rows cannot satisfy the 0020 rule). It restores the exact 0096 catalog.
+
+## Migration 0098 (deletion review suspension and verifier identity)
+
+```powershell
+node --no-warnings supabase/tests/authz/migration_0098_test.mjs
+```
+
+When `delete_own_guardian_account` sends a deletion to staff review
+(coach-authored records, Squad Invite history) it now, in the same
+transaction, ends every not-yet-ended `coach_team` assignment
+(`end_reason = 'account_deletion_review'`) and removes every
+`coach_players` link, snapshotting each in
+`deletion_review_access_suspensions` (service_role read-only) and auditing
+each through the existing `relationship_audit` trigger. Staff decide with
+`reject_pending_profile_deletion` and then, explicitly,
+`restore_coach_access_after_deletion_rejection`, which restores exactly
+what is still restorable and records the outcome per row. A later request
+reopens the same pending row. Staff accounts are refused, changing nothing.
+Two restrictive policies on `moments` stop a signed-in user naming anyone
+but themselves as verifier, or taking over another coach's verification.
+
+**Rollback: emergency only.** `supabase/rollback/0098_rollback.sql` needs
+`select set_config('emblem.acknowledge_0098_rollback', 'REOPEN-DELETION-REVIEW-ACCESS-AND-VERIFIER-NOMINATION', true);`
+in the same transaction, and refuses once any suspension or rejection is
+recorded. It restores the exact 0097 catalog. The 0097 rollback refuses
+while 0098 is applied.
+
 ## Guardian-invite redemption: no self-escalation
 
 ```powershell
@@ -1095,7 +1158,10 @@ when two migrations share a number, a file isn't `NNNN_name.sql`, or a
 reserved number is used by a different migration. Reserved: 0088–0091 for
 this security release, 0092 for `test_card_archive`, 0093 for
 `achievement_card_reveals` (those feature branches must be renumbered
-before they merge).
+before they merge), 0097 for `coach_account_deletion_verified_moments`,
+0098 for `deletion_review_suspension_and_verifier_identity`, 0099 for
+`season_feature_states`, 0100 for `acquisition_samples` and 0101 for
+`gift_checkout_requires_guardian_approval` (R5). New work starts at 0102.
 `scripts/check-migration-numbers.test.ts` runs it against the real folder
 and against synthetic temporary folders. There is no CI workflow in this
 repository yet. Running it on every push and pull request is a follow-up.
