@@ -896,18 +896,26 @@ coach who had ever verified a moment or sent a recognition: it set
 forbids on a `coach_verified` moment. 0097 adds
 `moments.verifier_account_deleted_at`; a `coach_verified` moment now needs
 `verified_at` and exactly one of `verified_by` or the marker. The deletion
-function (the 0076 body with one statement changed) sets the marker and
-clears `verified_by`, so the child's moment stays `coach_verified` with its
-original `verified_at`. A restrictive insert policy keeps the marker out of
+function (the 0076 body with one statement changed and moved into the
+branch that deletes the profile) sets the marker and clears `verified_by`
+only when the account is actually deleted, so the child's moment stays
+`coach_verified` with its original `verified_at`. A deletion that only goes
+to staff review changes neither. A BEFORE DELETE trigger on `profiles`
+(`mark_deleted_account_attribution`, callable by no API role) does the same
+for a profile deleted any other way, such as staff removing the login
+account after a review. A restrictive insert policy keeps the marker out of
 every insert a signed-in user can make; `authenticated` has no UPDATE on it.
 The same migration fixes the same failure for any account that ever
 cancelled a child-deletion or Squad Invite participation deletion request
 (`cancelled_by` was nulled into the cancellation rule): both tables get
 `cancelled_by_account_deleted_at`, a cancelled request needs `cancelled_at`
-and exactly one of `cancelled_by` or the marker, and the function sets it.
+and exactly one of `cancelled_by` or the marker, and the function (or the
+trigger) sets it, again only at actual deletion.
 Signed-in users hold no write privilege on either table (the precondition
 checks this). The catalog delta from 0096 is exactly the three marker
-columns, the policy, the three rules and the function; no row changes. A
+columns, the policy, the three rules, the function, and the trigger with
+its function; no row changes. 0098's precondition and rollback both require
+that trigger, so neither runs over an earlier draft of 0097. A
 precondition refuses unless the 0020 rule, the original cancellation rules
 and the 0076 function are in place, and refuses a second application.
 

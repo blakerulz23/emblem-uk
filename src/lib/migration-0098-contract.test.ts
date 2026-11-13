@@ -34,6 +34,18 @@ describe('migration 0098 — deletion review suspension and verifier identity', 
     expect(code).toContain('(0098 already applied)');
   });
 
+  it('requires the current 0097 (its deleted-account attribution trigger), in the precondition and in the rollback', () => {
+    const TRIGGER_CHECK = "not exists (select 1 from pg_trigger where tgname = 'profiles_mark_deleted_account_attribution'";
+    expect(code).toContain("to_regprocedure('public.mark_deleted_account_attribution()') is null");
+    expect(code).toContain(TRIGGER_CHECK);
+    expect(code).toContain('the 0097 deleted-account attribution trigger is missing (0097 not applied, or an earlier 0097)');
+    expect(code.indexOf(TRIGGER_CHECK)).toBeLessThan(code.search(/^(alter|create)\b/im));
+    const refusal = rollbackCode.indexOf('0098 rollback refused: the 0097 underneath is not the current version');
+    expect(rollbackCode).toContain(TRIGGER_CHECK);
+    expect(refusal).toBeGreaterThan(0);
+    expect(refusal).toBeLessThan(rollbackCode.indexOf(FN_START));
+  });
+
   it('keeps the 0097 function and only adds the staff refusal, the review suspension and one result field', () => {
     const before = fnOf(m0097);
     const after = fnOf(sql);

@@ -36,6 +36,14 @@ begin
   if to_regclass('public.deletion_review_access_suspensions') is null then
     raise exception '0098 rollback refused: 0098 is not applied';
   end if;
+  -- This rollback restores the current 0097 function body. Underneath an
+  -- earlier draft of 0097 (no deleted-account attribution trigger) that would
+  -- leave a mixed state; use the rollback files that match what is applied.
+  if to_regprocedure('public.mark_deleted_account_attribution()') is null
+     or not exists (select 1 from pg_trigger where tgname = 'profiles_mark_deleted_account_attribution'
+                    and tgrelid = 'public.profiles'::regclass and not tgisinternal) then
+    raise exception '0098 rollback refused: the 0097 underneath is not the current version (its deleted-account attribution trigger is missing); use the rollback files that match the applied migrations';
+  end if;
   select count(*) into v_n from public.deletion_review_access_suspensions;
   if v_n > 0 then
     raise exception '0098 rollback refused: % access suspension record(s) exist; they are the only record of what to restore. Fix forward instead.', v_n;

@@ -341,6 +341,20 @@ console.log('\n=== 6. Coach with authored records and recognitions (staff-review
     const k2 = await moment(db, rec2);
     check('6: once the blocker is cleared, asking again deletes the account and marks the recognition then',
       second.canDeleteIdentity === true && k2.verification_status === 'coach_verified' && k2.verified_by === null && k2.verifier_account_deleted_at !== null && +k2.verified_at === +k1.verified_at, JSON.stringify([second, k2]));
+    // A manual profile delete (no RPC, no auth.users cascade) is covered by the trigger too.
+    const coach3 = await w.coach();
+    const rec3 = await w.recognise(coach3);
+    // The trigger covers attribution only: another reference (here uploaded_by) still refuses the delete, loudly, and the
+    // trigger's own update rolls back with it.
+    const blocked = await attempt(() => db.query(`delete from public.profiles where id = $1`, [coach3]));
+    const kb = await moment(db, rec3);
+    check('6: a manual profile delete with another reference left is refused (loudly), and nothing is marked',
+      blocked?.includes('moments_uploaded_by_fkey') && kb.verified_by === coach3 && kb.verifier_account_deleted_at === null, JSON.stringify([blocked, kb]));
+    await db.query(`update public.moments set uploaded_by = null where uploaded_by = $1`, [coach3]);
+    const manual = await attempt(() => db.query(`delete from public.profiles where id = $1`, [coach3]));
+    const k3 = await moment(db, rec3);
+    check('6: once other references are cleared, a manual profile delete succeeds and marks the recognition (trigger backstop)',
+      manual === null && k3.verification_status === 'coach_verified' && k3.verified_by === null && k3.verifier_account_deleted_at !== null, JSON.stringify([manual, k3]));
   } catch (e) {
     check('6: staff-review path', false, e.message);
   }

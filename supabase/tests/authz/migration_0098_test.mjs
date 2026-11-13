@@ -690,6 +690,69 @@ console.log('\n=== 15. Attribution through review, rejection, restore and final 
   await db.close();
 }
 
+console.log('\n=== 16. 0098 and its rollback require the current 0097 (with the attribution trigger); squad cancellations ===');
+{
+  const DROP_TRIGGER = `drop trigger profiles_mark_deleted_account_attribution on public.profiles; drop function public.mark_deleted_account_attribution();`;
+  // (a) 0098 over a 0097 without the trigger (an earlier draft) is refused, changing nothing.
+  const db97 = await readyDatabase('0097');
+  try {
+    await db97.exec(DROP_TRIGGER);
+    const before = await snapshotCatalog(db97);
+    const r = await refusedApply(db97, '0098', '0098');
+    check('16: 0098 is refused over a 0097 without the attribution trigger, changing nothing',
+      r?.includes('the 0097 deleted-account attribution trigger is missing') && keysOf(diffCatalog(before, await snapshotCatalog(db97))).length === 0, r);
+  } catch (e) {
+    check('16: 0098 precondition requires the trigger', false, e.stack);
+  }
+  await db97.close();
+  // (b) The 0098 rollback refuses when the 0097 underneath has no trigger, changing nothing.
+  const db98 = await readyDatabase('0098');
+  try {
+    await db98.exec(DROP_TRIGGER);
+    const before = await snapshotCatalog(db98);
+    await db98.exec('begin;');
+    let r = null;
+    try {
+      await db98.query(`select set_config($1, $2, true)`, ACK_0098);
+      await db98.exec(ROLLBACK_0098);
+    } catch (e) { r = e.message; await db98.exec('rollback;').catch(() => {}); }
+    check('16: the 0098 rollback refuses over a 0097 without the attribution trigger, changing nothing',
+      r?.includes('0098 rollback refused: the 0097 underneath is not the current version') && keysOf(diffCatalog(before, await snapshotCatalog(db98))).length === 0, r);
+  } catch (e) {
+    check('16: 0098 rollback requires the trigger', false, e.stack);
+  }
+  await db98.close();
+  // (c) A Squad Invite participation deletion request the account cancelled: kept through review, marked only at final deletion.
+  const w = await world();
+  const { db, people } = w;
+  try {
+    const coach = await w.coach();
+    await w.assess(coach);
+    await db.exec(`set session_replication_role = replica;`);
+    let sreq;
+    try {
+      const part = (await db.query(`insert into public.squad_invite_participations (campaign_id, guardian_profile_id, builder_token_hash) values ($1, $2, repeat('a', 64)) returning id`, [id(), coach])).rows[0].id;
+      sreq = (await db.query(`insert into public.squad_invite_participation_deletion_requests (participation_id, requested_by, status, cancelled_by, cancelled_at) values ($1, $2, 'cancelled', $2, now() - interval '1 day') returning id`, [part, coach])).rows[0].id;
+    } finally { await db.exec(`set session_replication_role = origin;`); }
+    const row = () => rowsOf(db, `select status, cancelled_by, cancelled_at, cancelled_by_account_deleted_at m from public.squad_invite_participation_deletion_requests where id = $1`, [sreq]);
+    const original = await row();
+    const r1 = await deleteAccount(w, coach);
+    check('16: squad cancellation — review keeps the canceller, no marker', r1.canDeleteIdentity === false && (await row()) === original, await row());
+    const pending = await pendingOf(db, coach);
+    await reject(w, pending.id, people.staff);
+    await restore(w, pending.id, people.staff);
+    check('16: squad cancellation — reject and restore keep it unchanged', (await row()) === original, await row());
+    await db.query(`delete from public.player_assessments where created_by = $1`, [coach]);
+    const fin = await attempt(() => db.query(`delete from auth.users where id = $1`, [coach]));
+    const a = JSON.parse(await row())[0], o = JSON.parse(original)[0];
+    check('16: squad cancellation — final deletion keeps it cancelled with its date, clears the canceller and sets the marker',
+      fin === null && a.status === 'cancelled' && a.cancelled_at === o.cancelled_at && a.cancelled_by === null && a.m !== null, JSON.stringify([fin, a]));
+  } catch (e) {
+    check('16: squad cancellation lifecycle', false, e.stack);
+  }
+  await db.close();
+}
+
 const failed = results.filter((r) => !r.pass);
 console.log(`\n${results.length - failed.length}/${results.length} migration 0098 checks passed`);
 if (failed.length) process.exitCode = 1;

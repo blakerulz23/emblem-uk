@@ -162,7 +162,7 @@ $$;
 alter table public.moments add column verifier_account_deleted_at timestamptz;
 
 comment on column public.moments.verifier_account_deleted_at is
-  'Set only by delete_own_guardian_account (0097) when the coach who verified this moment deleted their account. The moment stays coach_verified with its original verified_at; verified_by is then NULL. Never set by the app.';
+  'Set only when the account is actually deleted (delete_own_guardian_account, or the profiles delete trigger, 0097), when the coach who verified this moment deleted their account. The moment stays coach_verified with its original verified_at; verified_by is then NULL. Never set by the app.';
 
 -- ---------------------------------------------------------------------------
 -- 2. The consistency rule, with the deleted-verifier state
@@ -203,9 +203,9 @@ alter table public.player_deletion_requests add column cancelled_by_account_dele
 alter table public.squad_invite_participation_deletion_requests add column cancelled_by_account_deleted_at timestamptz;
 
 comment on column public.player_deletion_requests.cancelled_by_account_deleted_at is
-  'Set only by delete_own_guardian_account (0097) when the account that cancelled this request was deleted. The request stays cancelled with its original cancelled_at; cancelled_by is then NULL.';
+  'Set only when the account is actually deleted (delete_own_guardian_account, or the profiles delete trigger, 0097), when the account that cancelled this request was deleted. The request stays cancelled with its original cancelled_at; cancelled_by is then NULL.';
 comment on column public.squad_invite_participation_deletion_requests.cancelled_by_account_deleted_at is
-  'Set only by delete_own_guardian_account (0097) when the account that cancelled this request was deleted. The request stays cancelled with its original cancelled_at; cancelled_by is then NULL.';
+  'Set only when the account is actually deleted (delete_own_guardian_account, or the profiles delete trigger, 0097), when the account that cancelled this request was deleted. The request stays cancelled with its original cancelled_at; cancelled_by is then NULL.';
 
 alter table public.player_deletion_requests drop constraint player_deletion_requests_cancellation_requires_actor;
 alter table public.player_deletion_requests add constraint player_deletion_requests_cancellation_requires_actor

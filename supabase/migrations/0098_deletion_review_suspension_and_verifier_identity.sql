@@ -84,6 +84,14 @@ begin
      or v_body like '%account_deletion_review%' then
     v_problems := v_problems || 'public.delete_own_guardian_account() is not the 0097 definition'::text;
   end if;
+  -- The current 0097 adds a BEFORE DELETE trigger on profiles; an earlier
+  -- draft of 0097 (which cleared attribution when a deletion only went to
+  -- staff review) did not. The function body alone cannot tell them apart.
+  if to_regprocedure('public.mark_deleted_account_attribution()') is null
+     or not exists (select 1 from pg_trigger where tgname = 'profiles_mark_deleted_account_attribution'
+                    and tgrelid = 'public.profiles'::regclass and not tgisinternal) then
+    v_problems := v_problems || 'the 0097 deleted-account attribution trigger is missing (0097 not applied, or an earlier 0097)'::text;
+  end if;
   select pg_get_constraintdef(oid) into v_def from pg_constraint
   where conrelid = 'public.pending_profile_deletions'::regclass and conname = 'pending_profile_deletions_status_check';
   if v_def is distinct from 'CHECK ((status = ANY (ARRAY[''pending''::text, ''resolved''::text])))' then
