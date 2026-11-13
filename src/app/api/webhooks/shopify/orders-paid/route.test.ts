@@ -640,7 +640,7 @@ describe('POST /api/webhooks/shopify/orders-paid — UK partner codes', () => {
   });
 });
 
-// Migration 0099 (R5): apply_gate3_payment_event never marks a gift order
+// Migration 0101 (R5): apply_gate3_payment_event never marks a gift order
 // paid without a genuine guardian approval and reports gift_approval_invalid.
 describe('POST /api/webhooks/shopify/orders-paid — gift order without a genuine guardian approval (R5)', () => {
   const refused = { data: { applied: false, reason: 'gift_approval_invalid', orderId: 'order-1' }, error: null };

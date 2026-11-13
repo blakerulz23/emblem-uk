@@ -44,7 +44,7 @@ describe('migration number uniqueness', () => {
     expect(error?.stderr.toString()).toContain('Duplicate migration number 0088: 0088_relationship_authorization_foundation.sql, 0088_test_card_archive.sql');
   });
 
-  it('reserves 0088–0091 for the security release, 0092 for test-card archive and 0093 for achievement reveals', () => {
+  it('reserves 0088–0091 for the security release, 0092 for test-card archive, 0093 for achievement reveals, 0097–0098 for the deletion fixes, 0099 for Season feature states, 0100 for acquisition samples and 0101 for the R5 checkout gate', () => {
     expect(RESERVED_NUMBERS).toEqual({
       '0088': 'relationship_authorization_foundation',
       '0089': 'relationship_authorization_lockdown',
@@ -52,6 +52,11 @@ describe('migration number uniqueness', () => {
       '0091': 'guardian_invite_code_confidentiality',
       '0092': 'test_card_archive',
       '0093': 'achievement_card_reveals',
+      '0097': 'coach_account_deletion_verified_moments',
+      '0098': 'deletion_review_suspension_and_verifier_identity',
+      '0099': 'season_feature_states',
+      '0100': 'acquisition_samples',
+      '0101': 'gift_checkout_requires_guardian_approval',
     });
     expect(findReservedNumberProblems(fs.readdirSync('supabase/migrations'))).toEqual([]);
   });
@@ -73,6 +78,25 @@ describe('migration number uniqueness', () => {
     }
     expect(error?.status).toBe(1);
     expect(error?.stderr.toString()).toContain('Migration number 0092 is reserved for 0092_test_card_archive.sql: 0092_achievement_card_reveals.sql');
+  });
+
+  it('rejects an unmerged branch 0097 file, which must be renumbered', () => {
+    expect(findReservedNumberProblems(['0097_coach_account_deletion_verified_moments.sql', '0097_erase_print_pdfs_on_player_deletion.sql'])).toEqual([
+      { number: '0097', file: '0097_erase_print_pdfs_on_player_deletion.sql', reservedFor: '0097_coach_account_deletion_verified_moments.sql' },
+    ]);
+  });
+
+  it('rejects acquisition samples at its old number 0098; accepts it at 0100', () => {
+    expect(findReservedNumberProblems(['0098_acquisition_samples.sql', '0100_acquisition_samples.sql', '0102_anything.sql'])).toEqual([
+      { number: '0098', file: '0098_acquisition_samples.sql', reservedFor: '0098_deletion_review_suspension_and_verifier_identity.sql' },
+    ]);
+  });
+
+  it('rejects the R5 checkout gate at its draft number 0099 or any other file at 0101; accepts it at 0101', () => {
+    expect(findReservedNumberProblems(['0099_gift_checkout_requires_guardian_approval.sql', '0099_season_feature_states.sql', '0101_gift_checkout_requires_guardian_approval.sql', '0101_anything.sql', '0102_anything.sql'])).toEqual([
+      { number: '0099', file: '0099_gift_checkout_requires_guardian_approval.sql', reservedFor: '0099_season_feature_states.sql' },
+      { number: '0101', file: '0101_anything.sql', reservedFor: '0101_gift_checkout_requires_guardian_approval.sql' },
+    ]);
   });
 
   it('the command exits zero when every number is used once', () => {

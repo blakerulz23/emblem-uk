@@ -1,8 +1,8 @@
 import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 
-const sql = readFileSync('supabase/migrations/0099_gift_checkout_requires_guardian_approval.sql', 'utf8').replace(/\r\n/g, '\n');
-const rollback = readFileSync('supabase/rollback/0099_rollback.sql', 'utf8').replace(/\r\n/g, '\n');
+const sql = readFileSync('supabase/migrations/0101_gift_checkout_requires_guardian_approval.sql', 'utf8').replace(/\r\n/g, '\n');
+const rollback = readFileSync('supabase/rollback/0101_rollback.sql', 'utf8').replace(/\r\n/g, '\n');
 const m0080 = readFileSync('supabase/migrations/0080_gate3_payment_state.sql', 'utf8').replace(/\r\n/g, '\n');
 const code = sql.replace(/--.*$/gm, '');
 /** Top-level statements only: function bodies and DO blocks removed. */
@@ -19,23 +19,23 @@ function fn(text: string, name: string): string {
   return text.slice(start, end);
 }
 
-/** The 0099 function with exactly its R5 additions removed. */
+/** The 0101 function with exactly its R5 additions removed. */
 function withoutR5(body: string): string {
   return body
     .replace(/\n {2}v_gift_block text;/, '')
-    .replace(/\n {2}-- 0099 \(R5\): a gift order needs[\s\S]*?return jsonb_build_object\('ok', false, 'reason', 'gift_approval_invalid'\);\n {2}end if;\n\n/, '\n')
-    .replace(/\n {4}-- 0099 \(R5\): never mark a gift order paid[\s\S]*?'gift_approval_invalid', 'orderId', v_order\.id\);\n {4}end if;/, '');
+    .replace(/\n {2}-- 0101 \(R5\): a gift order needs[\s\S]*?return jsonb_build_object\('ok', false, 'reason', 'gift_approval_invalid'\);\n {2}end if;\n\n/, '\n')
+    .replace(/\n {4}-- 0101 \(R5\): never mark a gift order paid[\s\S]*?'gift_approval_invalid', 'orderId', v_order\.id\);\n {4}end if;/, '');
 }
 
 /**
- * 0099 (R5) closes checkout and payment for a gift order whose approval came
+ * 0101 (R5) closes checkout and payment for a gift order whose approval came
  * from the buyer's own address. Its behaviour (refusals, fail-closed paths,
  * genuine and ordinary orders unaffected, rollback to the exact 0096
  * catalog) is proven against a production-matched PostgreSQL in
- * supabase/tests/authz/migration_0099_test.mjs. This file is the structural
+ * supabase/tests/authz/migration_0101_test.mjs. This file is the structural
  * half that runs with npm test.
  */
-describe('migration 0099: gift-order checkout and payment require a genuine guardian approval', () => {
+describe('migration 0101: gift-order checkout and payment require a genuine guardian approval', () => {
   it('is ASCII only and states the deploy order (app before migration)', () => {
     expect(/^[\x00-\x7f]*$/.test(sql.replace(/\u2014/g, '-'))).toBe(true);
     expect(sql).toContain('DEPLOY ORDER: the app change');
@@ -48,8 +48,8 @@ describe('migration 0099: gift-order checkout and payment require a genuine guar
     const firstChange = code.search(/^create\b/im);
     expect(precondition).toBeGreaterThan(0);
     expect(precondition).toBeLessThan(firstChange);
-    expect(code).toContain('0099 refused: the expected 0080 state is not in place');
-    expect(code).toContain('0099 already applied');
+    expect(code).toContain('0101 refused: the expected 0080 state is not in place');
+    expect(code).toContain('0101 already applied');
   });
 
   it('creates one helper and replaces exactly the two 0080 payment functions; no table, policy, data or other grant changes', () => {
@@ -110,10 +110,10 @@ describe('migration 0099: gift-order checkout and payment require a genuine guar
   });
 });
 
-describe('0099 rollback: emergency only', () => {
+describe('0101 rollback: emergency only', () => {
   it('refuses without the transaction-local acknowledgement, and clears it', () => {
-    expect(rollback).toContain("current_setting('emblem.acknowledge_0099_rollback', true) is distinct from 'REOPEN-SELF-APPROVED-GIFT-CHECKOUT'");
-    expect(rollback).toContain("select set_config('emblem.acknowledge_0099_rollback', '', false);");
+    expect(rollback).toContain("current_setting('emblem.acknowledge_0101_rollback', true) is distinct from 'REOPEN-SELF-APPROVED-GIFT-CHECKOUT'");
+    expect(rollback).toContain("select set_config('emblem.acknowledge_0101_rollback', '', false);");
     expect(rollback.replace(/--.*$/gm, '').trim().startsWith('begin;')).toBe(true);
     expect(rollback.replace(/--.*$/gm, '').trim().endsWith('commit;')).toBe(true);
   });

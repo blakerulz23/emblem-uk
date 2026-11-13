@@ -62,7 +62,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     if (reason === 'already_paid') {
       return NextResponse.json({ error: 'This order has already been paid for' }, { status: 409 });
     }
-    // Migration 0099 (R5): a gift order is paid for only once the child's
+    // Migration 0101 (R5): a gift order is paid for only once the child's
     // parent or guardian has approved it from their own email address.
     if (reason === 'gift_approval_invalid') {
       return NextResponse.json(

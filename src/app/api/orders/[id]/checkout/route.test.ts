@@ -237,9 +237,9 @@ describe('POST /api/orders/[id]/checkout — resuming payment for an existing or
   });
 });
 
-// Migration 0099 (R5): begin_gate3_checkout refuses a gift order with no
+// Migration 0101 (R5): begin_gate3_checkout refuses a gift order with no
 // genuine guardian approval, and refuses when that check itself fails. The
-// database behaviour is proven in supabase/tests/authz/migration_0099_test.mjs.
+// database behaviour is proven in supabase/tests/authz/migration_0101_test.mjs.
 describe('POST /api/orders/[id]/checkout — gift order without a genuine guardian approval (R5)', () => {
   it('gift_approval_invalid: 409 with a plain explanation, and no checkout URL is ever built', async () => {
     mockRpc.mockResolvedValue({ data: { ok: false, reason: 'gift_approval_invalid' }, error: null });

@@ -1,7 +1,7 @@
--- 0099 PRE-CHECK. Read-only: one SELECT, one row of counts and booleans.
+-- 0101 PRE-CHECK. Read-only: one SELECT, one row of counts and booleans.
 -- Never returns an order, person, email or child. Run in the target
 -- project's SQL editor immediately before applying
--- 0099_gift_checkout_requires_guardian_approval.sql.
+-- 0101_gift_checkout_requires_guardian_approval.sql.
 --
 -- STOP (do not apply) unless:
 --   guard_not_applied, guard_begin_is_0080 and guard_apply_is_0080 are all true;
@@ -10,14 +10,14 @@
 --   blocked_paid matches the R5 cases already held by staff (expected 0).
 -- Record every value; the post-check must reproduce the blocked_* counts.
 --
--- "blocked" is 0099's rule, written out inline here (the helper does not
+-- "blocked" is 0101's rule, written out inline here (the helper does not
 -- exist yet): a gift order is blocked unless it is guardian_approved and its
 -- latest 'approved' request came from an address that is neither the
 -- purchaser's nor any declaring adult's (trimmed of all leading/trailing
 -- whitespace as JavaScript trim() does, lower-cased).
 --
--- Before applying, confirm the app release with the 0099 route changes is
--- already live in production (deploy order: app first, then 0099).
+-- Before applying, confirm the app release with the 0101 route changes is
+-- already live in production (deploy order: app first, then 0101).
 with gift as (
   select o.id, o.authority_status, o.payment_status,
     (select lower(regexp_replace(r.guardian_email, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g')) from public.builder_guardian_approval_requests r
@@ -51,15 +51,15 @@ select
   (select count(*) from classified where block_reason = 'gift_self_approved') as gift_self_approved,
   (select count(*) from classified where block_reason = 'gift_approval_missing') as gift_approval_missing,
   (select count(*) from classified where block_reason = 'gift_not_approved') as gift_not_approved,
-  -- Newly refused at checkout by 0099 (approved status, but not genuinely).
+  -- Newly refused at checkout by 0101 (approved status, but not genuinely).
   (select count(*) from classified where block_reason in ('gift_self_approved', 'gift_approval_missing')
      and payment_status in ('order_intent', 'pending_payment')) as blocked_approved_open,
-  -- Pending/declined and unpaid: checkout already refused them; 0099 also refuses their payment.
+  -- Pending/declined and unpaid: checkout already refused them; 0101 also refuses their payment.
   (select count(*) from classified where block_reason = 'gift_not_approved'
      and payment_status in ('order_intent', 'pending_payment')) as blocked_not_approved_open,
-  -- Already paid: 0099 does not change these. They are R5 cases staff must hold.
+  -- Already paid: 0101 does not change these. They are R5 cases staff must hold.
   (select count(*) from classified where block_reason is not null and payment_status in ('paid', 'fulfilled')) as blocked_paid,
   (select count(*) from classified where block_reason is not null) as blocked_total,
-  -- Context only: unpaid non-gift orders, which 0099 leaves unaffected.
+  -- Context only: unpaid non-gift orders, which 0101 leaves unaffected.
   (select count(*) from public.orders o where (o.authority_status is null or o.authority_status = 'confirmed')
      and o.payment_status in ('order_intent', 'pending_payment')) as non_gift_open;

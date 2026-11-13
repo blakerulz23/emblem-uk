@@ -1,12 +1,12 @@
 -- ============================================================================
--- Rollback for 0099_gift_checkout_requires_guardian_approval.sql. EMERGENCY
+-- Rollback for 0101_gift_checkout_requires_guardian_approval.sql. EMERGENCY
 -- ONLY.
 --
 -- Restores begin_gate3_checkout and apply_gate3_payment_event to their 0080
 -- bodies (copied verbatim from 0080_gate3_payment_state.sql) and drops
 -- gift_order_checkout_block_reason. CREATE OR REPLACE keeps both functions'
--- owner and grants, so the result is the exact pre-0099 catalog (proven in
--- supabase/tests/authz/migration_0099_test.mjs).
+-- owner and grants, so the result is the exact pre-0101 catalog (proven in
+-- supabase/tests/authz/migration_0101_test.mjs).
 --
 -- Rolling back REOPENS R5: a buyer whose gift order was approved from their
 -- own address can open checkout and pay again, and the payment is marked
@@ -15,7 +15,7 @@
 -- order. It refuses without a transaction-local acknowledgement, and the
 -- acknowledgement never persists past this transaction.
 --
--- Changes no data. payment_state_events rows written by 0099 (reason
+-- Changes no data. payment_state_events rows written by 0101 (reason
 -- paid_refused_gift_approval_invalid...) are append-only history and stay.
 -- ============================================================================
 
@@ -23,11 +23,11 @@ begin;
 
 do $$
 begin
-  if current_setting('emblem.acknowledge_0099_rollback', true) is distinct from 'REOPEN-SELF-APPROVED-GIFT-CHECKOUT' then
-    raise exception '0099 rollback refused: it lets self-approved gift orders reach checkout and payment again (R5). To proceed deliberately, in one transaction first run: select set_config(''emblem.acknowledge_0099_rollback'', ''REOPEN-SELF-APPROVED-GIFT-CHECKOUT'', true);';
+  if current_setting('emblem.acknowledge_0101_rollback', true) is distinct from 'REOPEN-SELF-APPROVED-GIFT-CHECKOUT' then
+    raise exception '0101 rollback refused: it lets self-approved gift orders reach checkout and payment again (R5). To proceed deliberately, in one transaction first run: select set_config(''emblem.acknowledge_0101_rollback'', ''REOPEN-SELF-APPROVED-GIFT-CHECKOUT'', true);';
   end if;
   if to_regprocedure('public.gift_order_checkout_block_reason(uuid)') is null then
-    raise exception '0099 rollback refused: gift_order_checkout_block_reason does not exist (0099 is not applied)';
+    raise exception '0101 rollback refused: gift_order_checkout_block_reason does not exist (0101 is not applied)';
   end if;
 end;
 $$;
@@ -190,6 +190,6 @@ $$;
 
 drop function public.gift_order_checkout_block_reason(uuid);
 
-select set_config('emblem.acknowledge_0099_rollback', '', false);
+select set_config('emblem.acknowledge_0101_rollback', '', false);
 
 commit;

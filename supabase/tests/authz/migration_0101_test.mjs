@@ -1,4 +1,4 @@
-// Migration 0099 (R5: gift-order checkout and payment require a genuine
+// Migration 0101 (R5: gift-order checkout and payment require a genuine
 // guardian approval), its pre/post checks and its rollback.
 //
 // RUN: see supabase/tests/authz/README.md (needs EMBLEM_AUTHZ_PGLITE_DIR).
@@ -8,7 +8,7 @@
 //   1. at 0096 the defect: a buyer whose gift order was approved from their
 //      own address gets a checkout and the payment is marked paid;
 //   2. the pre-check runs read-only and counts the fixture correctly;
-//   3. 0099 changes exactly one new function and two function bodies (no
+//   3. 0101 changes exactly one new function and two function bodies (no
 //      ACL, table, policy or data change);
 //   4. checkout (as the declaring adult, authenticated): self-approved via
 //      the purchaser address, via a declaration address, and approval-missing
@@ -26,10 +26,10 @@
 //      (src/lib/gift-order-guardian.ts) on every fixture order, and only
 //      service_role can call it;
 //   8. the post-check passes and reproduces the pre-check counts;
-//   9. 0099 refuses to apply twice or without 0080, changing nothing;
+//   9. 0101 refuses to apply twice or without 0080, changing nothing;
 //  10. the rollback refuses without its acknowledgement, restores the exact
 //      0096 catalog with it (and the defect is back), the acknowledgement
-//      never persists, and 0099 re-applies to the exact 0099 catalog.
+//      never persists, and 0101 re-applies to the exact 0101 catalog.
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -39,11 +39,11 @@ import { diffCatalog, snapshotCatalog } from './catalog.mjs';
 import { loadApprovedGuardianEmail } from '../../../src/lib/gift-order-guardian.ts';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const MIGRATION = fs.readFileSync(path.resolve(HERE, '../../migrations/0099_gift_checkout_requires_guardian_approval.sql'), 'utf8');
-const ROLLBACK = fs.readFileSync(path.resolve(HERE, '../../rollback/0099_rollback.sql'), 'utf8');
-const PRECHECK = fs.readFileSync(path.resolve(HERE, '../../verification/0099_precheck.sql'), 'utf8');
-const POSTCHECK = fs.readFileSync(path.resolve(HERE, '../../verification/0099_postcheck.sql'), 'utf8');
-const ACK = `select set_config('emblem.acknowledge_0099_rollback', 'REOPEN-SELF-APPROVED-GIFT-CHECKOUT', true)`;
+const MIGRATION = fs.readFileSync(path.resolve(HERE, '../../migrations/0101_gift_checkout_requires_guardian_approval.sql'), 'utf8');
+const ROLLBACK = fs.readFileSync(path.resolve(HERE, '../../rollback/0101_rollback.sql'), 'utf8');
+const PRECHECK = fs.readFileSync(path.resolve(HERE, '../../verification/0101_precheck.sql'), 'utf8');
+const POSTCHECK = fs.readFileSync(path.resolve(HERE, '../../verification/0101_postcheck.sql'), 'utf8');
+const ACK = `select set_config('emblem.acknowledge_0101_rollback', 'REOPEN-SELF-APPROVED-GIFT-CHECKOUT', true)`;
 const COMMIT = 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0';
 
 const results = [];
@@ -160,7 +160,7 @@ const pay = (k, eid, to = 'paid', opts) =>
 const reason = (r) => (r.status === 'ok' ? r.rows[0].r.reason ?? (r.rows[0].r.ok ? 'ok' : r.rows[0].r.applied ? 'applied' : '?') : r.status);
 
 // --- 1. At 0096: the defect -----------------------------------------------------------------
-console.log('\n=== 1. at 0096 (before 0099) ===');
+console.log('\n=== 1. at 0096 (before 0101) ===');
 {
   const c = await checkoutAs(U.buyer, 'selfPurchaser', { commit: false });
   check('1. at 0096 a self-approved gift order (purchaser address) gets a checkout', c.status === 'ok' && c.rows[0].r.ok === true, reason(c));
@@ -179,14 +179,14 @@ const PRE = pre.rows?.[0] ?? {};
 const num = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'bigint' ? Number(v) : v]));
 const PREN = num(PRE);
 check('2. pre-check runs in a READ ONLY transaction', pre.status === 'ok', pre.message);
-check('2. pre-check guards: 0099 not applied, both functions are 0080', PREN.guard_not_applied === true && PREN.guard_begin_is_0080 === true && PREN.guard_apply_is_0080 === true);
+check('2. pre-check guards: 0101 not applied, both functions are 0080', PREN.guard_not_applied === true && PREN.guard_begin_is_0080 === true && PREN.guard_apply_is_0080 === true);
 const expectedPre = { gift_orders: 10, gift_approved: 8, gift_genuine: 2, gift_self_approved: 5, gift_approval_missing: 1, gift_not_approved: 2,
   blocked_approved_open: 6, blocked_not_approved_open: 2, blocked_paid: 0, blocked_total: 8, non_gift_open: 3 };
 check('2. pre-check counts match the fixture', Object.entries(expectedPre).every(([k, v]) => PREN[k] === v), Object.fromEntries(Object.keys(expectedPre).map((k) => [k, PREN[k]])));
 check('2. pre-check returns counts and booleans only (no ids, emails or names)', Object.values(PREN).every((v) => typeof v === 'number' || typeof v === 'boolean'));
 
-// --- 3. Apply 0099 ---------------------------------------------------------------------------
-console.log('\n=== 3. apply 0099 ===');
+// --- 3. Apply 0101 ---------------------------------------------------------------------------
+console.log('\n=== 3. apply 0101 ===');
 const SIGS = ['public.begin_gate3_checkout(uuid)', 'public.apply_gate3_payment_event(uuid, text, text, text, text, integer, text)'];
 const fnMeta = async () => Promise.all(SIGS.map(async (sig) => (await db.query(`select p.proacl::text a, p.prosecdef s, p.proconfig::text c, pg_get_userbyid(p.proowner) o from pg_proc p where p.oid = to_regprocedure($1)`, [sig])).rows[0]));
 const meta96 = await fnMeta();
@@ -194,17 +194,17 @@ const c96 = await snapshotCatalog(db);
 await db.exec(MIGRATION);
 const c99 = await snapshotCatalog(db);
 const d = diffCatalog(c96, c99);
-check('3. 0099 adds exactly one catalog object (the helper) and changes exactly the two payment functions',
+check('3. 0101 adds exactly one catalog object (the helper) and changes exactly the two payment functions',
   d.removed.length === 0 && d.added.length === 1 && /gift_order_checkout_block_reason/.test(String(d.added[0])) &&
   d.changed.length === 2 && d.changed.every((k) => /begin_gate3_checkout|apply_gate3_payment_event/.test(String(k))), { added: d.added, changed: d.changed, removed: d.removed });
 {
   const meta99 = await fnMeta();
   check('3. both functions keep owner, SECURITY DEFINER, search_path and ACL exactly', JSON.stringify(meta96) === JSON.stringify(meta99), meta99);
 }
-check('3. applying 0099 changes no data', (await dataSnapshot(db)) === preData);
+check('3. applying 0101 changes no data', (await dataSnapshot(db)) === preData);
 
-// --- 4. Checkout after 0099 ------------------------------------------------------------------
-console.log('\n=== 4. checkout after 0099 ===');
+// --- 4. Checkout after 0101 ------------------------------------------------------------------
+console.log('\n=== 4. checkout after 0101 ===');
 for (const k of BLOCKED) {
   const before = await state(k), ev = await events(k);
   const r = await checkoutAs(U.buyer, k);
@@ -229,9 +229,9 @@ for (const [k, uid, want] of [['pending', U.buyer, 'authority_not_confirmed'], [
   check(`4. unchanged 0080 refusal: ${k} as ${uid === U.stranger ? 'an unrelated adult' : uid ? 'the buyer' : 'no session'} -> ${want}`, reason(r) === want, reason(r));
 }
 
-// --- 5. Payment after 0099 -------------------------------------------------------------------
-console.log('\n=== 5. payment after 0099 ===');
-// selfPurchaser simulates a checkout opened before 0099 (pending_payment).
+// --- 5. Payment after 0101 -------------------------------------------------------------------
+console.log('\n=== 5. payment after 0101 ===');
+// selfPurchaser simulates a checkout opened before 0101 (pending_payment).
 await db.query(`update public.orders set payment_status = 'pending_payment' where id = $1`, [O.selfPurchaser]);
 for (const k of [...BLOCKED, 'pending', 'declined']) {
   const before = await state(k), ev = await events(k);
@@ -378,7 +378,7 @@ console.log('\n=== 8. post-check ===');
   const preFresh = num((await as(fresh, null, null, PRECHECK, [], { commit: false, before: 'set transaction read only;' })).rows[0]);
   check('8. (fresh copy) pre-check reproduces section 2', Object.entries(expectedPre).every(([k, v]) => preFresh[k] === v), preFresh);
   const postBlocked = await as(fresh, null, null, POSTCHECK, [], { commit: false, before: 'set transaction read only;' });
-  check('8. post-check before 0099 fails loudly (helper missing), so it cannot be mistaken for a pass', postBlocked.status !== 'ok', postBlocked.status);
+  check('8. post-check before 0101 fails loudly (helper missing), so it cannot be mistaken for a pass', postBlocked.status !== 'ok', postBlocked.status);
   await fresh.exec(MIGRATION);
   const post = await as(fresh, null, null, POSTCHECK, [], { commit: false, before: 'set transaction read only;' });
   const P = num(post.rows?.[0] ?? {});
@@ -400,13 +400,13 @@ console.log('\n=== 9. preconditions ===');
   const before = await snapshotCatalog(db);
   let refusal = null;
   try { await db.exec(MIGRATION); } catch (e) { refusal = e.message; await db.exec('rollback;').catch(() => {}); }
-  check('9. 0099 refuses to apply twice, changing nothing', /0099 refused: .*already applied/.test(refusal ?? '') && sameCatalog(before, await snapshotCatalog(db)), refusal);
+  check('9. 0101 refuses to apply twice, changing nothing', /0101 refused: .*already applied/.test(refusal ?? '') && sameCatalog(before, await snapshotCatalog(db)), refusal);
   const old = await createDatabase();
   await applyMigrations(old, { through: '0077' });
   const oldBefore = await snapshotCatalog(old);
   let oldRefusal = null;
   try { await old.exec(MIGRATION); } catch (e) { oldRefusal = e.message; await old.exec('rollback;').catch(() => {}); }
-  check('9. 0099 refuses without the 0080 functions, changing nothing', /0099 refused: the expected 0080 state is not in place/.test(oldRefusal ?? '') && sameCatalog(oldBefore, await snapshotCatalog(old)), oldRefusal);
+  check('9. 0101 refuses without the 0080 functions, changing nothing', /0101 refused: the expected 0080 state is not in place/.test(oldRefusal ?? '') && sameCatalog(oldBefore, await snapshotCatalog(old)), oldRefusal);
 }
 
 // --- 10. Rollback -----------------------------------------------------------------------------
@@ -415,22 +415,22 @@ console.log('\n=== 10. rollback ===');
   const dataBefore = await dataSnapshot(db);
   let refusal = null;
   try { await db.exec(ROLLBACK); } catch (e) { refusal = e.message; await db.exec('rollback;').catch(() => {}); }
-  check('10. rollback refuses without the acknowledgement, changing nothing', /0099 rollback refused/.test(refusal ?? '') && sameCatalog(c99, await snapshotCatalog(db)), refusal);
+  check('10. rollback refuses without the acknowledgement, changing nothing', /0101 rollback refused/.test(refusal ?? '') && sameCatalog(c99, await snapshotCatalog(db)), refusal);
   await db.exec('begin;');
   await db.query(ACK);
   await db.exec(ROLLBACK.replace(/^begin;$/m, ''));
   const cBack = await snapshotCatalog(db);
   check('10. with the acknowledgement it restores the exact 0096 catalog', sameCatalog(c96, cBack), keysOf(diffCatalog(c96, cBack)));
   check('10. the rollback changes no data (refusal events stay as history)', (await dataSnapshot(db)) === dataBefore);
-  const ack = (await db.query(`select coalesce(current_setting('emblem.acknowledge_0099_rollback', true), '') v`)).rows[0].v;
+  const ack = (await db.query(`select coalesce(current_setting('emblem.acknowledge_0101_rollback', true), '') v`)).rows[0].v;
   check('10. the acknowledgement does not persist', ack === '', ack);
   const reopened = await checkoutAs(U.buyer, 'latestSelf', { commit: false });
   check('10. after rollback the R5 defect is back (proves the rollback really restores 0080)', reopened.rows?.[0]?.r?.ok === true, reason(reopened));
   let again = null;
   try { await db.exec('begin;'); await db.query(ACK); await db.exec(ROLLBACK.replace(/^begin;$/m, '')); } catch (e) { again = e.message; await db.exec('rollback;').catch(() => {}); }
-  check('10. a second rollback refuses (0099 not applied)', /0099 is not applied/.test(again ?? ''), again);
+  check('10. a second rollback refuses (0101 not applied)', /0101 is not applied/.test(again ?? ''), again);
   await db.exec(MIGRATION);
-  check('10. 0099 re-applies to the exact 0099 catalog', sameCatalog(c99, await snapshotCatalog(db)));
+  check('10. 0101 re-applies to the exact 0101 catalog', sameCatalog(c99, await snapshotCatalog(db)));
   const blockedAgain = await checkoutAs(U.buyer, 'latestSelf', { commit: false });
   check('10. …and the block is back in force', reason(blockedAgain) === 'gift_approval_invalid', reason(blockedAgain));
 }

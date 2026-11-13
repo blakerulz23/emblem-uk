@@ -4,7 +4,7 @@ import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notifi
 type Service = ReturnType<typeof createServiceRoleClient>;
 
 /**
- * R5 (migration 0099): a Shopify payment for a gift order with no genuine
+ * R5 (migration 0101): a Shopify payment for a gift order with no genuine
  * parent or guardian approval is never marked paid. apply_gate3_payment_event
  * records it append-only in payment_state_events (reason
  * 'paid_refused_gift_approval_invalid[:shopify_order_id=<id>]', with the

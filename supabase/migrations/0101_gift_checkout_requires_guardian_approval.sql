@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0099: gift-order checkout and payment require a genuine guardian approval
+-- 0101: gift-order checkout and payment require a genuine guardian approval
 -- (R5).
 --
 -- A gift order (authority_status guardian_approval_pending / guardian_approved
@@ -42,21 +42,21 @@
 -- Everything else in both functions is 0080's body unchanged. CREATE OR
 -- REPLACE keeps each function's owner, SECURITY DEFINER, search_path and
 -- grants. No table, column, policy, grant on an existing object, or data
--- changes. Rollback: supabase/rollback/0099_rollback.sql.
--- Proven in supabase/tests/authz/migration_0099_test.mjs (PGlite).
+-- changes. Rollback: supabase/rollback/0101_rollback.sql.
+-- Proven in supabase/tests/authz/migration_0101_test.mjs (PGlite).
 --
 -- DEPLOY ORDER: the app change (checkout and orders/paid routes) must be
 -- live BEFORE this migration is applied. Applied first, a refused payment
 -- would reach the old orders/paid route, which has no branch for
 -- gift_approval_invalid and would not alert staff. App first is harmless:
--- its new branches simply never fire until 0099 is applied.
+-- its new branches simply never fire until 0101 is applied.
 -- ============================================================================
 
 begin;
 
 -- ----------------------------------------------------------------------------
 -- Precondition: the 0080 functions are in place, with 0080's grants, and
--- 0099 has not been applied. Refuses (changing nothing) otherwise.
+-- 0101 has not been applied. Refuses (changing nothing) otherwise.
 -- ----------------------------------------------------------------------------
 do $$
 declare
@@ -65,7 +65,7 @@ declare
   v_apply regprocedure := to_regprocedure('public.apply_gate3_payment_event(uuid, text, text, text, text, integer, text)');
 begin
   if to_regprocedure('public.gift_order_checkout_block_reason(uuid)') is not null then
-    raise exception '0099 refused: public.gift_order_checkout_block_reason already exists (0099 already applied)';
+    raise exception '0101 refused: public.gift_order_checkout_block_reason already exists (0101 already applied)';
   end if;
   if v_begin is null then
     v_problems := v_problems || 'begin_gate3_checkout(uuid) is missing'::text;
@@ -94,7 +94,7 @@ begin
     v_problems := v_problems || 'a 0071/0080 table is missing'::text;
   end if;
   if array_length(v_problems, 1) > 0 then
-    raise exception '0099 refused: the expected 0080 state is not in place: %', array_to_string(v_problems, '; ');
+    raise exception '0101 refused: the expected 0080 state is not in place: %', array_to_string(v_problems, '; ');
   end if;
 end;
 $$;
@@ -163,7 +163,7 @@ revoke all on function public.gift_order_checkout_block_reason(uuid) from public
 grant execute on function public.gift_order_checkout_block_reason(uuid) to service_role;
 
 comment on function public.gift_order_checkout_block_reason(uuid) is
-  'R5 (0099): NULL when an order may be paid for; otherwise why a gift order may not (gift_not_approved, gift_approval_missing, gift_self_approved). Non-gift orders are always NULL and never read the approval tables. Same rule as src/lib/gift-order-guardian.ts loadApprovedGuardianEmail. Used by begin_gate3_checkout and apply_gate3_payment_event.';
+  'R5 (0101): NULL when an order may be paid for; otherwise why a gift order may not (gift_not_approved, gift_approval_missing, gift_self_approved). Non-gift orders are always NULL and never read the approval tables. Same rule as src/lib/gift-order-guardian.ts loadApprovedGuardianEmail. Used by begin_gate3_checkout and apply_gate3_payment_event.';
 
 -- ----------------------------------------------------------------------------
 -- 2. begin_gate3_checkout: 0080 body plus the gift-approval check.
@@ -212,7 +212,7 @@ begin
     return jsonb_build_object('ok', false, 'reason', 'order_' || v_order.payment_status);
   end if;
 
-  -- 0099 (R5): a gift order needs a genuine guardian approval, not one
+  -- 0101 (R5): a gift order needs a genuine guardian approval, not one
   -- from the buyer's own address. Checked after 0080's paid/closed refusals (unchanged order) and before anything is written. A
   -- failed check refuses checkout (fail closed).
   begin
@@ -306,7 +306,7 @@ begin
       -- not treated as authoritative over a later, more final state.
       return jsonb_build_object('applied', false, 'reason', 'order_' || v_order.payment_status, 'orderId', v_order.id);
     end if;
-    -- 0099 (R5): never mark a gift order paid without a genuine guardian
+    -- 0101 (R5): never mark a gift order paid without a genuine guardian
     -- approval. The refused payment is recorded (append-only) and the
     -- caller alerts staff to hold and refund. Not wrapped in an exception
     -- handler on purpose: if the check errors, this whole call (including

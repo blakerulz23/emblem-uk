@@ -236,7 +236,7 @@ export async function POST(req: NextRequest) {
 
   // A payment for a gift order with no genuine guardian approval (approved
   // from the buyer's own address, or not approved at all) is never applied
-  // (migration 0099, R5): the database keeps the order's payment status and
+  // (migration 0101, R5): the database keeps the order's payment status and
   // records the refused payment. Money may have been taken, so staff are
   // told, once per Shopify payment (gift-payment-refusal.ts). If the alert
   // can't be confirmed, 500 asks Shopify to retry; the retry arrives as
