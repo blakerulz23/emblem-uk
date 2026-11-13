@@ -15,6 +15,13 @@ import { POST as recover } from './recover/route';
 
 let session: ReturnType<typeof createFakeSupabase>;
 let service: ReturnType<typeof createFakeSupabase>;
+// The gift-order guardian gate (fix/gift-guardian-handoff) is pinned in
+// gift-order-profile-gate.test.ts; here it is neutral so this file tests
+// the relationship authorization checks on their own.
+vi.mock('@/lib/gift-order-guardian', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/gift-order-guardian')>();
+  return { ...actual, checkGiftFirstGuardianClaim: vi.fn(async () => ({ outcome: 'not_gift' })) };
+});
 vi.mock('@/lib/supabase/server', () => ({ createClient: () => session.client, createServiceRoleClient: () => service.client }));
 vi.mock('@/lib/story-updates', () => ({ generateStoryUpdate: vi.fn(async () => undefined) }));
 vi.mock('@/lib/public-player-id', () => ({ ensurePublicPlayerId: vi.fn(async () => undefined) }));

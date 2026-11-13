@@ -5,6 +5,7 @@ import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notifi
 import { squadInviteVariantId } from '@/lib/squad-invite-payment-link';
 import { notifyStaffOfPaymentIssue } from '@/lib/payment-alerts';
 import { flagSecondPaymentIfAny } from '@/lib/duplicate-payment';
+import { alertRefusedGiftPayment, wasRefusedGiftPayment } from '@/lib/gift-payment-refusal';
 import { extractOrderDiscountCode } from '@/lib/partner-programme';
 
 /**
@@ -231,6 +232,32 @@ export async function POST(req: NextRequest) {
       reference: orderRef,
       reason: `Shopify reports this order paid, but Emblem already holds it as ${result.reason === 'order_cancelled' ? 'cancelled' : 'refunded'}, so it was not marked paid. Check the order in Shopify and refund it if money was taken.`,
     });
+  }
+
+  // A payment for a gift order with no genuine guardian approval (approved
+  // from the buyer's own address, or not approved at all) is never applied
+  // (migration 0101, R5): the database keeps the order's payment status and
+  // records the refused payment. Money may have been taken, so staff are
+  // told, once per Shopify payment (gift-payment-refusal.ts). If the alert
+  // can't be confirmed, 500 asks Shopify to retry; the retry arrives as
+  // duplicate_event and the recorded refusal raises the alert again.
+  {
+    let refused = !result?.applied && result?.reason === 'gift_approval_invalid';
+    if (!refused && !result?.applied && result?.reason === 'duplicate_event') {
+      const recorded = await wasRefusedGiftPayment(supabase, existing.id, webhookId);
+      if (recorded === 'failed') {
+        return NextResponse.json({ error: 'refused gift payment lookup failed' }, { status: 500 });
+      }
+      refused = recorded;
+    }
+    if (refused) {
+      const alerted = await alertRefusedGiftPayment(supabase, { orderRef, shopifyOrderId: extractShopifyOrderId(payload) });
+      if (!alerted) {
+        console.error('shopify webhook: refused gift payment alert not confirmed, asking Shopify to retry', { orderRef });
+        return NextResponse.json({ error: 'refused gift payment alert not yet sent' }, { status: 500 });
+      }
+      return NextResponse.json({ ok: true, applied: false, reason: 'gift_approval_invalid', orderId: existing.id });
+    }
   }
 
   // 4b) A second payment for an order Emblem already holds as paid (two

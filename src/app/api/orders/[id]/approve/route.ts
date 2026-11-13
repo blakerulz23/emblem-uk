@@ -8,6 +8,7 @@ import { resolveOrCreateSeason } from '@/lib/resolve-season';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
 import { sendSquadInviteEarlyPreviewEmail } from '@/lib/send-squad-invite-early-preview-email';
 import { gate3PaymentGateEnabled } from '@/lib/shopify';
+import { GIFT_APPROVAL_MISSING_MESSAGE, isGiftAuthorityStatus, resolveProfileInviteRecipient, type ProfileInviteRecipient } from '@/lib/gift-order-guardian';
 
 export const runtime = 'nodejs';
 
@@ -169,7 +170,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   const serviceRole = createServiceRoleClient();
 
-  const { data: sourceRow } = await serviceRole.from('orders').select('source, authority_status, pricing_tier, payment_status, order_ref').eq('id', params.id).maybeSingle();
+  const { data: sourceRow } = await serviceRole.from('orders').select('source, authority_status, pricing_tier, payment_status, order_ref, purchaser_email, intended_guardian_email').eq('id', params.id).maybeSingle();
   if (!sourceRow) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   }
@@ -216,6 +217,63 @@ export async function POST(request: Request, { params }: { params: { id: string 
     );
   }
 
+  const { data: cards, error: cardsError } = await serviceRole
+    .from('cards')
+    .select('player_id')
+    .eq('order_id', params.id)
+    .not('player_id', 'is', null);
+
+  // Fail closed: every decision below (gift check, single vs squad) depends
+  // on this read. Treating a failed read as "no cards" would skip the gift
+  // check and approve production.
+  if (cardsError) {
+    console.error('orders/approve: could not read linked cards', { orderId: params.id, code: cardsError.code });
+    return NextResponse.json({ error: 'Could not check the cards on this order. Please try again.' }, { status: 500 });
+  }
+
+  // One entry per child, not per card row: a stray second card row for the
+  // same child must not turn a single-child order into a "squad" and skip
+  // the gift check (same rule as checkGiftFirstGuardianClaim).
+  const linkedCards = Array.from(
+    new Map(((cards ?? []) as Array<{ player_id: string }>).map((c) => [c.player_id, c])).values()
+  );
+
+  // Gift order (placed by a coach, organiser or other adult), single child:
+  // refuse production unless a genuine guardian approval is on record.
+  // Checked before any write and before the payment gate, so staff see the
+  // real blocker even on an unpaid order. Non-gift and multi-child orders
+  // are unaffected (multi-child gift orders are held by staff, amendment A2).
+  // A gift order with no linked child is refused too: there is nobody whose
+  // guardian could have approved it.
+  if (isGiftAuthorityStatus(sourceRow.authority_status) && linkedCards.length === 0) {
+    await serviceRole.from('builder_authority_audit_events').insert({
+      order_id: params.id,
+      event_type: 'staff_approval_blocked',
+      metadata: { authorityStatus: sourceRow.authority_status, reason: 'no_linked_child' },
+    });
+    return NextResponse.json({ error: GIFT_APPROVAL_MISSING_MESSAGE }, { status: 409 });
+  }
+  let giftRecipient: ProfileInviteRecipient | null = null;
+  if (isGiftAuthorityStatus(sourceRow.authority_status) && linkedCards.length === 1) {
+    giftRecipient = await resolveProfileInviteRecipient(serviceRole, {
+      id: params.id,
+      authority_status: sourceRow.authority_status ?? null,
+      purchaser_email: sourceRow.purchaser_email ?? null,
+      intended_guardian_email: sourceRow.intended_guardian_email ?? null,
+    });
+    if (!giftRecipient.ok && giftRecipient.reason === 'lookup_failed') {
+      return NextResponse.json({ error: 'Could not check the guardian approval for this order. Please try again.' }, { status: 500 });
+    }
+    if (!giftRecipient.ok) {
+      await serviceRole.from('builder_authority_audit_events').insert({
+        order_id: params.id,
+        event_type: 'staff_approval_blocked',
+        metadata: { authorityStatus: sourceRow.authority_status, reason: giftRecipient.reason },
+      });
+      return NextResponse.json({ error: GIFT_APPROVAL_MISSING_MESSAGE }, { status: 409 });
+    }
+  }
+
   // Gate 3 — payment wall. Scoped to the single-child pricing tier only:
   // that's the only tier with a verified Shopify variant/price mapping
   // today (see gate3CheckoutSupportsTier's own comment) — multi/squad
@@ -239,13 +297,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
     );
   }
 
-  const { data: cards } = await serviceRole
-    .from('cards')
-    .select('player_id')
-    .eq('order_id', params.id)
-    .not('player_id', 'is', null);
-
-  const linkedCards = cards ?? [];
   let resolvedTeamId: string | null = null;
 
   if (linkedCards.length > 1) {
@@ -334,13 +385,28 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   let inviteTriggered = false;
+  let inviteSkippedReason: string | undefined;
 
   if (linkedCards.length === 1) {
     const playerId = linkedCards[0].player_id;
-    const recipient = order.intended_guardian_email?.trim() || order.purchaser_email?.trim();
-    if (playerId && recipient) {
-      await createGuardianInvite(serviceRole, playerId, null, recipient, 'order_approval', order.id);
+    // Who gets control of the child's profile. A gift order (placed by a
+    // coach, organiser or other adult) goes only to the guardian who
+    // approved it, never to the buyer; every other order is unchanged
+    // (intended guardian, else purchaser). See gift-order-guardian.ts.
+    const recipient = giftRecipient ?? await resolveProfileInviteRecipient(serviceRole, {
+      id: order.id,
+      authority_status: sourceRow.authority_status ?? null,
+      purchaser_email: order.purchaser_email ?? null,
+      intended_guardian_email: order.intended_guardian_email ?? null,
+    });
+    if (playerId && recipient.ok) {
+      await createGuardianInvite(serviceRole, playerId, null, recipient.email, 'order_approval', order.id);
       inviteTriggered = true;
+    } else if (!recipient.ok && recipient.reason !== 'no_recipient') {
+      // Fail closed: production is approved, but no profile invite goes to
+      // anyone until the approving guardian is resolved (never the buyer).
+      console.error('orders/approve: profile invite withheld', recipient.reason);
+      inviteSkippedReason = recipient.reason;
     }
   } else if (linkedCards.length > 1 && resolvedTeamId) {
     const recipient = order.purchaser_email?.trim();
@@ -350,5 +416,5 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
   }
 
-  return NextResponse.json({ ok: true, orderId: order.id, inviteTriggered });
+  return NextResponse.json({ ok: true, orderId: order.id, inviteTriggered, ...(inviteSkippedReason ? { inviteSkippedReason } : {}) });
 }

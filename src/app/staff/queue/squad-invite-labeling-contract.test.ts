@@ -13,7 +13,7 @@ describe('Staff queue — Squad Invite orders are clearly labeled, never silentl
   });
 
   it('selects orders.source for the recently-approved section too', () => {
-    expect(page).toMatch(/\.select\('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name, source'\)/);
+    expect(page).toMatch(/\.select\('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name, source, authority_status'\)/);
   });
 
   it('renders a visible "Squad Invite · consolidated delivery" badge in every section, including the Profile Setup Queue', () => {

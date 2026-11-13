@@ -16,11 +16,9 @@ type Outcome = 'idle' | 'sending' | 'approved' | 'declined' | 'invalid';
  */
 export default function BuilderApprovalPage({ params }: { params: { token: string } }) {
   const [outcome, setOutcome] = useState<Outcome>('idle');
-  const [error, setError] = useState('');
 
   const respond = async (decision: 'approved' | 'declined') => {
     setOutcome('sending');
-    setError('');
     try {
       const response = await fetch('/api/builder-authority/guardian-respond', {
         method: 'POST',
@@ -30,13 +28,11 @@ export default function BuilderApprovalPage({ params }: { params: { token: strin
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.ok) {
         setOutcome('invalid');
-        setError(result?.error || 'This link is no longer valid.');
         return;
       }
       setOutcome(decision);
     } catch {
       setOutcome('invalid');
-      setError('This link is no longer valid.');
     }
   };
 
@@ -52,7 +48,8 @@ export default function BuilderApprovalPage({ params }: { params: { token: strin
                 <h1>Approve this card?</h1>
                 <p className="uk-wizard-copy">
                   An adult has started creating a personalised Emblem card and named you as the player&apos;s parent
-                  or legal guardian. Nothing is produced until you respond.
+                  or legal guardian. Nothing is produced until you respond. If you approve, you&apos;ll be the one who
+                  sets up and controls the player&apos;s Emblem profile.
                 </p>
                 <div className="uk-adult-permission-card">
                   <button
@@ -76,17 +73,26 @@ export default function BuilderApprovalPage({ params }: { params: { token: strin
             ) : outcome === 'approved' ? (
               <>
                 <h1>Thank you.</h1>
-                <p className="uk-wizard-copy">This card is now approved and will move into production.</p>
+                <p className="uk-wizard-copy">
+                  You&apos;ve approved this card. We&apos;ll let the person who made it know, so they can pay for their
+                  order. Once the card is made, we&apos;ll email you an invite to set up the player&apos;s Emblem
+                  profile. You&apos;ll control it, not them.
+                </p>
               </>
             ) : outcome === 'declined' ? (
               <>
                 <h1>Thanks for letting us know.</h1>
-                <p className="uk-wizard-copy">This card will not be produced.</p>
+                <p className="uk-wizard-copy">
+                  This card won&apos;t be made. We&apos;ll let the person who made it know, without giving a reason.
+                  Nobody has been charged.
+                </p>
               </>
             ) : (
               <>
                 <h1>This link is no longer valid.</h1>
-                <p className="uk-wizard-copy">{error || 'It may have expired or already been used.'}</p>
+                <p className="uk-wizard-copy">
+                  It may have expired or already been used. Approval links work for 14 days and can only be used once.
+                </p>
               </>
             )}
           </section>

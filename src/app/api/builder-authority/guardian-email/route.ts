@@ -57,6 +57,25 @@ export async function POST(request: NextRequest) {
   const tokenHash = hashGuardianApprovalToken(rawToken);
 
   const serviceRole = createServiceRoleClient();
+
+  // The adult who made the card can't approve it themselves: the guardian
+  // who approves becomes the child's profile owner (gift-order-guardian.ts),
+  // so their address must differ from the buyer's verified one.
+  const { data: declaration } = await serviceRole
+    .from('builder_order_authority_declarations')
+    .select('adult_email')
+    .eq('order_id', orderId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const buyerEmail = (declaration as { adult_email?: string } | null)?.adult_email?.trim().toLowerCase();
+  if (buyerEmail && buyerEmail === guardianEmail) {
+    return NextResponse.json(
+      { error: 'Enter the parent or guardian’s own email address. It can’t be the email you verified with.' },
+      { status: 400 }
+    );
+  }
+
   const { error } = await serviceRole.rpc('create_builder_guardian_approval_request', {
     p_order_id: orderId,
     p_guardian_email: guardianEmail,

@@ -10,6 +10,7 @@ import { ensureProfileRole } from '@/lib/relationship-writes';
 import { activeCoachAssignments, COACH_ASSIGNMENT_STATE_COLUMNS } from '@/lib/coach-assignment';
 import { checkFirstGuardianClaim } from '@/lib/guardian-invite-eligibility';
 import { logRouteFailure, type DbError } from '@/lib/route-failure';
+import { checkGiftFirstGuardianClaim, GIFT_PROFILE_REFUSED_MESSAGE } from '@/lib/gift-order-guardian';
 
 export const runtime = 'nodejs';
 
@@ -120,6 +121,19 @@ export async function POST(request: NextRequest) {
     }
     if (eligibility.outcome === 'refused') {
       return NextResponse.json({ error: "This card isn't available to claim" }, { status: 400 });
+    }
+
+    // Then: a gift order's card is delivered to the buyer, so holding the
+    // card is not enough to become the child's first guardian. Only the
+    // guardian who approved the order may claim it this way. This stays true
+    // after a guardian has linked: if the card lock after an invite
+    // redemption failed, the buyer's code must still not add them.
+    const giftCheck = await checkGiftFirstGuardianClaim(serviceRole, card.player_id, user, { evenIfGuardianExists: true });
+    if (giftCheck.outcome === 'failed') {
+      return NextResponse.json({ error: 'Could not claim this player. Please try again.' }, { status: 500 });
+    }
+    if (giftCheck.outcome === 'refused') {
+      return NextResponse.json({ error: GIFT_PROFILE_REFUSED_MESSAGE }, { status: 403 });
     }
   }
 

@@ -17,7 +17,8 @@ const MIGRATION_FILE = /^(\d{4})_[a-z0-9_]+\.sql$/;
 // 0097 is the coach account-deletion fix (an unmerged branch's
 // 0097_erase_print_pdfs_on_player_deletion.sql must take another number);
 // 0098 is the deletion-review safeguarding fix, 0099 the Season feature
-// states, and acquisition samples move to 0100. New work starts at 0101.
+// states, acquisition samples move to 0100, and 0101 is the R5 gift-order
+// checkout and payment gate. New work starts at 0102.
 export const RESERVED_NUMBERS = {
   '0088': 'relationship_authorization_foundation',
   '0089': 'relationship_authorization_lockdown',
@@ -29,6 +30,7 @@ export const RESERVED_NUMBERS = {
   '0098': 'deletion_review_suspension_and_verifier_identity',
   '0099': 'season_feature_states',
   '0100': 'acquisition_samples',
+  '0101': 'gift_checkout_requires_guardian_approval',
 };
 
 /** Files that use a reserved number for a different migration. */

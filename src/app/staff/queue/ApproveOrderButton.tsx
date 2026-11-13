@@ -62,7 +62,7 @@ export default function ApproveOrderButton({ orderId, squadInvite = false }: { o
         {busy ? 'Approving…' : squadInvite ? 'Approve for pilot production' : 'Approve'}
       </button>
       {error && (
-        <p role="alert" style={{ margin: 0, maxWidth: 220, textAlign: 'right', fontFamily: 'var(--font-manrope), system-ui', fontSize: 12, fontWeight: 600, color: '#b91c1c' }}>
+        <p role="alert" style={{ margin: 0, maxWidth: 280, textAlign: 'right', fontFamily: 'var(--font-manrope), system-ui', fontSize: 12, fontWeight: 600, color: '#b91c1c' }}>
           {error}
         </p>
       )}

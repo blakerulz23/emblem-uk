@@ -54,13 +54,17 @@ export default function GuardianPendingScreen({ orderId }: { orderId: string | n
       <h1>Guardian approval required</h1>
       <p className="uk-wizard-copy">
         We&apos;ll send a secure approval request to the player&apos;s parent or legal guardian. Your card will be
-        saved while we wait.
+        saved while we wait, and nothing is charged until they approve. If they do, they&apos;ll also be the one
+        who sets up and controls the player&apos;s Emblem profile.
       </p>
 
       {status === 'sent' ? (
         <div className="uk-enquiry-success">
           <strong>Approval request sent.</strong>
-          <span>We&apos;ll let you know as soon as the guardian responds. Nothing more is needed from you right now.</span>
+          <span>
+            We&apos;ll email you when they respond. If they approve, the email has a link to pay for your order. The
+            link we sent them works for 14 days.
+          </span>
         </div>
       ) : (
         <div className="uk-adult-permission-card">
