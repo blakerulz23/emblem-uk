@@ -27,7 +27,7 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `guardian_invite_redemption_test.mjs` | Who may redeem a guardian invite: runs the app's `src/lib/guardian-invite-eligibility.ts` against the final schema, read-only as `service_role`. |
 | `gift_order_invite_redemption_test.mjs` | Gift-order guardian invites: runs `guardian-invite-eligibility.ts` and `gift-order-guardian.ts` in the redeem route's order against the final schema, read-only as `service_role`. An invite carrying a single-card gift order's `order_id` is redeemable only by the approving guardian, even after the child has a guardian. |
 | `migration_0101_test.mjs` | Migration 0101 (R5: gift-order checkout and payment need a genuine guardian approval), its pre/post checks (`supabase/verification/0101_precheck.sql`, `0101_postcheck.sql`) and its rollback, on a fresh 0096 database with fictional rows. Self-approved and approval-missing gift orders can't open checkout or be marked paid; genuine gift, ordinary, historical and Squad Invite orders are unchanged; both paths fail closed when the approval read fails; the helper agrees with `gift-order-guardian.ts`; the rollback restores the exact 0096 catalog. |
-| `migration_production_order_0101_0097_0098_test.mjs` | Production order for PR #140: 0101 reached production before 0097 and 0098. Builds through 0096, applies 0101, then 0097 and 0098, and proves the 0101 post-check stays 8/8 with unchanged counts and the whole public catalog equals a database built in filename order. Rolls back 0098 then 0097 (0097 first is refused) with 0101 intact and 8/8, each step restoring the exact intermediate catalog with no data change, then reapplies both. |
+| `migration_production_order_0101_0097_0098_test.mjs` | Production order for PR #140: 0101 reached production before 0097 and 0098. Builds through 0096, applies 0101, then 0097 and 0098, and proves the 0101 post-check stays 8/8 with unchanged counts and the whole public catalog equals a database built in filename order. Rolls back 0098 then 0097 (0097 first is refused) with 0101 intact and 8/8, each step restoring the exact intermediate catalog with the fixture order rows unchanged, then reapplies both. Finally rolls back 0101 with 0097/0098 applied (catalog equals a 0097 + 0098 build) and reapplies it. The tables 0097/0098 change are empty here; their data paths are in the 0097/0098 suites. |
 | `pr140_app_before_0097_0098_test.mjs` | Deployment order for PR #140: reads the six changed route files and, on a database with 0101 but without 0097/0098, proves every RPC they call binds with the argument names they send, every column they write exists, and no database function can yet produce the signals their new branches handle (`account_deletion_review_pending`, SQLSTATE `EMDRP`, the staff-deletion refusal). So the app can deploy before the migrations. After 0097 + 0098 the bindings still hold and the signals exist. |
 
 Related: `supabase/rollback/0088_rollback.sql`, `supabase/rollback/0089_rollback.sql`,
@@ -1160,8 +1160,8 @@ this security release, 0092 for `test_card_archive`, 0093 for
 `achievement_card_reveals` (those feature branches must be renumbered
 before they merge), 0097 for `coach_account_deletion_verified_moments`,
 0098 for `deletion_review_suspension_and_verifier_identity`, 0099 for
-`season_feature_states` and 0100 for `acquisition_samples`. New work
-starts at 0101.
+`season_feature_states`, 0100 for `acquisition_samples` and 0101 for
+`gift_checkout_requires_guardian_approval` (R5). New work starts at 0102.
 `scripts/check-migration-numbers.test.ts` runs it against the real folder
 and against synthetic temporary folders. There is no CI workflow in this
 repository yet. Running it on every push and pull request is a follow-up.

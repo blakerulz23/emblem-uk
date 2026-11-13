@@ -12,8 +12,12 @@
 //      coach_team_requests insert);
 //   3. nothing in the database can yet produce the signals PR #140's new
 //      branches react to ('account_deletion_review_pending', SQLSTATE EMDRP,
-//      'Staff accounts cannot be deleted from the app'), so before 0098 each
-//      route takes exactly the paths it takes on main today;
+//      'Staff accounts cannot be deleted from the app'), so before 0098 none of
+//      the new error branches can run. The one change that takes effect as
+//      soon as the app deploys, with or without the migrations, is moment
+//      verify's verified_at IS NULL filter: re-approving an already-verified
+//      moment now updates nothing and gets the existing 403 instead of
+//      overwriting the verifier (intended; needs only the existing column);
 //   4. the same checks after 0097 + 0098 (on top of 0101): every binding still
 //      holds and the signals now exist, so the new branches become reachable
 //      only once the migrations are applied.

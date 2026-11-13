@@ -10,13 +10,20 @@
 //      a database built in numeric order (so every behaviour the 0097, 0098
 //      and 0101 suites prove holds for the production order too)
 //   4. roll back 0098, then 0097 (0097 first is refused while 0098 is applied);
-//      each step restores the exact intermediate catalog, changes no data, and
-//      leaves 0101 intact at 8/8
+//      each step restores the exact intermediate catalog and leaves 0101
+//      intact at 8/8
 //   5. reapply 0097 and 0098: identical catalog to step 3, 0101 still 8/8
+//   6. emergency rollback of 0101 with 0097/0098 applied: refused without its
+//      acknowledgement; with it, the catalog is exactly a 0097 + 0098 build;
+//      0101 then reapplies to the step 3 catalog
 //
 // Fictional data: one closed (cancelled, guardian_declined) gift order, which
 // 0101 counts as blocked but leaves alone, so blocked_total = 1 and every other
-// blocked count is 0, plus ordinary open orders.
+// blocked count is 0, plus ordinary open orders. The "fixture rows unchanged"
+// checks therefore cover the order data 0101 reads; the tables 0097/0098 change
+// (moments, deletion requests, suspensions) are empty here, and their data
+// paths, including the rollback refusals that depend on rows, are proven in
+// migration_0097_test.mjs and migration_0098_test.mjs.
 //
 // Run: node --no-warnings supabase/tests/authz/migration_production_order_0101_0097_0098_test.mjs
 import crypto from 'crypto';
@@ -33,6 +40,8 @@ const M0098 = read('migrations/0098_deletion_review_suspension_and_verifier_iden
 const M0101 = read('migrations/0101_gift_checkout_requires_guardian_approval.sql');
 const RB0097 = read('rollback/0097_rollback.sql');
 const RB0098 = read('rollback/0098_rollback.sql');
+const RB0101 = read('rollback/0101_rollback.sql');
+const ACK_0101 = ['emblem.acknowledge_0101_rollback', 'REOPEN-SELF-APPROVED-GIFT-CHECKOUT'];
 const PRECHECK = read('verification/0101_precheck.sql');
 const POSTCHECK = read('verification/0101_postcheck.sql');
 const ACK_0097 = ['emblem.acknowledge_0097_rollback', 'BREAK-COACH-ACCOUNT-DELETION'];
@@ -174,7 +183,7 @@ check('3. 0098 applies on 0096 + 0101 + 0097', (r = await apply(db, M0098)) === 
 const cProd = await snapshotCatalog(db);
 check('3. 0098 changes nothing 0101 created or replaced', catalogDiff(c97, cProd).every((k) => !/gift_order_checkout_block_reason|begin_gate3_checkout|apply_gate3_payment_event/.test(k)), catalogDiff(c97, cProd));
 check('3. 0098 refuses a second run', /0098 refused/.test((await apply(db, M0098)) ?? ''));
-check('3. applying 0097 and 0098 changed no data', sameData(data101, await dataSnapshot(db)));
+check('3. applying 0097 and 0098 left the fixture rows unchanged', sameData(data101, await dataSnapshot(db)));
 await post0101(db, '3');
 
 const numeric = await readyDatabase('0101'); // filename order: 0097, 0098, 0101
@@ -198,7 +207,7 @@ await post0101(db, '4 (after 0098 rollback)');
 check('4. 0097 rollback (acknowledged) succeeds', (r = await rollBack(db, RB0097, ACK_0097)) === null, r);
 diff = catalogDiff(c101, await snapshotCatalog(db));
 check('4. after 0097 rollback the catalog is exactly 0096 + 0101', diff.length === 0, diff);
-check('4. neither rollback changed data', sameData(dataProd, await dataSnapshot(db)));
+check('4. neither rollback changed the fixture rows', sameData(dataProd, await dataSnapshot(db)));
 await post0101(db, '4 (after 0097 rollback)');
 const ackLeft = (await db.query(`select coalesce(current_setting($1, true), '') a, coalesce(current_setting($2, true), '') b`, [ACK_0097[0], ACK_0098[0]])).rows[0];
 check('4. no rollback acknowledgement persists', ackLeft.a === '' && ackLeft.b === '', ackLeft);
@@ -209,9 +218,26 @@ check('5. 0097 reapplies', (r = await apply(db, M0097)) === null, r);
 check('5. 0098 reapplies', (r = await apply(db, M0098)) === null, r);
 diff = catalogDiff(cProd, await snapshotCatalog(db));
 check('5. catalog identical to step 3 (and so to numeric order)', diff.length === 0, diff);
-check('5. data unchanged throughout', sameData(dataProd, await dataSnapshot(db)));
+check('5. fixture rows unchanged throughout', sameData(dataProd, await dataSnapshot(db)));
 await post0101(db, '5');
 check('5. 0096 baseline differs from final (sanity: the catalog snapshot sees the migrations)', catalogDiff(c96, cProd).length > 0);
+
+// --- 6. emergency rollback of 0101 while 0097/0098 stay -----------------------------------------
+console.log('\n=== 6. rollback 0101 with 0097 + 0098 applied, then reapply ===');
+const only9798 = await readyDatabase('0098'); // filename order: 0097, 0098, no 0101
+const c9798 = await snapshotCatalog(only9798);
+await only9798.close();
+r = await rollBack(db, RB0101, null);
+check('6. 0101 rollback without its acknowledgement is refused', /0101 rollback refused/.test(r ?? ''), r);
+check('6. 0101 rollback (acknowledged) succeeds with 0097 + 0098 applied', (r = await rollBack(db, RB0101, ACK_0101)) === null, r);
+diff = catalogDiff(c9798, await snapshotCatalog(db));
+check('6. catalog is exactly 0096 + 0097 + 0098 (0097/0098 objects untouched)', diff.length === 0, diff);
+check('6. 0101 helper gone, pre-check guards true again', ((p) => p.ok && p.row.guard_not_applied && p.row.guard_begin_is_0080 && p.row.guard_apply_is_0080)(await readOnlyRow(db, PRECHECK)));
+check('6. 0101 reapplies with 0097 + 0098 applied', (r = await apply(db, M0101)) === null, r);
+diff = catalogDiff(cProd, await snapshotCatalog(db));
+check('6. catalog identical to step 3 again', diff.length === 0, diff);
+check('6. fixture rows unchanged', sameData(dataProd, await dataSnapshot(db)));
+await post0101(db, '6');
 
 await db.close();
 const failed = results.filter((x) => !x.pass);
