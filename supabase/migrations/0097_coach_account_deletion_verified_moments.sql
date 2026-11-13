@@ -34,9 +34,14 @@
 --      state is reachable only through account deletion. authenticated has
 --      no UPDATE privilege on the new column (0029's column grant is
 --      unchanged), so an update cannot set it either.
---   4. delete_own_guardian_account: identical to 0076 except one statement.
---      A moment this account verified keeps its status and verified_at;
---      verified_by becomes NULL and verifier_account_deleted_at is set.
+--   4. delete_own_guardian_account: the 0076 body with one statement
+--      changed and moved. A moment this account verified keeps its status
+--      and verified_at; verified_by becomes NULL and
+--      verifier_account_deleted_at is set, ONLY in the branch that actually
+--      deletes the profile. A deletion that goes to staff review
+--      (pending_profile_deletions) leaves the verifier as it is: the account
+--      still exists, and a rejected deletion must not change attribution.
+--      (0076 cleared verified_by before deciding; that statement is gone.)
 --      Grants re-stated unchanged (authenticated only).
 --
 --
@@ -55,8 +60,18 @@
 --      The precondition also proves authenticated holds no INSERT or UPDATE
 --      on either table, so no signed-in user can set the marker.
 --   6. delete_own_guardian_account marks this account's cancellations the
---      same way it marks its verifications (the second "0097" block below):
---      the record that a cancellation happened, and when, is kept.
+--      same way it marks its verifications, and also only at actual
+--      deletion (the second "0097" block below): the record that a
+--      cancellation happened, and when, is kept. Nothing is marked when the
+--      deletion only goes to staff review.
+--   7. A backstop for every other way a profile is actually deleted (staff
+--      completing a reviewed deletion by removing the login account, whose
+--      ON DELETE CASCADE deletes the profile, or a manual delete): a BEFORE
+--      DELETE trigger on profiles writes the same two markers for the
+--      profile being deleted. delete_own_guardian_account marks first, so
+--      the trigger then finds nothing; on any other path it is what keeps
+--      the child's record and lets the deletion succeed. It never runs for
+--      a deletion that only goes to staff review (no profile is deleted).
 --
 -- No app code reads moments.verified_by (it is only written, by
 -- /api/os/celebrate and /api/os/moments/verify), so NULL is already safe in
@@ -87,6 +102,10 @@ begin
              where table_schema = 'public' and column_name = 'cancelled_by_account_deleted_at'
                and table_name in ('player_deletion_requests', 'squad_invite_participation_deletion_requests')) then
     raise exception '0097 refused: cancelled_by_account_deleted_at already exists (0097 already applied)';
+  end if;
+  if to_regprocedure('public.mark_deleted_account_attribution()') is not null
+     or exists (select 1 from pg_trigger where tgname = 'profiles_mark_deleted_account_attribution') then
+    raise exception '0097 refused: the deleted-account attribution trigger already exists (0097 already applied)';
   end if;
   if to_regclass('public.player_deletion_requests') is null or to_regclass('public.squad_invite_participation_deletion_requests') is null then
     raise exception '0097 refused: a deletion request table is missing';
@@ -212,7 +231,8 @@ alter table public.squad_invite_participation_deletion_requests validate constra
 
 -- ---------------------------------------------------------------------------
 -- 4 and 6. delete_own_guardian_account: the 0076 body with one statement
---    changed and one block added (both marked "0097" below)
+--    changed and moved, and one block added, both inside the branch that
+--    deletes the profile (marked "0097" below)
 -- ---------------------------------------------------------------------------
 create or replace function public.delete_own_guardian_account()
 returns jsonb
@@ -289,22 +309,6 @@ begin
   update public.moments set uploaded_by = null where uploaded_by = v_uid;
   -- Newly covered nullable references (previously left untouched, which
   -- would have blocked the profiles delete via NO ACTION/RESTRICT).
-  -- 0097: a moment this account verified stays coach_verified with its
-  -- verified_at, so the child keeps the record; only the verifier's
-  -- identity is removed, and verifier_account_deleted_at records why.
-  update public.moments
-     set verified_by = null, verifier_account_deleted_at = now()
-   where verified_by = v_uid;
-  -- 0097: a cancellation this account made stays recorded as cancelled,
-  -- with its cancelled_at; only the canceller's identity is removed.
-  -- (Left to ON DELETE SET NULL, cancelled_by would break the
-  -- cancellation rule and roll the whole deletion back.)
-  update public.player_deletion_requests
-     set cancelled_by = null, cancelled_by_account_deleted_at = now()
-   where cancelled_by = v_uid and status = 'cancelled';
-  update public.squad_invite_participation_deletion_requests
-     set cancelled_by = null, cancelled_by_account_deleted_at = now()
-   where cancelled_by = v_uid and status = 'cancelled';
   update public.orders set approved_by = null where approved_by = v_uid;
   update public.team_invites set created_by = null where created_by = v_uid;
   update public.team_invites set used_by = null where used_by = v_uid;
@@ -350,6 +354,25 @@ begin
     values (v_uid, v_email, v_blocking_reason)
     on conflict (auth_user_id) do update set blocking_reason = excluded.blocking_reason;
   else
+    -- 0097: only here, as the profile is actually deleted, does a moment
+    -- this account verified lose its verifier's identity. It stays
+    -- coach_verified with its verified_at, so the child keeps the record,
+    -- and verifier_account_deleted_at records why. A deletion that goes to
+    -- staff review (the branch above) changes neither, so attribution stays
+    -- exactly as it was while the account exists and after a rejection.
+    update public.moments
+       set verified_by = null, verifier_account_deleted_at = now()
+     where verified_by = v_uid;
+    -- 0097: likewise, only at actual deletion, a cancellation this account
+    -- made stays recorded as cancelled with its cancelled_at and loses only
+    -- the canceller's identity. (Left to ON DELETE SET NULL, cancelled_by
+    -- would break the cancellation rule and roll the whole deletion back.)
+    update public.player_deletion_requests
+       set cancelled_by = null, cancelled_by_account_deleted_at = now()
+     where cancelled_by = v_uid and status = 'cancelled';
+    update public.squad_invite_participation_deletion_requests
+       set cancelled_by = null, cancelled_by_account_deleted_at = now()
+     where cancelled_by = v_uid and status = 'cancelled';
     delete from public.profiles where id = v_uid;
   end if;
 
@@ -365,5 +388,37 @@ revoke all on function public.delete_own_guardian_account() from public, anon;
 grant execute on function public.delete_own_guardian_account() to authenticated;
 
 alter function public.delete_own_guardian_account() owner to postgres;
+
+-- ---------------------------------------------------------------------------
+-- 7. Backstop: mark attribution whenever a profile is actually deleted
+-- ---------------------------------------------------------------------------
+create function public.mark_deleted_account_attribution()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $fn$
+begin
+  -- Same statements as delete_own_guardian_account's deleting branch, for
+  -- the profile being deleted. Runs only when a profile row is deleted.
+  update public.moments
+     set verified_by = null, verifier_account_deleted_at = now()
+   where verified_by = old.id;
+  update public.player_deletion_requests
+     set cancelled_by = null, cancelled_by_account_deleted_at = now()
+   where cancelled_by = old.id and status = 'cancelled';
+  update public.squad_invite_participation_deletion_requests
+     set cancelled_by = null, cancelled_by_account_deleted_at = now()
+   where cancelled_by = old.id and status = 'cancelled';
+  return old;
+end;
+$fn$;
+
+revoke all on function public.mark_deleted_account_attribution() from public, anon, authenticated, service_role;
+alter function public.mark_deleted_account_attribution() owner to postgres;
+
+create trigger profiles_mark_deleted_account_attribution
+  before delete on public.profiles
+  for each row execute function public.mark_deleted_account_attribution();
 
 commit;

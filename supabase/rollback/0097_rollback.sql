@@ -46,6 +46,8 @@ begin
   end if;
   if not exists (select 1 from information_schema.columns
                  where table_schema = 'public' and table_name = 'moments' and column_name = 'verifier_account_deleted_at')
+     or to_regprocedure('public.mark_deleted_account_attribution()') is null
+     or not exists (select 1 from pg_trigger where tgname = 'profiles_mark_deleted_account_attribution')
      or not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'moments'
                     and policyname = 'moments: only account deletion marks a verifier as deleted')
      or (select count(*) from information_schema.columns where table_schema = 'public' and column_name = 'cancelled_by_account_deleted_at'
@@ -72,6 +74,10 @@ begin
   end if;
 end;
 $$;
+
+-- 7 reversed.
+drop trigger profiles_mark_deleted_account_attribution on public.profiles;
+drop function public.mark_deleted_account_attribution();
 
 -- 4 reversed: the 0076 function body, exactly.
 create or replace function public.delete_own_guardian_account()

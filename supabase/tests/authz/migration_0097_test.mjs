@@ -121,6 +121,7 @@ async function deleteAccount(w, uid) {
 }
 const one = async (db, sql, params) => (await db.query(sql, params)).rows[0];
 const n = async (db, sql, params) => Number((await db.query(sql, params)).rows[0].n);
+const attempt = (fn) => fn().then(() => null).catch((e) => e.message);
 const moment = (db, mid) => one(db, `select verification_status, verified_at, verified_by, verifier_account_deleted_at, uploaded_by, title, note, trust, player_id from public.moments where id = $1`, [mid]);
 
 // Every column in public that references profiles or auth.users, and how
@@ -308,14 +309,38 @@ console.log('\n=== 6. Coach with authored records and recognitions (staff-review
     check('6: the RPC now succeeds (was: constraint violation) and withholds identity deletion', result.canDeleteIdentity === false, JSON.stringify(result));
     check('6: staff get one pending_profile_deletions record', await n(db, `select count(*)::int n from public.pending_profile_deletions where auth_user_id = $1 and blocking_reason = 'coach_authored_player_records'`, [coach]) === 1);
     const m1 = await moment(db, rec);
-    check('6: the recognition is already anonymised, so it cannot block staff completing the deletion', m1.verification_status === 'coach_verified' && m1.verified_by === null && m1.verifier_account_deleted_at !== null);
+    check('6: while the deletion is only under staff review, the recognition keeps its verifier and has no deleted-verifier marker (the account still exists)',
+      m1.verification_status === 'coach_verified' && m1.verified_by === coach && m1.verifier_account_deleted_at === null, JSON.stringify(m1));
     check('6: CURRENT BEHAVIOUR (unchanged by 0097, see the suspension proposal) — profile and active coach_team remain until staff act',
       await n(db, `select (select count(*) from public.profiles where id = $1) + (select count(*) from public.coach_team where profile_id = $1 and ended_at is null) as n`, [coach]) === 2);
     // Idempotency: repeating the request changes nothing further.
     const again = await deleteAccount(w, coach);
     const m2 = await moment(db, rec);
-    check('6: a repeated request is harmless — same answer, still one staff record, marker timestamp unchanged',
-      again.canDeleteIdentity === false && await n(db, `select count(*)::int n from public.pending_profile_deletions where auth_user_id = $1`, [coach]) === 1 && +m2.verifier_account_deleted_at === +m1.verifier_account_deleted_at);
+    check('6: a repeated request is harmless — same answer, still one staff record, attribution still unchanged',
+      again.canDeleteIdentity === false && await n(db, `select count(*)::int n from public.pending_profile_deletions where auth_user_id = $1`, [coach]) === 1
+      && m2.verified_by === coach && m2.verifier_account_deleted_at === null && +m2.verified_at === +m1.verified_at);
+    // Staff complete the deletion: the blocking record is dealt with, then the
+    // login account is removed (Admin API / dashboard), which cascades to the
+    // profile. Only now is the verifier's identity removed (0097 section 7).
+    await db.query(`delete from public.player_assessments where created_by = $1`, [coach]);
+    const staffDelete = await attempt(() => db.query(`delete from auth.users where id = $1`, [coach]));
+    const m3 = await moment(db, rec);
+    check('6: staff completing the deletion (login account removed, profile cascades) succeeds',
+      staffDelete === null && await n(db, `select count(*)::int n from public.profiles where id = $1`, [coach]) === 0, staffDelete);
+    check('6: …and only then is the recognition marked: still coach_verified, same verified_at, verifier NULL, marker set',
+      m3.verification_status === 'coach_verified' && m3.verified_by === null && m3.verifier_account_deleted_at !== null && +m3.verified_at === +m1.verified_at, JSON.stringify(m3));
+    // The other completion path: the blocker is cleared and the account asks again.
+    const coach2 = await w.coach();
+    const rec2 = await w.recognise(coach2);
+    await w.user(coach2, `insert into public.player_assessments (player_id, created_by, body) values ($1, $2, 'Fictional assessment')`, [w.player, coach2]);
+    const first = await deleteAccount(w, coach2);
+    const k1 = await moment(db, rec2);
+    check('6: a second coach under review also keeps attribution', first.canDeleteIdentity === false && k1.verified_by === coach2 && k1.verifier_account_deleted_at === null, JSON.stringify(k1));
+    await db.query(`delete from public.player_assessments where created_by = $1`, [coach2]);
+    const second = await deleteAccount(w, coach2);
+    const k2 = await moment(db, rec2);
+    check('6: once the blocker is cleared, asking again deletes the account and marks the recognition then',
+      second.canDeleteIdentity === true && k2.verification_status === 'coach_verified' && k2.verified_by === null && k2.verifier_account_deleted_at !== null && +k2.verified_at === +k1.verified_at, JSON.stringify([second, k2]));
   } catch (e) {
     check('6: staff-review path', false, e.message);
   }
@@ -508,13 +533,15 @@ let c96, c97, db9, w9, data96;
   check('9: all three rules are validated', await n(db9, `select count(*)::int n from pg_constraint where convalidated and conname in ('moments_verification_status_consistency', 'player_deletion_requests_cancellation_requires_actor', 'sipdr_cancellation_requires_actor')`) === 3);
   const d = diffCatalog(c96, c97);
   const expected = {
-    added: ['column:moments.verifier_account_deleted_at', 'column:player_deletion_requests.cancelled_by_account_deleted_at', 'column:squad_invite_participation_deletion_requests.cancelled_by_account_deleted_at', 'policy:moments.moments: only account deletion marks a verifier as deleted'].sort(),
+    added: ['column:moments.verifier_account_deleted_at', 'column:player_deletion_requests.cancelled_by_account_deleted_at', 'column:squad_invite_participation_deletion_requests.cancelled_by_account_deleted_at', 'function:mark_deleted_account_attribution()', 'policy:moments.moments: only account deletion marks a verifier as deleted', 'trigger:profiles.profiles_mark_deleted_account_attribution'].sort(),
     changed: ['constraint:moments.moments_verification_status_consistency', 'constraint:player_deletion_requests.player_deletion_requests_cancellation_requires_actor', 'constraint:squad_invite_participation_deletion_requests.sipdr_cancellation_requires_actor', 'function:delete_own_guardian_account()'].sort(),
   };
-  check('9: the catalog change is exactly: three marker columns, one restrictive policy, three rules, the function',
+  check('9: the catalog change is exactly: three marker columns, one restrictive policy, three rules, the function, and the profile-deletion trigger with its function',
     JSON.stringify(d.added.sort()) === JSON.stringify(expected.added) && JSON.stringify(d.changed.sort()) === JSON.stringify(expected.changed) && d.removed.length === 0, JSON.stringify(d));
   check('9: delete_own_guardian_account keeps SECURITY DEFINER, empty search_path, owner postgres, and EXECUTE for authenticated only',
     c97.get('function:delete_own_guardian_account()').split(' | ').slice(0, 5).join(' | ') === c96.get('function:delete_own_guardian_account()').split(' | ').slice(0, 5).join(' | '));
+  check('9: the trigger function is executable by no API role', await n(db9, `select count(*)::int n from (values ('anon'), ('authenticated'), ('service_role')) r(role)
+      where has_function_privilege(r.role, 'public.mark_deleted_account_attribution()', 'EXECUTE')`) === 0);
   const policy = c97.get('policy:moments.moments: only account deletion marks a verifier as deleted');
   check('9: the new policy is RESTRICTIVE, INSERT, authenticated only', policy.startsWith('RESTRICTIVE | {authenticated} | INSERT'), policy);
   // A refused migration leaves its own transaction aborted; end it as the

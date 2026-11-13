@@ -182,7 +182,7 @@ console.log('\n=== 1. A coach whose deletion goes to staff review loses all acce
     check('1: only service_role can read the snapshot; signed-in users cannot',
       (await attempt(() => w.user(coach, `select * from public.deletion_review_access_suspensions`)))?.includes('permission denied') &&
       (await w.service(`select count(*)::int n from public.deletion_review_access_suspensions`)).rows[0].n === 2);
-    check('1: the recognition stays with the family (0097 anonymisation also ran)', await n(db, `select count(*)::int n from public.moments where id = $1 and verified_by is null and verifier_account_deleted_at is not null`, [rec]) === 1);
+    check('1: the recognition keeps its verifier while the deletion is only under review (no deleted-verifier marker; the account still exists)', await n(db, `select count(*)::int n from public.moments where id = $1 and verified_by = $2 and verifier_account_deleted_at is null and verification_status = 'coach_verified'`, [rec, coach]) === 1);
     check('1: a repeated request suspends nothing more and keeps one snapshot per relationship',
       (await deleteAccount(w, coach)).coachAccessSuspended === 0 && await n(db, `select count(*)::int n from public.deletion_review_access_suspensions where profile_id = $1`, [coach]) === 2);
 
@@ -637,6 +637,55 @@ console.log('\n=== 14. A review pending before 0098: the read-only pre-check and
       await n(db, `select count(*)::int n from public.relationship_audit_events where profile_id = $1 and actor_profile_id = $2 and reason = 'account_deletion_review_manual' and actor_source = 'trusted_function'`, [coach, w.people.staff]) === 2);
   } catch (e) {
     check('14: pre-check and manual suspension', false, e.stack);
+  }
+  await db.close();
+}
+
+console.log('\n=== 15. Attribution through review, rejection, restore and final deletion ===');
+{
+  const w = await world();
+  const { db, people } = w;
+  try {
+    const coach = await w.coach();
+    await w.directLink(coach);
+    await w.assess(coach);
+    const rec = await w.recognise(coach);
+    // A child-deletion request this account cancelled (fixture row, as the 0097 suite does).
+    const req = (await db.query(`insert into public.player_deletion_requests (player_id, requested_by, status, cancelled_by, cancelled_at) values ($1, $2, 'cancelled', $2, now() - interval '1 day') returning id`, [w.player, coach])).rows[0].id;
+    const attribution = () => rowsOf(db, `select (select json_agg(json_build_object('s', verification_status, 'by', verified_by, 'at', verified_at, 'marker', verifier_account_deleted_at)) from public.moments where id = $1) m,
+        (select json_agg(json_build_object('s', status, 'by', cancelled_by, 'at', cancelled_at, 'marker', cancelled_by_account_deleted_at)) from public.player_deletion_requests where id = $2) r`, [rec, req]);
+    const original = await attribution();
+    const parsed = JSON.parse(original)[0];
+    check('15: setup — the recognition names the coach and the cancellation names the coach, no markers',
+      parsed.m[0].by === coach && parsed.m[0].marker === null && parsed.r[0].by === coach && parsed.r[0].marker === null, original);
+    const teamsBefore = await coachRows(db, coach), linksBefore = await linkRows(db, coach);
+
+    const r1 = await deleteAccount(w, coach);
+    check('15: pending review — access suspended (2), identity kept', r1.canDeleteIdentity === false && r1.coachAccessSuspended === 2, JSON.stringify(r1));
+    check('15: pending review — verifier and canceller unchanged, no account-deleted marker on either', (await attribution()) === original);
+    const pending = await pendingOf(db, coach);
+    check('15: staff reject the deletion', (await reject(w, pending.id, people.staff)) === 'rejected');
+    check('15: rejection — attribution unchanged', (await attribution()) === original);
+    const rs = await restore(w, pending.id, people.staff);
+    check('15: restore brings back exactly the suspended access', rs.restored === 2 && (await coachRows(db, coach)) === teamsBefore && (await linkRows(db, coach)) === linksBefore, JSON.stringify(rs));
+    check('15: restore — attribution unchanged; nothing about moment history needed reconstructing', (await attribution()) === original);
+
+    const r2 = await deleteAccount(w, coach);
+    check('15: a later request goes to review again and suspends again; attribution still unchanged',
+      r2.canDeleteIdentity === false && r2.coachAccessSuspended === 2 && (await attribution()) === original, JSON.stringify(r2));
+    // Final deletion approved by staff: the blocking record is dealt with and the
+    // login account removed; the profile cascades and only now are both marked.
+    await db.query(`delete from public.player_assessments where created_by = $1`, [coach]);
+    const fin = await attempt(() => db.query(`delete from auth.users where id = $1`, [coach]));
+    check('15: final deletion (login account removed by staff, profile cascades) succeeds', fin === null && await n(db, `select count(*)::int n from public.profiles where id = $1`, [coach]) === 0, fin);
+    const after = JSON.parse(await attribution())[0];
+    const o = parsed;
+    check('15: final deletion — recognition still coach_verified, same verified_at, verifier NULL, deleted-verifier marker set',
+      after.m[0].s === 'coach_verified' && after.m[0].at === o.m[0].at && after.m[0].by === null && after.m[0].marker !== null, JSON.stringify(after.m));
+    check('15: final deletion — cancellation still cancelled, same cancelled_at, canceller NULL, marker set',
+      after.r[0].s === 'cancelled' && after.r[0].at === o.r[0].at && after.r[0].by === null && after.r[0].marker !== null, JSON.stringify(after.r));
+  } catch (e) {
+    check('15: attribution lifecycle', false, e.stack);
   }
   await db.close();
 }

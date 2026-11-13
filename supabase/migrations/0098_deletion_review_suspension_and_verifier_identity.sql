@@ -484,22 +484,6 @@ begin
   update public.moments set uploaded_by = null where uploaded_by = v_uid;
   -- Newly covered nullable references (previously left untouched, which
   -- would have blocked the profiles delete via NO ACTION/RESTRICT).
-  -- 0097: a moment this account verified stays coach_verified with its
-  -- verified_at, so the child keeps the record; only the verifier's
-  -- identity is removed, and verifier_account_deleted_at records why.
-  update public.moments
-     set verified_by = null, verifier_account_deleted_at = now()
-   where verified_by = v_uid;
-  -- 0097: a cancellation this account made stays recorded as cancelled,
-  -- with its cancelled_at; only the canceller's identity is removed.
-  -- (Left to ON DELETE SET NULL, cancelled_by would break the
-  -- cancellation rule and roll the whole deletion back.)
-  update public.player_deletion_requests
-     set cancelled_by = null, cancelled_by_account_deleted_at = now()
-   where cancelled_by = v_uid and status = 'cancelled';
-  update public.squad_invite_participation_deletion_requests
-     set cancelled_by = null, cancelled_by_account_deleted_at = now()
-   where cancelled_by = v_uid and status = 'cancelled';
   update public.orders set approved_by = null where approved_by = v_uid;
   update public.team_invites set created_by = null where created_by = v_uid;
   update public.team_invites set used_by = null where used_by = v_uid;
@@ -585,6 +569,25 @@ begin
     perform set_config('emblem.actor_profile_id', '', true);
     perform set_config('emblem.trusted_reason', '', true);
   else
+    -- 0097: only here, as the profile is actually deleted, does a moment
+    -- this account verified lose its verifier's identity. It stays
+    -- coach_verified with its verified_at, so the child keeps the record,
+    -- and verifier_account_deleted_at records why. A deletion that goes to
+    -- staff review (the branch above) changes neither, so attribution stays
+    -- exactly as it was while the account exists and after a rejection.
+    update public.moments
+       set verified_by = null, verifier_account_deleted_at = now()
+     where verified_by = v_uid;
+    -- 0097: likewise, only at actual deletion, a cancellation this account
+    -- made stays recorded as cancelled with its cancelled_at and loses only
+    -- the canceller's identity. (Left to ON DELETE SET NULL, cancelled_by
+    -- would break the cancellation rule and roll the whole deletion back.)
+    update public.player_deletion_requests
+       set cancelled_by = null, cancelled_by_account_deleted_at = now()
+     where cancelled_by = v_uid and status = 'cancelled';
+    update public.squad_invite_participation_deletion_requests
+       set cancelled_by = null, cancelled_by_account_deleted_at = now()
+     where cancelled_by = v_uid and status = 'cancelled';
     delete from public.profiles where id = v_uid;
   end if;
 

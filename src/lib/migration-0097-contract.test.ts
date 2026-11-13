@@ -32,23 +32,40 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(code).toContain('(0097 already applied)');
   });
 
-  it('changes delete_own_guardian_account only at the moments.verified_by statement (replaced, plus the two cancellation markers)', () => {
-    const before = fnOf(m0076);
-    const after = fnOf(sql);
+  it('changes delete_own_guardian_account only by moving verifier clearing into the deleting branch (with the two cancellation markers)', () => {
+    const strip = (t: string) => t.replace(/^\s*--.*\n/gm, '');
+    const before = strip(fnOf(m0076));
+    const after = strip(fnOf(sql));
     expect(before).toContain(OLD_STATEMENT);
     expect(after).not.toContain(OLD_STATEMENT);
-    const [head, tail] = before.split(OLD_STATEMENT + '\n');
-    expect(after.startsWith(head)).toBe(true);
-    expect(after.endsWith(tail)).toBe(true);
-    const replaced = after.slice(head.length, after.length - tail.length);
-    expect(replaced.replace(/^\s*--.*\n/gm, '')).toBe(
-      '  update public.moments\n     set verified_by = null, verifier_account_deleted_at = now()\n   where verified_by = v_uid;\n' +
-        '  update public.player_deletion_requests\n     set cancelled_by = null, cancelled_by_account_deleted_at = now()\n   where cancelled_by = v_uid and status = \'cancelled\';\n' +
-        '  update public.squad_invite_participation_deletion_requests\n     set cancelled_by = null, cancelled_by_account_deleted_at = now()\n   where cancelled_by = v_uid and status = \'cancelled\';\n',
-    );
+    // The marking block sits only in the branch that actually deletes the
+    // profile, immediately before that delete. A deletion that goes to staff
+    // review (the pending_profile_deletions branch) marks nothing.
+    const DELETE = '    delete from public.profiles where id = v_uid;\n';
+    const MARKING =
+      '    update public.moments\n       set verified_by = null, verifier_account_deleted_at = now()\n     where verified_by = v_uid;\n' +
+      '    update public.player_deletion_requests\n       set cancelled_by = null, cancelled_by_account_deleted_at = now()\n     where cancelled_by = v_uid and status = \'cancelled\';\n' +
+      '    update public.squad_invite_participation_deletion_requests\n       set cancelled_by = null, cancelled_by_account_deleted_at = now()\n     where cancelled_by = v_uid and status = \'cancelled\';\n';
+    expect(after.split(MARKING).length).toBe(2);
+    expect(after).toContain('  else\n' + MARKING + DELETE);
+    expect(after.indexOf(MARKING)).toBeGreaterThan(after.indexOf('  if v_blocked then\n    insert into public.pending_profile_deletions'));
+    // Everything else is the 0076 body: remove the old statement from 0076 and
+    // the marking block from 0097, and the two bodies are identical.
+    expect(after.replace(MARKING, '')).toBe(before.replace(OLD_STATEMENT + '\n', ''));
     expect(after).toContain('security definer');
     expect(after).toContain("set search_path = ''");
     expect(after).toContain('revoke all on function public.delete_own_guardian_account() from public, anon;');
+  });
+
+  it('backstop: a BEFORE DELETE trigger on profiles writes the same markers whenever a profile is actually deleted, callable by no API role', () => {
+    expect(code).toContain('create function public.mark_deleted_account_attribution()\nreturns trigger\nlanguage plpgsql\nsecurity definer\nset search_path = \'\'');
+    expect(code).toMatch(/update public\.moments\s+set verified_by = null, verifier_account_deleted_at = now\(\)\s+where verified_by = old\.id;/);
+    expect(code).toMatch(/update public\.player_deletion_requests\s+set cancelled_by = null, cancelled_by_account_deleted_at = now\(\)\s+where cancelled_by = old\.id and status = 'cancelled';/);
+    expect(code).toMatch(/update public\.squad_invite_participation_deletion_requests\s+set cancelled_by = null, cancelled_by_account_deleted_at = now\(\)\s+where cancelled_by = old\.id and status = 'cancelled';/);
+    expect(code).toContain('revoke all on function public.mark_deleted_account_attribution() from public, anon, authenticated, service_role;');
+    expect(code).toContain('create trigger profiles_mark_deleted_account_attribution\n  before delete on public.profiles\n  for each row execute function public.mark_deleted_account_attribution();');
+    expect(code).toContain('the deleted-account attribution trigger already exists (0097 already applied)');
+    expect(rollbackCode).toContain('drop trigger profiles_mark_deleted_account_attribution on public.profiles;\ndrop function public.mark_deleted_account_attribution();');
   });
 
   it('keeps the moment coach_verified: exactly one of verified_by or the marker, verified_at always required', () => {
