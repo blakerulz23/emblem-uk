@@ -41,7 +41,7 @@ begin
   -- leave a mixed state; use the rollback files that match what is applied.
   if to_regprocedure('public.mark_deleted_account_attribution()') is null
      or not exists (select 1 from pg_trigger where tgname = 'profiles_mark_deleted_account_attribution'
-                    and tgrelid = 'public.profiles'::regclass and not tgisinternal) then
+                    and tgrelid = 'public.profiles'::regclass and not tgisinternal and tgenabled <> 'D') then
     raise exception '0098 rollback refused: the 0097 underneath is not the current version (its deleted-account attribution trigger is missing); use the rollback files that match the applied migrations';
   end if;
   select count(*) into v_n from public.deletion_review_access_suspensions;

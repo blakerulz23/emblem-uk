@@ -89,7 +89,7 @@ begin
   -- staff review) did not. The function body alone cannot tell them apart.
   if to_regprocedure('public.mark_deleted_account_attribution()') is null
      or not exists (select 1 from pg_trigger where tgname = 'profiles_mark_deleted_account_attribution'
-                    and tgrelid = 'public.profiles'::regclass and not tgisinternal) then
+                    and tgrelid = 'public.profiles'::regclass and not tgisinternal and tgenabled <> 'D') then
     v_problems := v_problems || 'the 0097 deleted-account attribution trigger is missing (0097 not applied, or an earlier 0097)'::text;
   end if;
   select pg_get_constraintdef(oid) into v_def from pg_constraint

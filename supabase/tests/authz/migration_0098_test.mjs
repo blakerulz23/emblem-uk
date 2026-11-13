@@ -705,6 +705,16 @@ console.log('\n=== 16. 0098 and its rollback require the current 0097 (with the 
     check('16: 0098 precondition requires the trigger', false, e.stack);
   }
   await db97.close();
+  // (a2) …and over a 0097 whose trigger exists but is disabled.
+  const db97d = await readyDatabase('0097');
+  try {
+    await db97d.exec(`alter table public.profiles disable trigger profiles_mark_deleted_account_attribution;`);
+    const r = await refusedApply(db97d, '0098', '0098');
+    check('16: 0098 is refused over a 0097 whose attribution trigger is disabled', r?.includes('the 0097 deleted-account attribution trigger is missing'), r);
+  } catch (e) {
+    check('16: 0098 precondition requires an enabled trigger', false, e.stack);
+  }
+  await db97d.close();
   // (b) The 0098 rollback refuses when the 0097 underneath has no trigger, changing nothing.
   const db98 = await readyDatabase('0098');
   try {
