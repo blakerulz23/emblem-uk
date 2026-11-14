@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { createFakeSupabase, type FakeResult } from '@/lib/fake-supabase.test-support';
 import { captureLogs, expectCodeOnlyLogs, expectRedacted, sentinelError } from '@/lib/route-failure.test-support';
-import { COMPLETE_CONFIRMATION } from '@/lib/staff-account-deletion';
+import { COMPLETE_CONFIRMATION, RESULT_UNKNOWN } from '@/lib/staff-account-deletion';
 import { PERMANENT_BAN_DURATION } from '@/lib/remove-account-sign-in';
 
 /**
@@ -16,7 +16,7 @@ let session: ReturnType<typeof createFakeSupabase>;
 let service: ReturnType<typeof createFakeSupabase>;
 vi.mock('@/lib/supabase/server', () => ({ createClient: () => session.client, createServiceRoleClient: () => service.client }));
 
-import { POST, RESULT_UNKNOWN } from './route';
+import { POST } from './route';
 
 const STAFF = 'eeeeeeee-0000-4000-8000-0000000000a1';
 const ACCOUNT = 'aaaaaaaa-0000-4000-8000-0000000000b2';
@@ -25,6 +25,7 @@ const REQUEST = 'dddddddd-0000-4000-8000-0000000000c3';
 type AdminErr = { status?: number; code?: string; message: string } | null;
 let admin: { getUserById: ReturnType<typeof vi.fn>; updateUserById: ReturnType<typeof vi.fn>; deleteUser: ReturnType<typeof vi.fn> };
 let pendingAuthRow: { id: string; attempts: number; status: string } | null;
+let queueReadFails = false;
 
 function setup(opts: { user?: string | null; isStaff?: boolean; rpc?: (fn: string, args: Record<string, unknown>) => FakeResult | undefined; lookup?: AdminErr | 'gone'; ban?: AdminErr; del?: AdminErr }) {
   const rpc = opts.rpc ?? (() => undefined);
@@ -32,7 +33,7 @@ function setup(opts: { user?: string | null; isStaff?: boolean; rpc?: (fn: strin
   service = createFakeSupabase({
     respond: (c) => {
       if (c.table === 'staff_accounts') return { data: opts.isStaff === false ? null : { profile_id: STAFF } };
-      if (c.table === 'pending_auth_deletions' && c.op === 'select') return { data: pendingAuthRow };
+      if (c.table === 'pending_auth_deletions' && c.op === 'select') return queueReadFails ? { error: { code: '08006', message: 'x' } } : { data: pendingAuthRow };
       return {};
     },
   });
@@ -61,6 +62,7 @@ let logs: ReturnType<typeof captureLogs>;
 beforeEach(() => {
   logs = captureLogs();
   pendingAuthRow = { id: 'pad-1', attempts: 1, status: 'pending' };
+  queueReadFails = false;
 });
 afterEach(() => logs.restore());
 
@@ -170,6 +172,15 @@ describe('outcomes', () => {
     expect(admin.deleteUser).not.toHaveBeenCalled();
     expect(authWrites()).toHaveLength(0);
     expect(fnCalls()).toEqual(['complete_pending_profile_deletion']);
+  });
+
+  it('…and if the queue cannot be read, says the result is unknown rather than "removed"', async () => {
+    setup({ rpc: () => completed('already_completed') });
+    queueReadFails = true;
+    const res = await valid();
+    queueReadFails = false;
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toBe(RESULT_UNKNOWN);
   });
 
   it('…and reports a sign-in removal still queued, pointing to the retry', async () => {

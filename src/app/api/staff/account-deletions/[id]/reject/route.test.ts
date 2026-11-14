@@ -79,7 +79,7 @@ describe('POST /api/staff/account-deletions/[id]/reject', () => {
 
   it('a completed request cannot be rejected (409, fixed, no restore)', async () => {
     setup({ rpc: (fn) => (fn === 'reject_pending_profile_deletion' ? { error: sentinelError('P0001', 'This profile deletion is already resolved') } : ok(fn)) });
-    await expectRedacted(await call({ reason: 'r' }), 409, 'This request has already been completed and cannot be rejected.', logs);
+    await expectRedacted(await call({ reason: 'r' }), 409, 'This request has already been decided and cannot be rejected.', logs);
     expect(service.rpcCalls.map((c) => c.fn)).toEqual(['reject_pending_profile_deletion']);
   });
 

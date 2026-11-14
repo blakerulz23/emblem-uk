@@ -58,9 +58,14 @@ export async function updateSession(request: NextRequest) {
       // Signs this session out: Auth revokes its refresh token (scope local),
       // and setAll above clears the cookies.
       await supabase.auth.signOut({ scope: 'local' });
+      const atNotice = request.nextUrl.pathname === '/os' && request.nextUrl.searchParams.get(ACCOUNT_ERASED_QUERY) === '1';
+      // Already on the notice page: answer it (signed out) rather than redirect
+      // again, so a cookie that cannot be cleared never causes a redirect loop.
       const refused = request.nextUrl.pathname.startsWith('/api/')
         ? NextResponse.json({ error: ACCOUNT_ERASED_MESSAGE, code: ACCOUNT_ERASED_CODE }, { status: 401 })
-        : NextResponse.redirect(new URL(`/os?${ACCOUNT_ERASED_QUERY}=1`, request.url));
+        : atNotice
+          ? NextResponse.next({ request })
+          : NextResponse.redirect(new URL(`/os?${ACCOUNT_ERASED_QUERY}=1`, request.url));
       supabaseResponse.cookies.getAll().forEach((cookie) => refused.cookies.set(cookie));
       return refused;
     }

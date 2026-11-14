@@ -47,6 +47,7 @@ export default function AccountDeletionActions({ id, mode, preview }: { id: stri
 
   return (
     <AccountDeletionPanel
+      idPrefix={`deletion-${id}`}
       mode={mode}
       preview={preview}
       reason={reason}

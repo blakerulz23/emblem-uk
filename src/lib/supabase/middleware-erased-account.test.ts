@@ -72,6 +72,15 @@ describe('erased accounts are refused', () => {
     expect(res.headers.get('set-cookie')).toContain('sb-test-auth-token=');
   });
 
+  it('already on the notice page: answered signed out, never redirected again (no loop if a cookie cannot be cleared)', async () => {
+    state.erased = true;
+    const res = await updateSession(req('/os?account_deleted=1'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('location')).toBeNull();
+    expect(state.signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(res.headers.get('set-cookie')).toContain('sb-test-auth-token=');
+  });
+
   it('a live account passes; the check is made once', async () => {
     const res = await updateSession(req('/api/os/moments'));
     expect(res.status).toBe(200);

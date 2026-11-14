@@ -1094,6 +1094,8 @@ console.log('\n=== 19. Erased accounts stay out; staff decisions audited once; p
     check('19: after reject + restore the own status is no longer under review', (await myReview(parent)).underReview === false);
 
     await deleteAccount(w, parent);
+    check('19: a sign-in removal cannot be recorded for a request still pending (not completed and erased)',
+      (await attempt(() => w.user(people.staff, `select public.record_account_sign_in_removal($1, 'early', 'removed')`, [pid])))?.includes('not a completed account deletion'));
     await db.query(`delete from public.player_assessments where created_by = $1`, [parent]);
     // A staff member whose staff access was removed can neither preview nor complete.
     const exStaff = id();

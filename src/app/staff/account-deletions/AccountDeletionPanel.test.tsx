@@ -31,7 +31,7 @@ export const PREVIEW: DeletionPreview = {
 const noop = () => {};
 const render = (p: Partial<AccountDeletionPanelProps>) =>
   renderToStaticMarkup(
-    <AccountDeletionPanel mode="review" preview={PREVIEW} reason="" stage="choose" typed="" busy={false} result={null}
+    <AccountDeletionPanel idPrefix="t" mode="review" preview={PREVIEW} reason="" stage="choose" typed="" busy={false} result={null}
       onReason={noop} onStage={noop} onTyped={noop} onReject={noop} onComplete={noop} {...p} />
   );
 const buttons = (html: string) =>
@@ -75,6 +75,8 @@ describe('staff panel: the second confirmation for permanent completion', () => 
   it('the reject confirmation says nothing is deleted and coaching is restored', () => {
     const html = render({ reason: 'ok', stage: 'confirm-reject' });
     expect(html).toContain('Nothing is deleted');
+    // Focus lands on Cancel (the safe choice), not on the action.
+    expect(html).toMatch(/<button type="button" autofocus=""[^>]*>Cancel<\/button>/i);
     expect(button(html, 'Reject and restore access')?.disabled).toBe(false);
   });
   it('after a decision the actions are hidden; a refusal keeps them', () => {
@@ -94,8 +96,10 @@ describe('staff panel: the second confirmation for permanent completion', () => 
     expect(render({ reason: '' })).toContain('Enter a reason to continue.');
     const confirm = render({ reason: 'ok', stage: 'confirm-complete' });
     expect(confirm).not.toContain('signed out everywhere');
-    expect(confirm).toContain('an access token it already holds stops working when it expires');
-    expect(confirm).toContain('aria-labelledby="confirm-complete-title"');
+    expect(confirm).toContain('you will be told if that step fails');
+    expect(confirm).not.toContain('can no longer sign in');
+    expect(confirm).toContain('aria-labelledby="t-confirm-complete-title"');
+    expect(confirm).toContain('id="t-confirm-complete-title"');
   });
 });
 
@@ -108,8 +112,11 @@ describe('honest results', () => {
     expect(describeCompletion(200, { ok: true, state: 'already_completed', signIn: 'removed' }).text).toContain('nothing was erased again');
     const partial = describeCompletion(200, { ok: true, state: 'completed', signIn: 'removal_pending', signInBlocked: true });
     expect(partial.tone).toBe('warning');
-    expect(partial.text).toContain('Its sign-in could not be removed yet. Emblem refuses its sessions');
-    expect(partial.text).toContain('an access token it already holds stops working when it expires');
+    expect(partial.text).toContain('Its sign-in could not be removed yet, but it is blocked from signing in.');
+    const unblocked = describeCompletion(200, { ok: true, state: 'completed', signIn: 'removal_pending', signInBlocked: false });
+    expect(unblocked.text).toContain('could not be removed or blocked yet');
+    expect(unblocked.text).toContain('it could still sign in and obtain new tokens');
+    expect(unblocked.text).not.toContain('stops working when it expires');
     expect(describeCompletion(409, { error: 'Records that must be kept still block this deletion.' })).toEqual({ tone: 'error', text: 'Records that must be kept still block this deletion.' });
     expect(describeCompletion(0, null)).toEqual({ tone: 'error', text: RESULT_UNKNOWN_TEXT });
     expect(describeCompletion(504, null)).toEqual({ tone: 'error', text: RESULT_UNKNOWN_TEXT });

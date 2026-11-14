@@ -126,6 +126,15 @@ begin
      or to_regprocedure('public.my_account_deletion_review()') is not null then
     v_problems := v_problems || 'a 0098 staff-page function already exists'::text;
   end if;
+  -- Section 7 revokes these four and the rollback grants exactly these four
+  -- back, so they must all be present now (as 0076 and the production default
+  -- privileges left them); otherwise the rollback would widen access.
+  if not (has_table_privilege('service_role', 'public.pending_profile_deletions', 'insert')
+          and has_table_privilege('service_role', 'public.pending_profile_deletions', 'update')
+          and has_table_privilege('service_role', 'public.pending_profile_deletions', 'delete')
+          and has_table_privilege('service_role', 'public.pending_profile_deletions', 'truncate')) then
+    v_problems := v_problems || 'service_role does not hold insert, update, delete and truncate on pending_profile_deletions (unexpected privileges)'::text;
+  end if;
   if to_regprocedure('public.close_deletion_review_suspensions()') is not null
      or exists (select 1 from pg_trigger where tgname = 'profiles_close_deletion_review_suspensions') then
     v_problems := v_problems || 'the 0098 suspension-closing trigger already exists'::text;

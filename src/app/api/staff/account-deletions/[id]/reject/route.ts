@@ -52,7 +52,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       if (raised(rejectError, 'Not authorized: staff only')) return NextResponse.json({ error: 'Staff access required' }, { status: 403 });
       if (raised(rejectError, 'Pending profile deletion not found')) return NextResponse.json({ error: 'Deletion request not found.' }, { status: 404 });
       if (raised(rejectError, 'This profile deletion is already')) {
-        return NextResponse.json({ error: 'This request has already been completed and cannot be rejected.' }, { status: 409 });
+        return NextResponse.json({ error: 'This request has already been decided and cannot be rejected.' }, { status: 409 });
       }
       logRouteFailure('staff account deletion: reject', rejectError);
       return NextResponse.json({ error: 'The result could not be confirmed. Refresh the page: if the request is still waiting, nothing was changed.' }, { status: 500 });

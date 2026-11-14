@@ -47,6 +47,9 @@ export function completionAvailability(p: DeletionPreview | null): { ok: true } 
 
 export type ActionResult = { tone: 'success' | 'warning' | 'error'; text: string };
 
+/** A route's answer when the database call failed unexpectedly (it may have committed before the connection was lost). */
+export const RESULT_UNKNOWN = 'The result could not be confirmed. Refresh the page: if the request is still waiting, nothing was changed.';
+
 /** When a request failed in transit or the server's answer could not be read, the outcome is unknown. */
 export const RESULT_UNKNOWN_TEXT = 'The result could not be confirmed. Refresh the page before doing anything else: if the request is still waiting, nothing was changed.';
 
@@ -55,8 +58,10 @@ function failure(status: number, body: Record<string, unknown> | null): ActionRe
   return { tone: 'error', text: body.error };
 }
 
-const SIGN_IN_PENDING =
-  'Its sign-in could not be removed yet. Emblem refuses its sessions and it cannot recreate the account; an access token it already holds stops working when it expires. Use "Retry sign-in removal" in Recently decided.';
+const SIGN_IN_PENDING_BLOCKED =
+  'Its sign-in could not be removed yet, but it is blocked from signing in. Emblem refuses its sessions and it cannot recreate the account; an access token it already holds stops working when it expires. Use "Retry sign-in removal" in Recently decided.';
+const SIGN_IN_PENDING_UNBLOCKED =
+  'Its sign-in could not be removed or blocked yet. Emblem refuses its sessions and it cannot recreate the account, but until the sign-in is removed it could still sign in and obtain new tokens. Use "Retry sign-in removal" in Recently decided now.';
 
 /** Honest wording for a completion (or sign-in retry) response. */
 export function describeCompletion(status: number, body: Record<string, unknown> | null): ActionResult {
@@ -69,7 +74,7 @@ export function describeCompletion(status: number, body: Record<string, unknown>
       ? 'The account had already been deleted; the request is now closed.'
       : `Deletion completed. ${Number(body.childDeletionRequests ?? 0)} child deletion request(s) filed, ${Number(body.childrenUnlinked ?? 0)} shared child link(s) removed.`;
   if (body.signIn === 'removed') return { tone: 'success', text: `${head} The sign-in has been removed.` };
-  return { tone: 'warning', text: `${head} ${SIGN_IN_PENDING}` };
+  return { tone: 'warning', text: `${head} ${body.signInBlocked === true ? SIGN_IN_PENDING_BLOCKED : SIGN_IN_PENDING_UNBLOCKED}` };
 }
 
 /** Honest wording for a reject-and-restore (or restore retry) response. */

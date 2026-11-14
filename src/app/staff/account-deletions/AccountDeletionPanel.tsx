@@ -20,6 +20,8 @@ export type PanelStage = 'choose' | 'confirm-reject' | 'confirm-complete';
 export type PanelMode = 'review' | 'retry-sign-in' | 'retry-restore';
 
 export type AccountDeletionPanelProps = {
+  /** Unique per row (the request id): keeps element ids unique when several rows are open. */
+  idPrefix: string;
   mode: PanelMode;
   preview: DeletionPreview | null;
   reason: string;
@@ -173,15 +175,15 @@ export default function AccountDeletionPanel(props: AccountDeletionPanelProps) {
       )}
 
       {stage === 'confirm-reject' && (
-        <div role="group" aria-labelledby="confirm-reject-title" onKeyDown={cancelOnEscape} style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
-          <div id="confirm-reject-title" style={{ fontFamily: font.head, fontWeight: 700, fontSize: 13, color: 'var(--ink)' }}>Reject this deletion request?</div>
+        <div role="group" aria-labelledby={`${props.idPrefix}-confirm-reject-title`} onKeyDown={cancelOnEscape} style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+          <div id={`${props.idPrefix}-confirm-reject-title`} style={{ fontFamily: font.head, fontWeight: 700, fontSize: 13, color: 'var(--ink)' }}>Reject this deletion request?</div>
           <p style={{ fontFamily: font.sans, fontSize: 12.5, color: 'var(--ink-soft)', margin: '4px 0 10px' }}>
             The account keeps everything, and exactly the coaching access paused for this review is restored. Nothing is deleted.
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" disabled={busy} onClick={() => props.onStage('choose')} style={button('var(--surface)', 'var(--ink-soft)', busy)}>Cancel</button>
-            {/* eslint-disable-next-line jsx-a11y/no-autofocus -- focus moves into the confirmation it just opened */}
-            <button type="button" autoFocus disabled={busy || !reasonOk} onClick={props.onReject} style={button('#047857', '#fff', busy || !reasonOk)}>
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus -- focus moves into the confirmation it just opened, on the safe choice */}
+            <button type="button" autoFocus disabled={busy} onClick={() => props.onStage('choose')} style={button('var(--surface)', 'var(--ink-soft)', busy)}>Cancel</button>
+            <button type="button" disabled={busy || !reasonOk} onClick={props.onReject} style={button('#047857', '#fff', busy || !reasonOk)}>
               {busy ? 'Rejecting…' : 'Reject and restore access'}
             </button>
           </div>
@@ -189,11 +191,11 @@ export default function AccountDeletionPanel(props: AccountDeletionPanelProps) {
       )}
 
       {stage === 'confirm-complete' && (
-        <div role="group" aria-labelledby="confirm-complete-title" onKeyDown={cancelOnEscape} style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: '#fef2f2', border: '1px solid #fecaca' }}>
-          <div id="confirm-complete-title" style={{ fontFamily: font.head, fontWeight: 800, fontSize: 13.5, color: '#991b1b' }}>Permanently delete this account? This cannot be undone.</div>
+        <div role="group" aria-labelledby={`${props.idPrefix}-confirm-complete-title`} onKeyDown={cancelOnEscape} style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: '#fef2f2', border: '1px solid #fecaca' }}>
+          <div id={`${props.idPrefix}-confirm-complete-title`} style={{ fontFamily: font.head, fontWeight: 800, fontSize: 13.5, color: '#991b1b' }}>Permanently delete this account? This cannot be undone.</div>
           <p style={{ fontFamily: font.sans, fontSize: 12.5, color: '#7f1d1d', margin: '4px 0 8px' }}>
-            The clean-up above runs once and the account is erased. Emblem then refuses its sessions, it can no longer sign in, and its sign-in is
-            removed; an access token it already holds stops working when it expires.
+            The clean-up above runs once and the account is erased; Emblem then refuses its sessions and cannot let it recreate the account.
+            Its sign-in is then blocked and removed, and you will be told if that step fails.
           </p>
           <label style={{ display: 'block', fontFamily: font.sans, fontSize: 12.5, color: '#7f1d1d' }}>
             Type <b>{COMPLETE_TYPED_WORD}</b> to confirm

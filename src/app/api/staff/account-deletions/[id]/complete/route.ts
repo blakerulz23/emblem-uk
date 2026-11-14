@@ -3,7 +3,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { logRouteFailure, raised } from '@/lib/route-failure';
 import { removeAccountSignIn } from '@/lib/remove-account-sign-in';
-import { COMPLETE_CONFIRMATION, validateStaffReason } from '@/lib/staff-account-deletion';
+import { COMPLETE_CONFIRMATION, RESULT_UNKNOWN, validateStaffReason } from '@/lib/staff-account-deletion';
 import { isSafeStaffPost } from '@/lib/staff-account-deletion-request';
 
 export const runtime = 'nodejs';
@@ -36,7 +36,6 @@ const MESSAGES: Array<[string, number, string]> = [
   ['Staff accounts are removed by the manual staff procedure', 409, 'This is a staff account. Staff access must be removed through the two-person manual procedure first.'],
   ['still has records that block deletion', 409, 'Records that must be kept still block this deletion. Resolve them first; nothing was changed.'],
 ];
-export const RESULT_UNKNOWN = 'The result could not be confirmed. Refresh the page: if the request is still waiting, nothing was changed.';
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   if (!isSafeStaffPost(request)) {
@@ -80,12 +79,16 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   const service = createServiceRoleClient();
   if (result.status === 'already_completed') {
-    const { data: queued } = await service
+    const { data: queued, error: queueError } = await service
       .from('pending_auth_deletions')
       .select('status')
       .eq('auth_user_id', result.profileId)
       .eq('status', 'pending')
       .maybeSingle();
+    if (queueError) {
+      logRouteFailure('staff account deletion: read sign-in queue', queueError);
+      return NextResponse.json({ error: RESULT_UNKNOWN }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, state: 'already_completed', signIn: queued ? 'removal_pending' : 'removed', partial: !!queued });
   }
 
