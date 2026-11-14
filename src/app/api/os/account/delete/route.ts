@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 import { logRouteFailure, raised } from '@/lib/route-failure';
-import { STAFF_ACCOUNT_DELETE_REFUSED, deletionReviewResponse } from '@/lib/account-deletion-copy';
+import { ACCOUNT_ERASED_CODE, ACCOUNT_ERASED_MESSAGE, STAFF_ACCOUNT_DELETE_REFUSED, deletionReviewResponse } from '@/lib/account-deletion-copy';
+import { redactEmails } from '@/lib/redact-email';
 
 export const runtime = 'nodejs';
 
@@ -84,6 +85,12 @@ export async function POST() {
     if (raised(rpcError, 'Staff accounts cannot be deleted from the app')) {
       return NextResponse.json({ error: STAFF_ACCOUNT_DELETE_REFUSED }, { status: 403 });
     }
+    // Migration 0097: this account was already erased (a still-valid session
+    // of a deleted account). Nothing was changed; the session is ended.
+    if (raised(rpcError, 'account_erased')) {
+      await supabase.auth.signOut();
+      return NextResponse.json({ error: ACCOUNT_ERASED_MESSAGE, code: ACCOUNT_ERASED_CODE }, { status: 401 });
+    }
     logRouteFailure('account deletion: cleanup', rpcError);
     return NextResponse.json({ error: ACCOUNT_DELETE_FAILED_MESSAGE }, { status: 500 });
   }
@@ -129,6 +136,9 @@ export async function POST() {
   const { error: authDeleteError } = await serviceRole.auth.admin.deleteUser(user.id);
   if (authDeleteError) {
     const nowIso = new Date().toISOString();
+    // The account is erased: the retry record keeps the auth user id only,
+    // never the email, and the stored error text has any address removed.
+    const lastError = redactEmails(authDeleteError.message ?? 'Auth user deletion failed');
     const { data: existing } = await serviceRole
       .from('pending_auth_deletions')
       .select('id, attempts')
@@ -137,12 +147,12 @@ export async function POST() {
     if (existing) {
       await serviceRole
         .from('pending_auth_deletions')
-        .update({ last_attempted_at: nowIso, attempts: existing.attempts + 1, last_error: authDeleteError.message })
+        .update({ last_attempted_at: nowIso, attempts: existing.attempts + 1, last_error: lastError, email: null })
         .eq('id', existing.id);
     } else {
       await serviceRole
         .from('pending_auth_deletions')
-        .insert({ auth_user_id: user.id, email: user.email ?? null, first_attempted_at: nowIso, last_attempted_at: nowIso, last_error: authDeleteError.message });
+        .insert({ auth_user_id: user.id, email: null, first_attempted_at: nowIso, last_attempted_at: nowIso, last_error: lastError });
       // Only on the first occurrence — a retry (the `existing` branch
       // above) reuses the same row and must not re-notify every attempt.
       await enqueueAndDispatchStaffNotification(serviceRole, {

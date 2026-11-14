@@ -680,16 +680,8 @@ console.log('\n=== 10. Rollback ===');
   const again = await applyMigrations(db, { from: '0097', through: '0097' }).then(() => null).catch((e) => e.message);
   diff = keysOf(diffCatalog(c97, await snapshotCatalog(db)));
   check('10: 0097 re-applies to the exact 0097 catalog', again === null && diff.length === 0, again ?? diff.join(', '));
-  // A review pending with parent links still in place (from 0097 the review changes nothing) refuses the rollback.
-  await db.query(`insert into public.player_assessments (player_id, created_by, body) values ($1, $2, 'Fictional assessment')`, [w9.player, w9.people.coParent]);
-  const review = await deleteAccount(w9, w9.people.coParent);
-  const beforeReview = await snapshotCatalog(db);
-  r = await rollBack(ACK);
-  check('10: rollback is refused while a review is pending for an account that still has parent links, changing nothing',
-    review.canDeleteIdentity === false && r?.includes('1 account deletion(s) are pending staff review with parent links still in place') && keysOf(diffCatalog(beforeReview, await snapshotCatalog(db))).length === 0, r);
-  await db.query(`delete from public.player_assessments where created_by = $1`, [w9.people.coParent]);
-  const coParentGone = await deleteAccount(w9, w9.people.coParent);
-  check('10: (that account then deletes once its blocker is cleared)', coParentGone.canDeleteIdentity === true && coParentGone.playersUnlinked.includes(w9.player), JSON.stringify(coParentGone));
+  // Each refusal in the rollback's own order of precedence is exercised on its own:
+  // an erased sign-in, then marked moments, then a pending review, then the audit.
   // An erased account whose sign-in still exists refuses the rollback (its erased record keeps it out).
   const lingering = await w9.coach();
   await w9.user(lingering, `select public.delete_own_guardian_account()`); // erased; auth.users row left in place
@@ -706,6 +698,28 @@ console.log('\n=== 10. Rollback ===');
   r = await rollBack(ACK);
   check('10: rollback is refused once any moment is marked, naming the count, changing nothing',
     r?.includes(`${marked} moment(s) were verified by a coach whose account has since been deleted`) && keysOf(diffCatalog(before, await snapshotCatalog(db))).length === 0 && marked === 2, r);
+  // A review pending with parent links still in place (from 0097 the review changes nothing) refuses the rollback.
+  await db.query(`insert into public.player_assessments (player_id, created_by, body) values ($1, $2, 'Fictional assessment')`, [w9.player, w9.people.coParent]);
+  const review = await deleteAccount(w9, w9.people.coParent);
+  const reviewRow = await one(db, `select id, email from public.pending_profile_deletions where auth_user_id = $1`, [w9.people.coParent]);
+  check('10: a pending review keeps the email while staff may need it', reviewRow?.email !== null && reviewRow?.email !== undefined, JSON.stringify(reviewRow));
+  const beforeReview = await snapshotCatalog(db);
+  r = await rollBack(ACK);
+  check('10: rollback is refused while a review is pending for an account that still has parent links, changing nothing',
+    review.canDeleteIdentity === false && r?.includes('1 account deletion(s) are pending staff review with parent links still in place') && keysOf(diffCatalog(beforeReview, await snapshotCatalog(db))).length === 0, r);
+  await db.query(`delete from public.player_assessments where created_by = $1`, [w9.people.coParent]);
+  const coParentGone = await deleteAccount(w9, w9.people.coParent);
+  check('10: (that account then deletes once its blocker is cleared)', coParentGone.canDeleteIdentity === true && coParentGone.playersUnlinked.includes(w9.player), JSON.stringify(coParentGone));
+  const selfEvents = (await db.query(`select pending_deletion_id, profile_id, actor_profile_id, outcome from public.account_deletion_staff_actions where action = 'self_deleted'`)).rows;
+  check('10: that self-deletion of a reviewed request is one separate append-only audit event (actor = the account itself)',
+    selfEvents.length === 1 && selfEvents[0].pending_deletion_id === reviewRow.id && selfEvents[0].profile_id === w9.people.coParent
+      && selfEvents[0].actor_profile_id === w9.people.coParent && selfEvents[0].outcome === 'erased_while_review_pending', JSON.stringify(selfEvents));
+  const afterSelf = await one(db, `select status, email from public.pending_profile_deletions where id = $1`, [reviewRow.id]);
+  check('10: …the review is resolved and keeps no plaintext email', afterSelf.status === 'resolved' && afterSelf.email === null, JSON.stringify(afterSelf));
+  const beforeAudit = await snapshotCatalog(db);
+  r = await rollBack(ACK);
+  check('10: rollback is refused once any account-deletion audit event exists, changing nothing',
+    r?.includes('1 account-deletion audit event(s)') && keysOf(diffCatalog(beforeAudit, await snapshotCatalog(db))).length === 0, r);
   check('10: …and no acknowledgement persists', await noAck());
   await db.close();
 }

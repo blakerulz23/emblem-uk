@@ -109,8 +109,11 @@ begin
                     and tgrelid = 'public.profiles'::regclass and not tgisinternal and tgenabled <> 'D') then
     v_problems := v_problems || 'the 0097 account-deletion functions or profile-deletion guard are missing (0097 not applied, or an earlier 0097)'::text;
   end if;
+  -- The current 0097 also clears the review's email at every erasure and
+  -- audits an account's own later self-deletion (self_deleted).
   if not exists (select 1 from pg_proc where oid = to_regprocedure('public.erase_account_for_deletion(uuid, text, uuid)')
-                   and prosrc like '%insert into public.erased_accounts%')
+                   and prosrc like '%insert into public.erased_accounts%'
+                   and prosrc like '%set email = null%' and prosrc like '%''self_deleted''%')
      or not exists (select 1 from pg_proc where oid = to_regprocedure('public.complete_pending_profile_deletion(uuid, text)')
                    and prosrc like '%account_deletion_staff_actions%' and prosrc like '%''profileId''%')
      or to_regprocedure('public.record_account_sign_in_removal(uuid, text, text)') is null then

@@ -1,6 +1,12 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
-import { ACCOUNT_ERASED_CODE, ACCOUNT_ERASED_MESSAGE, ACCOUNT_ERASED_QUERY } from '@/lib/account-deletion-copy';
+import { ACCOUNT_ERASED_CODE, ACCOUNT_ERASED_MESSAGE, ACCOUNT_ERASED_QUERY, ACCOUNT_CHECK_UNAVAILABLE_MESSAGE } from '@/lib/account-deletion-copy';
+import { logRouteFailure, safeErrorCode } from '@/lib/route-failure';
+
+// The account_is_erased function is not deployed yet (the app may ship before
+// migration 0097): PostgREST's "function not in the schema cache", or
+// PostgreSQL's "function does not exist". Nothing can be erased then.
+const CHECK_NOT_DEPLOYED = new Set(['PGRST202', '42883']);
 
 /**
  * Refreshes the Supabase auth session cookie on every request. Required by
@@ -19,9 +25,17 @@ import { ACCOUNT_ERASED_CODE, ACCOUNT_ERASED_MESSAGE, ACCOUNT_ERASED_QUERY } fro
  * straight to Supabase (PostgREST, Realtime) until it expires; there the
  * account has no profile and no family links, and the database refuses to
  * recreate its profile. Paths that src/middleware.ts answers before calling
- * this (static previews, /squad-invite/access) do not use a session. If the
- * check itself fails, the request continues rather than signing everyone
- * out; the database refusal still holds.
+ * this (static previews, /squad-invite/access) do not use a session.
+ * If the check itself fails:
+ *   - API calls fail closed: 503, try again (an API call needs the database
+ *     anyway, so this costs nothing a healthy request would have had);
+ *   - pages fail open (the request continues, no one is signed out); the
+ *     failure is logged with its code only, and the database still refuses
+ *     to recreate an erased account's profile or link it to anyone;
+ *   - before migration 0097 is applied (function not deployed) every request
+ *     continues as it does today.
+ * Timing: with EMBLEM_SERVER_TIMING=1 (staging measurement only), responses
+ * carry Server-Timing entries for the session lookup and the erased check.
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -48,12 +62,44 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
+  const timing = process.env.EMBLEM_SERVER_TIMING === '1';
+  const t0 = timing ? performance.now() : 0;
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
+  // A session cookie Auth no longer accepts: after a reviewed deletion
+  // completes, the staff route deletes the Auth user, so getUser fails, yet
+  // the access token stays valid at the database until it expires. Ask the
+  // database about that token too, so it still gets the deleted-account
+  // answer. (No cookie, no extra call: signed-out visitors pay nothing.)
+  const staleSession = !user && !!userError && request.cookies.getAll().some((c) => /^sb-.+-auth-token(\.\d+)?$/.test(c.name));
+  const authMs = timing ? performance.now() - t0 : 0;
+  const withTiming = <R extends NextResponse>(res: R, checkMs: number | null, outcome: string): R => {
+    if (timing) {
+      const entries = [`auth;dur=${authMs.toFixed(1)}`];
+      if (checkMs !== null) entries.push(`erased-check;dur=${checkMs.toFixed(1)};desc="${outcome}"`);
+      res.headers.set('Server-Timing', entries.join(', '));
+    }
+    return res;
+  };
 
-  if (user) {
+  if (user || staleSession) {
+    const t1 = timing ? performance.now() : 0;
     const { data: erased, error } = await supabase.rpc('account_is_erased');
+    const checkMs = timing ? performance.now() - t1 : 0;
+    // A stale session the database also refuses (expired token): it is
+    // simply signed out, as before; routes see no user.
+    if (!user && error) return withTiming(supabaseResponse, checkMs, 'stale-session');
+    if (error && !CHECK_NOT_DEPLOYED.has(safeErrorCode(error))) {
+      logRouteFailure('middleware: erased-account check', error);
+      if (request.nextUrl.pathname.startsWith('/api/')) {
+        const unavailable = NextResponse.json({ error: ACCOUNT_CHECK_UNAVAILABLE_MESSAGE }, { status: 503, headers: { 'Retry-After': '5' } });
+        supabaseResponse.cookies.getAll().forEach((cookie) => unavailable.cookies.set(cookie));
+        return withTiming(unavailable, checkMs, 'failed-closed');
+      }
+      return withTiming(supabaseResponse, checkMs, 'failed-open');
+    }
     if (!error && erased === true) {
       // Signs this session out: Auth revokes its refresh token (scope local),
       // and setAll above clears the cookies.
@@ -67,9 +113,10 @@ export async function updateSession(request: NextRequest) {
           ? NextResponse.next({ request })
           : NextResponse.redirect(new URL(`/os?${ACCOUNT_ERASED_QUERY}=1`, request.url));
       supabaseResponse.cookies.getAll().forEach((cookie) => refused.cookies.set(cookie));
-      return refused;
+      return withTiming(refused, checkMs, 'erased');
     }
+    return withTiming(supabaseResponse, checkMs, error ? 'not-deployed' : user ? 'live' : 'stale-session');
   }
 
-  return supabaseResponse;
+  return withTiming(supabaseResponse, null, 'signed-out');
 }

@@ -28,6 +28,8 @@ export const STAFF_ACCOUNT_DELETE_REFUSED =
 /** A session whose account has been erased (migration 0097 erased_accounts). */
 export const ACCOUNT_ERASED_MESSAGE = 'This account has been deleted.';
 export const ACCOUNT_ERASED_CODE = 'ACCOUNT_ERASED';
+/** An API call made while the erased-account check could not be answered (it fails closed for APIs). */
+export const ACCOUNT_CHECK_UNAVAILABLE_MESSAGE = 'Emblem is briefly unavailable. Please try again in a moment.';
 
 /** Query flag the middleware adds when it sends an erased account back to the signed-out OS. */
 export const ACCOUNT_ERASED_QUERY = 'account_deleted';

@@ -31,6 +31,11 @@
 --     NULL and cannot satisfy the original rules; the account no longer
 --     exists, so there is nothing honest to restore. Then the only way is
 --     forward.
+--   - (not reversed, by design) the email 0097 cleared from the review
+--     record of each erased account stays cleared: the account is gone and
+--     the plaintext email must not come back. A self_deleted audit event
+--     counts as a recorded decision above, so the rollback refuses once any
+--     reviewed account has erased itself.
 --   - the SAME TRANSACTION first sets this exact acknowledgement,
 --     transaction-local (third argument true):
 --
@@ -88,7 +93,7 @@ begin
   end if;
   select count(*) into v_marked from public.account_deletion_staff_actions;
   if v_marked > 0 then
-    raise exception '0097 rollback refused: % staff decision(s) on account deletions are recorded; that audit cannot be dropped. Fix forward instead.', v_marked;
+    raise exception '0097 rollback refused: % account-deletion audit event(s) (staff decisions, or a reviewed account''s own self-deletion) are recorded; that audit cannot be dropped. Fix forward instead.', v_marked;
   end if;
   select count(*) into v_marked from public.erased_accounts e where exists (select 1 from auth.users u where u.id = e.profile_id);
   if v_marked > 0 then

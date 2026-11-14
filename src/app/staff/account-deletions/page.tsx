@@ -41,11 +41,16 @@ export default async function AccountDeletionsPage() {
     .limit(50);
 
   const pending = (pendingData ?? []) as PendingRow[];
-  const decided = (decidedData ?? []) as DecidedRow[];
-  const decidedUsers = decided.map((r) => r.auth_user_id);
+  const decidedRaw = (decidedData ?? []) as DecidedRow[];
+  const decidedUsers = decidedRaw.map((r) => r.auth_user_id);
   const { data: erasedData } = decidedUsers.length
     ? await service.from('erased_accounts').select('profile_id').in('profile_id', decidedUsers)
     : { data: [] };
+  // erased_accounts is the authoritative current state. An erased account's
+  // review keeps no email (0097 clears it); none is passed to the page even
+  // if an older row still had one.
+  const erasedIds = new Set(((erasedData ?? []) as { profile_id: string }[]).map((r) => r.profile_id));
+  const decided = decidedRaw.map((r) => (erasedIds.has(r.auth_user_id) ? { ...r, email: null } : r));
   const rejectedIds = decided.filter((r) => r.status === 'rejected').map((r) => r.id);
   const { data: openData } = rejectedIds.length
     ? await service.from('deletion_review_access_suspensions').select('pending_deletion_id').in('pending_deletion_id', rejectedIds).is('resolved_at', null)
@@ -65,7 +70,7 @@ export default async function AccountDeletionsPage() {
       pending={pending}
       decided={decided}
       signInPending={((authData ?? []) as { auth_user_id: string }[]).map((r) => r.auth_user_id)}
-      erased={((erasedData ?? []) as { profile_id: string }[]).map((r) => r.profile_id)}
+      erased={Array.from(erasedIds)}
       unrestored={unrestored}
       actions={(actionData ?? []) as ActionRow[]}
       previews={previews}

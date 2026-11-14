@@ -96,7 +96,11 @@
 --      its sessions at once (an issued access token outlives Auth user
 --      deletion). account_deletion_staff_actions audits staff decisions
 --      (and, through record_account_sign_in_removal, each sign-in removal
---      attempt). Both tables are append-only for every role.
+--      attempt), and an account's own later self-deletion of a reviewed
+--      request (self_deleted). Both tables are append-only for every role.
+--      Every erasure clears the email from the account's review record, and
+--      no retry record (pending_auth_deletions) written here carries one;
+--      pending and rejected reviews keep it while staff may need it.
 --
 -- No app code reads moments.verified_by (it is only written, by
 -- /api/os/celebrate and /api/os/moments/verify), so NULL is already safe in
@@ -338,7 +342,15 @@ declare
   v_players_unlinked uuid[] := '{}';
   v_players_deletion_requested uuid[] := '{}';
   v_request_id uuid;
+  v_review_id uuid;
+  v_review_status text;
 begin
+  -- An account already erased has nothing left to erase. A still-valid
+  -- access token of that account calling delete_own_guardian_account again
+  -- is refused here, so it can write no second audit event or record.
+  if exists (select 1 from public.erased_accounts where profile_id = v_uid) then
+    raise exception using errcode = 'EMERA', message = 'account_erased';
+  end if;
   select array_agg(player_id) into v_player_ids from public.guardians where profile_id = v_uid;
 
   if v_player_ids is not null then
@@ -402,6 +414,12 @@ begin
   -- 0097: a staff review of this deletion, if one is open, is now complete
   -- (p_completed_by is the staff member, or NULL for a self-service request
   -- made again once nothing blocked it).
+  -- A self-service erasure of an account that has a review record (pending,
+  -- rejected, or resolved earlier) is its own append-only audit event; the
+  -- review keeps its historical status (a rejected review stays rejected),
+  -- and erased_accounts is the authoritative current state.
+  select status, id into v_review_status, v_review_id
+    from public.pending_profile_deletions where auth_user_id = v_uid;
   update public.pending_profile_deletions
      set status = 'resolved', resolved_by = p_completed_by, resolved_at = now()
    where auth_user_id = v_uid and status = 'pending';
@@ -409,8 +427,25 @@ begin
   -- 0097: from now on no profile can be created again for this account and
   -- the app refuses its sessions (section 9).
   insert into public.erased_accounts (profile_id, completed_by, pending_deletion_id)
-  values (v_uid, p_completed_by, (select id from public.pending_profile_deletions where auth_user_id = v_uid))
+  values (v_uid, p_completed_by, v_review_id)
   on conflict (profile_id) do nothing;
+
+  if p_completed_by is null and v_review_id is not null then
+    insert into public.account_deletion_staff_actions (pending_deletion_id, profile_id, actor_profile_id, action, reason, outcome)
+    values (v_review_id, v_uid, v_uid, 'self_deleted',
+            'The account deleted itself through the app once nothing blocked the deletion',
+            case v_review_status when 'pending' then 'erased_while_review_pending'
+                                 when 'rejected' then 'erased_after_rejection'
+                                 else 'erased_after_resolved_review' end);
+  end if;
+
+  -- 0097: the email was needed only before the erasure (it was copied above
+  -- onto any child deletion request filed for a sole-guardian child, as
+  -- 0076 does). The review record keeps no plaintext email for an erased
+  -- account: only its id, the erased account's uuid, timestamps, the staff
+  -- actor, reason, outcome and the append-only audit remain.
+  update public.pending_profile_deletions set email = null
+   where auth_user_id = v_uid and email is not null;
 
   -- The profiles delete trigger (section 7) marks this account's
   -- verifications and cancellations as the row goes.
@@ -569,15 +604,17 @@ begin
   if not exists (select 1 from public.profiles where id = v_uid) then
     -- Already deleted another way (before 0097, by removing the login): there
     -- is nothing left to erase, so the request is closed, not left pending.
+    -- The email is cleared here too: the account is gone.
     update public.pending_profile_deletions
-       set status = 'resolved', resolved_by = v_staff, resolved_at = now(),
+       set status = 'resolved', resolved_by = v_staff, resolved_at = now(), email = null,
            notes = concat_ws(E'\n', notes, 'Closed by staff (account already deleted): ' || btrim(p_reason))
      where id = p_pending_deletion_id;
     -- If the sign-in identity is still there, staff still need to remove it.
+    -- The retry record never carries the email (the auth user id is enough).
     if exists (select 1 from auth.users where id = v_uid) then
       insert into public.pending_auth_deletions (auth_user_id, email, last_error)
-      values (v_uid, v_pending.email, 'Reviewed account deletion closed by staff (profile already gone); the sign-in identity still needs deleting')
-      on conflict (auth_user_id) do nothing;
+      values (v_uid, null, 'Reviewed account deletion closed by staff (profile already gone); the sign-in identity still needs deleting')
+      on conflict (auth_user_id) do update set email = null;
     end if;
     -- Recorded as erased too: a sign-in that survived cannot recreate a profile.
     insert into public.erased_accounts (profile_id, completed_by, pending_deletion_id)
@@ -598,10 +635,13 @@ begin
 
   v_result := public.erase_account_for_deletion(v_uid, v_pending.email, v_staff);
 
+  -- The retry record never carries the email (the auth user id is enough);
+  -- an older record for the same account loses any email it had.
   insert into public.pending_auth_deletions (auth_user_id, email, last_error)
-  values (v_uid, v_pending.email, 'Reviewed account deletion completed by staff; the sign-in identity still needs deleting')
+  values (v_uid, null, 'Reviewed account deletion completed by staff; the sign-in identity still needs deleting')
   on conflict (auth_user_id) do update
-    set notes = concat_ws(E'\n', public.pending_auth_deletions.notes,
+    set email = null,
+        notes = concat_ws(E'\n', public.pending_auth_deletions.notes,
                   'Earlier record: status ' || public.pending_auth_deletions.status
                   || coalesce(', resolved at ' || public.pending_auth_deletions.resolved_at::text, '')
                   || coalesce(' by ' || public.pending_auth_deletions.resolved_by::text, '')),
@@ -730,19 +770,22 @@ alter function public.account_is_erased() owner to postgres;
 -- Every staff decision on a reviewed account deletion: who, which request,
 -- why, and what happened. Written only by the staff functions, once per
 -- decision that changed something (a repeat that changes nothing writes
--- nothing). Plain uuids: history must never block a deletion.
+-- nothing). Also one 'self_deleted' event when an account that has a review
+-- record (pending, rejected or resolved) later erases itself through the app
+-- (actor = the account itself; written by erase_account_for_deletion).
+-- Plain uuids: history must never block a deletion. No email is stored.
 create table public.account_deletion_staff_actions (
   id uuid primary key default gen_random_uuid(),
   pending_deletion_id uuid not null,
   profile_id uuid not null,
   actor_profile_id uuid not null,
-  action text not null check (action in ('complete', 'reject', 'restore', 'remove_sign_in')),
+  action text not null check (action in ('complete', 'reject', 'restore', 'remove_sign_in', 'self_deleted')),
   reason text not null check (char_length(btrim(reason)) between 1 and 500),
   outcome text not null,
   created_at timestamptz not null default now()
 );
 comment on table public.account_deletion_staff_actions is
-  'Audit of staff decisions on reviewed account deletions (0097/0098): actor, request, reason, outcome. Written only by the staff functions; service_role may read.';
+  'Audit of reviewed account deletions (0097/0098): staff decisions (actor, request, reason, outcome) and an account''s own later self-deletion (self_deleted). Written only by the deletion functions; service_role may read.';
 alter table public.account_deletion_staff_actions enable row level security;
 revoke all on public.account_deletion_staff_actions from public, anon, authenticated, service_role;
 grant select on public.account_deletion_staff_actions to service_role;

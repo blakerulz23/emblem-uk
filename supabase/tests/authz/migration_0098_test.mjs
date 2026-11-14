@@ -936,9 +936,10 @@ console.log('\n=== 17. A parent-coach under review keeps the whole family; staff
     check('17: a repeated completion reports already_completed and changes nothing (no second request, lock or marker)', again.status === 'already_completed' && (await family()) === F1, JSON.stringify(again));
     check('17: reject and restore are refused after completion',
       (await attempt(() => reject(w, pid, people.staff)))?.includes('already resolved') && (await attempt(() => restore(w, pid, people.staff)))?.includes('(it is resolved)'));
-    // The account's old session asks again (its login still exists until staff remove it): nothing left to do.
-    const late = await w.user(parent, `select public.delete_own_guardian_account() as r`).then((x) => x.rows[0].r);
-    check('17: a late self-service retry finds nothing to erase and changes nothing', late.canDeleteIdentity === true && late.playersDeletionRequested.length === 0 && (await family()) === F1, JSON.stringify(late));
+    // The account's old session asks again (its login still exists until staff remove it): refused as erased,
+    // so it can write no second audit event or record.
+    const late = await errOf(() => w.user(parent, `select public.delete_own_guardian_account() as r`));
+    check('17: a late self-service retry is refused as erased (EMERA account_erased) and changes nothing', late === 'EMERA:account_erased' && (await family()) === F1, late);
     const authDelete = await attempt(() => db.query(`delete from auth.users where id = $1`, [parent]));
     check('17: staff remove the sign-in identity; nothing references the account', authDelete === null &&
       await n(db, `select count(*)::int n from public.guardians where profile_id = $1 or created_by = $1`, [parent]) === 0, authDelete);
@@ -1218,6 +1219,209 @@ console.log('\n=== 20. Earlier-draft (eb8f8d9) rollback files cannot half-revert
   } catch (e) {
     check('20: earlier-draft rollbacks and staging route', false, e.stack);
   }
+}
+
+console.log('\n=== 21. Erasure keeps no plaintext email; a later self-deletion is its own audit event; a stale token reaches nothing ===');
+{
+  const w = await world();
+  const { db, people } = w;
+  const emailOf = async (uid) => (await db.query(`select email from auth.users where id = $1`, [uid])).rows[0]?.email;
+  // Every text, json and array column of every public table, searched as the owner (no RLS).
+  async function emailHits(email) {
+    const cols = (await db.query(`select c.table_name t, c.column_name c from information_schema.columns c
+        join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name
+       where c.table_schema = 'public' and t.table_type = 'BASE TABLE'
+         and c.data_type in ('text', 'character varying', 'jsonb', 'json', 'ARRAY')`)).rows;
+    const hits = [];
+    for (const { t, c } of cols) {
+      const k = await n(db, `select count(*)::int n from public."${t}" where position(lower($1) in lower("${c}"::text)) > 0`, [email]);
+      if (k) hits.push(`${t}.${c}:${k}`);
+    }
+    return hits;
+  }
+  const auditOf = (pid) => db.query(`select action, actor_profile_id, outcome from public.account_deletion_staff_actions where pending_deletion_id = $1 order by created_at, action`, [pid]).then((r) => r.rows);
+  const selfEvents = () => n(db, `select count(*)::int n from public.account_deletion_staff_actions where action = 'self_deleted'`);
+  try {
+    // --- A. Staff completion of a reviewed coach ---
+    const coachA = await w.coach();
+    const emailA = await emailOf(coachA);
+    await w.assess(coachA);
+    const rA = await deleteAccount(w, coachA);
+    const pA = await pendingOf(db, coachA);
+    check('21: a pending review keeps the email while staff may need it', rA.canDeleteIdentity === false && pA.email === emailA && emailA?.includes('@'), JSON.stringify(pA));
+    // An older Auth-removal record for the same account that still carries an email (0043 era).
+    await db.query(`insert into public.pending_auth_deletions (auth_user_id, email, status, last_error) values ($1, $2, 'resolved', 'older record')`, [coachA, emailA]);
+    await db.query(`delete from public.player_assessments where created_by = $1`, [coachA]);
+    const cA = await complete(w, pA.id);
+    const hitsA = await emailHits(emailA);
+    const afterA = await pendingOf(db, coachA);
+    check('21: staff completion clears the review email, the retry record carries none (an older one loses its email), and no public column holds it',
+      cA.status === 'completed' && afterA.email === null
+        && await n(db, `select count(*)::int n from public.pending_auth_deletions where auth_user_id = $1 and email is null and status = 'pending'`, [coachA]) === 1
+        && hitsA.length === 0, `${JSON.stringify(cA)} ${hitsA.join(', ')}`);
+    check('21: what the completed review keeps: request id, erased account uuid, timestamps, staff actor, reason note, status',
+      afterA.id === pA.id && afterA.auth_user_id === coachA && afterA.first_detected_at && afterA.resolved_at && afterA.resolved_by === people.staff
+        && afterA.status === 'resolved' && afterA.notes?.includes('Completed by staff') && !afterA.notes.includes('@'), JSON.stringify(afterA));
+    check('21: the audit for it holds actor, reason and outcome, and no email',
+      JSON.stringify((await auditOf(pA.id)).map((a) => [a.action, a.actor_profile_id === people.staff, a.outcome])) === JSON.stringify([['complete', true, 'completed']])
+        && await n(db, `select count(*)::int n from public.account_deletion_staff_actions where position('@' in reason || outcome) > 0`) === 0);
+    const againA = await complete(w, pA.id);
+    check('21: a repeat completion is already_completed and brings no email back', againA.status === 'already_completed' && (await pendingOf(db, coachA)).email === null && (await emailHits(emailA)).length === 0, JSON.stringify(againA));
+    // The retry path: each sign-in removal attempt is audited without the email.
+    await w.user(people.staff, `select public.record_account_sign_in_removal($1, 'Retry after an Auth outage', 'removal_pending')`, [pA.id]);
+    await w.user(people.staff, `select public.record_account_sign_in_removal($1, 'Retry after an Auth outage', 'removed')`, [pA.id]);
+    check('21: sign-in removal retries are audited and leave no plaintext email anywhere', (await auditOf(pA.id)).length === 3 && (await emailHits(emailA)).length === 0);
+
+    // --- B. A sole guardian completed by staff: the 0076 child deletion request keeps its contact address ---
+    const parent = people.parent;
+    const emailP = await emailOf(parent);
+    const req = (await w.user(parent, `insert into public.coach_team_requests (club_name, team_name) values ('Fictional FC', 'U12 parent') returning id`)).rows[0].id;
+    await w.service(`select public.approve_coach_team_request($1, $2, $3, null, null)`, [req, people.staff, w.team]);
+    await w.assess(parent);
+    await deleteAccount(w, parent);
+    const pP = await pendingOf(db, parent);
+    await db.query(`delete from public.player_assessments where created_by = $1`, [parent]);
+    const cP = await complete(w, pP.id);
+    const hitsP = await emailHits(emailP);
+    check('21: a sole guardian completed by staff: the review keeps no email; the only copy left is the child deletion request filed for the sole-guardian child (0076 contact address, documented)',
+      cP.status === 'completed' && (await pendingOf(db, parent)).email === null
+        && JSON.stringify(hitsP) === JSON.stringify(['player_deletion_requests.requester_email:1']), `${JSON.stringify(cP)} ${hitsP.join(', ')}`);
+
+    // --- C. Rejected, then the account deletes itself later ---
+    const coachC = await w.coach();
+    const emailC = await emailOf(coachC);
+    await w.assess(coachC);
+    await deleteAccount(w, coachC);
+    const pC = await pendingOf(db, coachC);
+    await reject(w, pC.id, people.staff);
+    await restore(w, pC.id, people.staff);
+    check('21: a rejected review keeps the email while the account exists', (await pendingOf(db, coachC)).email === emailC);
+    await db.query(`delete from public.player_assessments where created_by = $1`, [coachC]);
+    const sC = await deleteAccount(w, coachC);
+    const afterC = await pendingOf(db, coachC);
+    const auditC = await auditOf(pC.id);
+    check('21: a rejected review stays historically rejected after a later self-deletion; erased_accounts records the erasure',
+      sC.canDeleteIdentity === true && afterC.status === 'rejected'
+        && await n(db, `select count(*)::int n from public.erased_accounts where profile_id = $1 and completed_by is null and pending_deletion_id = $2`, [coachC, pC.id]) === 1, JSON.stringify(afterC));
+    check('21: …the later self-deletion is a separate append-only audit event (actor = the account itself, erased_after_rejection)',
+      JSON.stringify(auditC.map((a) => [a.action, a.outcome])) === JSON.stringify([['reject', 'rejected'], ['restore', auditC[1]?.outcome], ['self_deleted', 'erased_after_rejection']])
+        && auditC[2].actor_profile_id === coachC, JSON.stringify(auditC));
+    check('21: …and the email is cleared from the review; no public column holds it', afterC.email === null && (await emailHits(emailC)).length === 0, (await emailHits(emailC)).join(', '));
+    const upd = await errOf(() => db.query(`update public.account_deletion_staff_actions set outcome = 'x' where action = 'self_deleted'`));
+    check('21: the self-deletion event is append-only (owner refused)', upd?.includes('append-only'), upd);
+
+    // --- D. An ordinary immediate deletion with no review writes no self-deletion event ---
+    const before = await selfEvents();
+    const plain = await w.coach();
+    const emailPlain = await emailOf(plain);
+    await deleteAccount(w, plain);
+    check('21: an immediate deletion with no review writes no self_deleted event and leaves no email', await selfEvents() === before && (await emailHits(emailPlain)).length === 0);
+  } catch (e) {
+    check('21: email redaction and self-deletion audit', false, e.stack);
+  }
+
+  // --- E. A still-valid access token of an erased account, sent straight to the database ---
+  try {
+    const v = await world();
+    const { db: vdb, people: vp } = v;
+    const stale = vp.coParent; // co-guardian of v.player with vp.parent
+    await v.coach(); // creates v.team; v.player joins it
+    const card = id();
+    await vdb.query(`insert into public.cards (id, player_id, claim_token, status) values ($1, $2, 'S21-CARD', 'claimed')`, [card, v.player]);
+    const moment = await v.submit('family_memory');
+    await v.user(vp.parent, `insert into public.coach_invites (player_id, code, created_by) values ($1, 'S21-COACH', $2)`, [v.player, vp.parent]);
+    await v.service(`insert into public.team_invites (team_id, code) values ($1, 'S21-TEAM')`, [v.team]);
+    await v.user(vp.parent, `insert into public.player_invites (player_id, code, created_by) values ($1, 'S21-PLAYER', $2)`, [v.player, vp.parent]).catch(() => {});
+    const readBefore = await v.as('authenticated', stale, async () => Number((await vdb.query(`select count(*)::int n from public.players`)).rows[0].n));
+    // Erased through the app path; the auth.users row stays, as before the staff route removes it: the token is still valid.
+    const erasedResult = (await v.user(stale, `select public.delete_own_guardian_account() as r`)).rows[0].r;
+    const wholeDb = async () => {
+      const tables = (await vdb.query(`select tablename from pg_tables where schemaname = 'public' order by 1`)).rows.map((r) => r.tablename);
+      const parts = [`auth.users:${(await vdb.query(`select coalesce(md5(string_agg(x::text, '|' order by x::text)), 'e') h from auth.users x`)).rows[0].h}`];
+      for (const t of tables) parts.push(`${t}:${(await vdb.query(`select coalesce(md5(string_agg(x::text, '|' order by x::text)), 'e') h from public."${t}" x`)).rows[0].h}`);
+      return parts.join(',');
+    };
+    const D0 = await wholeDb();
+    const as = (sql, params) => errOf(() => v.user(stale, sql, params));
+    const refused = {
+      profile: await as(`insert into public.profiles (id) values ($1)`, [stale]),
+      profileUpsert: await as(`insert into public.profiles (id) values ($1) on conflict (id) do nothing`, [stale]),
+      guardian: await as(`insert into public.guardians (player_id, profile_id, created_via, created_by) values ($1, $2, 'card_claim', $2)`, [v.player, stale]),
+      coachTeam: await as(`insert into public.coach_team (team_id, profile_id) values ($1, $2)`, [v.team, stale]),
+      coachTeamRequest: await as(`insert into public.coach_team_requests (club_name, team_name) values ('Fictional FC', 'U12 stale')`),
+      directCoach: await as(`insert into public.coach_players (player_id, profile_id) values ($1, $2)`, [v.player, stale]),
+      coachInvite: await as(`insert into public.coach_invites (player_id, code, created_by) values ($1, 'S21-STALE', $2)`, [v.player, stale]),
+      moment: await as(`insert into public.moments (player_id, title, trust, uploaded_by, verification_status) values ($1, 'Stale', 'parent', $2, 'family_memory')`, [v.player, stale]),
+      deleteAgain: await as(`select public.delete_own_guardian_account()`),
+      complete: await as(`select public.complete_pending_profile_deletion($1, 'x')`, [id()]),
+      preview: await as(`select public.account_deletion_preview($1)`, [id()]),
+      signInRecord: await as(`select public.record_account_sign_in_removal($1, 'x', 'removed')`, [id()]),
+      requestChildDeletion: await as(`select public.request_player_deletion($1, 'stale@example.test', null)`, [v.player]),
+    };
+    const verifyRows = (await v.user(stale, `update public.moments set verified_by = $2, verified_at = now(), verification_status = 'coach_verified' where id = $1 returning id`, [moment, stale])).rows.length;
+    check('21: stale token — the profile cannot be recreated (EMERA account_erased)', refused.profile === 'EMERA:account_erased' && refused.profileUpsert === 'EMERA:account_erased', `${refused.profile} / ${refused.profileUpsert}`);
+    check('21: stale token — no guardian, coach-team, team-request, direct-coach link or invite can be created',
+      ['guardian', 'coachTeam', 'coachTeamRequest', 'directCoach', 'coachInvite'].every((k) => refused[k] !== null), JSON.stringify(refused));
+    check('21: stale token — no moment can be created or verified', refused.moment !== null && verifyRows === 0, `${refused.moment} / ${verifyRows}`);
+    check('21: stale token — the deletion and staff functions refuse (a second self-deletion is EMERA account_erased: no second audit event)',
+      refused.deleteAgain === 'EMERA:account_erased' && ['complete', 'preview', 'signInRecord'].every((k) => refused[k]?.includes('staff only') || refused[k]?.includes('Not authorized')), JSON.stringify(refused));
+    check('21: stale token — filing a child deletion request is refused', refused.requestChildDeletion !== null, refused.requestChildDeletion);
+    // The relationship functions (invite redemption, approval, reject/restore) are not callable with a user token at all.
+    const relFns = ['public.redeem_coach_invite(text, uuid, text)', 'public.redeem_team_invite(text, uuid, text)', 'public.approve_coach_team_request(uuid, uuid, uuid, timestamptz, uuid)',
+      'public.reject_pending_profile_deletion(uuid, uuid, text)', 'public.restore_coach_access_after_deletion_rejection(uuid, uuid, text)'];
+    check('21: stale token — trusted relationship and review functions are not executable by authenticated',
+      await n(vdb, `select count(*)::int n from unnest($1::text[]) f where has_function_privilege('authenticated', f::regprocedure, 'EXECUTE')`, [relFns]) === 0);
+    // Even a server route acting with service_role cannot link the erased account: there is no profile and none can be made.
+    const svcLink = await errOf(() => v.service(`insert into public.guardians (player_id, profile_id, created_via, created_by) values ($1, $2, 'card_claim', $2)`, [v.player, stale]));
+    const svcRedeem = await errOf(() => v.service(`select status from public.redeem_coach_invite('S21-COACH', $1)`, [stale]));
+    const svcTeam = await errOf(() => v.service(`select status from public.redeem_team_invite('S21-TEAM', $1)`, [stale]));
+    check('21: even service_role cannot link the erased account (no profile exists or can be created)',
+      svcLink !== null && svcRedeem !== null && svcTeam !== null, `${svcLink} / ${svcRedeem} / ${svcTeam}`);
+    const reads = {};
+    for (const t of ['players', 'moments', 'guardians', 'cards', 'coach_team', 'coach_players', 'coach_invites', 'player_invites', 'team_invites',
+      'player_deletion_requests', 'story_updates', 'player_assessments', 'pending_profile_deletions', 'erased_accounts', 'account_deletion_staff_actions',
+      'deletion_review_access_suspensions', 'pending_auth_deletions']) {
+      reads[t] = await v.as('authenticated', stale, () => vdb.query(`select count(*)::int n from public."${t}"`)).then((r) => r.rows[0].n).catch(() => 'denied');
+    }
+    check('21: stale token — reads no family or deletion data (it could read the family before)', readBefore > 0
+      && Object.values(reads).every((x) => x === 0 || x === 'denied'), JSON.stringify(reads));
+    // Every other function a signed-in user may execute, called with this family's real ids: nothing changes and nothing of the family comes back.
+    const fns = (await vdb.query(`select p.proname, oidvectortypes(p.proargtypes) args from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+       where ns.nspname = 'public' and p.prorettype <> 'trigger'::regtype and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+         and p.proname not in ('account_is_erased', 'my_account_deletion_review') order by 1`)).rows;
+    const leaks = [];
+    const outcomes = [];
+    const harnessFaults = [];
+    for (const f of fns) {
+      const types = f.args ? f.args.split(', ') : [];
+      const vals = types.map((t) => (t === 'uuid' ? (f.proname.includes('card') ? card : f.proname.includes('moment') ? moment : v.player)
+        : t === 'boolean' ? true : t === 'integer' ? 1 : t.startsWith('timestamp') ? new Date().toISOString() : 'Fictional'));
+      const sql = `select to_jsonb(x)::text j from public."${f.proname}"(${types.map((t, i) => `$${i + 1}::${t}`).join(', ')}) x`;
+      try {
+        const rows = (await v.user(stale, sql, vals)).rows.map((r) => r.j).join(' ');
+        outcomes.push(`${f.proname}:ok`);
+        if ([v.player, card, moment, 'Fictional Player', 'S21-'].some((s) => rows.includes(s))) leaks.push(`${f.proname} -> ${rows.slice(0, 120)}`);
+        if (/(^|[:\s])true\b/.test(rows) && /is_|authorized|guardian|eligib/.test(f.proname) && f.proname !== 'coach_assignment_is_active') leaks.push(`${f.proname} -> ${rows.slice(0, 120)}`);
+      } catch (e) {
+        // A malformed call (wrong type, no such function, bad syntax) is a harness fault, not a refusal.
+        if (['42883', '42804', '42601', '42P18'].includes(e.code)) harnessFaults.push(`${f.proname}:${e.code}:${e.message}`);
+        outcomes.push(`${f.proname}:refused(${e.code ?? ''})`);
+      }
+    }
+    check('21: (harness self-check: every function was really called; the pure helper coach_assignment_is_active returned a value)',
+      harnessFaults.length === 0 && outcomes.includes('coach_assignment_is_active:ok'), harnessFaults.join(' | ') || outcomes.join(' '));
+    check(`21: stale token — each of the ${fns.length} other functions executable by authenticated, called with the family's ids, returns nothing of the family`, leaks.length === 0, leaks.join(' | ') || outcomes.join(' '));
+    check('21: stale token — after every attempt the whole database (every public table and auth.users) is byte-for-byte unchanged', (await wholeDb()) === D0);
+    check('21: (the erasure itself went through the app path)', erasedResult?.canDeleteIdentity === true, JSON.stringify(erasedResult));
+    // A normal account in the same family still works.
+    const normal = await v.as('authenticated', vp.parent, async () => Number((await vdb.query(`select count(*)::int n from public.players`)).rows[0].n));
+    const normalErased = (await v.user(vp.parent, `select public.account_is_erased() as e`)).rows[0].e;
+    check('21: a normal, non-erased account still reads its family and is not erased', normal > 0 && normalErased === false, `${normal} ${normalErased}`);
+    await vdb.close();
+  } catch (e) {
+    check('21: stale token probe', false, e.stack);
+  }
+  await db.close();
 }
 
 const failed = results.filter((r) => !r.pass);

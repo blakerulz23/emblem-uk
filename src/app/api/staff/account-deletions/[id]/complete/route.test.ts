@@ -204,6 +204,22 @@ describe('outcomes', () => {
     expect(session.rpcCalls[1].args).toMatchObject({ p_outcome: 'removal_pending' });
   });
 
+  it('no plaintext email: an Auth error naming the address is stored redacted, the retry row carries no email, nothing logged or returned has it', async () => {
+    setup({ rpc: () => completed(), del: { status: 500, message: 'Cannot delete user p-erased@example.test: database error' } });
+    const res = await valid();
+    const body = await res.json();
+    const w = authWrites();
+    expect(w).toHaveLength(1);
+    expect(w[0]).toMatchObject({ op: 'update', payload: { email: null, last_error: 'Cannot delete user [email removed]: database error' } });
+    // The row was missing: the inserted retry record has no email either.
+    pendingAuthRow = null;
+    setup({ rpc: () => completed(), del: { status: 500, message: 'p-erased@example.test' } });
+    await valid();
+    expect(authWrites()[0]).toMatchObject({ op: 'insert', payload: { email: null, last_error: '[email removed]' } });
+    const everything = JSON.stringify([body, service.calls, session.rpcCalls, logs.text()]);
+    expect(everything).not.toContain('example.test');
+  });
+
   it('a failure never reopens a queue row a concurrent call already resolved', async () => {
     setup({ rpc: () => completed(), del: { status: 500, message: 'x' } });
     pendingAuthRow = { id: 'pad-1', attempts: 2, status: 'resolved' };

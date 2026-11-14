@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { redactEmails } from '@/lib/redact-email';
 
 /**
  * Removes the Supabase Auth user of an account whose data has already been
@@ -49,7 +50,9 @@ export async function removeAccountSignIn(service: SupabaseClient, profileId: st
     return { state: 'removed', banned, queueUpdated: await markResolved(service, profileId, staffProfileId) };
   }
 
-  return { state: 'removal_pending', banned, queueUpdated: await recordFailure(service, profileId, deleteError.message ?? 'Auth user deletion failed') };
+  // The queue row is a retry record: it never carries the email, and the
+  // stored error text has any address removed.
+  return { state: 'removal_pending', banned, queueUpdated: await recordFailure(service, profileId, redactEmails(deleteError.message ?? 'Auth user deletion failed')) };
 }
 
 async function markResolved(service: SupabaseClient, profileId: string, staffProfileId: string): Promise<boolean> {
@@ -74,14 +77,14 @@ async function recordFailure(service: SupabaseClient, profileId: string, message
   if (!row) {
     const { error } = await service
       .from('pending_auth_deletions')
-      .insert({ auth_user_id: profileId, first_attempted_at: nowIso, last_attempted_at: nowIso, last_error: message });
+      .insert({ auth_user_id: profileId, email: null, first_attempted_at: nowIso, last_attempted_at: nowIso, last_error: message });
     return !error;
   }
   const r = row as { id: string; attempts: number; status: string };
   if (r.status !== 'pending') return true;
   const { error } = await service
     .from('pending_auth_deletions')
-    .update({ last_attempted_at: nowIso, attempts: r.attempts + 1, last_error: message })
+    .update({ last_attempted_at: nowIso, attempts: r.attempts + 1, last_error: message, email: null })
     .eq('id', r.id)
     .eq('status', 'pending');
   return !error;

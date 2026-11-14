@@ -17,6 +17,23 @@ const BLOCKING_LABEL: Record<string, string> = {
   squad_invite_audit_history: 'Squad Invite audit history',
 };
 const font = { sans: 'var(--font-manrope), system-ui', head: 'var(--font-sora), system-ui' };
+
+/** A short, non-identifying reference: the first characters of the request id (never the account's). */
+export const requestRef = (requestId: string) => requestId.replace(/-/g, '').slice(0, 8).toUpperCase();
+
+/** How an account is named on this page: an erased account never by its email. */
+export function accountLabel(row: PendingRow, erased: boolean): string {
+  if (erased) return `Erased account · ref ${requestRef(row.id)}`;
+  return row.email ?? `Account · ref ${requestRef(row.id)}`;
+}
+
+const ACTION_LABEL: Record<string, string> = {
+  complete: 'Deletion completed',
+  reject: 'Deletion rejected',
+  restore: 'Coaching restored',
+  remove_sign_in: 'Sign-in removal',
+  self_deleted: 'Account deleted itself',
+};
 const at = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' UTC' : '—';
 
@@ -61,7 +78,7 @@ export default function AccountDeletionsView({
           {pending.map((r) => (
             <div key={r.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px' }}>
               <div style={{ fontFamily: font.head, fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>
-                {r.email ?? `account ${r.auth_user_id.slice(0, 8)}…`}
+                {accountLabel(r, false)}
               </div>
               <div style={{ fontFamily: font.sans, fontSize: 12.5, color: 'var(--ink-soft)', marginTop: 3 }}>
                 Requested {at(r.first_detected_at)} · Held for review because of: {BLOCKING_LABEL[r.blocking_reason] ?? r.blocking_reason}
@@ -80,7 +97,7 @@ export default function AccountDeletionsView({
           {decided.map((r) => (
             <div key={r.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px' }}>
               <div style={{ fontFamily: font.sans, fontSize: 13, color: 'var(--ink)' }}>
-                {r.email ?? `account ${r.auth_user_id.slice(0, 8)}…`} —{' '}
+                {accountLabel(r, erased.includes(r.auth_user_id))} —{' '}
                 {erased.includes(r.auth_user_id)
                   ? 'Deleted'
                   : r.status === 'rejected'
@@ -109,14 +126,15 @@ export default function AccountDeletionsView({
         </div>
       )}
 
-      <h2 style={{ fontFamily: font.head, fontWeight: 700, fontSize: 18, color: 'var(--ink)', margin: '32px 0 12px' }}>Recent staff decisions</h2>
+      <h2 style={{ fontFamily: font.head, fontWeight: 700, fontSize: 18, color: 'var(--ink)', margin: '32px 0 12px' }}>Recent decisions and deletions</h2>
       {actions.length === 0 ? (
         <p style={{ fontFamily: font.sans, fontSize: 14, color: 'var(--ink-soft)' }}>None yet.</p>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, fontFamily: font.sans, fontSize: 12.5, color: 'var(--ink-soft)' }}>
           {actions.map((a, i) => (
             <li key={i} style={{ padding: '3px 0' }}>
-              {at(a.created_at)} · {a.action} · {a.outcome} · by staff {a.actor_profile_id.slice(0, 8)}… · request {a.pending_deletion_id.slice(0, 8)}…
+              {at(a.created_at)} · {ACTION_LABEL[a.action] ?? a.action} · {a.outcome} ·{' '}
+              {a.action === 'self_deleted' ? 'by the account itself' : `by staff ${a.actor_profile_id.slice(0, 8)}…`} · ref {requestRef(a.pending_deletion_id)}
             </li>
           ))}
         </ul>

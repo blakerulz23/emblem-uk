@@ -226,6 +226,28 @@ describe('0097 rollback — emergency only', () => {
     expect(rollbackCode).toContain("select set_config('emblem.acknowledge_0097_rollback', '', false);");
   });
 
+  it('an erasure keeps no plaintext email in the review record or the retry record, and audits a reviewed account erasing itself', () => {
+    const defOf = (text: string, header: string, end = '\n$$;') => text.slice(text.indexOf(header), text.indexOf(end, text.indexOf(header)) + end.length);
+    const CLEANUP_START = '  select array_agg(player_id) into v_player_ids from public.guardians where profile_id = v_uid;';
+    const erase = defOf(code, 'create function public.erase_account_for_deletion(p_profile_id uuid, p_email text, p_completed_by uuid)');
+    expect(erase.length).toBeGreaterThan(1000);
+    // Refuses an account already erased (a stale session cannot write a second record or event).
+    expect(erase.indexOf("errcode = 'EMERA', message = 'account_erased'")).toBeLessThan(erase.indexOf(CLEANUP_START));
+    // The email is used only before the erasure (the 0076 child deletion request), then cleared.
+    expect(erase.indexOf('update public.pending_profile_deletions set email = null')).toBeGreaterThan(erase.indexOf('requester_email'));
+    expect(erase.indexOf('update public.pending_profile_deletions set email = null')).toBeLessThan(erase.indexOf('delete from public.profiles where id = v_uid'));
+    expect(erase).toContain("'self_deleted'");
+    expect(erase).toContain('if p_completed_by is null and v_review_id is not null then');
+    const complete = defOf(code, 'create function public.complete_pending_profile_deletion(p_pending_deletion_id uuid, p_reason text)');
+    // The only use of the email: handed to the erasure (for the 0076 child deletion request), which then clears it.
+    expect(complete.match(/v_pending\.email/g)).toEqual(['v_pending.email']);
+    expect(complete).toContain('public.erase_account_for_deletion(v_uid, v_pending.email, v_staff)');
+    expect(complete.match(/insert into public\.pending_auth_deletions \(auth_user_id, email, last_error\)\s+values \(v_uid, null,/g)).toHaveLength(2);
+    expect(complete).toContain('on conflict (auth_user_id) do update set email = null;');
+    expect(complete).toContain('set email = null,');
+    expect(code).toContain("action in ('complete', 'reject', 'restore', 'remove_sign_in', 'self_deleted')");
+  });
+
   it('restores the 0076 function body exactly', () => {
     expect(fnOf(rollback)).toBe(fnOf(m0076));
   });
