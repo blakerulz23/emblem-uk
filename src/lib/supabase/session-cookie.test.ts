@@ -50,6 +50,20 @@ describe('readAuthCookieToken', () => {
     expect(r?.cookieNames.length).toBeGreaterThan(1);
   });
 
+  it('reads a raw-encoded cookie (as Next hands it over, already URL-decoded), even with "%" in the session', () => {
+    const token = jwt('u1');
+    const value = JSON.stringify({ access_token: token, expires_at: 2000000000, user: { user_metadata: { note: '100% sure' } } });
+    expect(readAuthCookieToken([{ name: 'sb-rqgrpaprfxxhcvqtwhgj-auth-token', value }], URL_)?.token).toBe(token);
+    expect(readAuthCookieToken([{ name: 'sb-rqgrpaprfxxhcvqtwhgj-auth-token', value: encodeURIComponent(value) }], URL_)?.token).toBe(token);
+  });
+
+  it('without expires_at the token\'s own exp is used; with no readable expiry it returns nothing (no call)', () => {
+    const token = jwt('u1');
+    const r = readAuthCookieToken([{ name: 'sb-rqgrpaprfxxhcvqtwhgj-auth-token', value: JSON.stringify({ access_token: token }) }], URL_);
+    expect(r?.expiresAt).toBeGreaterThan(Date.now() / 1000);
+    expect(readAuthCookieToken([{ name: 'sb-rqgrpaprfxxhcvqtwhgj-auth-token', value: JSON.stringify({ access_token: 'not-a-jwt' }) }], URL_)).toBeNull();
+  });
+
   it('ignores other projects, empty values and garbage', () => {
     expect(readAuthCookieToken([{ name: 'sb-other-auth-token', value: 'base64-e30' }], URL_)).toBeNull();
     expect(readAuthCookieToken([{ name: 'sb-rqgrpaprfxxhcvqtwhgj-auth-token', value: '' }], URL_)).toBeNull();

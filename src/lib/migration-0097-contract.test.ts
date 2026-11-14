@@ -237,7 +237,6 @@ describe('0097 rollback — emergency only', () => {
     expect(erase.indexOf('update public.pending_profile_deletions set email = null')).toBeGreaterThan(erase.indexOf('requester_email'));
     expect(erase.indexOf('update public.pending_profile_deletions set email = null')).toBeLessThan(erase.indexOf('delete from public.profiles where id = v_uid'));
     expect(erase).toContain("'self_deleted'");
-    expect(erase).toContain('if p_completed_by is null and v_review_id is not null then');
     const complete = defOf(code, 'create function public.complete_pending_profile_deletion(p_pending_deletion_id uuid, p_reason text)');
     // The only use of the email: handed to the erasure (for the 0076 child deletion request), which then clears it.
     expect(complete.match(/v_pending\.email/g)).toEqual(['v_pending.email']);

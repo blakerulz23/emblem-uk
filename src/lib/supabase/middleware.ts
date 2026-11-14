@@ -12,7 +12,8 @@ const CHECK_NOT_DEPLOYED = new Set(['PGRST202', '42883']);
 
 // API routes that serve no account data (public lookups, webhooks, cron): a
 // failing erased-account check never blocks them. Every other /api call fails
-// closed while the check cannot be answered.
+// closed while the check cannot be answered. Never add a route that reads a
+// user session or account data under these prefixes: it would fail open.
 const FAIL_OPEN_API_PREFIXES = ['/api/country', '/api/pricing', '/api/feeds', '/api/webhooks/', '/api/internal/'];
 
 /**
@@ -88,7 +89,7 @@ export async function updateSession(request: NextRequest) {
   // the database still honours that token until it expires, so it is asked
   // about too. No auth cookie, or an expired one: no extra call.
   const staleToken =
-    !user && userError && cookieToken && (cookieToken.expiresAt === null || cookieToken.expiresAt * 1000 > Date.now()) ? cookieToken.token : null;
+    !user && userError && cookieToken && cookieToken.expiresAt * 1000 > Date.now() ? cookieToken.token : null;
   const authMs = timing ? performance.now() - t0 : 0;
   const withTiming = <R extends NextResponse>(res: R, checkMs: number | null, outcome: string): R => {
     if (timing) {

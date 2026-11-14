@@ -11,7 +11,8 @@
  * account_is_erased() about itself; PostgREST still verifies its signature
  * and expiry, so nothing here is trusted on its own. Edge-runtime safe.
  */
-export type AuthCookieToken = { token: string; expiresAt: number | null; cookieNames: string[] };
+/** expiresAt: seconds since the epoch, from the session's expires_at or else the token's own exp claim. */
+export type AuthCookieToken = { token: string; expiresAt: number; cookieNames: string[] };
 
 export function authCookieName(supabaseUrl: string): string {
   return `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
@@ -39,10 +40,34 @@ export function readAuthCookieToken(cookies: Array<{ name: string; value: string
   }
   if (!raw) return null;
   try {
-    const json = raw.startsWith('base64-') ? decodeBase64Url(raw.slice('base64-'.length)) : decodeURIComponent(raw);
-    const session = JSON.parse(json) as { access_token?: unknown; expires_at?: unknown };
-    if (typeof session.access_token !== 'string' || !session.access_token) return null;
-    return { token: session.access_token, expiresAt: typeof session.expires_at === 'number' ? session.expires_at : null, cookieNames };
+    const session = parseSession(raw);
+    if (!session || typeof session.access_token !== 'string' || !session.access_token) return null;
+    // No readable expiry: no call (a real @supabase/ssr cookie always has one).
+    const expiresAt = typeof session.expires_at === 'number' ? session.expires_at : jwtExp(session.access_token);
+    if (expiresAt === null) return null;
+    return { token: session.access_token, expiresAt, cookieNames };
+  } catch {
+    return null;
+  }
+}
+
+type StoredSession = { access_token?: unknown; expires_at?: unknown };
+
+// Next has already URL-decoded cookie values, so raw JSON is tried as it is
+// first; decoding again would break a value containing "%".
+function parseSession(raw: string): StoredSession | null {
+  if (raw.startsWith('base64-')) return JSON.parse(decodeBase64Url(raw.slice('base64-'.length))) as StoredSession;
+  try {
+    return JSON.parse(raw) as StoredSession;
+  } catch {
+    return JSON.parse(decodeURIComponent(raw)) as StoredSession;
+  }
+}
+
+function jwtExp(token: string): number | null {
+  try {
+    const payload = JSON.parse(decodeBase64Url(token.split('.')[1] ?? '')) as { exp?: unknown };
+    return typeof payload.exp === 'number' ? payload.exp : null;
   } catch {
     return null;
   }
