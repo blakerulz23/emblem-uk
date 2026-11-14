@@ -41,6 +41,17 @@ export default async function AccountDeletionsPage() {
     .limit(50);
 
   const pending = (pendingData ?? []) as PendingRow[];
+  const decided = (decidedData ?? []) as DecidedRow[];
+  const decidedUsers = decided.map((r) => r.auth_user_id);
+  const { data: erasedData } = decidedUsers.length
+    ? await service.from('erased_accounts').select('profile_id').in('profile_id', decidedUsers)
+    : { data: [] };
+  const rejectedIds = decided.filter((r) => r.status === 'rejected').map((r) => r.id);
+  const { data: openData } = rejectedIds.length
+    ? await service.from('deletion_review_access_suspensions').select('pending_deletion_id').in('pending_deletion_id', rejectedIds).is('resolved_at', null)
+    : { data: [] };
+  const unrestored: Record<string, number> = {};
+  for (const r of (openData ?? []) as { pending_deletion_id: string }[]) unrestored[r.pending_deletion_id] = (unrestored[r.pending_deletion_id] ?? 0) + 1;
 
   // Counts are computed by the database for the signed-in staff member (account_deletion_preview).
   const previews: Record<string, DeletionPreview | null> = {};
@@ -52,8 +63,10 @@ export default async function AccountDeletionsPage() {
   return (
     <AccountDeletionsView
       pending={pending}
-      decided={(decidedData ?? []) as DecidedRow[]}
+      decided={decided}
       signInPending={((authData ?? []) as { auth_user_id: string }[]).map((r) => r.auth_user_id)}
+      erased={((erasedData ?? []) as { profile_id: string }[]).map((r) => r.profile_id)}
+      unrestored={unrestored}
       actions={(actionData ?? []) as ActionRow[]}
       previews={previews}
     />

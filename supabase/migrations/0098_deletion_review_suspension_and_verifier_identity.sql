@@ -60,6 +60,12 @@
 --    staff) and my_account_deletion_review (the account's own status).
 --    reject and restore are audited in account_deletion_staff_actions (0097).
 --
+-- 7. service_role can no longer write pending_profile_deletions (0076 left
+--    it insert/update/delete): decisions go only through the audited staff
+--    functions. The verifier-change policy has a new name, so an earlier
+--    draft's rollback file (which drops it by its old name) fails and changes
+--    nothing instead of half-reverting this one.
+--
 --   0. Precondition: refuses, changing nothing, unless the exact 0097 state
 --      is in place and 0098 has not been applied.
 --
@@ -102,6 +108,13 @@ begin
      or not exists (select 1 from pg_trigger where tgname = 'profiles_account_deletion_guard'
                     and tgrelid = 'public.profiles'::regclass and not tgisinternal and tgenabled <> 'D') then
     v_problems := v_problems || 'the 0097 account-deletion functions or profile-deletion guard are missing (0097 not applied, or an earlier 0097)'::text;
+  end if;
+  if not exists (select 1 from pg_proc where oid = to_regprocedure('public.erase_account_for_deletion(uuid, text, uuid)')
+                   and prosrc like '%insert into public.erased_accounts%')
+     or not exists (select 1 from pg_proc where oid = to_regprocedure('public.complete_pending_profile_deletion(uuid, text)')
+                   and prosrc like '%account_deletion_staff_actions%' and prosrc like '%''profileId''%')
+     or to_regprocedure('public.record_account_sign_in_removal(uuid, text, text)') is null then
+    v_problems := v_problems || 'the 0097 erasure or staff completion is not the current version'::text;
   end if;
   if to_regclass('public.erased_accounts') is null or to_regclass('public.account_deletion_staff_actions') is null
      or to_regprocedure('public.account_is_erased()') is null
@@ -156,7 +169,7 @@ begin
   end if;
   if exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'moments'
              and policyname in ('moments: a signed-in user can only name themselves as verifier',
-                                'moments: a verifier change can only name the caller as coach')) then
+                                'moments: a verifier change names only the calling coach')) then
     v_problems := v_problems || 'a 0098 moments policy already exists'::text;
   end if;
   if array_length(v_problems, 1) > 0 then
@@ -174,6 +187,11 @@ $$;
 -- profile later (the defect class 0097 fixed). The deciding functions
 -- require a staff actor instead.
 alter table public.pending_profile_deletions add column rejection_reason text;
+
+-- Review decisions are made only through the staff functions (audited); the
+-- server reads this table, it never writes it. (0076 left service_role able to
+-- insert, update and delete rows directly, unaudited.)
+revoke insert, update, delete, truncate on public.pending_profile_deletions from service_role;
 
 alter table public.pending_profile_deletions drop constraint pending_profile_deletions_status_check;
 alter table public.pending_profile_deletions add constraint pending_profile_deletions_status_check
@@ -298,6 +316,10 @@ begin
   if p_reason is null or char_length(btrim(p_reason)) = 0 or char_length(btrim(p_reason)) > 500 then
     raise exception 'A reason (up to 500 characters) is required';
   end if;
+  -- The account first, then the request: the order delete_own_guardian_account
+  -- and complete_pending_profile_deletion use, so these never deadlock.
+  perform 1 from public.profiles
+   where id = (select auth_user_id from public.pending_profile_deletions where id = p_pending_deletion_id) for update;
   select * into v_pending from public.pending_profile_deletions where id = p_pending_deletion_id for update;
   if v_pending.id is null then
     raise exception 'Pending profile deletion not found';
@@ -416,7 +438,7 @@ create policy "moments: a signed-in user can only name themselves as verifier"
   to authenticated
   with check (verified_by is null or verified_by = auth.uid());
 
-create policy "moments: a verifier change can only name the caller as coach"
+create policy "moments: a verifier change names only the calling coach"
   on public.moments
   as restrictive
   for update

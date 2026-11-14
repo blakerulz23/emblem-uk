@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
 import { createFakeSupabase, type FakeResult } from '@/lib/fake-supabase.test-support';
 import { captureLogs, expectRedacted, sentinelError } from '@/lib/route-failure.test-support';
 
@@ -19,7 +20,8 @@ function setup(opts: { user?: string | null; isStaff?: boolean; rpc?: (fn: strin
     rpc: (fn) => opts.rpc?.(fn),
   });
 }
-const call = (body: unknown) => POST(new Request('http://localhost/x', { method: 'POST', body: JSON.stringify(body) }), { params: { id: REQUEST } });
+const call = (body: unknown, headers: Record<string, string> = { origin: 'http://localhost', 'content-type': 'application/json' }) =>
+  POST(new NextRequest('http://localhost/x', { method: 'POST', body: JSON.stringify(body), headers }), { params: { id: REQUEST } });
 const ok = (fn: string): FakeResult => (fn === 'reject_pending_profile_deletion' ? { data: 'rejected' } : { data: { restored: 2, notRestorable: 0, nothingToRestore: false } });
 
 let logs: ReturnType<typeof captureLogs>;
@@ -35,6 +37,22 @@ describe('POST /api/staff/account-deletions/[id]/reject', () => {
     setup({ user: STAFF, isStaff: false, rpc: ok });
     expect((await call({ reason: 'r' })).status).toBe(403);
     expect(service.rpcCalls).toHaveLength(0);
+  });
+
+  it('a cross-site or non-JSON post is refused before anything runs', async () => {
+    setup({ rpc: ok });
+    expect((await call({ reason: 'r' }, { origin: 'https://evil.example', 'content-type': 'application/json' })).status).toBe(403);
+    expect((await call({ reason: 'r' }, { origin: 'http://localhost', 'content-type': 'text/plain' })).status).toBe(403);
+    expect(service.rpcCalls).toHaveLength(0);
+  });
+
+  it('retry restore: restore only (never rejects again), refused cleanly if the request is no longer rejected', async () => {
+    setup({ rpc: ok });
+    expect(await (await call({ reason: 'retry', mode: 'restore-only' })).json()).toMatchObject({ ok: true, state: 'already_rejected', coachingRestored: 2 });
+    expect(service.rpcCalls.map((c) => c.fn)).toEqual(['restore_coach_access_after_deletion_rejection']);
+    setup({ rpc: () => ({ error: sentinelError('P0001', 'Coach access can be restored only after the deletion is rejected (it is pending)') }) });
+    await expectRedacted(await call({ reason: 'retry', mode: 'restore-only' }), 409, 'This request is no longer rejected (a new deletion request may have reopened it). Refresh the page; nothing was changed.', logs);
+    expect(service.rpcCalls.map((c) => c.fn)).toEqual(['restore_coach_access_after_deletion_rejection']);
   });
 
   it('a blank reason is refused before anything runs', async () => {
@@ -69,7 +87,7 @@ describe('POST /api/staff/account-deletions/[id]/reject', () => {
     setup({ rpc: () => ({ error: sentinelError('P0001', 'Pending profile deletion not found') }) });
     await expectRedacted(await call({ reason: 'r' }), 404, 'Deletion request not found.', logs);
     setup({ rpc: () => ({ error: sentinelError('40P01') }) });
-    await expectRedacted(await call({ reason: 'r' }), 500, 'Could not reject this request. Nothing was changed. Please try again.', logs);
+    await expectRedacted(await call({ reason: 'r' }), 500, 'The result could not be confirmed. Refresh the page: if the request is still waiting, nothing was changed.', logs);
   });
 
   it('restore failing after the rejection says so honestly (500, rejected: true)', async () => {

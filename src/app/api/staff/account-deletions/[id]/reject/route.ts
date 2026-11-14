@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { logRouteFailure, raised } from '@/lib/route-failure';
 import { validateStaffReason } from '@/lib/staff-account-deletion';
+import { isSafeStaffPost } from '@/lib/staff-account-deletion-request';
 
 export const runtime = 'nodejs';
 
@@ -15,9 +16,14 @@ export const runtime = 'nodejs';
  *
  * Both functions are service_role-only and take the staff member's id; that
  * id is the one requireStaff verified from the signed-in session, never a
- * value from the request. Both are idempotent and audited once.
+ * value from the request. Both are idempotent and audited once, so calling
+ * this again (the page's "Retry restore") after a restore that failed just
+ * restores what is still open.
  */
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  if (!isSafeStaffPost(request)) {
+    return NextResponse.json({ error: 'Request unavailable' }, { status: 403 });
+  }
   const session = createClient();
   const staff = await requireStaff(session);
   if (!staff.ok) {
@@ -34,19 +40,30 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const service = createServiceRoleClient();
   const args = { p_pending_deletion_id: params.id, p_staff_profile_id: staff.userId, p_reason: reason };
 
-  const { data: rejected, error: rejectError } = await service.rpc('reject_pending_profile_deletion', args);
-  if (rejectError) {
-    if (raised(rejectError, 'Not authorized: staff only')) return NextResponse.json({ error: 'Staff access required' }, { status: 403 });
-    if (raised(rejectError, 'Pending profile deletion not found')) return NextResponse.json({ error: 'Deletion request not found.' }, { status: 404 });
-    if (raised(rejectError, 'This profile deletion is already')) {
-      return NextResponse.json({ error: 'This request has already been completed and cannot be rejected.' }, { status: 409 });
+  // "Retry restore" for a request already rejected: restore only. The database
+  // refuses unless the request is still rejected, so a stale page can never
+  // reject a newer request that reopened under the same id.
+  const restoreOnly = body?.mode === 'restore-only';
+  let rejected: unknown = 'already_rejected';
+  if (!restoreOnly) {
+    const { data, error: rejectError } = await service.rpc('reject_pending_profile_deletion', args);
+    rejected = data;
+    if (rejectError) {
+      if (raised(rejectError, 'Not authorized: staff only')) return NextResponse.json({ error: 'Staff access required' }, { status: 403 });
+      if (raised(rejectError, 'Pending profile deletion not found')) return NextResponse.json({ error: 'Deletion request not found.' }, { status: 404 });
+      if (raised(rejectError, 'This profile deletion is already')) {
+        return NextResponse.json({ error: 'This request has already been completed and cannot be rejected.' }, { status: 409 });
+      }
+      logRouteFailure('staff account deletion: reject', rejectError);
+      return NextResponse.json({ error: 'The result could not be confirmed. Refresh the page: if the request is still waiting, nothing was changed.' }, { status: 500 });
     }
-    logRouteFailure('staff account deletion: reject', rejectError);
-    return NextResponse.json({ error: 'Could not reject this request. Nothing was changed. Please try again.' }, { status: 500 });
   }
 
   const { data: restored, error: restoreError } = await service.rpc('restore_coach_access_after_deletion_rejection', args);
   if (restoreError) {
+    if (raised(restoreError, 'Coach access can be restored only after the deletion is rejected')) {
+      return NextResponse.json({ error: 'This request is no longer rejected (a new deletion request may have reopened it). Refresh the page; nothing was changed.' }, { status: 409 });
+    }
     logRouteFailure('staff account deletion: restore', restoreError);
     return NextResponse.json(
       { ok: false, rejected: true, error: 'The request was rejected, but coaching access could not be restored. Try again to restore it.' },

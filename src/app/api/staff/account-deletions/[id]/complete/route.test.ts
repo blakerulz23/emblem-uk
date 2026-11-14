@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
 import { createFakeSupabase, type FakeResult } from '@/lib/fake-supabase.test-support';
 import { captureLogs, expectCodeOnlyLogs, expectRedacted, sentinelError } from '@/lib/route-failure.test-support';
 import { COMPLETE_CONFIRMATION } from '@/lib/staff-account-deletion';
@@ -15,22 +16,19 @@ let session: ReturnType<typeof createFakeSupabase>;
 let service: ReturnType<typeof createFakeSupabase>;
 vi.mock('@/lib/supabase/server', () => ({ createClient: () => session.client, createServiceRoleClient: () => service.client }));
 
-import { POST } from './route';
+import { POST, RESULT_UNKNOWN } from './route';
 
 const STAFF = 'eeeeeeee-0000-4000-8000-0000000000a1';
 const ACCOUNT = 'aaaaaaaa-0000-4000-8000-0000000000b2';
 const REQUEST = 'dddddddd-0000-4000-8000-0000000000c3';
 
 type AdminErr = { status?: number; code?: string; message: string } | null;
-let admin: {
-  getUserById: ReturnType<typeof vi.fn>;
-  updateUserById: ReturnType<typeof vi.fn>;
-  deleteUser: ReturnType<typeof vi.fn>;
-};
-let pendingAuthRow: { id: string; attempts: number } | null;
+let admin: { getUserById: ReturnType<typeof vi.fn>; updateUserById: ReturnType<typeof vi.fn>; deleteUser: ReturnType<typeof vi.fn> };
+let pendingAuthRow: { id: string; attempts: number; status: string } | null;
 
 function setup(opts: { user?: string | null; isStaff?: boolean; rpc?: (fn: string, args: Record<string, unknown>) => FakeResult | undefined; lookup?: AdminErr | 'gone'; ban?: AdminErr; del?: AdminErr }) {
-  session = createFakeSupabase({ user: opts.user === null ? null : { id: opts.user ?? STAFF }, rpc: opts.rpc });
+  const rpc = opts.rpc ?? (() => undefined);
+  session = createFakeSupabase({ user: opts.user === null ? null : { id: opts.user ?? STAFF }, rpc: (fn, args) => (fn === 'record_account_sign_in_removal' ? {} : rpc(fn, args)) });
   service = createFakeSupabase({
     respond: (c) => {
       if (c.table === 'staff_accounts') return { data: opts.isStaff === false ? null : { profile_id: STAFF } };
@@ -53,31 +51,39 @@ function setup(opts: { user?: string | null; isStaff?: boolean; rpc?: (fn: strin
 }
 
 const completed = (status = 'completed'): FakeResult => ({ data: { status, profileId: ACCOUNT, playersUnlinked: ['p1'], playersDeletionRequested: ['p2'] } });
-const call = (body: unknown) =>
-  POST(new Request('http://localhost/x', { method: 'POST', body: JSON.stringify(body) }), { params: { id: REQUEST } });
+const call = (body: unknown, headers: Record<string, string> = { origin: 'http://localhost', 'content-type': 'application/json' }) =>
+  POST(new NextRequest('http://localhost/api/staff/account-deletions/x/complete', { method: 'POST', body: JSON.stringify(body), headers }), { params: { id: REQUEST } });
 const valid = (extra: Record<string, unknown> = {}) => call({ reason: 'Blocking records reassigned', confirm: COMPLETE_CONFIRMATION, ...extra });
 const authWrites = () => service.calls.filter((c) => c.table === 'pending_auth_deletions' && c.op !== 'select');
+const fnCalls = () => session.rpcCalls.map((c) => c.fn);
 
 let logs: ReturnType<typeof captureLogs>;
 beforeEach(() => {
   logs = captureLogs();
-  pendingAuthRow = { id: 'pad-1', attempts: 1 };
+  pendingAuthRow = { id: 'pad-1', attempts: 1, status: 'pending' };
 });
 afterEach(() => logs.restore());
 
-describe('authorization', () => {
+describe('request checks and authorization', () => {
+  it('a cross-site or non-JSON post is refused (403) before anything runs', async () => {
+    setup({ rpc: () => completed() });
+    const body = { reason: 'r', confirm: COMPLETE_CONFIRMATION };
+    expect((await call(body, { 'content-type': 'application/json' })).status).toBe(403);
+    expect((await call(body, { origin: 'https://evil.example', 'content-type': 'application/json' })).status).toBe(403);
+    expect((await call(body, { origin: 'http://localhost', 'content-type': 'text/plain' })).status).toBe(403);
+    expect(session.rpcCalls).toHaveLength(0);
+  });
+
   it('an anonymous caller gets 401 and nothing is called', async () => {
     setup({ user: null, rpc: () => completed() });
-    const res = await valid();
-    expect(res.status).toBe(401);
+    expect((await valid()).status).toBe(401);
     expect(session.rpcCalls).toHaveLength(0);
     expect(admin.deleteUser).not.toHaveBeenCalled();
   });
 
   it('a signed-in non-staff account gets 403 and nothing is called', async () => {
     setup({ user: ACCOUNT, isStaff: false, rpc: () => completed() });
-    const res = await valid();
-    expect(res.status).toBe(403);
+    expect((await valid()).status).toBe(403);
     expect(session.rpcCalls).toHaveLength(0);
   });
 
@@ -96,34 +102,27 @@ describe('authorization', () => {
   it('runs the function in the staff member’s own session with only the request id and reason; actor ids in the body are ignored', async () => {
     setup({ rpc: () => completed() });
     await valid({ staffProfileId: ACCOUNT, p_staff_profile_id: ACCOUNT, actor: ACCOUNT });
-    expect(session.rpcCalls).toEqual([{ fn: 'complete_pending_profile_deletion', args: { p_pending_deletion_id: REQUEST, p_reason: 'Blocking records reassigned' } }]);
+    expect(session.rpcCalls[0]).toEqual({ fn: 'complete_pending_profile_deletion', args: { p_pending_deletion_id: REQUEST, p_reason: 'Blocking records reassigned' } });
     expect(service.rpcCalls).toHaveLength(0);
   });
 });
 
 describe('input', () => {
-  it('a blank reason is refused before anything runs', async () => {
+  it('a blank or over-long reason is refused before anything runs', async () => {
     setup({ rpc: () => completed() });
-    const res = await call({ reason: '   ', confirm: COMPLETE_CONFIRMATION });
-    expect(res.status).toBe(400);
-    expect(session.rpcCalls).toHaveLength(0);
-  });
-  it('an over-long reason is refused', async () => {
-    setup({ rpc: () => completed() });
+    expect((await call({ reason: '   ', confirm: COMPLETE_CONFIRMATION })).status).toBe(400);
     expect((await call({ reason: 'x'.repeat(501), confirm: COMPLETE_CONFIRMATION })).status).toBe(400);
     expect(session.rpcCalls).toHaveLength(0);
   });
   it('without the second confirmation nothing runs', async () => {
     setup({ rpc: () => completed() });
-    for (const confirm of [undefined, true, 'yes', 'DELETE']) {
-      expect((await call({ reason: 'ok', confirm })).status).toBe(400);
-    }
+    for (const confirm of [undefined, true, 'yes', 'DELETE']) expect((await call({ reason: 'ok', confirm })).status).toBe(400);
     expect(session.rpcCalls).toHaveLength(0);
   });
 });
 
 describe('outcomes', () => {
-  it('success: erased in the database, then the sign-in is banned and deleted and the queue row resolved by this staff member', async () => {
+  it('success: erased, then the sign-in is banned and deleted, the queue row resolved, and the removal audited with the reason', async () => {
     setup({ rpc: () => completed() });
     const res = await valid();
     expect(res.status).toBe(200);
@@ -135,6 +134,7 @@ describe('outcomes', () => {
     expect(w).toHaveLength(1);
     expect(w[0]).toMatchObject({ op: 'update', payload: { status: 'resolved', resolved_by: STAFF } });
     expect(w[0].filters).toEqual([['eq', 'auth_user_id', ACCOUNT], ['eq', 'status', 'pending']]);
+    expect(session.rpcCalls[1]).toEqual({ fn: 'record_account_sign_in_removal', args: { p_pending_deletion_id: REQUEST, p_reason: 'Blocking records reassigned', p_outcome: 'removed' } });
   });
 
   const refusals: Array<[string, number, string]> = [
@@ -145,49 +145,59 @@ describe('outcomes', () => {
     ['This profile deletion is marked resolved but a profile with this id exists', 409, 'This request was closed without deleting the account. Nothing was changed.'],
   ];
   for (const [raisedText, status, fixed] of refusals) {
-    it(`"${raisedText.slice(0, 48)}…" → ${status}, fixed message, no sign-in change`, async () => {
+    it(`"${raisedText.slice(0, 48)}…" → ${status}, fixed message, no sign-in change, no audit`, async () => {
       setup({ rpc: () => ({ error: sentinelError('P0001', raisedText) }) });
       await expectRedacted(await valid(), status, fixed, logs);
       expect(admin.updateUserById).not.toHaveBeenCalled();
       expect(admin.deleteUser).not.toHaveBeenCalled();
       expect(authWrites()).toHaveLength(0);
+      expect(fnCalls()).toEqual(['complete_pending_profile_deletion']);
     });
   }
 
-  it('an unexpected failure is a fixed 500 with a code-only log and no sign-in change', async () => {
-    setup({ rpc: () => ({ error: sentinelError('40P01') }) });
-    await expectRedacted(await valid(), 500, 'Could not complete this deletion. Nothing was changed. Please try again.', logs);
-    expectCodeOnlyLogs(logs, 'staff account deletion: complete', '40P01');
+  it('an unexpected failure (possibly after the database committed) never claims nothing changed', async () => {
+    setup({ rpc: () => ({ error: sentinelError('08006') }) });
+    await expectRedacted(await valid(), 500, RESULT_UNKNOWN, logs);
+    expectCodeOnlyLogs(logs, 'staff account deletion: complete', '08006');
     expect(admin.deleteUser).not.toHaveBeenCalled();
   });
 
-  it('a repeat after full success is already_completed: nothing erased again, the gone sign-in is not touched, the queue row stays resolved', async () => {
-    setup({ rpc: () => completed('already_completed'), lookup: 'gone' });
-    const res = await valid();
-    expect(await res.json()).toMatchObject({ ok: true, state: 'already_completed', signIn: 'removed', partial: false });
-    expect(admin.updateUserById).not.toHaveBeenCalled();
+  it('a repeated or concurrent second completion is already_completed and touches nothing: no Auth call, no queue write, no audit', async () => {
+    setup({ rpc: () => completed('already_completed') });
+    pendingAuthRow = null;
+    expect(await (await valid()).json()).toEqual({ ok: true, state: 'already_completed', signIn: 'removed', partial: false });
+    expect(admin.getUserById).not.toHaveBeenCalled();
     expect(admin.deleteUser).not.toHaveBeenCalled();
-    expect(authWrites()).toHaveLength(1); // resolve-if-pending only: a no-op when already resolved
+    expect(authWrites()).toHaveLength(0);
+    expect(fnCalls()).toEqual(['complete_pending_profile_deletion']);
   });
 
-  it('Auth deletion failure: an honest partial result; the sign-in is banned; the queue row records the attempt; nothing is retried automatically', async () => {
+  it('…and reports a sign-in removal still queued, pointing to the retry', async () => {
+    setup({ rpc: () => completed('already_completed') });
+    expect(await (await valid()).json()).toEqual({ ok: true, state: 'already_completed', signIn: 'removal_pending', partial: true });
+    expect(admin.deleteUser).not.toHaveBeenCalled();
+  });
+
+  it('Auth deletion failure: an honest partial result; banned; the queue row records the attempt; the outcome is audited', async () => {
     setup({ rpc: () => completed(), del: { status: 500, message: 'Auth service unavailable' } });
     const res = await valid();
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ok: true, state: 'completed', signIn: 'removal_pending', signInBlocked: true, partial: true });
+    const body = await res.json();
+    expect(body).toMatchObject({ ok: true, state: 'completed', signIn: 'removal_pending', signInBlocked: true, partial: true });
+    expect(JSON.stringify(body)).not.toContain('Auth service unavailable');
     expect(admin.deleteUser).toHaveBeenCalledTimes(1);
     const w = authWrites();
     expect(w).toHaveLength(1);
-    expect(w[0]).toMatchObject({ op: 'update', payload: { status: 'pending', attempts: 2, last_error: 'Auth service unavailable' } });
-    expect(JSON.stringify(await (await valid()).json())).not.toContain('Auth service unavailable');
+    expect(w[0]).toMatchObject({ op: 'update', payload: { attempts: 2, last_error: 'Auth service unavailable' } });
+    expect(w[0].filters).toEqual([['eq', 'id', 'pad-1'], ['eq', 'status', 'pending']]);
+    expect(session.rpcCalls[1].args).toMatchObject({ p_outcome: 'removal_pending' });
   });
 
-  it('…and the retry (same route, already_completed) removes the sign-in and resolves the queue row', async () => {
-    setup({ rpc: () => completed('already_completed') });
-    const res = await valid();
-    expect(await res.json()).toMatchObject({ ok: true, state: 'already_completed', signIn: 'removed', partial: false });
-    expect(admin.deleteUser).toHaveBeenCalledWith(ACCOUNT);
-    expect(authWrites()[0]).toMatchObject({ op: 'update', payload: { status: 'resolved', resolved_by: STAFF } });
+  it('a failure never reopens a queue row a concurrent call already resolved', async () => {
+    setup({ rpc: () => completed(), del: { status: 500, message: 'x' } });
+    pendingAuthRow = { id: 'pad-1', attempts: 2, status: 'resolved' };
+    await valid();
+    expect(authWrites()).toHaveLength(0);
   });
 
   it('a ban failure alone does not stop the deletion; a deletion that reports "not found" counts as removed', async () => {
@@ -195,15 +205,17 @@ describe('outcomes', () => {
     expect(await (await valid()).json()).toMatchObject({ signIn: 'removed', partial: false });
   });
 
-  it('an account that was already deleted another way: closed, and the remaining sign-in (if any) removed', async () => {
+  it('an account that was already deleted another way: closed, and a remaining sign-in removed', async () => {
     setup({ rpc: () => completed('account_already_deleted') });
     expect(await (await valid()).json()).toMatchObject({ ok: true, state: 'account_already_deleted', signIn: 'removed' });
     expect(admin.deleteUser).toHaveBeenCalledWith(ACCOUNT);
   });
 
-  it('a malformed function result is refused without touching the sign-in', async () => {
+  it('a malformed function result is reported as unknown without touching the sign-in', async () => {
     setup({ rpc: () => ({ data: { status: 'completed' } }) });
-    expect((await valid()).status).toBe(500);
+    const res = await valid();
+    expect(res.status).toBe(500);
+    expect((await res.json()).error).toBe(RESULT_UNKNOWN);
     expect(admin.deleteUser).not.toHaveBeenCalled();
   });
 });

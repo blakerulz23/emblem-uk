@@ -94,7 +94,9 @@
 --   9. erased_accounts: the erasure records the account; no profile can be
 --      created for it again, and account_is_erased() lets the app refuse
 --      its sessions at once (an issued access token outlives Auth user
---      deletion). account_deletion_staff_actions audits staff decisions.
+--      deletion). account_deletion_staff_actions audits staff decisions
+--      (and, through record_account_sign_in_removal, each sign-in removal
+--      attempt). Both tables are append-only for every role.
 --
 -- No app code reads moments.verified_by (it is only written, by
 -- /api/os/celebrate and /api/os/moments/verify), so NULL is already safe in
@@ -134,7 +136,9 @@ begin
      or to_regclass('public.erased_accounts') is not null
      or to_regclass('public.account_deletion_staff_actions') is not null
      or to_regprocedure('public.account_is_erased()') is not null
-     or to_regprocedure('public.refuse_erased_account_profile()') is not null then
+     or to_regprocedure('public.refuse_erased_account_profile()') is not null
+     or to_regprocedure('public.record_account_sign_in_removal(uuid, text, text)') is not null
+     or to_regprocedure('public.reject_account_deletion_record_change()') is not null then
     raise exception '0097 refused: a 0097 account-deletion function or trigger already exists (0097 already applied)';
   end if;
   if to_regclass('public.player_deletion_requests') is null or to_regclass('public.squad_invite_participation_deletion_requests') is null then
@@ -575,6 +579,10 @@ begin
       values (v_uid, v_pending.email, 'Reviewed account deletion closed by staff (profile already gone); the sign-in identity still needs deleting')
       on conflict (auth_user_id) do nothing;
     end if;
+    -- Recorded as erased too: a sign-in that survived cannot recreate a profile.
+    insert into public.erased_accounts (profile_id, completed_by, pending_deletion_id)
+    values (v_uid, v_staff, p_pending_deletion_id)
+    on conflict (profile_id) do nothing;
     insert into public.account_deletion_staff_actions (pending_deletion_id, profile_id, actor_profile_id, action, reason, outcome)
     values (p_pending_deletion_id, v_uid, v_staff, 'complete', btrim(p_reason), 'account_already_deleted');
     return jsonb_build_object('status', 'account_already_deleted', 'profileId', v_uid);
@@ -728,7 +736,7 @@ create table public.account_deletion_staff_actions (
   pending_deletion_id uuid not null,
   profile_id uuid not null,
   actor_profile_id uuid not null,
-  action text not null check (action in ('complete', 'reject', 'restore')),
+  action text not null check (action in ('complete', 'reject', 'restore', 'remove_sign_in')),
   reason text not null check (char_length(btrim(reason)) between 1 and 500),
   outcome text not null,
   created_at timestamptz not null default now()
@@ -738,5 +746,65 @@ comment on table public.account_deletion_staff_actions is
 alter table public.account_deletion_staff_actions enable row level security;
 revoke all on public.account_deletion_staff_actions from public, anon, authenticated, service_role;
 grant select on public.account_deletion_staff_actions to service_role;
+
+-- Both tables are append-only for every role, the owner included (the
+-- relationship_audit_events pattern, 0088): an erased account cannot be let
+-- back in by deleting its record, and the audit cannot be rewritten.
+create function public.reject_account_deletion_record_change()
+returns trigger
+language plpgsql
+set search_path = ''
+as $fn$
+begin
+  raise exception '% is append-only', tg_table_name;
+end;
+$fn$;
+alter function public.reject_account_deletion_record_change() owner to postgres;
+revoke all on function public.reject_account_deletion_record_change() from public, anon, authenticated, service_role;
+create trigger erased_accounts_append_only before update or delete on public.erased_accounts
+  for each row execute function public.reject_account_deletion_record_change();
+create trigger erased_accounts_no_truncate before truncate on public.erased_accounts
+  for each statement execute function public.reject_account_deletion_record_change();
+create trigger account_deletion_staff_actions_append_only before update or delete on public.account_deletion_staff_actions
+  for each row execute function public.reject_account_deletion_record_change();
+create trigger account_deletion_staff_actions_no_truncate before truncate on public.account_deletion_staff_actions
+  for each statement execute function public.reject_account_deletion_record_change();
+
+-- The staff route records the outcome of removing a completed account's
+-- sign-in (each attempt, including retries) here, as the signed-in staff
+-- member. Only for a request that was completed and erased.
+create function public.record_account_sign_in_removal(p_pending_deletion_id uuid, p_reason text, p_outcome text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_staff uuid := auth.uid();
+  v_uid uuid;
+begin
+  if v_staff is null or not exists (select 1 from public.staff_accounts where profile_id = v_staff) then
+    raise exception 'Not authorized: staff only';
+  end if;
+  if p_reason is null or char_length(btrim(p_reason)) = 0 or char_length(btrim(p_reason)) > 500 then
+    raise exception 'A reason (up to 500 characters) is required';
+  end if;
+  if p_outcome is null or p_outcome not in ('removed', 'removal_pending') then
+    raise exception 'Unknown sign-in removal outcome';
+  end if;
+  select d.auth_user_id into v_uid
+    from public.pending_profile_deletions d
+   where d.id = p_pending_deletion_id and d.status = 'resolved'
+     and exists (select 1 from public.erased_accounts e where e.profile_id = d.auth_user_id);
+  if v_uid is null then
+    raise exception 'This request is not a completed account deletion';
+  end if;
+  insert into public.account_deletion_staff_actions (pending_deletion_id, profile_id, actor_profile_id, action, reason, outcome)
+  values (p_pending_deletion_id, v_uid, v_staff, 'remove_sign_in', btrim(p_reason), p_outcome);
+end;
+$$;
+revoke all on function public.record_account_sign_in_removal(uuid, text, text) from public, anon, service_role;
+grant execute on function public.record_account_sign_in_removal(uuid, text, text) to authenticated;
+alter function public.record_account_sign_in_removal(uuid, text, text) owner to postgres;
 
 commit;

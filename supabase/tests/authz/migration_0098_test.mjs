@@ -161,6 +161,13 @@ console.log('\n=== 1. A coach whose deletion goes to staff review loses all acce
     const auditBefore = await n(db, `select count(*)::int n from public.relationship_audit_events where profile_id = $1`, [coach]);
     const result = await deleteAccount(w, coach);
     check('1: the request goes to staff review and reports two suspended relationships', result.canDeleteIdentity === false && result.coachAccessSuspended === 2, JSON.stringify(result));
+    // An assignment that has expired but was never ended is also suspended (ended for the review).
+    const expiredCoach = await w.coach();
+    await db.query(`update public.coach_team set created_at = now() - interval '2 days', expires_at = now() - interval '1 day' where profile_id = $1`, [expiredCoach]);
+    await db.query(`insert into public.player_assessments (player_id, created_by, body) values ($1, $2, 'Fictional assessment')`, [w.player, expiredCoach]);
+    const re = await deleteAccount(w, expiredCoach);
+    check('1: an expired but never-ended assignment is suspended too (snapshotted, ended for the review)',
+      re.coachAccessSuspended === 1 && await n(db, `select count(*)::int n from public.coach_team where profile_id = $1 and end_reason = 'account_deletion_review'`, [expiredCoach]) === 1, JSON.stringify(re));
     const after = await reach(w, coach);
     check('1: immediately afterwards the coach reaches nothing and every coach write is refused',
       after.players === 0 && after.moments === 0 && after.activeTeams === 0 && after.links === 0 && !after.canRecognise && !after.canRecogniseDirect && !after.canAssess, JSON.stringify(after));
@@ -184,7 +191,7 @@ console.log('\n=== 1. A coach whose deletion goes to staff review loses all acce
       snap[0].player_id === w.directPlayer && snap[0].original_row.created_by === JSON.parse(linksBefore)[0].created_by, JSON.stringify(snap));
     check('1: only service_role can read the snapshot; signed-in users cannot',
       (await attempt(() => w.user(coach, `select * from public.deletion_review_access_suspensions`)))?.includes('permission denied') &&
-      (await w.service(`select count(*)::int n from public.deletion_review_access_suspensions`)).rows[0].n === 2);
+      (await w.service(`select count(*)::int n from public.deletion_review_access_suspensions where profile_id = $1`, [coach])).rows[0].n === 2);
     check('1: the recognition keeps its verifier while the deletion is only under review (no deleted-verifier marker; the account still exists)', await n(db, `select count(*)::int n from public.moments where id = $1 and verified_by = $2 and verifier_account_deleted_at is null and verification_status = 'coach_verified'`, [rec, coach]) === 1);
     check('1: a repeated request suspends nothing more and keeps one snapshot per relationship',
       (await deleteAccount(w, coach)).coachAccessSuspended === 0 && await n(db, `select count(*)::int n from public.deletion_review_access_suspensions where profile_id = $1`, [coach]) === 2);
@@ -231,7 +238,13 @@ console.log('\n=== 1. A coach whose deletion goes to staff review loses all acce
 
     console.log('\n=== 4. Restore refused for a resolved (approved) request ===');
     await deleteAccount(w, coach);
-    await w.service(`update public.pending_profile_deletions set status = 'resolved', resolved_by = $2, resolved_at = now() where id = $1`, [pending.id, people.staff]);
+    check('4: service_role can no longer write review records directly (0098)',
+      (await attempt(() => w.service(`update public.pending_profile_deletions set status = 'resolved' where id = $1`, [pending.id])))?.includes('permission denied') &&
+      (await attempt(() => w.service(`insert into public.pending_profile_deletions (auth_user_id, blocking_reason) values ($1, 'coach_authored_player_records')`, [id()])))?.includes('permission denied') &&
+      (await attempt(() => w.service(`delete from public.pending_profile_deletions where id = $1`, [pending.id])))?.includes('permission denied') &&
+      (await w.service(`select count(*)::int n from public.pending_profile_deletions where id = $1`, [pending.id])).rows[0].n === 1);
+    // A request resolved by hand (as the table owner, the SQL Editor role).
+    await db.query(`update public.pending_profile_deletions set status = 'resolved', resolved_by = $2, resolved_at = now() where id = $1`, [pending.id, people.staff]);
     check('4: restore is refused for a resolved request', (await attempt(() => restore(w, pending.id, people.staff)))?.includes('(it is resolved)'));
     check('4: reject is refused for a resolved request', (await attempt(() => reject(w, pending.id, people.staff)))?.includes('already resolved'));
   } catch (e) {
@@ -405,10 +418,11 @@ let db9, c97, c98;
       'function:reject_pending_profile_deletion(p_pending_deletion_id uuid, p_staff_profile_id uuid, p_reason text)',
       'function:restore_coach_access_after_deletion_rejection(p_pending_deletion_id uuid, p_staff_profile_id uuid, p_reason text)',
       'policy:moments.moments: a signed-in user can only name themselves as verifier',
-      'policy:moments.moments: a verifier change can only name the caller as coach',
+      'policy:moments.moments: a verifier change names only the calling coach',
       'relation:deletion_review_access_suspensions',
     ].sort()) && d.removed.length === 0 &&
     JSON.stringify(d.changed.sort()) === JSON.stringify([
+      'relation:pending_profile_deletions',
       'constraint:pending_profile_deletions.pending_profile_deletions_status_check',
       'function:approve_coach_team_request(p_request_id uuid, p_staff_profile_id uuid, p_team_id uuid, p_expires_at timestamp with time zone, p_season_id uuid)',
       'function:delete_own_guardian_account()',
@@ -586,7 +600,7 @@ console.log('\n=== 11. While the deletion is pending, nothing grants the account
     // A deletion request staff resolved (not pending) does not block.
     const resolvedAcct = id();
     await w.person(resolvedAcct);
-    await w.service(`insert into public.pending_profile_deletions (auth_user_id, blocking_reason, status, resolved_by, resolved_at) values ($1, 'coach_authored_player_records', 'resolved', $2, now())`, [resolvedAcct, people.staff]);
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, blocking_reason, status, resolved_by, resolved_at) values ($1, 'coach_authored_player_records', 'resolved', $2, now())`, [resolvedAcct, people.staff]);
     const rt2 = `TEAM-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
     await w.service(`insert into public.team_invites (team_id, code) values ($1, $2)`, [w.otherTeam, rt2]);
     check('12: an account whose deletion request is resolved (not pending) is not blocked', (await w.service(`select status from public.redeem_team_invite($1, $2)`, [rt2, resolvedAcct])).rows[0].status === 'redeemed');
@@ -799,6 +813,9 @@ console.log('\n=== 17. A parent-coach under review keeps the whole family; staff
     const rec = await w.recognise(parent);              // uploaded_by and verified_by = parent
     const sub = await w.submit('family_memory');         // uploaded_by = parent
     await w.user(parent, `insert into public.coach_invites (player_id, code, created_by) values ($1, 'S17-COACH-1', $2)`, [w.directPlayer, parent]);
+    // The co-parent invites the parent to coach their shared child directly: an invite the parent used (used_by).
+    await w.user(people.coParent, `insert into public.coach_invites (player_id, code, created_by) values ($1, 'S17-COACH-2', $2)`, [w.player, people.coParent]);
+    const redeemed = (await w.service(`select status from public.redeem_coach_invite('S17-COACH-2', $1)`, [parent])).rows[0].status;
     await w.service(`insert into public.team_invites (team_id, code, created_by) values ($1, 'S17-TEAM-1', $2)`, [w.team, parent]);
     await w.service(`insert into public.player_invites (player_id, code, created_by) values ($1, 'S17-PLAYER-1', $2)`, [w.player, parent]);
     await w.service(`insert into public.team_invites (team_id, code, used_by, used_at) values ($1, 'S17-TEAM-USED', $2, now())`, [w.team, parent]);
@@ -828,13 +845,24 @@ console.log('\n=== 17. A parent-coach under review keeps the whole family; staff
         (select json_agg(o.approved_by order by o.order_ref) from public.orders o) order_approvers,
         (select count(*) from public.profiles where id = $1) profile`, [parent]);
     const F0 = await family();
-    const C0 = await coachRows(db, parent);
+    const C0 = await coachRows(db, parent), L0 = await linkRows(db, parent);
     const guardianReach = () => w.as('authenticated', parent, async () => Number((await db.query(`select count(*)::int n from public.guardians where profile_id = $1`, [parent])).rows[0].n));
 
+    // Every public table (plus auth.users) except the review's own records and the coaching it suspends.
+    const REVIEW_TABLES = ['pending_profile_deletions', 'deletion_review_access_suspensions', 'coach_team', 'coach_players', 'relationship_audit_events'];
+    const wholeDb = async () => {
+      const tables = (await db.query(`select tablename from pg_tables where schemaname = 'public' and not (tablename = any($1::text[])) order by 1`, [REVIEW_TABLES])).rows.map((r) => r.tablename);
+      const parts = [`auth.users:${(await db.query(`select coalesce(md5(string_agg(x::text, '|' order by x::text)), 'e') h from auth.users x`)).rows[0].h}`];
+      for (const t of tables) parts.push(`${t}:${(await db.query(`select coalesce(md5(string_agg(x::text, '|' order by x::text)), 'e') h from public."${t}" x`)).rows[0].h}`);
+      return parts.join(',');
+    };
+    const D0 = await wholeDb();
     // --- Pending review ---
     const r1 = await deleteAccount(w, parent);
-    check('17: pending review — identity kept, coach access suspended (1), nothing unlinked or filed',
-      r1.canDeleteIdentity === false && r1.coachAccessSuspended === 1 && r1.playersUnlinked.length === 0 && r1.playersDeletionRequested.length === 0, JSON.stringify(r1));
+    check('17: pending review — every other table in the database is byte-for-byte unchanged (only the request, its suspension and the suspended coaching moved)',
+      (await wholeDb()) === D0);
+    check('17: pending review — identity kept, coach access suspended (team + direct link), nothing unlinked or filed',
+      redeemed === 'redeemed' && r1.canDeleteIdentity === false && r1.coachAccessSuspended === 2 && r1.playersUnlinked.length === 0 && r1.playersDeletionRequested.length === 0, JSON.stringify(r1));
     check('17: pending review — guardian links, players, child deletion requests (statuses), cards and lock state, card audit, moments (uploader and verifier), invites, viewers, story updates and the profile are all exactly as before',
       (await family()) === F0);
     check('17: pending review — no child deletion request was filed and no card was locked',
@@ -853,12 +881,12 @@ console.log('\n=== 17. A parent-coach under review keeps the whole family; staff
     check('17: staff reject', (await reject(w, pid, people.staff)) === 'rejected');
     check('17: rejection — the family and all attribution unchanged', (await family()) === F0);
     const rs = await restore(w, pid, people.staff);
-    check('17: restore — exactly the prior coaching access, nothing else', rs.restored === 1 && (await coachRows(db, parent)) === C0 && (await family()) === F0, JSON.stringify(rs));
+    check('17: restore — exactly the prior coaching access, nothing else', rs.restored === 2 && (await coachRows(db, parent)) === C0 && (await linkRows(db, parent)) === L0 && (await family()) === F0, JSON.stringify(rs));
     check('17: completion is refused for a rejected request', (await attempt(() => complete(w, pid)))?.includes('Only a pending profile deletion can be completed (it is rejected)'));
 
     // --- Second request, then final staff completion ---
     const r2 = await deleteAccount(w, parent);
-    check('17: a second request goes to review again; the family is still unchanged', r2.canDeleteIdentity === false && r2.coachAccessSuspended === 1 && (await family()) === F0, JSON.stringify(r2));
+    check('17: a second request goes to review again; the family is still unchanged', r2.canDeleteIdentity === false && r2.coachAccessSuspended === 2 && (await family()) === F0, JSON.stringify(r2));
     const r2b = await deleteAccount(w, parent);
     check('17: each review round has its own reviewOpenedAt (staff are notified once per round); a repeat while pending keeps it',
       typeof r1.reviewOpenedAt === 'string' && r2.reviewOpenedAt !== r1.reviewOpenedAt && r2b.reviewOpenedAt === r2.reviewOpenedAt && r2b.coachAccessSuspended === 0 && (await family()) === F0,
@@ -898,7 +926,7 @@ console.log('\n=== 17. A parent-coach under review keeps the whole family; staff
     check('17: final completion — the request is resolved by the staff member; the open suspension is closed as account_deleted',
       pd.status === 'resolved' && pd.resolved_by === people.staff &&
       await n(db, `select count(*)::int n from public.deletion_review_access_suspensions where profile_id = $1 and resolved_at is null`, [parent]) === 0 &&
-      await n(db, `select count(*)::int n from public.deletion_review_access_suspensions where profile_id = $1 and resolution = 'account_deleted'`, [parent]) === 1, JSON.stringify(pd));
+      await n(db, `select count(*)::int n from public.deletion_review_access_suspensions where profile_id = $1 and resolution = 'account_deleted'`, [parent]) === 2, JSON.stringify(pd));
     check('17: final completion — the profile is gone and the sign-in identity is queued for staff', await n(db, `select (select count(*) from public.profiles where id = $1) as n`, [parent]) === 0 &&
       await n(db, `select count(*)::int n from public.pending_auth_deletions where auth_user_id = $1 and status = 'pending'`, [parent]) === 1);
 
@@ -1042,6 +1070,7 @@ console.log('\n=== 19. Erased accounts stay out; staff decisions audited once; p
     await deleteAccount(w, parent);
     const pid = (await pendingOf(db, parent)).id;
     check('19: under review — own status says under review with coaching paused', JSON.stringify(await myReview(parent)) === JSON.stringify({ underReview: true, coachAccessPaused: true }));
+    check('19: another account still reads "not under review" while this one is pending', JSON.stringify(await myReview(people.coParent)) === JSON.stringify({ underReview: false, coachAccessPaused: false }));
     check('19: anon cannot read a review status', (await attempt(() => w.as('anon', null, () => db.query(`select public.my_account_deletion_review()`))))?.includes('permission denied'));
     const p = await preview(pid);
     check('19: preview gives counts only: one blocker, one shared child, one child to deletion review, one card to lock, one verified moment, coaching suspended',
@@ -1084,6 +1113,21 @@ console.log('\n=== 19. Erased accounts stay out; staff decisions audited once; p
     check('19: its login (not yet removed) cannot recreate the profile; it is reported erased',
       (await errOf(() => w.user(parent, `insert into public.profiles (id) values ($1)`, [parent]))) === 'EMERA:account_erased' &&
       (await w.user(parent, `select public.account_is_erased() as e`)).rows[0].e === true);
+    const ownerUpd = await errOf(() => db.query(`update public.account_deletion_staff_actions set reason = 'changed'`));
+    const ownerDel = await errOf(() => db.query(`delete from public.erased_accounts where profile_id = $1`, [parent]));
+    const ownerTrunc = await errOf(() => db.query(`truncate public.account_deletion_staff_actions`));
+    check('19: the audit and the erased record are append-only even for the table owner (update, delete, truncate refused)',
+      ownerUpd?.includes('append-only') && ownerDel?.includes('append-only') && ownerTrunc?.includes('append-only'), `${ownerUpd} / ${ownerDel} / ${ownerTrunc}`);
+    const recSignIn = (actor, reqId, outcome = 'removed') => w.user(actor, `select public.record_account_sign_in_removal($1, 'Sign-in removed', $2)`, [reqId, outcome]);
+    await recSignIn(people.staff, pid, 'removal_pending');
+    await recSignIn(people.staff, pid, 'removed');
+    check('19: each sign-in removal attempt is audited (actor, reason, outcome)',
+      JSON.stringify((await audit(pid)).filter((r) => r.action === 'remove_sign_in').map((r) => r.outcome).sort()) === JSON.stringify(['removal_pending', 'removed']));
+    const e1 = await attempt(() => recSignIn(people.coParent, pid));
+    const e2 = await attempt(() => recSignIn(people.staff, id()));
+    const e3 = await attempt(() => recSignIn(people.staff, pid, 'whatever'));
+    check('19: sign-in removal can be recorded only by staff, and only for a completed, erased request',
+      e1?.includes('Not authorized: staff only') && e2?.includes('not a completed account deletion') && e3?.includes('Unknown sign-in removal outcome'), `${e1} / ${e2} / ${e3}`);
     check('19: one child deletion request and one card lock, however many completions were called',
       await n(db, `select count(*)::int n from public.player_deletion_requests where player_id = $1 and status = 'pending'`, [w.directPlayer]) === 1 &&
       await n(db, `select count(*)::int n from public.card_access_audit_events where card_id = $1`, [card]) === 1 &&
@@ -1092,6 +1136,86 @@ console.log('\n=== 19. Erased accounts stay out; staff decisions audited once; p
     check('19: erased accounts, audit, preview, own status', false, e.stack);
   }
   await db.close();
+}
+
+console.log('\n=== 20. Earlier-draft (eb8f8d9) rollback files cannot half-revert this version; the staging replacement route ===');
+{
+  // The files staging was rehearsed with (the earlier draft of 0097/0098), read from git history.
+  const { execFileSync } = await import('child_process');
+  // EMBLEM_AUTHZ_GIT_DIR lets a copy of this tree (e.g. a mutation run) read the history of the real repository.
+  const REPO = process.env.EMBLEM_AUTHZ_GIT_DIR ?? path.resolve(HERE, '../../..');
+  const old = (f) => execFileSync('git', ['-C', REPO, 'show', `eb8f8d9:${f}`], { encoding: 'utf8' });
+  let OLD = null;
+  try {
+    OLD = {
+      m97: old('supabase/migrations/0097_coach_account_deletion_verified_moments.sql'),
+      m98: old('supabase/migrations/0098_deletion_review_suspension_and_verifier_identity.sql'),
+      rb97: old('supabase/rollback/0097_rollback.sql'),
+      rb98: old('supabase/rollback/0098_rollback.sql'),
+    };
+  } catch (e) {
+    check('20: the earlier-draft (eb8f8d9) files are readable from git history', false, e.message);
+  }
+  const NEW97 = fs.readFileSync(path.resolve(HERE, '../../migrations/0097_coach_account_deletion_verified_moments.sql'), 'utf8');
+  const NEW98 = fs.readFileSync(path.resolve(HERE, '../../migrations/0098_deletion_review_suspension_and_verifier_identity.sql'), 'utf8');
+  const M0101 = fs.readFileSync(path.resolve(HERE, '../../migrations/0101_gift_checkout_requires_guardian_approval.sql'), 'utf8');
+  const run = async (db, sql, ack) => {
+    await db.exec('begin;');
+    try {
+      if (ack) await db.query(`select set_config($1, $2, true)`, ack);
+      await db.exec(sql);
+      await db.exec('commit;').catch(() => {});
+      return null;
+    } catch (e) {
+      await db.exec('rollback;').catch(() => {});
+      return e.message;
+    }
+  };
+  if (OLD) try {
+    // (a) On the current pair, the earlier-draft rollbacks fail and change nothing.
+    const cur = await readyDatabase('0098');
+    const before = await snapshotCatalog(cur);
+    const r98 = await run(cur, OLD.rb98, ACK_0098);
+    check('20: the earlier-draft 0098 rollback fails on this version (renamed policy) and changes nothing',
+      !!r98 && keysOf(diffCatalog(before, await snapshotCatalog(cur))).length === 0, r98);
+    const r97 = await run(cur, OLD.rb97, ACK_0097);
+    check('20: the earlier-draft 0097 rollback refuses on this version and changes nothing', !!r97 && keysOf(diffCatalog(before, await snapshotCatalog(cur))).length === 0, r97);
+    await cur.close();
+    const cur97 = await readyDatabase('0097');
+    const b97 = await snapshotCatalog(cur97);
+    const r97b = await run(cur97, OLD.rb97, ACK_0097);
+    check('20: …also over this 0097 alone', !!r97b && keysOf(diffCatalog(b97, await snapshotCatalog(cur97))).length === 0, r97b);
+    await cur97.close();
+
+    // (b) The staging route: 0096 + 0101 + earlier-draft 0097/0098 -> their rollbacks -> this 0097/0098.
+    const fresh = await readyDatabase('0096');
+    await fresh.exec(M0101);
+    await fresh.exec(NEW97);
+    await fresh.exec(NEW98);
+    const target = await snapshotCatalog(fresh);
+    await fresh.close();
+    const st = await readyDatabase('0096');
+    await st.exec(M0101);
+    const base = await snapshotCatalog(st);
+    await st.exec(OLD.m97);
+    await st.exec(OLD.m98);
+    const w = await world({ db: st }); // Phase-1-like fixtures: parents, a team coach, a direct link, a verified moment; no review rows
+    const c = await w.coach();
+    await w.directLink(c);
+    await w.recognise(c);
+    const s1 = await run(st, OLD.rb98, ACK_0098);
+    const s2 = await run(st, OLD.rb97, ACK_0097);
+    check('20: staging route — the earlier-draft rollbacks succeed on the earlier-draft pair and return exactly 0096 + 0101',
+      s1 === null && s2 === null && keysOf(diffCatalog(base, await snapshotCatalog(st))).length === 0, `${s1} / ${s2}`);
+    const s3 = await run(st, NEW97), s4 = await run(st, NEW98);
+    check('20: staging route — this 0097 and 0098 then apply, to exactly the catalog of a fresh build', s3 === null && s4 === null &&
+      keysOf(diffCatalog(target, await snapshotCatalog(st))).length === 0, `${s3} / ${s4}`);
+    const r = await deleteAccount(w, c);
+    check('20: staging route — afterwards an ordinary coach deletion works (fixtures intact)', r.canDeleteIdentity === true, JSON.stringify(r));
+    await st.close();
+  } catch (e) {
+    check('20: earlier-draft rollbacks and staging route', false, e.stack);
+  }
 }
 
 const failed = results.filter((r) => !r.pass);

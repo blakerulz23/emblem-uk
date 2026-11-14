@@ -34,7 +34,7 @@ vi.mock('@supabase/ssr', () => ({
   },
 }));
 
-import { guardsErasedAccounts, updateSession } from './middleware';
+import { updateSession } from './middleware';
 
 beforeEach(() => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://supabase.test';
@@ -48,9 +48,11 @@ beforeEach(() => {
 const req = (path: string) => new NextRequest(new URL(path, 'http://localhost'));
 
 describe('erased accounts are refused', () => {
-  it('guards the OS and every API path only', () => {
-    expect(['/os', '/os/x', '/api/os/me', '/api/anything'].every(guardsErasedAccounts)).toBe(true);
-    expect(['/', '/clubs', '/osx', '/staff/queue'].some(guardsErasedAccounts)).toBe(false);
+  it('every signed-in page outside the OS is refused too (e.g. the partner dashboard)', async () => {
+    state.erased = true;
+    const res = await updateSession(req('/partners'));
+    expect(res.status).toBe(307);
+    expect(res.headers.get('location')).toBe('http://localhost/os?account_deleted=1');
   });
 
   it('an erased account calling an API gets 401 ACCOUNT_ERASED, its cookies cleared (local sign-out)', async () => {
@@ -66,7 +68,7 @@ describe('erased accounts are refused', () => {
     state.erased = true;
     const res = await updateSession(req('/os'));
     expect(res.status).toBe(307);
-    expect(res.headers.get('location')).toBe('http://localhost/os');
+    expect(res.headers.get('location')).toBe('http://localhost/os?account_deleted=1');
     expect(res.headers.get('set-cookie')).toContain('sb-test-auth-token=');
   });
 
@@ -77,10 +79,9 @@ describe('erased accounts are refused', () => {
     expect(state.signOut).not.toHaveBeenCalled();
   });
 
-  it('no session, or a path outside the OS and API: no check', async () => {
+  it('no session: no check', async () => {
     state.user = null;
     await updateSession(req('/api/os/moments'));
-    state.user = { id: 'u1' };
     await updateSession(req('/clubs'));
     expect(state.rpcCalls).toEqual([]);
   });

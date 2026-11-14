@@ -47,33 +47,40 @@ export function completionAvailability(p: DeletionPreview | null): { ok: true } 
 
 export type ActionResult = { tone: 'success' | 'warning' | 'error'; text: string };
 
-/** Honest wording for a completion response. */
+/** When a request failed in transit or the server's answer could not be read, the outcome is unknown. */
+export const RESULT_UNKNOWN_TEXT = 'The result could not be confirmed. Refresh the page before doing anything else: if the request is still waiting, nothing was changed.';
+
+function failure(status: number, body: Record<string, unknown> | null): ActionResult {
+  if (status === 0 || !body || typeof body.error !== 'string') return { tone: 'error', text: RESULT_UNKNOWN_TEXT };
+  return { tone: 'error', text: body.error };
+}
+
+const SIGN_IN_PENDING =
+  'Its sign-in could not be removed yet. Emblem refuses its sessions and it cannot recreate the account; an access token it already holds stops working when it expires. Use "Retry sign-in removal" in Recently decided.';
+
+/** Honest wording for a completion (or sign-in retry) response. */
 export function describeCompletion(status: number, body: Record<string, unknown> | null): ActionResult {
-  if (status !== 200 || !body?.ok) {
-    return { tone: 'error', text: (typeof body?.error === 'string' && body.error) || 'Could not complete this deletion. Nothing was changed.' };
-  }
+  if (status !== 200 || !body?.ok) return failure(status, body);
   const already = body.state === 'already_completed';
   const gone = body.state === 'account_already_deleted';
   const head = already
-    ? 'This deletion had already been completed; nothing was erased again.'
+    ? 'This deletion has already been completed; nothing was erased again.'
     : gone
       ? 'The account had already been deleted; the request is now closed.'
       : `Deletion completed. ${Number(body.childDeletionRequests ?? 0)} child deletion request(s) filed, ${Number(body.childrenUnlinked ?? 0)} shared child link(s) removed.`;
   if (body.signIn === 'removed') return { tone: 'success', text: `${head} The sign-in has been removed.` };
-  return {
-    tone: 'warning',
-    text: `${head} The sign-in could not be removed yet${body.signInBlocked ? ' (it is blocked and its sessions are refused)' : ' (its sessions are refused)'}. Use "Retry sign-in removal".`,
-  };
+  return { tone: 'warning', text: `${head} ${SIGN_IN_PENDING}` };
 }
 
-/** Honest wording for a reject-and-restore response. */
+/** Honest wording for a reject-and-restore (or restore retry) response. */
 export function describeRejection(status: number, body: Record<string, unknown> | null): ActionResult {
   if (status !== 200 || !body?.ok) {
-    return { tone: 'error', text: (typeof body?.error === 'string' && body.error) || 'Could not reject this request. Nothing was changed.' };
+    if (body?.rejected === true && typeof body.error === 'string') return { tone: 'warning', text: body.error };
+    return failure(status, body);
   }
   const restored = Number(body.coachingRestored ?? 0);
   const notRestorable = Number(body.coachingNotRestorable ?? 0);
-  const head = body.state === 'already_rejected' ? 'This request had already been rejected.' : 'Request rejected. Nothing was deleted.';
+  const head = body.state === 'already_rejected' ? 'This request is rejected; nothing was deleted.' : 'Request rejected. Nothing was deleted.';
   return {
     tone: notRestorable > 0 ? 'warning' : 'success',
     text: `${head} Coaching access restored: ${restored}${notRestorable > 0 ? `; ${notRestorable} could not be restored (changed since)` : ''}.`,

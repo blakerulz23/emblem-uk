@@ -137,6 +137,12 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(auditDone).toBeGreaterThan(erase);
     expect(fn.split('insert into public.account_deletion_staff_actions').length).toBe(3); // completed + account_already_deleted
     expect(code).toContain('revoke all on public.account_deletion_staff_actions from public, anon, authenticated, service_role;');
+    for (const t of ['erased_accounts', 'account_deletion_staff_actions']) {
+      expect(code).toContain(`create trigger ${t}_append_only before update or delete on public.${t}`);
+      expect(code).toContain(`create trigger ${t}_no_truncate before truncate on public.${t}`);
+    }
+    const already = fn.slice(fn.indexOf('if not exists (select 1 from public.profiles where id = v_uid) then'), fn.indexOf("'account_already_deleted', 'profileId'"));
+    expect(already).toContain('insert into public.erased_accounts');
   });
 
   it('every profile delete: refused while parent links or a pending review remain; otherwise marks attribution (the one place)', () => {
@@ -191,6 +197,7 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
       'grant select on public.erased_accounts to service_role;',
       'grant execute on function public.account_is_erased() to authenticated;',
       'grant select on public.account_deletion_staff_actions to service_role;',
+      'grant execute on function public.record_account_sign_in_removal(uuid, text, text) to authenticated;',
     ]);
     // No data change at top level (function bodies and DO blocks excluded).
     const topLevel = code.replace(/\$(\w*)\$[\s\S]*?\$\1\$/g, '');

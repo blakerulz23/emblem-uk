@@ -8,9 +8,10 @@ import {
   describeCompletion,
   describeRejection,
   validateStaffReason,
+  RESULT_UNKNOWN_TEXT,
   type DeletionPreview,
 } from '@/lib/staff-account-deletion';
-import { deletionReviewResponse, STAFF_ACCOUNT_DELETE_REFUSED } from '@/lib/account-deletion-copy';
+import { deletionReviewResponse, signInErrorMessage, STAFF_ACCOUNT_DELETE_REFUSED } from '@/lib/account-deletion-copy';
 
 /**
  * The staff page's irreversible-action UX, rendered as HTML (no browser in
@@ -82,8 +83,19 @@ describe('staff panel: the second confirmation for permanent completion', () => 
     const refused = render({ reason: 'ok', result: { tone: 'error', text: 'Refused' } });
     expect(buttons(refused).map((b) => b.label)).toContain('Complete deletion permanently…');
   });
-  it('retry mode offers only the sign-in retry', () => {
-    expect(buttons(render({ mode: 'retry-sign-in', preview: null, reason: 'retry' })).map((b) => b.label)).toEqual(['Retry sign-in removal']);
+  it('retry modes offer only their own retry, never a completion or rejection, and say what the reason is for', () => {
+    const signIn = render({ mode: 'retry-sign-in', preview: null, reason: 'retry' });
+    expect(buttons(signIn).map((b) => b.label)).toEqual(['Retry sign-in removal']);
+    expect(signIn).toContain('Reason for retrying the sign-in removal (recorded with your name)');
+    const restore = render({ mode: 'retry-restore', preview: null, reason: 'retry' });
+    expect(buttons(restore).map((b) => b.label)).toEqual(['Retry restoring coaching access']);
+  });
+  it('an empty reason says why the actions are disabled; the confirmation does not over-promise', () => {
+    expect(render({ reason: '' })).toContain('Enter a reason to continue.');
+    const confirm = render({ reason: 'ok', stage: 'confirm-complete' });
+    expect(confirm).not.toContain('signed out everywhere');
+    expect(confirm).toContain('an access token it already holds stops working when it expires');
+    expect(confirm).toContain('aria-labelledby="confirm-complete-title"');
   });
 });
 
@@ -96,9 +108,12 @@ describe('honest results', () => {
     expect(describeCompletion(200, { ok: true, state: 'already_completed', signIn: 'removed' }).text).toContain('nothing was erased again');
     const partial = describeCompletion(200, { ok: true, state: 'completed', signIn: 'removal_pending', signInBlocked: true });
     expect(partial.tone).toBe('warning');
-    expect(partial.text).toContain('could not be removed yet (it is blocked and its sessions are refused)');
+    expect(partial.text).toContain('Its sign-in could not be removed yet. Emblem refuses its sessions');
+    expect(partial.text).toContain('an access token it already holds stops working when it expires');
     expect(describeCompletion(409, { error: 'Records that must be kept still block this deletion.' })).toEqual({ tone: 'error', text: 'Records that must be kept still block this deletion.' });
-    expect(describeCompletion(0, null).tone).toBe('error');
+    expect(describeCompletion(0, null)).toEqual({ tone: 'error', text: RESULT_UNKNOWN_TEXT });
+    expect(describeCompletion(504, null)).toEqual({ tone: 'error', text: RESULT_UNKNOWN_TEXT });
+    expect(describeRejection(500, { ok: false, rejected: true, error: 'The request was rejected, but coaching access could not be restored. Try again to restore it.' }).tone).toBe('warning');
     expect(describeRejection(200, { ok: true, state: 'rejected', coachingRestored: 2, coachingNotRestorable: 0 }).text).toBe('Request rejected. Nothing was deleted. Coaching access restored: 2.');
     expect(describeRejection(200, { ok: true, state: 'rejected', coachingRestored: 1, coachingNotRestorable: 1 }).tone).toBe('warning');
   });
@@ -124,6 +139,11 @@ describe('user-facing copy', () => {
     expect(plain).toContain('Your account and family data remain in place while Emblem staff review your request.');
     expect(plain).not.toContain('coaching');
     expect(renderToStaticMarkup(<DeletionReviewStatus coachAccessPaused />)).toContain('Your coaching access is currently paused.');
+  });
+  it('an erased account trying to sign in is told plainly (no raw "User is banned")', () => {
+    expect(signInErrorMessage({ code: 'user_banned', message: 'User is banned' })).toBe("This account has been deleted, so it can't be used to sign in.");
+    expect(signInErrorMessage({ code: 'account_erased' })).toBe("This account has been deleted, so it can't be used to sign in.");
+    expect(signInErrorMessage({ message: 'Token has expired or is invalid' })).toBe('Token has expired or is invalid');
   });
   it('the staff refusal tells them to contact another authorised member of staff', () => {
     expect(STAFF_ACCOUNT_DELETE_REFUSED).toContain('Ask another authorised member of Emblem staff to remove your staff access first');

@@ -117,6 +117,15 @@ describe('migration 0098 — deletion review suspension and verifier identity', 
     expect(reject.indexOf("return 'already_rejected';")).toBeLessThan(reject.indexOf('insert into public.account_deletion_staff_actions'));
     const restore = code.slice(code.indexOf('create function public.restore_coach_access_after_deletion_rejection('), code.indexOf('alter function public.restore_coach_access_after_deletion_rejection('));
     expect(restore).toMatch(/if v_open > 0 then\s+insert into public\.account_deletion_staff_actions/);
+    // The account is locked before the request: the order the deletion functions use, so they never deadlock.
+    expect(restore.indexOf('perform 1 from public.profiles')).toBeGreaterThan(0);
+    expect(restore.indexOf('perform 1 from public.profiles')).toBeLessThan(restore.indexOf('from public.pending_profile_deletions where id = p_pending_deletion_id for update'));
+  });
+
+  it('service_role can only read review records; the earlier draft rollback cannot run (renamed policy)', () => {
+    expect(code).toContain('revoke insert, update, delete, truncate on public.pending_profile_deletions from service_role;');
+    expect(rollbackCode).toContain('grant insert, update, delete, truncate on public.pending_profile_deletions to service_role;');
+    expect(code).not.toContain('a verifier change can only name the caller as coach');
   });
 
   it('the staff functions are definer, staff-checked, and executable by service_role only', () => {
@@ -141,7 +150,7 @@ describe('migration 0098 — deletion review suspension and verifier identity', 
     expect(squash(code)).toContain(squash(`create policy "moments: a signed-in user can only name themselves as verifier"
       on public.moments as restrictive for insert to authenticated
       with check (verified_by is null or verified_by = auth.uid());`));
-    expect(squash(code)).toContain(squash(`create policy "moments: a verifier change can only name the caller as coach"
+    expect(squash(code)).toContain(squash(`create policy "moments: a verifier change names only the calling coach"
       on public.moments as restrictive for update to authenticated using (true)
       with check ( public.moment_verifier_unchanged(id, verified_by) or verified_by is null
       or (verified_by = auth.uid() and public.moment_verifier_unchanged(id, null) and (`));

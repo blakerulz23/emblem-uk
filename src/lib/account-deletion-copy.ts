@@ -28,3 +28,17 @@ export const STAFF_ACCOUNT_DELETE_REFUSED =
 /** A session whose account has been erased (migration 0097 erased_accounts). */
 export const ACCOUNT_ERASED_MESSAGE = 'This account has been deleted.';
 export const ACCOUNT_ERASED_CODE = 'ACCOUNT_ERASED';
+
+/** Query flag the middleware adds when it sends an erased account back to the signed-out OS. */
+export const ACCOUNT_ERASED_QUERY = 'account_deleted';
+export const ACCOUNT_ERASED_SIGN_IN = "This account has been deleted, so it can't be used to sign in.";
+
+/**
+ * Sign-in error text. A deleted account's login is banned until its removal
+ * finishes (the app bans no one else), so a ban reads as "deleted"; any
+ * other error keeps its own message.
+ */
+export function signInErrorMessage(error: { code?: string; message?: string }): string {
+  if (error.code === 'account_erased' || error.code === 'user_banned' || /banned/i.test(error.message ?? '')) return ACCOUNT_ERASED_SIGN_IN;
+  return error.message ?? 'Something went wrong. Please try again.';
+}

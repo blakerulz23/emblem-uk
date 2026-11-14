@@ -10,11 +10,17 @@ import {
  * One reviewed account deletion on /staff/account-deletions. Presentational
  * only (no hooks): AccountDeletionActions owns the state. Shows counts only,
  * never child names or content.
+ *
+ * Modes:
+ *   review         a waiting request: reject & restore, or complete permanently
+ *   retry-sign-in  a completed, erased request whose sign-in removal failed
+ *   retry-restore  a rejected request whose coaching restore did not finish
  */
 export type PanelStage = 'choose' | 'confirm-reject' | 'confirm-complete';
+export type PanelMode = 'review' | 'retry-sign-in' | 'retry-restore';
 
 export type AccountDeletionPanelProps = {
-  mode: 'review' | 'retry-sign-in';
+  mode: PanelMode;
   preview: DeletionPreview | null;
   reason: string;
   stage: PanelStage;
@@ -35,6 +41,11 @@ const TONE = {
   success: { color: '#047857', background: '#ecfdf5' },
   warning: { color: '#92400e', background: '#fffbeb' },
   error: { color: '#b91c1c', background: '#fef2f2' },
+};
+const REASON_LABEL: Record<PanelMode, string> = {
+  review: 'Reason for your decision (recorded with your name)',
+  'retry-sign-in': 'Reason for retrying the sign-in removal (recorded with your name)',
+  'retry-restore': 'Reason for retrying the restore (recorded with your name)',
 };
 
 function Count({ n, label }: { n: number; label: string }) {
@@ -94,6 +105,11 @@ export default function AccountDeletionPanel(props: AccountDeletionPanelProps) {
   const reasonOk = !validateStaffReason(reason);
   const availability = mode === 'review' ? completionAvailability(preview) : ({ ok: true } as const);
   const armed = typed.trim().toUpperCase() === COMPLETE_TYPED_WORD;
+  // After a decision went through, the row is stale until refreshed: no more actions on it.
+  const decided = !!result && result.tone !== 'error';
+  const cancelOnEscape = (e: { key: string }) => {
+    if (e.key === 'Escape' && !busy) props.onStage('choose');
+  };
 
   return (
     <div>
@@ -102,22 +118,28 @@ export default function AccountDeletionPanel(props: AccountDeletionPanelProps) {
         <p style={{ fontFamily: font.sans, fontSize: 12.5, color: '#b91c1c' }}>The counts could not be loaded. Refresh the page.</p>
       )}
 
-      <label style={{ display: 'block', fontFamily: font.head, fontWeight: 700, fontSize: 12.5, color: 'var(--ink)', margin: '8px 0 4px' }}>
-        Reason (recorded with your name)
-        <textarea
-          value={reason}
-          onChange={(e) => props.onReason(e.target.value)}
-          rows={2}
-          maxLength={500}
-          disabled={busy}
-          placeholder={mode === 'review' ? 'e.g. blocking records reassigned; parent confirmed by email' : 'e.g. retrying after an Auth outage'}
-          style={{ display: 'block', width: '100%', marginTop: 4, fontFamily: font.sans, fontSize: 12.5, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', resize: 'vertical' }}
-        />
-      </label>
-      {reasonError && <div style={{ fontFamily: font.sans, fontSize: 12, color: '#b91c1c' }}>{reasonError}</div>}
+      {!decided && (
+        <>
+          <label style={{ display: 'block', fontFamily: font.head, fontWeight: 700, fontSize: 12.5, color: 'var(--ink)', margin: '8px 0 4px' }}>
+            {REASON_LABEL[mode]}
+            <textarea
+              value={reason}
+              onChange={(e) => props.onReason(e.target.value)}
+              rows={2}
+              maxLength={500}
+              disabled={busy}
+              placeholder={mode === 'review' ? 'e.g. blocking records reassigned; parent confirmed by email' : 'e.g. retrying after an Auth outage'}
+              style={{ display: 'block', width: '100%', marginTop: 4, fontFamily: font.sans, fontSize: 12.5, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', resize: 'vertical' }}
+            />
+          </label>
+          {reasonError && <div style={{ fontFamily: font.sans, fontSize: 12, color: '#b91c1c' }}>{reasonError}</div>}
+          {!reason.trim() && stage === 'choose' && (
+            <div style={{ fontFamily: font.sans, fontSize: 12, color: 'var(--ink-soft)' }}>Enter a reason to continue.</div>
+          )}
+        </>
+      )}
 
-      {/* After a decision went through, the row is stale until refreshed: no more actions on it. */}
-      {stage === 'choose' && mode === 'review' && !(result && result.tone !== 'error') && (
+      {stage === 'choose' && mode === 'review' && !decided && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
           <button type="button" disabled={busy || !reasonOk} onClick={() => props.onStage('confirm-reject')} style={button('#ecfdf5', '#047857', busy || !reasonOk, '1px solid #a7f3d0')}>
             Reject &amp; restore access
@@ -134,7 +156,7 @@ export default function AccountDeletionPanel(props: AccountDeletionPanelProps) {
         </div>
       )}
 
-      {stage === 'choose' && mode === 'retry-sign-in' && (
+      {stage === 'choose' && mode === 'retry-sign-in' && !decided && (
         <div style={{ marginTop: 10 }}>
           <button type="button" disabled={busy || !reasonOk} onClick={props.onComplete} style={button('#1f2937', '#fff', busy || !reasonOk)}>
             {busy ? 'Retrying…' : 'Retry sign-in removal'}
@@ -142,15 +164,24 @@ export default function AccountDeletionPanel(props: AccountDeletionPanelProps) {
         </div>
       )}
 
+      {stage === 'choose' && mode === 'retry-restore' && !decided && (
+        <div style={{ marginTop: 10 }}>
+          <button type="button" disabled={busy || !reasonOk} onClick={props.onReject} style={button('#047857', '#fff', busy || !reasonOk)}>
+            {busy ? 'Restoring…' : 'Retry restoring coaching access'}
+          </button>
+        </div>
+      )}
+
       {stage === 'confirm-reject' && (
-        <div role="alertdialog" aria-label="Confirm reject" style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
-          <div style={{ fontFamily: font.head, fontWeight: 700, fontSize: 13, color: 'var(--ink)' }}>Reject this deletion request?</div>
+        <div role="group" aria-labelledby="confirm-reject-title" onKeyDown={cancelOnEscape} style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: '#ecfdf5', border: '1px solid #a7f3d0' }}>
+          <div id="confirm-reject-title" style={{ fontFamily: font.head, fontWeight: 700, fontSize: 13, color: 'var(--ink)' }}>Reject this deletion request?</div>
           <p style={{ fontFamily: font.sans, fontSize: 12.5, color: 'var(--ink-soft)', margin: '4px 0 10px' }}>
             The account keeps everything, and exactly the coaching access paused for this review is restored. Nothing is deleted.
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" disabled={busy} onClick={() => props.onStage('choose')} style={button('var(--surface)', 'var(--ink-soft)', busy)}>Cancel</button>
-            <button type="button" disabled={busy || !reasonOk} onClick={props.onReject} style={button('#047857', '#fff', busy || !reasonOk)}>
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus -- focus moves into the confirmation it just opened */}
+            <button type="button" autoFocus disabled={busy || !reasonOk} onClick={props.onReject} style={button('#047857', '#fff', busy || !reasonOk)}>
               {busy ? 'Rejecting…' : 'Reject and restore access'}
             </button>
           </div>
@@ -158,14 +189,17 @@ export default function AccountDeletionPanel(props: AccountDeletionPanelProps) {
       )}
 
       {stage === 'confirm-complete' && (
-        <div role="alertdialog" aria-label="Confirm permanent deletion" style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: '#fef2f2', border: '1px solid #fecaca' }}>
-          <div style={{ fontFamily: font.head, fontWeight: 800, fontSize: 13.5, color: '#991b1b' }}>Permanently delete this account? This cannot be undone.</div>
+        <div role="group" aria-labelledby="confirm-complete-title" onKeyDown={cancelOnEscape} style={{ marginTop: 10, padding: '12px 14px', borderRadius: 10, background: '#fef2f2', border: '1px solid #fecaca' }}>
+          <div id="confirm-complete-title" style={{ fontFamily: font.head, fontWeight: 800, fontSize: 13.5, color: '#991b1b' }}>Permanently delete this account? This cannot be undone.</div>
           <p style={{ fontFamily: font.sans, fontSize: 12.5, color: '#7f1d1d', margin: '4px 0 8px' }}>
-            The clean-up above runs once, the account is erased and signed out everywhere, and its sign-in is removed.
+            The clean-up above runs once and the account is erased. Emblem then refuses its sessions, it can no longer sign in, and its sign-in is
+            removed; an access token it already holds stops working when it expires.
           </p>
           <label style={{ display: 'block', fontFamily: font.sans, fontSize: 12.5, color: '#7f1d1d' }}>
             Type <b>{COMPLETE_TYPED_WORD}</b> to confirm
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus -- focus moves into the confirmation it just opened */}
             <input
+              autoFocus
               value={typed}
               onChange={(e) => props.onTyped(e.target.value)}
               disabled={busy}

@@ -49,6 +49,7 @@ const NEW_FILES = [
   'src/app/api/os/account/deletion-review/route.ts',
   'src/app/api/staff/account-deletions/[id]/complete/route.ts',
   'src/app/api/staff/account-deletions/[id]/reject/route.ts',
+  'src/app/api/staff/account-deletions/[id]/retry-sign-in/route.ts',
   'src/app/staff/account-deletions/page.tsx',
 ];
 const COMMIT = 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0';
@@ -92,9 +93,9 @@ for (const rel of NEW_FILES) {
     newCalls.push({ route: rel, fn: m[1], args: argNames });
   }
 }
-check('new files parsed: their six RPC calls are found', JSON.stringify(newCalls.map((c) => c.fn).sort()) ===
+check('new files parsed: their RPC calls are found', JSON.stringify(newCalls.map((c) => c.fn).sort()) ===
   JSON.stringify(['account_deletion_preview', 'account_is_erased', 'complete_pending_profile_deletion', 'my_account_deletion_review',
-    'reject_pending_profile_deletion', 'restore_coach_access_after_deletion_rejection']), newCalls);
+    'record_account_sign_in_removal', 'record_account_sign_in_removal', 'reject_pending_profile_deletion', 'restore_coach_access_after_deletion_rejection']), newCalls);
 check('route files parsed: the four RPC calls in the changed PR #140 routes are found', JSON.stringify(calls.map((c) => c.fn).sort()) ===
   JSON.stringify(['approve_coach_team_request', 'delete_own_guardian_account', 'redeem_coach_invite', 'redeem_team_invite']), calls.map((c) => c.fn));
 const teamReq = fs.readFileSync(path.join(ROOT, 'src/app/api/os/team-requests/route.ts'), 'utf8');

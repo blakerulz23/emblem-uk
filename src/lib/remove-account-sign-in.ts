@@ -17,7 +17,12 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  *      a failure is recorded on it (attempts, last error) for a retry.
  * Idempotent: calling it again for a removed user just resolves the row.
  */
-export type SignInRemoval = { state: 'removed' | 'removal_pending'; banned: boolean };
+export type SignInRemoval = {
+  state: 'removed' | 'removal_pending';
+  banned: boolean;
+  /** False when the pending_auth_deletions row could not be updated to match (it is put right on the next retry). */
+  queueUpdated: boolean;
+};
 
 // Supabase's maximum-style ban: about a hundred years.
 export const PERMANENT_BAN_DURATION = '876000h';
@@ -30,8 +35,7 @@ export async function removeAccountSignIn(service: SupabaseClient, profileId: st
 
   const { data: existing, error: lookupError } = await admin.getUserById(profileId);
   if (isNotFound(lookupError) || (!lookupError && !existing?.user)) {
-    await markResolved(service, profileId, staffProfileId);
-    return { state: 'removed', banned: false };
+    return { state: 'removed', banned: false, queueUpdated: await markResolved(service, profileId, staffProfileId) };
   }
 
   let banned = false;
@@ -42,33 +46,43 @@ export async function removeAccountSignIn(service: SupabaseClient, profileId: st
 
   const { error: deleteError } = await admin.deleteUser(profileId);
   if (!deleteError || isNotFound(deleteError)) {
-    await markResolved(service, profileId, staffProfileId);
-    return { state: 'removed', banned };
+    return { state: 'removed', banned, queueUpdated: await markResolved(service, profileId, staffProfileId) };
   }
 
-  await recordFailure(service, profileId, deleteError.message ?? 'Auth user deletion failed');
-  return { state: 'removal_pending', banned };
+  return { state: 'removal_pending', banned, queueUpdated: await recordFailure(service, profileId, deleteError.message ?? 'Auth user deletion failed') };
 }
 
-async function markResolved(service: SupabaseClient, profileId: string, staffProfileId: string) {
-  await service
+async function markResolved(service: SupabaseClient, profileId: string, staffProfileId: string): Promise<boolean> {
+  const { error } = await service
     .from('pending_auth_deletions')
     .update({ status: 'resolved', resolved_by: staffProfileId, resolved_at: new Date().toISOString() })
     .eq('auth_user_id', profileId)
     .eq('status', 'pending');
+  return !error;
 }
 
-async function recordFailure(service: SupabaseClient, profileId: string, message: string) {
+// Only a row still pending is updated: a concurrent call that already removed
+// the user (and resolved the row) is never reopened by a later failure.
+async function recordFailure(service: SupabaseClient, profileId: string, message: string): Promise<boolean> {
   const nowIso = new Date().toISOString();
-  const { data: row } = await service.from('pending_auth_deletions').select('id, attempts').eq('auth_user_id', profileId).maybeSingle();
-  if (row) {
-    await service
-      .from('pending_auth_deletions')
-      .update({ status: 'pending', last_attempted_at: nowIso, attempts: (row as { attempts: number }).attempts + 1, last_error: message })
-      .eq('id', (row as { id: string }).id);
-  } else {
-    await service
+  const { data: row, error: readError } = await service
+    .from('pending_auth_deletions')
+    .select('id, attempts, status')
+    .eq('auth_user_id', profileId)
+    .maybeSingle();
+  if (readError) return false;
+  if (!row) {
+    const { error } = await service
       .from('pending_auth_deletions')
       .insert({ auth_user_id: profileId, first_attempted_at: nowIso, last_attempted_at: nowIso, last_error: message });
+    return !error;
   }
+  const r = row as { id: string; attempts: number; status: string };
+  if (r.status !== 'pending') return true;
+  const { error } = await service
+    .from('pending_auth_deletions')
+    .update({ last_attempted_at: nowIso, attempts: r.attempts + 1, last_error: message })
+    .eq('id', r.id)
+    .eq('status', 'pending');
+  return !error;
 }

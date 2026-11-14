@@ -338,6 +338,9 @@ alter function public.redeem_team_invite(text, uuid, text) owner to postgres;
 revoke all on function public.redeem_team_invite(text, uuid, text) from public, anon, authenticated;
 grant execute on function public.redeem_team_invite(text, uuid, text) to service_role;
 
+-- 7 reversed: service_role's 0076 write access to pending_profile_deletions.
+grant insert, update, delete, truncate on public.pending_profile_deletions to service_role;
+
 -- 6 reversed.
 drop function public.my_account_deletion_review();
 drop function public.account_deletion_preview(uuid);
@@ -413,7 +416,7 @@ grant execute on function public.delete_own_guardian_account() to authenticated;
 alter function public.delete_own_guardian_account() owner to postgres;
 
 -- 3 reversed.
-drop policy "moments: a verifier change can only name the caller as coach" on public.moments;
+drop policy "moments: a verifier change names only the calling coach" on public.moments;
 drop policy "moments: a signed-in user can only name themselves as verifier" on public.moments;
 drop function public.moment_verifier_unchanged(uuid, uuid);
 

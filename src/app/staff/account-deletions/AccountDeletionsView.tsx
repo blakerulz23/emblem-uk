@@ -9,7 +9,7 @@ import AccountDeletionActions from './AccountDeletionActions';
 export type PendingRow = { id: string; auth_user_id: string; email: string | null; blocking_reason: string; first_detected_at: string };
 export type DecidedRow = PendingRow & { status: string; resolved_at: string | null };
 export type ActionRow = { pending_deletion_id: string; action: string; outcome: string; actor_profile_id: string; created_at: string };
-export type ActionsProps = { id: string; mode: 'review' | 'retry-sign-in'; preview: DeletionPreview | null };
+export type ActionsProps = { id: string; mode: 'review' | 'retry-sign-in' | 'retry-restore'; preview: DeletionPreview | null };
 
 const BLOCKING_LABEL: Record<string, string> = {
   coach_authored_player_records: 'Coach-written player records',
@@ -24,13 +24,20 @@ export default function AccountDeletionsView({
   pending,
   decided,
   signInPending,
+  erased,
+  unrestored,
   actions,
   previews,
   Actions = AccountDeletionActions,
 }: {
   pending: PendingRow[];
   decided: DecidedRow[];
+  /** auth user ids whose sign-in removal is still queued (pending_auth_deletions). */
   signInPending: string[];
+  /** auth user ids recorded in erased_accounts (actually deleted). */
+  erased: string[];
+  /** rejected request id -> coaching suspensions still not restored. */
+  unrestored: Record<string, number>;
   actions: ActionRow[];
   previews: Record<string, DeletionPreview | null>;
   Actions?: ComponentType<ActionsProps>;
@@ -73,12 +80,26 @@ export default function AccountDeletionsView({
           {decided.map((r) => (
             <div key={r.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: '12px 16px' }}>
               <div style={{ fontFamily: font.sans, fontSize: 13, color: 'var(--ink)' }}>
-                {r.email ?? `account ${r.auth_user_id.slice(0, 8)}…`} — {r.status === 'rejected' ? 'Rejected (account kept)' : 'Deleted'} {at(r.resolved_at)}
+                {r.email ?? `account ${r.auth_user_id.slice(0, 8)}…`} —{' '}
+                {erased.includes(r.auth_user_id)
+                  ? 'Deleted'
+                  : r.status === 'rejected'
+                    ? 'Rejected (account kept)'
+                    : 'Closed (not deleted here)'}{' '}
+                {at(r.resolved_at)}
               </div>
-              {r.status === 'resolved' && signInPending.includes(r.auth_user_id) && (
+              {r.status === 'rejected' && !erased.includes(r.auth_user_id) && (unrestored[r.id] ?? 0) > 0 && (
                 <div style={{ marginTop: 6 }}>
                   <div style={{ fontFamily: font.sans, fontSize: 12.5, color: '#92400e' }}>
-                    The account&rsquo;s data is erased and its sessions are refused, but its sign-in has not been removed yet.
+                    {unrestored[r.id]} coaching relationship(s) paused for this review have not been restored yet.
+                  </div>
+                  <Actions id={r.id} mode="retry-restore" preview={null} />
+                </div>
+              )}
+              {erased.includes(r.auth_user_id) && signInPending.includes(r.auth_user_id) && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontFamily: font.sans, fontSize: 12.5, color: '#92400e' }}>
+                    The account is erased and Emblem refuses its sessions, but its sign-in has not been removed yet.
                   </div>
                   <Actions id={r.id} mode="retry-sign-in" preview={null} />
                 </div>

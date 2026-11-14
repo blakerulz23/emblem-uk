@@ -944,9 +944,15 @@ completion route runs `complete_pending_profile_deletion` in the staff
 member's own session (never an actor id from the browser): the 0076 clean-up
 once, attribution marked, the account recorded in `erased_accounts`, the
 decision audited once in `account_deletion_staff_actions`. The route then
-bans and deletes the Auth user with the service role and resolves the
-`pending_auth_deletions` row; a failure is recorded there and "Retry sign-in
-removal" repeats only that step. An issued access token outlives Auth user
+bans and deletes the Auth user with the service role, resolves the
+`pending_auth_deletions` row and audits the outcome
+(`record_account_sign_in_removal`); a failure is recorded there, and "Retry
+sign-in removal" (its own route, refused unless the request was completed and
+erased) repeats only that step. A repeated or concurrent second completion
+returns `already_completed` and touches nothing. All three staff routes require
+a same-origin JSON request. `erased_accounts` and
+`account_deletion_staff_actions` are append-only for every role, the owner
+included. An issued access token outlives Auth user
 deletion, so `erased_accounts` is what shuts the account out at once: no
 profile can be created for it again (`profiles_refuse_erased_account`,
 SQLSTATE EMERA), and the middleware asks `account_is_erased()` on every
@@ -981,7 +987,12 @@ each through the existing `relationship_audit` trigger. Staff decide with
 `restore_coach_access_after_deletion_rejection`, which restores exactly
 what is still restorable and records the outcome per row. A later request
 reopens the same pending row. As in 0097, nothing else changes while the
-deletion is under review. When the account is actually deleted a trigger
+deletion is under review (section 17 compares every other table byte for byte).
+`service_role` may only read `pending_profile_deletions` from 0098: decisions go
+through the audited staff functions. The verifier-change policy was renamed so
+that the earlier draft's rollback file (eb8f8d9), which drops it by its old
+name, fails and changes nothing instead of half-reverting this version
+(section 20 also rehearses the staging replacement route). When the account is actually deleted a trigger
 closes any still-open suspension as `account_deleted`. Staff accounts are
 refused, changing nothing.
 Two restrictive policies on `moments` stop a signed-in user naming anyone

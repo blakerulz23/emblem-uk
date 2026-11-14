@@ -64,6 +64,7 @@ begin
      or to_regclass('public.erased_accounts') is null
      or to_regclass('public.account_deletion_staff_actions') is null
      or to_regprocedure('public.account_is_erased()') is null
+     or to_regprocedure('public.record_account_sign_in_removal(uuid, text, text)') is null
      or not exists (select 1 from pg_trigger where tgname = 'profiles_refuse_erased_account')
      or not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'moments'
                     and policyname = 'moments: only account deletion marks a verifier as deleted')
@@ -110,9 +111,11 @@ $$;
 -- removed, so nothing they protected remains).
 drop trigger profiles_refuse_erased_account on public.profiles;
 drop function public.account_is_erased();
+drop function public.record_account_sign_in_removal(uuid, text, text);
 drop function public.refuse_erased_account_profile();
 drop table public.account_deletion_staff_actions;
 drop table public.erased_accounts;
+drop function public.reject_account_deletion_record_change();
 
 -- 7, 8, 4b and 4a reversed.
 drop trigger profiles_account_deletion_guard on public.profiles;

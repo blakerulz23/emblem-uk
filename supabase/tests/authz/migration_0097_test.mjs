@@ -407,7 +407,8 @@ console.log('\n=== 6. Coach with authored records and recognitions (staff-review
     const gr = await one(db, `select status, resolved_by, notes from public.pending_profile_deletions where id = $1`, [goneId]);
     check('6: completing a request whose account is already gone closes it (account_already_deleted), resolved by the staff member, nothing else written',
       closed.status === 'account_already_deleted' && gr.status === 'resolved' && gr.resolved_by === people.staff && gr.notes.includes('already deleted') &&
-      await n(db, `select count(*)::int n from public.pending_auth_deletions where auth_user_id = $1`, [gone]) === 0, JSON.stringify([closed, gr]));
+      await n(db, `select count(*)::int n from public.pending_auth_deletions where auth_user_id = $1`, [gone]) === 0 &&
+      await n(db, `select count(*)::int n from public.erased_accounts where profile_id = $1 and completed_by = $2`, [gone, people.staff]) === 1, JSON.stringify([closed, gr]));
     // A parent's login cannot be removed around the clean-up either.
     const g = await rowsOf(db, `select * from public.guardians order by player_id, profile_id`);
     const parentLogin = await attempt(() => db.query(`delete from auth.users where id = $1`, [people.coParent]));
@@ -614,7 +615,10 @@ let c96, c97, db9, w9, data96;
       'function:erase_account_for_deletion(p_profile_id uuid, p_email text, p_completed_by uuid)', 'function:guard_profile_deletion()',
       'policy:moments.moments: only account deletion marks a verifier as deleted', 'trigger:profiles.profiles_account_deletion_guard',
       'relation:erased_accounts', 'relation:account_deletion_staff_actions', 'function:account_is_erased()', 'function:refuse_erased_account_profile()',
-      'trigger:profiles.profiles_refuse_erased_account'].sort(),
+      'trigger:profiles.profiles_refuse_erased_account', 'function:record_account_sign_in_removal(p_pending_deletion_id uuid, p_reason text, p_outcome text)',
+      'function:reject_account_deletion_record_change()', 'trigger:account_deletion_staff_actions.account_deletion_staff_actions_append_only',
+      'trigger:account_deletion_staff_actions.account_deletion_staff_actions_no_truncate', 'trigger:erased_accounts.erased_accounts_append_only',
+      'trigger:erased_accounts.erased_accounts_no_truncate'].sort(),
     changed: ['constraint:moments.moments_verification_status_consistency', 'constraint:player_deletion_requests.player_deletion_requests_cancellation_requires_actor', 'constraint:squad_invite_participation_deletion_requests.sipdr_cancellation_requires_actor', 'function:delete_own_guardian_account()'].sort(),
   };
   check('9: the catalog change is exactly: three marker columns, one restrictive policy, three rules, the changed function, the blocker helper, the erasure, the staff completion, and the profile-deletion guard trigger with its function',
@@ -686,6 +690,14 @@ console.log('\n=== 10. Rollback ===');
   await db.query(`delete from public.player_assessments where created_by = $1`, [w9.people.coParent]);
   const coParentGone = await deleteAccount(w9, w9.people.coParent);
   check('10: (that account then deletes once its blocker is cleared)', coParentGone.canDeleteIdentity === true && coParentGone.playersUnlinked.includes(w9.player), JSON.stringify(coParentGone));
+  // An erased account whose sign-in still exists refuses the rollback (its erased record keeps it out).
+  const lingering = await w9.coach();
+  await w9.user(lingering, `select public.delete_own_guardian_account()`); // erased; auth.users row left in place
+  const beforeLinger = await snapshotCatalog(db);
+  r = await rollBack(ACK);
+  check('10: rollback is refused while an erased account still has its sign-in identity, changing nothing',
+    r?.includes('1 erased account(s) still have a sign-in identity') && keysOf(diffCatalog(beforeLinger, await snapshotCatalog(db))).length === 0, r);
+  await db.query(`delete from auth.users where id = $1`, [lingering]); // the identity removed, as the staff route would
   // Once an account deletion has used the new state, rollback must refuse.
   const result = await deleteAccount(w9, w9.coachUid);
   check('10: after re-apply the 0096-era coach now deletes', result.canDeleteIdentity === true, JSON.stringify(result));
