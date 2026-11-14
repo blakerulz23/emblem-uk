@@ -1866,7 +1866,7 @@ console.log('\n=== 25. A named guardian\'s address on an order goes with their a
     check('25: the guardian\'s address remains only where it is the buyer\'s (a declaring adult, kept by design)',
       JSON.stringify(hitsG) === JSON.stringify(['builder_order_authority_declarations.adult_email:1']), hitsG.join(', '));
 
-    // --- B. The hold: approving or fulfilling a held order is refused for every role; payment still applies; staff release it ---
+    // --- B. The hold: approving or fulfilling a held order is refused for every role; there is no release override ---
     const staffApprove = (oid) => errOf(() => w.service(`update public.orders set payment_status = 'fulfilled', approved_by = $2, approved_at = now() where id = $1`, [oid, people.staff]));
     const held = {
       approve: await staffApprove(o.named),
@@ -1874,15 +1874,25 @@ console.log('\n=== 25. A named guardian\'s address on an order goes with their a
       owner: await errOf(() => db.query(`update public.orders set approved_at = now() where id = $1`, [o.named])),
       unrecord: await errOf(() => db.query(`update public.orders set intended_guardian_erased_at = null where id = $1`, [o.namedDone])),
       halfHold: await errOf(() => db.query(`update public.orders set held_reason = null where id = $1`, [o.named])),
+      rewrite: await errOf(() => w.service(`update public.orders set held_at = now() + interval '1 day' where id = $1`, [o.named])),
     };
-    check('25: a held order cannot be approved or fulfilled (service_role or owner: EMHLD); the erasure record cannot be removed; a half-cleared hold is refused (CHECK)',
+    check('25: a held order cannot be approved or fulfilled (service_role or owner: EMHLD); the erasure record cannot be removed; a hold cannot be half-cleared or rewritten',
       held.approve === 'EMHLD:order_held' && held.fulfilOnly === 'EMHLD:order_held' && held.owner === 'EMHLD:order_held'
-        && held.unrecord === 'EMHLD:intended_guardian_erasure_is_permanent' && held.halfHold?.includes('orders_hold_state'), JSON.stringify(held));
-    const pay = await errOf(() => w.service(`update public.orders set payment_status = 'paid' where id = $1`, [o.named]));
-    const release = await errOf(() => w.service(`update public.orders set held_at = null, held_reason = null where id = $1`, [o.named]));
-    const afterRelease = await staffApprove(o.named);
-    check('25: a payment still applies to a held order; staff release the hold; then approval works (the erasure record stays)',
-      pay === null && release === null && afterRelease === null && (await ord(o.named)).intended_guardian_erased_at !== null, JSON.stringify([pay, release, afterRelease]));
+        && held.unrecord === 'EMHLD:intended_guardian_erasure_is_permanent' && held.halfHold === 'EMHLD:hold_cannot_be_rewritten'
+        && held.rewrite === 'EMHLD:hold_cannot_be_rewritten', JSON.stringify(held));
+    await db.exec(`set session_replication_role = replica;`);
+    const halfViaCheck = await errOf(() => db.query(`update public.orders set held_reason = null where id = $1`, [o.named]));
+    await db.exec(`set session_replication_role = origin;`);
+    check('25: …and with triggers off the CHECK still refuses a half-cleared hold', halfViaCheck?.includes('orders_hold_state'), halfViaCheck);
+    const release = {
+      service: await errOf(() => w.service(`update public.orders set held_at = null, held_reason = null where id = $1`, [o.named])),
+      owner: await errOf(() => db.query(`update public.orders set held_at = null, held_reason = null where id = $1`, [o.giftApproved])),
+      paidWithOldApproval: await errOf(() => w.service(`update public.orders set held_at = null, held_reason = null where id = $1`, [o.giftPending])),
+    };
+    check('25: no release override: clearing a hold is refused for service_role and the owner without a fresh genuine guardian approval (EMHLD)',
+      Object.values(release).every((e) => e === 'EMHLD:hold_release_requires_fresh_guardian_approval') && (await ord(o.named)).held_at !== null, JSON.stringify(release));
+    const pay = await errOf(() => w.service(`update public.orders set payment_status = 'refunded' where id = $1`, [o.giftApproved]));
+    check('25: closing payment states still apply to a held order (refund), and the hold stays', pay === null && (await ord(o.giftApproved)).held_at !== null, pay);
 
     // --- C. A redacted approval request never gets an address back ---
     const reopen = {
@@ -1924,7 +1934,7 @@ console.log('\n=== 25. A named guardian\'s address on an order goes with their a
     await db.query(`insert into auth.users (id, email) values ($1, $2)`, [g2, eg]);
     await w.user(g2, `insert into public.profiles (id) values ($1)`, [g2]);
     await deleteAccount(w, g2);
-    check('25: repeat — run again, or a later account on the same address erased, nothing changes and a released hold stays released', (await snap()) === beforeRepeat);
+    check('25: repeat — run again, or a later account on the same address erased, nothing changes (holds and redactions are not applied twice)', (await snap()) === beforeRepeat);
 
     // --- F. Transactional: an erasure that fails at its last step changes no order or approval ---
     const f = id();
@@ -1961,8 +1971,212 @@ console.log('\n=== 25. A named guardian\'s address on an order goes with their a
     check('25: staff closing a review whose account was already deleted another way redacts and holds, from the review\'s address, before clearing it',
       cD.status === 'account_already_deleted' && (await ord(dOrder)).intended_guardian_email === null && (await ord(dOrder)).held_at !== null
         && (await appr(dAppr)).guardian_email === null && (await emailHitsIn(db, ed)).length === 0, JSON.stringify(cD));
+
+    // --- H. One normalisation: addresses padded with tabs, newlines or no-break spaces are matched too ---
+    const hh = id();
+    await w.person(hh);
+    const eh = await emailOf(hh);
+    const padded = await mkOrder({ purchaser: BUYER, intended: `\t${eh.toUpperCase()}\u00a0` });
+    const paddedReq = await mkAppr(await mkOrder({ purchaser: BUYER, authority: 'guardian_approval_pending' }), `\n${eh}\ufeff`, 'pending');
+    const paddedInv = (await db.query(`insert into public.coach_invites (player_id, code, created_by, invited_email) values ($1, 'S25-PAD', $2, $3) returning id`, [w.directPlayer, people.parent, `\u00a0${eh}\t`])).rows[0].id;
+    await deleteAccount(w, hh);
+    check('25: tab-, newline- and no-break-space-padded addresses are matched by the same rule (order, approval request, invite)',
+      (await ord(padded)).intended_guardian_email === null && (await appr(paddedReq)).guardian_email === null
+        && (await db.query(`select revoked_at from public.coach_invites where id = $1`, [paddedInv])).rows[0].revoked_at !== null);
+
+    // --- I. Time boundary: a stale review address now held by a newer sign-in matches only rows from before that sign-in ---
+    const old = id();
+    const stale = `S25-stale-${old.slice(0, 8)}@example.test`;
+    const beforeNew = await mkOrder({ purchaser: BUYER, intended: stale });
+    const beforeNewInv = (await db.query(`insert into public.team_invites (team_id, code, invited_email, created_at) values ($1, 'S25-B-OLD', $2, now() - interval '2 days') returning id`, [w.otherTeam, stale])).rows[0].id;
+    await db.query(`update public.orders set created_at = now() - interval '2 days' where id = $1`, [beforeNew]);
+    const newer = id();
+    await db.query(`insert into auth.users (id, email, created_at) values ($1, $2, now() - interval '1 day')`, [newer, stale.toUpperCase()]);
+    const afterNew = await mkOrder({ purchaser: BUYER, intended: stale });
+    const afterNewInv = (await db.query(`insert into public.team_invites (team_id, code, invited_email) values ($1, 'S25-B-NEW', $2) returning id`, [w.otherTeam, stale])).rows[0].id;
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason) values ($1, $2, 'coach_authored_player_records')`, [old, stale]);
+    const cOld = await complete(w, (await pendingOf(db, old)).id);
+    check('25: boundary — closing a review whose address a newer sign-in now holds clears only rows created before that sign-in; the newer account\'s order and invite are untouched and not held',
+      cOld.status === 'account_already_deleted' && (await ord(beforeNew)).intended_guardian_email === null && (await ord(beforeNew)).held_at !== null
+        && (await ord(afterNew)).intended_guardian_email === stale && (await ord(afterNew)).held_at === null
+        && (await db.query(`select revoked_at from public.team_invites where id = $1`, [beforeNewInv])).rows[0].revoked_at !== null
+        && (await db.query(`select revoked_at, invited_email from public.team_invites where id = $1`, [afterNewInv])).rows[0].invited_email === stale, JSON.stringify(cOld));
+    await db.query(`update auth.users set created_at = null where id = $1`, [newer]);
+    const noTime = await mkOrder({ purchaser: BUYER, intended: stale });
+    await db.query(`select public.redact_order_guardian_addresses($1, $2)`, [old, stale]);
+    check('25: boundary — a holder with no creation time cannot be placed, so the row is matched (fails closed: cleared and held)',
+      (await ord(noTime)).intended_guardian_email === null && (await ord(noTime)).held_at !== null);
+
+    // --- J. An order's profile invite goes only to the order's confirmed recipient (database rule) ---
+    const pinv = (oid, email) => errOf(() => w.service(`insert into public.player_invites (player_id, code, invited_email, origin, order_id) values ($1, $2, $3, 'order_approval', $4)`,
+      [w.player, `S25J-${crypto.randomUUID().slice(0, 8).toUpperCase()}`, email, oid]));
+    const plain = await mkOrder({ purchaser: BUYER });
+    const named2 = await mkOrder({ purchaser: BUYER, intended: 'S25-named@example.test' });
+    const genuine = await mkOrder({ purchaser: BUYER, authority: 'guardian_approved' });
+    await mkDecl(genuine, 'S25-declared@example.test');
+    await mkAppr(genuine, 'S25-real-guardian@example.test', 'approved');
+    const selfApproved = await mkOrder({ purchaser: BUYER, authority: 'guardian_approved' });
+    await mkDecl(selfApproved, 'S25-declared@example.test');
+    await mkAppr(selfApproved, ' s25-declared@example.test', 'approved');
+    const pendingGift = await mkOrder({ purchaser: BUYER, authority: 'guardian_approval_pending' });
+    const J = {
+      purchaserOk: await pinv(plain, ` ${BUYER.toUpperCase()}`),
+      purchaserOther: await pinv(plain, OTHER),
+      namedOk: await pinv(named2, 'S25-named@example.test'),
+      namedButBuyer: await pinv(named2, BUYER),
+      erasedNamed: await pinv(o.namedDone, BUYER),
+      held: await pinv(o.named, BUYER),
+      giftOk: await pinv(genuine, 'S25-Real-Guardian@example.test'),
+      giftBuyer: await pinv(genuine, BUYER),
+      giftSelfApproved: await pinv(selfApproved, 's25-declared@example.test'),
+      giftPending: await pinv(pendingGift, OTHER),
+      redactedApproval: await pinv(o.giftDeclined, OTHER),
+      noAddress: await pinv(plain, null),
+      missingOrder: await pinv(id(), BUYER),
+    };
+    const refused = (e) => e === 'EMINV:order_invite_recipient_unconfirmed';
+    check('25: order invites: only the confirmed recipient (purchaser when nobody was named; the named guardian; a genuine approving guardian), never a held order, an erased named guardian, the buyer of a gift, a self-approval, a pending gift, no address or a missing order',
+      J.purchaserOk === null && J.namedOk === null && J.giftOk === null
+        && ['purchaserOther', 'namedButBuyer', 'erasedNamed', 'held', 'giftBuyer', 'giftSelfApproved', 'giftPending', 'redactedApproval', 'noAddress', 'missingOrder'].every((k) => refused(J[k])), JSON.stringify(J));
+    const okId = (await db.query(`select id from public.player_invites where order_id = $1 and origin = 'order_approval'`, [named2])).rows[0].id;
+    const J2 = {
+      redirect: await errOf(() => w.service(`update public.player_invites set invited_email = $2 where id = $1`, [okId, OTHER])),
+      clear: await errOf(() => db.query(`update public.player_invites set invited_email = null where id = $1`, [okId])),
+      other: await errOf(() => w.service(`insert into public.player_invites (player_id, code, invited_email, origin) values ($1, 'S25J-SECOND', $2, 'second_guardian')`, [w.player, OTHER])),
+    };
+    check('25: …redirecting an order invite to another address is refused; clearing its address (an erasure) and invites that are not order invites are unaffected',
+      refused(J2.redirect) && J2.clear === null && J2.other === null, JSON.stringify(J2));
   } catch (e) {
     check('25: order guardian redaction', false, e.stack);
+  }
+  await db.close();
+}
+
+console.log('\n=== 26. 0102: held orders cannot be checked out or paid; only a fresh genuine approval or a refund resolves them ===');
+{
+  const w = await world({ through: '0102' });
+  const { db, people } = w;
+  const emailOf = async (uid) => (await db.query(`select email from auth.users where id = $1`, [uid])).rows[0]?.email;
+  const ord = (oid) => db.query(`select * from public.orders where id = $1`, [oid]).then((r) => r.rows[0]);
+  const hash = () => crypto.createHash('sha256').update(crypto.randomUUID()).digest('hex');
+  let k = 0;
+  const giftOrder = async (buyer, buyerEmail, guardianEmail, { authority = 'guardian_approved', payment = 'order_intent' } = {}) => {
+    const oid = (await db.query(`insert into public.orders (order_ref, purchaser_email, source, payment_status, authority_status,
+        currency, pricing_tier, paid_player_count, total_print_quantity, unit_price_pence, subtotal_pence, pricing_version, priced_at)
+      values ($1, $2, 'standalone_order', $3, $4, 'GBP', 'single', 1, 1, 2499, 2499, 1, now()) returning id`, [`S26-${++k}-${crypto.randomUUID().slice(0, 6)}`, buyerEmail, payment, authority])).rows[0].id;
+    await db.query(`insert into public.builder_order_authority_declarations (submission_key, order_id, adult_user_id, adult_email, relationship, declaration_version, confirmed_age_and_authority, confirmed_photo_permission, confirmed_card_creation)
+      values ($1, $2, $3, $4, 'other_adult', 'v1', true, true, true)`, [id(), oid, buyer, buyerEmail]);
+    if (guardianEmail) await db.query(`insert into public.builder_guardian_approval_requests (order_id, guardian_email, token_hash, status, declaration_version, expires_at, responded_at)
+      values ($1, $2, $3, 'approved', 'v1', now() + interval '14 days', now() - interval '1 hour')`, [oid, guardianEmail, hash()]);
+    return oid;
+  };
+  const checkout = async (buyer, oid) => (await w.user(buyer, `select public.begin_gate3_checkout($1) r`, [oid])).rows[0].r;
+  const paid = async (oid, ev, shop = 'SHOP-1') => (await w.service(`select public.apply_gate3_payment_event($1, $2, 'orders/paid', 'paid', $3, 2499, 'GBP') r`, [oid, ev, shop])).rows[0].r;
+  const event = async (oid, ev, to) => (await w.service(`select public.apply_gate3_payment_event($1, $2, $3, $4) r`, [oid, ev, `orders/${to}`, to])).rows[0].r;
+  const request = (oid, email, h) => errOf(() => w.service(`select public.create_builder_guardian_approval_request($1, $2, $3, 'v1')`, [oid, email, h]));
+  const respond = async (h, d = 'approved') => (await w.service(`select public.respond_to_builder_guardian_approval($1, $2) r`, [h, d])).rows[0].r;
+  const audits = (oid, t) => n(db, `select count(*)::int n from public.builder_authority_audit_events where order_id = $1 and event_type = $2`, [oid, t]);
+  const refusedPayments = (oid) => n(db, `select count(*)::int n from public.payment_state_events where order_id = $1 and reason like 'paid_refused_order_held%'`, [oid]);
+  try {
+    const b = id(); await w.person(b); const eb = await emailOf(b);
+    // --- A. Checkout opened before the hold; the guardian is then erased ---
+    const g = id(); await w.person(g); const eg = await emailOf(g);
+    const oA = await giftOrder(b, eb, eg);
+    const c1 = await checkout(b, oA);
+    await deleteAccount(w, g);
+    const afterHold = await ord(oA);
+    const c2 = await checkout(b, oA);
+    check('26: checkout opened before the hold (pending_payment) cannot be re-opened once held (order_held); nothing written',
+      c1.ok === true && afterHold.payment_status === 'pending_payment' && afterHold.held_at !== null && c2.ok === false && c2.reason === 'order_held'
+        && (await ord(oA)).payment_status === 'pending_payment', JSON.stringify([c1, c2]));
+    // --- B. Webhook payment after the hold ---
+    const p1 = await paid(oA, 'S26-EV-1', 'SHOP-A1');
+    const p1again = await paid(oA, 'S26-EV-1', 'SHOP-A1');
+    const p2 = await paid(oA, 'S26-EV-2', 'SHOP-A2');
+    check('26: a payment after the hold is never applied: recorded once per delivery (with the Shopify order id) and reported order_held; a redelivery is a duplicate; the order stays unpaid',
+      p1.applied === false && p1.reason === 'order_held' && p1again.reason === 'duplicate_event' && p2.reason === 'order_held'
+        && (await refusedPayments(oA)) === 2 && (await ord(oA)).payment_status === 'pending_payment'
+        && await n(db, `select count(*)::int n from public.payment_state_events where order_id = $1 and reason = 'paid_refused_order_held:shopify_order_id=SHOP-A1'`, [oA]) === 1, JSON.stringify([p1, p1again, p2]));
+    // --- C. Fresh genuine approval through the normal flow releases the hold ---
+    const h1 = hash();
+    const r1 = await request(oA, 'S26-new-guardian@example.test', h1);
+    const restarted = await ord(oA);
+    const h2 = hash();
+    const r2 = await request(oA, 'S26-new-guardian@example.test', h2);
+    check('26: the normal "name the guardian" step restarts a held, unpaid order whose approval was erased: back to awaiting approval (audited once), hold kept; a repeat replaces the pending request without a second restart',
+      r1 === null && r2 === null && restarted.authority_status === 'guardian_approval_pending' && restarted.held_at !== null
+        && (await audits(oA, 'guardian_request_restarted_after_hold')) === 1
+        && await n(db, `select count(*)::int n from public.builder_guardian_approval_requests where order_id = $1 and status = 'pending'`, [oA]) === 1, JSON.stringify([r1, r2]));
+    const stillHeld = await checkout(b, oA);
+    const stale = await respond(h1);
+    const ok = await respond(h2);
+    const released = await ord(oA);
+    const again = await respond(h2);
+    check('26: the new guardian\'s approval (not the buyer\'s address) releases the hold in the same write (audited); the replaced token does nothing; a repeat response does nothing',
+      stillHeld.ok === false && stale.ok === false && ok.ok === true && released.authority_status === 'guardian_approved' && released.held_at === null && released.held_reason === null
+        && (await audits(oA, 'hold_released_by_guardian_approval')) === 1 && again.ok === false, JSON.stringify([stillHeld, stale, ok, again]));
+    const c3 = await checkout(b, oA);
+    const p3 = await paid(oA, 'S26-EV-3', 'SHOP-A3');
+    check('26: after the fresh approval, checkout and payment work again (the earlier refused payments stay recorded)',
+      c3.ok === true && p3.applied === true && (await ord(oA)).payment_status === 'paid' && (await refusedPayments(oA)) === 2, JSON.stringify([c3, p3]));
+
+    // --- D. A fresh "approval" from the buyer's own address does not release the hold ---
+    const g2 = id(); await w.person(g2); const eg2 = await emailOf(g2);
+    const oD = await giftOrder(b, eb, eg2);
+    await deleteAccount(w, g2);
+    const hD = hash();
+    await w.service(`update public.builder_guardian_approval_requests set status = 'revoked' where order_id = $1 and status = 'pending'`, [oD]);
+    const rD = await errOf(() => db.query(`select public.create_builder_guardian_approval_request($1, $2, $3, 'v1')`, [oD, eb, hD]));
+    const okD = await respond(hD);
+    check('26: an approval from the buyer\'s own address leaves the order held (and checkout refused)',
+      rD === null && okD.ok === true && (await ord(oD)).held_at !== null && (await checkout(b, oD)).reason === 'order_held', JSON.stringify([rD, okD]));
+
+    // --- E. A paid held order must be refunded or cancelled; it is never restarted or released ---
+    const g3 = id(); await w.person(g3); const eg3 = await emailOf(g3);
+    const oE = await giftOrder(b, eb, eg3);
+    await checkout(b, oE);
+    await paid(oE, 'S26-EV-E1', 'SHOP-E1');
+    await deleteAccount(w, g3);
+    const paidHeld = await ord(oE);
+    const E = {
+      staff: await errOf(() => w.service(`update public.orders set payment_status = 'fulfilled', approved_at = now(), approved_by = $2 where id = $1`, [oE, people.staff])),
+      restart: await request(oE, 'S26-other@example.test', hash()),
+      release: await errOf(() => w.service(`update public.orders set held_at = null, held_reason = null where id = $1`, [oE])),
+    };
+    check('26: a paid order is held when its guardian is erased; it cannot be approved, restarted (refund or cancel first) or released',
+      paidHeld.payment_status === 'paid' && paidHeld.held_at !== null && E.staff === 'EMHLD:order_held' && E.restart === 'EMHLD:held_order_paid_refund_or_cancel_first'
+        && E.release === 'EMHLD:hold_release_requires_fresh_guardian_approval', JSON.stringify(E));
+    const refund = await event(oE, 'S26-EV-E2', 'refunded');
+    const refundAgain = await event(oE, 'S26-EV-E2', 'refunded');
+    const afterRefund = { checkout: await checkout(b, oE), restart: await request(oE, 'S26-other@example.test', hash()) };
+    check('26: the refund applies to the held order (once; a redelivery is a duplicate); it stays held and closed: checkout refused, no restart',
+      refund.applied === true && refundAgain.reason === 'duplicate_event' && (await ord(oE)).payment_status === 'refunded' && (await ord(oE)).held_at !== null
+        && afterRefund.checkout.ok === false && afterRefund.restart === 'EMHLD:held_order_paid_refund_or_cancel_first', JSON.stringify([refund, afterRefund]));
+    // Unpaid held order cancelled.
+    const g4 = id(); await w.person(g4); const eg4 = await emailOf(g4);
+    const oF = await giftOrder(b, eb, eg4);
+    await deleteAccount(w, g4);
+    const cancel = await event(oF, 'S26-EV-F1', 'cancelled');
+    check('26: an unpaid held order can be cancelled; it stays held', cancel.applied === true && (await ord(oF)).payment_status === 'cancelled' && (await ord(oF)).held_at !== null, JSON.stringify(cancel));
+    // A held ordinary (non-gift) order has no approval flow: no restart.
+    const g5 = id(); await w.person(g5); const eg5 = await emailOf(g5);
+    const oG = (await db.query(`insert into public.orders (order_ref, purchaser_email, intended_guardian_email, source) values ('S26-PLAIN', $1, $2, 'standalone_order') returning id`, [eb, eg5])).rows[0].id;
+    await deleteAccount(w, g5);
+    const rG = await request(oG, 'S26-other@example.test', hash());
+    check('26: a held ordinary order (named guardian erased) cannot be restarted through the gift approval step; it stays held',
+      rG?.includes('order is not awaiting guardian approval') && (await ord(oG)).held_at !== null && (await ord(oG)).authority_status === null, rG);
+    // Rollbacks refuse while 0102 is needed.
+    const rb = async (file, key, ack) => {
+      const sql = fs.readFileSync(path.resolve(HERE, `../../rollback/${file}`), 'utf8');
+      await db.exec('begin;');
+      try { await db.query(`select set_config($1, $2, true)`, [key, ack]); await db.exec(sql); return null; } catch (e) { await db.exec('rollback;').catch(() => {}); return e.message; }
+    };
+    const rb102 = await rb('0102_rollback.sql', 'emblem.acknowledge_0102_rollback', 'ALLOW-HELD-ORDER-PAYMENT');
+    const rb101 = await rb('0101_rollback.sql', 'emblem.acknowledge_0101_rollback', 'REOPEN-SELF-APPROVED-GIFT-CHECKOUT');
+    check('26: the 0102 rollback refuses while a held order is unfinished; the 0101 rollback refuses while 0102 is applied',
+      rb102?.includes('held order(s) are not finished') && rb101?.includes('0102 is still applied'), `${rb102} | ${rb101}`);
+  } catch (e) {
+    check('26: held orders', false, e.stack);
   }
   await db.close();
 }

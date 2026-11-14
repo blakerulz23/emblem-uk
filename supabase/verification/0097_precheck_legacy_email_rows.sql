@@ -22,6 +22,10 @@ set transaction read only;
 -- COUNTS ONLY. It returns no ids, emails or names. Do not change it to list
 -- rows, and never export them.
 --
+-- Addresses are compared lower-cased with leading and trailing whitespace
+-- removed (including tabs, newlines, no-break and zero-width no-break
+-- spaces): the same rule as 0097's email_match_key and 0101.
+--
 -- Columns:
 --   STOP auth_retry_rows_with_email        pending_auth_deletions rows holding an email (from 0097 no retry
 --                                          row is written with one; the auth user id is enough)
@@ -64,20 +68,20 @@ select
      select invited_email from public.player_invites where invited_email is not null
      union all select invited_email from public.coach_invites where invited_email is not null
      union all select invited_email from public.team_invites where invited_email is not null) i
-   where lower(btrim(i.invited_email)) in (
-     select lower(btrim(d.email)) from public.pending_profile_deletions d
+   where lower(regexp_replace(i.invited_email, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g')) in (
+     select lower(regexp_replace(d.email, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g')) from public.pending_profile_deletions d
       where d.email is not null and not exists (select 1 from auth.users u where u.id = d.auth_user_id)
      union
-     select lower(btrim(a.email)) from public.pending_auth_deletions a
+     select lower(regexp_replace(a.email, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g')) from public.pending_auth_deletions a
       where a.email is not null and not exists (select 1 from auth.users u where u.id = a.auth_user_id))) as invites_to_deleted_accounts,
   (select count(*) from (
      select intended_guardian_email as addr from public.orders where intended_guardian_email is not null
      union all select guardian_email from public.builder_guardian_approval_requests where guardian_email is not null) g
-   where lower(btrim(g.addr)) in (
-     select lower(btrim(d.email)) from public.pending_profile_deletions d
+   where lower(regexp_replace(g.addr, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g')) in (
+     select lower(regexp_replace(d.email, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g')) from public.pending_profile_deletions d
       where d.email is not null and not exists (select 1 from auth.users u where u.id = d.auth_user_id)
      union
-     select lower(btrim(a.email)) from public.pending_auth_deletions a
+     select lower(regexp_replace(a.email, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g')) from public.pending_auth_deletions a
       where a.email is not null and not exists (select 1 from auth.users u where u.id = a.auth_user_id))) as order_guardian_addresses_of_deleted_accounts,
   (select count(*) from public.pending_profile_deletions where status = 'pending' and email is not null) as pending_reviews_with_email,
   (select count(*) from public.player_deletion_requests where status = 'pending' and requester_email is not null)
@@ -86,4 +90,4 @@ select
      select invited_email from public.player_invites where used_at is null and invited_email is not null
      union all select invited_email from public.coach_invites where used_at is null and invited_email is not null
      union all select invited_email from public.team_invites where used_at is null and invited_email is not null) i
-   where not exists (select 1 from auth.users u where lower(btrim(u.email::text)) = lower(btrim(i.invited_email)))) as unused_invites_with_email_no_account;
+   where not exists (select 1 from auth.users u where lower(regexp_replace(u.email::text, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g')) = lower(regexp_replace(i.invited_email, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g')))) as unused_invites_with_email_no_account;

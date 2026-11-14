@@ -90,6 +90,10 @@ begin
   if to_regclass('public.deletion_review_access_suspensions') is not null then
     raise exception '0097 rollback refused: 0098 is still applied; roll back 0098 first';
   end if;
+  -- 0102 reads 0097's holds; roll it back first.
+  if (select prosrc from pg_proc where oid = to_regprocedure('public.begin_gate3_checkout(uuid)')) like '%order_held%' then
+    raise exception '0097 rollback refused: 0102 is still applied; roll back 0102 first';
+  end if;
   select p.prosrc into v_body from pg_proc p where p.oid = to_regprocedure('public.delete_own_guardian_account()');
   if v_body is null or v_body not like '%public.erase_account_for_deletion(v_uid, v_email, null)%' then
     raise exception '0097 rollback refused: delete_own_guardian_account() is not the 0097 definition';
@@ -132,7 +136,10 @@ begin
   end if;
   if to_regprocedure('public.redact_order_guardian_addresses(uuid, text)') is null
      or to_regprocedure('public.refuse_held_order_progress()') is null
-     or to_regprocedure('public.refuse_redacted_approval_change()') is null then
+     or to_regprocedure('public.refuse_redacted_approval_change()') is null
+     or to_regprocedure('public.refuse_unconfirmed_order_invite()') is null
+     or to_regprocedure('public.email_match_key(text)') is null
+     or to_regprocedure('public.erased_account_addresses(uuid, text)') is null then
     raise exception '0097 rollback refused: 0097 is not applied (order guardian redaction missing)';
   end if;
   select (select count(*) from public.orders where intended_guardian_erased_at is not null or held_at is not null)
@@ -145,6 +152,8 @@ end;
 $$;
 
 -- 12 reversed (no row carries a section 12 marker: checked above).
+drop trigger player_invites_order_recipient_guard on public.player_invites;
+drop function public.refuse_unconfirmed_order_invite();
 drop trigger builder_guardian_approval_requests_redacted_guard on public.builder_guardian_approval_requests;
 drop function public.refuse_redacted_approval_change();
 drop trigger orders_held_guard on public.orders;
@@ -190,6 +199,8 @@ drop function public.complete_pending_profile_deletion(uuid, text);
 drop function public.erase_account_for_deletion(uuid, text, uuid);
 drop function public.revoke_invites_addressed_to(uuid, text);
 drop function public.redact_order_guardian_addresses(uuid, text);
+drop function public.erased_account_addresses(uuid, text);
+drop function public.email_match_key(text);
 drop function public.account_deletion_blocking_reason(uuid);
 
 -- 4 reversed: the 0076 function body, exactly.

@@ -154,6 +154,18 @@
 --      Nothing on an order changes because its buyer erased their account,
 --      unless the named guardian's address is the same address. A trigger
 --      refuses putting an address back on a redacted approval request.
+--      A hold has no release override: it lifts only after a fresh, genuine
+--      guardian approval of the still unpaid order (0102 restarts the
+--      approval through the normal flow); a paid held order is refunded or
+--      cancelled. Checkout and payment refuse a held order (0102).
+--      Matching (sections 10 and 12): one normalisation (email_match_key),
+--      and a time boundary: if another sign-in now holds the address, only
+--      rows created before that sign-in are the erased account's. The
+--      erasure locks the invite and approval-request tables against
+--      concurrent writes until it commits, and a trigger lets an order's
+--      profile invite go only to the order's confirmed recipient (never an
+--      erased guardian, never a held order), so an approval or invite racing
+--      the erasure is either revoked by it or refused after it.
 --  Order purchaser emails (orders.purchaser_email) are NOT changed by any
 --  erasure: they are kept with the order for financial, contractual and
 --  audit purposes (docs/order-email-retention.md).
@@ -216,8 +228,21 @@ begin
                      and column_name in ('guardian_email_redacted_at', 'guardian_distinct_from_buyer'))))
      or to_regprocedure('public.redact_order_guardian_addresses(uuid, text)') is not null
      or to_regprocedure('public.refuse_held_order_progress()') is not null
-     or to_regprocedure('public.refuse_redacted_approval_change()') is not null then
+     or to_regprocedure('public.refuse_redacted_approval_change()') is not null
+     or to_regprocedure('public.email_match_key(text)') is not null
+     or to_regprocedure('public.erased_account_addresses(uuid, text)') is not null
+     or to_regprocedure('public.refuse_unconfirmed_order_invite()') is not null then
     raise exception '0097 refused: the 0097 order guardian redaction already exists (0097 already applied)';
+  end if;
+  -- Address matching places rows in time (4a1): every table it reads must
+  -- have a creation time, and Auth sign-ins theirs.
+  if (select count(*) from information_schema.columns
+       where column_name = 'created_at'
+         and ((table_schema = 'public' and table_name in ('player_invites', 'coach_invites', 'team_invites', 'orders', 'builder_guardian_approval_requests'))
+           or (table_schema = 'auth' and table_name = 'users'))) <> 6
+     or (select count(*) from information_schema.columns
+          where table_schema = 'public' and table_name = 'player_invites' and column_name in ('origin', 'order_id')) <> 2 then
+    v_problems := v_problems || 'a created_at column (invites, orders, approval requests, auth.users) or player_invites.origin/order_id is missing'::text;
   end if;
   if (select count(*) from information_schema.columns
        where table_schema = 'public'
@@ -406,13 +431,67 @@ revoke all on function public.account_deletion_blocking_reason(uuid) from public
 alter function public.account_deletion_blocking_reason(uuid) owner to postgres;
 
 -- ---------------------------------------------------------------------------
+-- 4a1. Address matching for an account being erased (sections 10 and 12),
+--      owner-only.
+-- ---------------------------------------------------------------------------
+-- email_match_key: the one normalisation every 0097 address comparison uses.
+-- Lower-cased, with leading and trailing whitespace removed, including tabs,
+-- newlines, no-break and zero-width no-break spaces: the same rule as 0101's
+-- gift_order_checkout_block_reason and the app's normaliseEmail. NULL for no
+-- address.
+create function public.email_match_key(p_email text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select nullif(lower(regexp_replace(p_email, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g')), '')
+$$;
+revoke all on function public.email_match_key(text) from public, anon, authenticated, service_role;
+alter function public.email_match_key(text) owner to postgres;
+
+-- erased_account_addresses: the addresses an erasure may match, each with a
+-- time boundary. The addresses are the one the caller holds (possibly older:
+-- a staff review's record) and the Auth account's current one. If another
+-- sign-in now holds the same address, that address was free again before
+-- that sign-in was created, so only rows created before that moment can be
+-- the erased account's (created_before). Rows from then on belong to the
+-- current holder and are never matched. A holder with no creation time
+-- cannot be placed, so no boundary is set for it (the rows are matched:
+-- redaction and holds fail closed).
+create function public.erased_account_addresses(p_profile_id uuid, p_email text)
+returns table (match_key text, created_before timestamptz)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select k.match_key,
+         (select min(u.created_at) from auth.users u
+           where u.id is distinct from p_profile_id
+             and public.email_match_key(u.email::text) = k.match_key)
+    from (select distinct public.email_match_key(a) as match_key
+            from unnest(array[p_email, (select u.email::text from auth.users u where u.id = p_profile_id)]) as a) k
+   where k.match_key is not null
+$$;
+revoke all on function public.erased_account_addresses(uuid, text) from public, anon, authenticated, service_role;
+alter function public.erased_account_addresses(uuid, text) owner to postgres;
+
+-- ---------------------------------------------------------------------------
 -- 4a2. Invites addressed to an account being erased (section 10), owner-only.
 -- ---------------------------------------------------------------------------
--- Called by both final-erasure paths: erase_account_for_deletion, and staff
--- closing a review whose account was already deleted another way
--- (complete_pending_profile_deletion, account_already_deleted). Its
--- addresses: the one the caller holds and the Auth account's current one,
--- compared case-insensitively and trimmed. Changes nothing on a repeat.
+-- Called first by both final-erasure paths: erase_account_for_deletion, and
+-- staff closing a review whose account was already deleted another way
+-- (complete_pending_profile_deletion, account_already_deleted). Matching:
+-- erased_account_addresses (4a1). Changes nothing on a repeat.
+--
+-- It first locks the three invite tables and the guardian approval requests
+-- against concurrent writes (SHARE ROW EXCLUSIVE) until the erasure commits:
+-- an invite or approval request being created at the same moment either
+-- commits first (and is then matched here) or waits and is then checked
+-- against the erased state (section 12's guards). Plain reads are not
+-- blocked. A deadlock with a concurrent writer aborts one of them, never
+-- both half-done.
 create function public.revoke_invites_addressed_to(p_profile_id uuid, p_email text)
 returns void
 language plpgsql
@@ -421,31 +500,47 @@ set search_path = ''
 as $$
 declare
   v_uid uuid := p_profile_id;
-  v_emails text[];
 begin
-  select coalesce(array_agg(distinct lower(btrim(a))) filter (where a is not null and btrim(a) <> ''), '{}')
-    into v_emails
-    from unnest(array[p_email, (select u.email::text from auth.users u where u.id = v_uid)]) as a;
+  lock table public.player_invites, public.coach_invites, public.team_invites,
+             public.builder_guardian_approval_requests in share row exclusive mode;
   -- Unused (expired or not): revoked for good; the sent code can never match again.
-  update public.player_invites
+  update public.player_invites i
      set revoked_at = now(), revoked_reason = 'recipient_account_erased', invited_email = null,
-         expires_at = least(expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
-   where used_at is null and revoked_at is null and lower(btrim(invited_email)) = any(v_emails);
-  update public.coach_invites
+         expires_at = least(i.expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
+    from public.erased_account_addresses(v_uid, p_email) a
+   where i.used_at is null and i.revoked_at is null
+     and public.email_match_key(i.invited_email) = a.match_key
+     and (a.created_before is null or i.created_at < a.created_before);
+  update public.coach_invites i
      set revoked_at = now(), revoked_reason = 'recipient_account_erased', invited_email = null,
-         expires_at = least(expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
-   where used_at is null and revoked_at is null and lower(btrim(invited_email)) = any(v_emails);
-  update public.team_invites
+         expires_at = least(i.expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
+    from public.erased_account_addresses(v_uid, p_email) a
+   where i.used_at is null and i.revoked_at is null
+     and public.email_match_key(i.invited_email) = a.match_key
+     and (a.created_before is null or i.created_at < a.created_before);
+  update public.team_invites i
      set revoked_at = now(), revoked_reason = 'recipient_account_erased', invited_email = null,
-         expires_at = least(expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
-   where used_at is null and revoked_at is null and lower(btrim(invited_email)) = any(v_emails);
+         expires_at = least(i.expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
+    from public.erased_account_addresses(v_uid, p_email) a
+   where i.used_at is null and i.revoked_at is null
+     and public.email_match_key(i.invited_email) = a.match_key
+     and (a.created_before is null or i.created_at < a.created_before);
   -- Used: the recipient's address goes; the record of the use stays.
-  update public.player_invites set invited_email = null
-   where invited_email is not null and (lower(btrim(invited_email)) = any(v_emails) or used_by = v_uid);
-  update public.coach_invites set invited_email = null
-   where invited_email is not null and (lower(btrim(invited_email)) = any(v_emails) or used_by = v_uid);
-  update public.team_invites set invited_email = null
-   where invited_email is not null and (lower(btrim(invited_email)) = any(v_emails) or used_by = v_uid);
+  update public.player_invites i set invited_email = null
+   where i.invited_email is not null
+     and (i.used_by = v_uid or exists (select 1 from public.erased_account_addresses(v_uid, p_email) a
+                                        where public.email_match_key(i.invited_email) = a.match_key
+                                          and (a.created_before is null or i.created_at < a.created_before)));
+  update public.coach_invites i set invited_email = null
+   where i.invited_email is not null
+     and (i.used_by = v_uid or exists (select 1 from public.erased_account_addresses(v_uid, p_email) a
+                                        where public.email_match_key(i.invited_email) = a.match_key
+                                          and (a.created_before is null or i.created_at < a.created_before)));
+  update public.team_invites i set invited_email = null
+   where i.invited_email is not null
+     and (i.used_by = v_uid or exists (select 1 from public.erased_account_addresses(v_uid, p_email) a
+                                        where public.email_match_key(i.invited_email) = a.match_key
+                                          and (a.created_before is null or i.created_at < a.created_before)));
 end;
 $$;
 revoke all on function public.revoke_invites_addressed_to(uuid, text) from public, anon, authenticated, service_role;
@@ -454,10 +549,11 @@ alter function public.revoke_invites_addressed_to(uuid, text) owner to postgres;
 -- ---------------------------------------------------------------------------
 -- 4a3. A named guardian's address on orders (section 12), owner-only.
 -- ---------------------------------------------------------------------------
--- Same callers and address matching as 4a2. The buyer's own address
--- (orders.purchaser_email, builder_order_authority_declarations.adult_email)
--- is never changed here. Changes nothing on a repeat: nothing matches once
--- the addresses are gone, so a hold staff have released is not set again.
+-- Same callers, matching and boundary as 4a2 (which runs first and holds the
+-- table locks). The buyer's own address (orders.purchaser_email,
+-- builder_order_authority_declarations.adult_email) is never changed here.
+-- Changes nothing on a repeat: nothing matches once the addresses are gone,
+-- so a hold that a fresh guardian approval released is not set again.
 create function public.redact_order_guardian_addresses(p_profile_id uuid, p_email text)
 returns void
 language plpgsql
@@ -466,48 +562,44 @@ set search_path = ''
 as $$
 declare
   v_uid uuid := p_profile_id;
-  v_emails text[];
   v_live_orders uuid[];
   v_named_orders uuid[];
 begin
-  select coalesce(array_agg(distinct lower(btrim(a))) filter (where a is not null and btrim(a) <> ''), '{}')
-    into v_emails
-    from unnest(array[p_email, (select u.email::text from auth.users u where u.id = v_uid)]) as a;
-  if cardinality(v_emails) = 0 then
-    return;
-  end if;
-
   -- Gift orders whose live approval request (pending or approved) names
   -- this guardian: held below.
   select coalesce(array_agg(distinct r.order_id), '{}') into v_live_orders
     from public.builder_guardian_approval_requests r
-   where r.guardian_email is not null and lower(btrim(r.guardian_email)) = any(v_emails)
-     and r.status in ('pending', 'approved');
+    join public.erased_account_addresses(v_uid, p_email) a
+      on public.email_match_key(r.guardian_email) = a.match_key
+     and (a.created_before is null or r.created_at < a.created_before)
+   where r.status in ('pending', 'approved');
 
   -- The approval evidence stays without the address. Whether the approving
-  -- address was the buyer's is worked out first, by 0101's rule (trimmed,
-  -- lower-cased, against the purchaser and every declaring adult). A
-  -- pending request is revoked: its emailed link can no longer be used.
+  -- address was the buyer's is worked out first, by the same rule as 0101
+  -- (against the purchaser and every declaring adult). A pending request is
+  -- revoked: its emailed link can no longer be used.
   update public.builder_guardian_approval_requests r
      set guardian_distinct_from_buyer = (
-           lower(regexp_replace(r.guardian_email, '^[\s ﻿]+|[\s ﻿]+$', '', 'g'))
-             is distinct from (select lower(regexp_replace(coalesce(o.purchaser_email, ''), '^[\s ﻿]+|[\s ﻿]+$', '', 'g'))
-                                 from public.orders o where o.id = r.order_id)
+           public.email_match_key(r.guardian_email)
+             is distinct from (select public.email_match_key(o.purchaser_email) from public.orders o where o.id = r.order_id)
            and not exists (select 1 from public.builder_order_authority_declarations d
                             where d.order_id = r.order_id
-                              and lower(regexp_replace(d.adult_email, '^[\s ﻿]+|[\s ﻿]+$', '', 'g'))
-                                  = lower(regexp_replace(r.guardian_email, '^[\s ﻿]+|[\s ﻿]+$', '', 'g')))),
+                              and public.email_match_key(d.adult_email) = public.email_match_key(r.guardian_email))),
          guardian_email = null,
          guardian_email_redacted_at = now(),
          status = case when r.status = 'pending' then 'revoked' else r.status end
-   where r.guardian_email is not null and lower(btrim(r.guardian_email)) = any(v_emails);
+    from public.erased_account_addresses(v_uid, p_email) a
+   where public.email_match_key(r.guardian_email) = a.match_key
+     and (a.created_before is null or r.created_at < a.created_before);
 
   -- Orders that named this guardian: the address goes, the fact stays.
   with redacted as (
     update public.orders o
        set intended_guardian_email = null,
            intended_guardian_erased_at = coalesce(o.intended_guardian_erased_at, now())
-     where o.intended_guardian_email is not null and lower(btrim(o.intended_guardian_email)) = any(v_emails)
+      from public.erased_account_addresses(v_uid, p_email) a
+     where public.email_match_key(o.intended_guardian_email) = a.match_key
+       and (a.created_before is null or o.created_at < a.created_before)
      returning o.id)
   select coalesce(array_agg(id), '{}') into v_named_orders from redacted;
 
@@ -522,7 +614,6 @@ end;
 $$;
 revoke all on function public.redact_order_guardian_addresses(uuid, text) from public, anon, authenticated, service_role;
 alter function public.redact_order_guardian_addresses(uuid, text) owner to postgres;
-
 -- ---------------------------------------------------------------------------
 -- 4b. The account erasure (owner-only): the whole 0076 clean-up, then the
 --     profile delete. Runs only when the account is actually being deleted.
@@ -1227,16 +1318,45 @@ comment on column public.builder_guardian_approval_requests.guardian_distinct_fr
   'Worked out at redaction (0097): whether guardian_email differed from the buyer''s addresses (purchaser and declaring adults), by 0101''s rule.';
 
 -- A held order cannot be approved or fulfilled, by any role (payment events
--- still apply); the record that a named guardian was erased is permanent.
+-- that close it, refunded / cancelled / failed, still apply; a 'paid' event
+-- is refused by 0102). There is no release override: a hold is lifted only
+-- in the write that follows a fresh, genuine guardian approval of the still
+-- unpaid order (an approved request with an address, answered after the
+-- hold, from an address that is neither the purchaser's nor a declaring
+-- adult's: the 0101 rule). A paid held order must be refunded or cancelled;
+-- it is never released. The hold cannot be rewritten (a new time could
+-- otherwise make an older approval look fresh), and the record that a named
+-- guardian was erased is permanent. Security definer: it reads the approval
+-- tables whatever the writing role.
 create function public.refuse_held_order_progress()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $fn$
 begin
   if old.intended_guardian_erased_at is not null
      and new.intended_guardian_erased_at is distinct from old.intended_guardian_erased_at then
     raise exception using errcode = 'EMHLD', message = 'intended_guardian_erasure_is_permanent';
+  end if;
+  if old.held_at is not null and new.held_at is not null
+     and (new.held_at is distinct from old.held_at or new.held_reason is distinct from old.held_reason) then
+    raise exception using errcode = 'EMHLD', message = 'hold_cannot_be_rewritten';
+  end if;
+  if old.held_at is not null and new.held_at is null then
+    if not (new.payment_status in ('order_intent', 'pending_payment')
+            and new.authority_status = 'guardian_approved'
+            and exists (
+              select 1 from public.builder_guardian_approval_requests r
+               where r.order_id = new.id and r.status = 'approved'
+                 and public.email_match_key(r.guardian_email) is not null
+                 and r.responded_at > old.held_at
+                 and public.email_match_key(r.guardian_email) is distinct from public.email_match_key(new.purchaser_email)
+                 and not exists (select 1 from public.builder_order_authority_declarations d
+                                  where d.order_id = new.id
+                                    and public.email_match_key(d.adult_email) = public.email_match_key(r.guardian_email)))) then
+      raise exception using errcode = 'EMHLD', message = 'hold_release_requires_fresh_guardian_approval';
+    end if;
   end if;
   if new.held_at is not null and (
        (new.payment_status = 'fulfilled' and old.payment_status is distinct from 'fulfilled')
@@ -1276,5 +1396,78 @@ alter function public.refuse_redacted_approval_change() owner to postgres;
 revoke all on function public.refuse_redacted_approval_change() from public, anon, authenticated, service_role;
 create trigger builder_guardian_approval_requests_redacted_guard before update on public.builder_guardian_approval_requests
   for each row execute function public.refuse_redacted_approval_change();
+
+-- An order's profile invite (player_invites, origin order_approval) may only
+-- go to the order's confirmed recipient, decided in the same transaction as
+-- the write, by the same rule as the app (gift-order-guardian.ts):
+--   - a gift order: only once guardian_approved, and only to the address of
+--     its latest approved request, which must still hold an address and be
+--     neither the purchaser's nor a declaring adult's (0101 rule);
+--   - any other order: its named guardian; if the named guardian's account
+--     was erased (intended_guardian_erased_at), nobody; if none was ever
+--     named, the purchaser.
+-- Never while the order is held, never without an address, and fail closed
+-- when the order cannot be read. The order row and the approval rows are
+-- read FOR SHARE, so a concurrent erasure (which updates them) either
+-- commits first and is seen here, or waits for this write and then revokes
+-- the invite it created (section 4a2 locks the table first). Clearing the
+-- address (an erasure) is always allowed.
+create function public.refuse_unconfirmed_order_invite()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $fn$
+declare
+  v_order record;
+  v_key text := public.email_match_key(new.invited_email);
+  v_expected text;
+begin
+  if new.origin is distinct from 'order_approval' or new.order_id is null then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and new.invited_email is null then
+    return new;
+  end if;
+  select o.id, o.held_at, o.authority_status, o.purchaser_email, o.intended_guardian_email, o.intended_guardian_erased_at
+    into v_order
+    from public.orders o where o.id = new.order_id for share;
+  if v_order.id is null or v_order.held_at is not null or v_key is null then
+    raise exception using errcode = 'EMINV', message = 'order_invite_recipient_unconfirmed';
+  end if;
+  if v_order.authority_status in ('guardian_approval_pending', 'guardian_approved', 'guardian_declined') then
+    if v_order.authority_status is distinct from 'guardian_approved' then
+      raise exception using errcode = 'EMINV', message = 'order_invite_recipient_unconfirmed';
+    end if;
+    select public.email_match_key(r.guardian_email) into v_expected
+      from public.builder_guardian_approval_requests r
+     where r.order_id = new.order_id and r.status = 'approved'
+     order by r.responded_at desc nulls first, r.created_at desc
+     limit 1
+     for share;
+    if v_expected is null
+       or v_expected = public.email_match_key(v_order.purchaser_email)
+       or exists (select 1 from public.builder_order_authority_declarations d
+                   where d.order_id = new.order_id and public.email_match_key(d.adult_email) = v_expected) then
+      raise exception using errcode = 'EMINV', message = 'order_invite_recipient_unconfirmed';
+    end if;
+  elsif v_order.intended_guardian_email is not null then
+    v_expected := public.email_match_key(v_order.intended_guardian_email);
+  elsif v_order.intended_guardian_erased_at is not null then
+    raise exception using errcode = 'EMINV', message = 'order_invite_recipient_unconfirmed';
+  else
+    v_expected := public.email_match_key(v_order.purchaser_email);
+  end if;
+  if v_key is distinct from v_expected then
+    raise exception using errcode = 'EMINV', message = 'order_invite_recipient_unconfirmed';
+  end if;
+  return new;
+end;
+$fn$;
+alter function public.refuse_unconfirmed_order_invite() owner to postgres;
+revoke all on function public.refuse_unconfirmed_order_invite() from public, anon, authenticated, service_role;
+create trigger player_invites_order_recipient_guard
+  before insert or update of invited_email, order_id, origin on public.player_invites
+  for each row execute function public.refuse_unconfirmed_order_invite();
 
 commit;

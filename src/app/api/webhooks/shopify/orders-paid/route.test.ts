@@ -14,6 +14,12 @@ vi.mock('@/lib/gift-payment-refusal', () => ({
   wasRefusedGiftPayment: (...args: unknown[]) => mockWasRefused(...args),
   alertRefusedGiftPayment: (...args: unknown[]) => mockAlertRefused(...args),
 }));
+const mockWasRefusedHeld = vi.fn();
+const mockAlertRefusedHeld = vi.fn();
+vi.mock('@/lib/held-payment-refusal', () => ({
+  wasRefusedHeldPayment: (...args: unknown[]) => mockWasRefusedHeld(...args),
+  alertRefusedHeldPayment: (...args: unknown[]) => mockAlertRefusedHeld(...args),
+}));
 
 const mockRpc = vi.fn();
 const mockOrdersSelect = vi.fn();
@@ -121,6 +127,8 @@ beforeEach(() => {
   mockPartnerCode.mockReset().mockResolvedValue({ data: null, error: null });
   mockWasRefused.mockReset().mockResolvedValue(false);
   mockAlertRefused.mockReset().mockResolvedValue(true);
+  mockWasRefusedHeld.mockReset().mockResolvedValue(false);
+  mockAlertRefusedHeld.mockReset().mockResolvedValue(true);
 });
 
 describe('POST /api/webhooks/shopify/orders-paid — signature and delivery-id verification', () => {
@@ -637,6 +645,45 @@ describe('POST /api/webhooks/shopify/orders-paid — UK partner codes', () => {
     expect(mockPartnerCode).not.toHaveBeenCalled();
     expect(applyCall()).toBeUndefined();
     expect(commissionCall()).toBeUndefined();
+  });
+});
+
+// Migration 0102: apply_gate3_payment_event never marks a held order paid
+// (the guardian it depends on deleted their account) and reports order_held.
+describe('POST /api/webhooks/shopify/orders-paid — held order (0102)', () => {
+  const refused = { data: { applied: false, reason: 'order_held', orderId: 'order-1' }, error: null };
+
+  it('is not applied, alerts staff to refund this Shopify payment, and reports the refusal; nothing else runs', async () => {
+    mockRpc.mockResolvedValue(refused);
+    const res = await post(VALID_PAYLOAD);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, applied: false, reason: 'order_held', orderId: 'order-1' });
+    expect(mockAlertRefusedHeld).toHaveBeenCalledWith(expect.anything(), { orderRef: 'EMB-ABC123', shopifyOrderId: '987654321' });
+    expect(mockAlertRefused).not.toHaveBeenCalled();
+    expect(mockFlagSecondPayment).not.toHaveBeenCalled();
+    expect(mockRpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks Shopify to retry (500) when the staff alert cannot be confirmed', async () => {
+    mockRpc.mockResolvedValue(refused);
+    mockAlertRefusedHeld.mockResolvedValue(false);
+    expect((await post(VALID_PAYLOAD)).status).toBe(500);
+  });
+
+  it('on the retry (duplicate_event) a recorded held-order refusal raises the alert again (idempotent)', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'duplicate_event' }, error: null });
+    mockWasRefusedHeld.mockResolvedValue(true);
+    const res = await post(VALID_PAYLOAD);
+    expect(mockWasRefusedHeld).toHaveBeenCalledWith(expect.anything(), 'order-1', WEBHOOK_ID);
+    expect(mockAlertRefusedHeld).toHaveBeenCalledTimes(1);
+    expect(await res.json()).toMatchObject({ applied: false, reason: 'order_held' });
+    expect(mockFlagSecondPayment).not.toHaveBeenCalled();
+  });
+
+  it('500 when the held-order refusal lookup fails on a duplicate delivery (Shopify retries)', async () => {
+    mockRpc.mockResolvedValue({ data: { applied: false, reason: 'duplicate_event' }, error: null });
+    mockWasRefusedHeld.mockResolvedValue('failed');
+    expect((await post(VALID_PAYLOAD)).status).toBe(500);
   });
 });
 

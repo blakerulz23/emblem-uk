@@ -119,7 +119,11 @@ begin
      or not exists (select 1 from pg_proc where oid = to_regprocedure('public.revoke_invites_addressed_to(uuid, text)')
                    and prosrc like '%''recipient_account_erased''%')
      or not exists (select 1 from pg_proc where oid = to_regprocedure('public.redact_order_guardian_addresses(uuid, text)')
-                   and prosrc like '%''named_guardian_account_erased''%')
+                   and prosrc like '%''named_guardian_account_erased''%' and prosrc like '%public.erased_account_addresses(v_uid, p_email)%')
+     or not exists (select 1 from pg_proc where oid = to_regprocedure('public.revoke_invites_addressed_to(uuid, text)')
+                   and prosrc like '%in share row exclusive mode%')
+     or not exists (select 1 from pg_proc where oid = to_regprocedure('public.refuse_held_order_progress()')
+                   and prosrc like '%hold_release_requires_fresh_guardian_approval%')
      or (select count(*) from pg_trigger t where not t.tgisinternal and t.tgenabled <> 'D' and (t.tgname, t.tgrelid) in (
            ('player_invites_revoked_guard', 'public.player_invites'::regclass),
            ('coach_invites_revoked_guard', 'public.coach_invites'::regclass),
@@ -127,7 +131,8 @@ begin
            ('player_deletion_requests_redact_closed_contact', 'public.player_deletion_requests'::regclass),
            ('sipdr_redact_closed_contact', 'public.squad_invite_participation_deletion_requests'::regclass),
            ('orders_held_guard', 'public.orders'::regclass),
-           ('builder_guardian_approval_requests_redacted_guard', 'public.builder_guardian_approval_requests'::regclass))) <> 7
+           ('builder_guardian_approval_requests_redacted_guard', 'public.builder_guardian_approval_requests'::regclass),
+           ('player_invites_order_recipient_guard', 'public.player_invites'::regclass))) <> 8
      or (select count(*) from pg_constraint where conname in (
            'player_invites_revoked_state', 'coach_invites_revoked_state', 'team_invites_revoked_state',
            'player_deletion_requests_closed_has_no_contact', 'sipdr_closed_has_no_contact',

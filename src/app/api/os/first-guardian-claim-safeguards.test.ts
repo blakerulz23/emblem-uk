@@ -7,6 +7,12 @@ import { ensurePublicPlayerId } from '@/lib/public-player-id';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { POST as claim } from './claim/route';
 import { POST as recover } from './recover/route';
+vi.mock('@/lib/order-named-guardian', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/order-named-guardian')>();
+  // Neutral here: the named-guardian recovery rule is pinned in order-named-guardian.test.ts.
+  return { ...actual, checkOrderNamesSeparateGuardian: async () => ({ outcome: 'allowed' }), ordersNamingSeparateGuardian: async () => ({ ok: true, refused: new Set() }) };
+});
+
 
 // Gate 3.12: a current or former coach cannot use a child's card (claim code
 // or purchaser recovery) to link their own coach account as its guardian, and

@@ -630,7 +630,9 @@ let c96, c97, db9, w9, data96;
       'column:builder_guardian_approval_requests.guardian_email_redacted_at', 'column:builder_guardian_approval_requests.guardian_distinct_from_buyer',
       'constraint:builder_guardian_approval_requests.builder_guardian_approval_requests_redaction_state',
       'trigger:builder_guardian_approval_requests.builder_guardian_approval_requests_redacted_guard', 'function:refuse_redacted_approval_change()',
-      'function:redact_order_guardian_addresses(p_profile_id uuid, p_email text)'].sort(),
+      'function:redact_order_guardian_addresses(p_profile_id uuid, p_email text)',
+      'function:email_match_key(p_email text)', 'function:erased_account_addresses(p_profile_id uuid, p_email text)',
+      'function:refuse_unconfirmed_order_invite()', 'trigger:player_invites.player_invites_order_recipient_guard'].sort(),
     // guardian_email loses NOT NULL (only a redacted row may have none: the redaction_state CHECK).
     changed: ['column:builder_guardian_approval_requests.guardian_email', 'constraint:moments.moments_verification_status_consistency', 'constraint:player_deletion_requests.player_deletion_requests_cancellation_requires_actor', 'constraint:squad_invite_participation_deletion_requests.sipdr_cancellation_requires_actor', 'function:delete_own_guardian_account()'].sort(),
   };

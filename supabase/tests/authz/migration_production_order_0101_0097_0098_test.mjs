@@ -317,6 +317,53 @@ console.log('\n=== 7. deletion lifecycle in production order (review keeps the f
   await post0101(db, '7');
 }
 
+// --- 8. 0102 after 0098 (production: 0101 -> 0097 -> 0098 -> 0102) ------------------------------
+console.log('\n=== 8. 0102 last, as production; equals numeric order; rollback ordering ===');
+{
+  const M0102 = read('migrations/0102_held_orders_checkout_payment_and_fresh_approval.sql');
+  const RB0102 = read('rollback/0102_rollback.sql');
+  const ACK_0102 = ['emblem.acknowledge_0102_rollback', 'ALLOW-HELD-ORDER-PAYMENT'];
+  // 0102 refuses without 0097 (0101 only).
+  const only101 = await readyDatabase('0096');
+  check('8. 0101 applies alone on a fresh 0096 database', (await apply(only101, M0101)) === null);
+  const c101only = await snapshotCatalog(only101);
+  const early = await apply(only101, M0102);
+  check('8. 0102 is refused without 0097 (holds missing), changing nothing',
+    /0102 refused: the expected state is not in place: 0097 section 12 is not applied/.test(early ?? '') && catalogDiff(c101only, await snapshotCatalog(only101)).length === 0, early);
+  await only101.close();
+  const before = await snapshotCatalog(db);
+  const data8 = await dataSnapshot(db);
+  let r8 = await apply(db, M0102);
+  check('8. 0102 applies after 0101, 0097 and 0098', r8 === null, r8);
+  check('8. 0102 refuses a second run', /0102 refused: 0102 is already applied/.test((await apply(db, M0102)) ?? ''));
+  const c102 = await snapshotCatalog(db);
+  const changed = catalogDiff(before, c102);
+  check('8. 0102 changes exactly the four functions and the audit event rule',
+    JSON.stringify(changed.sort()) === JSON.stringify(['constraint:builder_authority_audit_events.builder_authority_audit_events_event_type_check',
+      'function:apply_gate3_payment_event(p_order_id uuid, p_shopify_event_id text, p_topic text, p_to_status text, p_shopify_order_id text, p_amount_pence integer, p_currency text)',
+      'function:begin_gate3_checkout(p_order_id uuid)', 'function:create_builder_guardian_approval_request(p_order_id uuid, p_guardian_email text, p_token_hash text, p_declaration_version text)',
+      'function:respond_to_builder_guardian_approval(p_token_hash text, p_decision text)'].sort()), changed);
+  const numeric102 = await readyDatabase('0102'); // filename order: 0097, 0098, 0101, 0102
+  const cNum102 = await snapshotCatalog(numeric102);
+  await numeric102.close();
+  const d102 = catalogDiff(cNum102, c102);
+  check('8. production-order catalog == numeric-order catalog through 0102', d102.length === 0, d102);
+  await post0101(db, '8');
+  r8 = await rollBack(db, RB0101, ACK_0101);
+  check('8. 0101 rollback refused while 0102 is applied', /0102 is still applied/.test(r8 ?? ''), r8);
+  r8 = await rollBack(db, RB0097, ACK_0097);
+  check('8. 0097 rollback refused while 0098/0102 are applied', /0097 rollback refused: 0098 is still applied|0102 is still applied/.test(r8 ?? ''), r8);
+  check('8. 0102 rollback without its acknowledgement is refused', /0102 rollback refused/.test((await rollBack(db, RB0102, null)) ?? ''));
+  r8 = await rollBack(db, RB0102, ACK_0102);
+  check('8. 0102 rollback (acknowledged, nothing held) succeeds', r8 === null, r8);
+  const back = catalogDiff(before, await snapshotCatalog(db));
+  check('8. after the 0102 rollback the catalog is exactly the step 7 catalog (0101 and 0071 bodies, 0071 event rule)', back.length === 0, back);
+  check('8. the 0102 rollback leaves no acknowledgement', (await db.query(`select coalesce(current_setting($1, true), '') a`, [ACK_0102[0]])).rows[0].a === '');
+  check('8. 0102 reapplies to the same catalog', (await apply(db, M0102)) === null && catalogDiff(c102, await snapshotCatalog(db)).length === 0);
+  check('8. 0102 and its rollback changed no fixture rows', sameData(data8, await dataSnapshot(db)));
+  await post0101(db, '8 (after 0102 reapplied)');
+}
+
 await db.close();
 const failed = results.filter((x) => !x.pass);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);

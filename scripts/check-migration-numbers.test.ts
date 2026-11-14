@@ -57,6 +57,7 @@ describe('migration number uniqueness', () => {
       '0099': 'season_feature_states',
       '0100': 'acquisition_samples',
       '0101': 'gift_checkout_requires_guardian_approval',
+      '0102': 'held_orders_checkout_payment_and_fresh_approval',
     });
     expect(findReservedNumberProblems(fs.readdirSync('supabase/migrations'))).toEqual([]);
   });
@@ -87,13 +88,13 @@ describe('migration number uniqueness', () => {
   });
 
   it('rejects acquisition samples at its old number 0098; accepts it at 0100', () => {
-    expect(findReservedNumberProblems(['0098_acquisition_samples.sql', '0100_acquisition_samples.sql', '0102_anything.sql'])).toEqual([
+    expect(findReservedNumberProblems(['0098_acquisition_samples.sql', '0100_acquisition_samples.sql', '0103_anything.sql'])).toEqual([
       { number: '0098', file: '0098_acquisition_samples.sql', reservedFor: '0098_deletion_review_suspension_and_verifier_identity.sql' },
     ]);
   });
 
   it('rejects the R5 checkout gate at its draft number 0099 or any other file at 0101; accepts it at 0101', () => {
-    expect(findReservedNumberProblems(['0099_gift_checkout_requires_guardian_approval.sql', '0099_season_feature_states.sql', '0101_gift_checkout_requires_guardian_approval.sql', '0101_anything.sql', '0102_anything.sql'])).toEqual([
+    expect(findReservedNumberProblems(['0099_gift_checkout_requires_guardian_approval.sql', '0099_season_feature_states.sql', '0101_gift_checkout_requires_guardian_approval.sql', '0101_anything.sql', '0103_anything.sql'])).toEqual([
       { number: '0099', file: '0099_gift_checkout_requires_guardian_approval.sql', reservedFor: '0099_season_feature_states.sql' },
       { number: '0101', file: '0101_anything.sql', reservedFor: '0101_gift_checkout_requires_guardian_approval.sql' },
     ]);

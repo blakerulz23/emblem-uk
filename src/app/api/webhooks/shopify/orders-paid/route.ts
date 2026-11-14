@@ -6,6 +6,7 @@ import { squadInviteVariantId } from '@/lib/squad-invite-payment-link';
 import { notifyStaffOfPaymentIssue } from '@/lib/payment-alerts';
 import { flagSecondPaymentIfAny } from '@/lib/duplicate-payment';
 import { alertRefusedGiftPayment, wasRefusedGiftPayment } from '@/lib/gift-payment-refusal';
+import { alertRefusedHeldPayment, wasRefusedHeldPayment } from '@/lib/held-payment-refusal';
 import { extractOrderDiscountCode } from '@/lib/partner-programme';
 
 /**
@@ -257,6 +258,30 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'refused gift payment alert not yet sent' }, { status: 500 });
       }
       return NextResponse.json({ ok: true, applied: false, reason: 'gift_approval_invalid', orderId: existing.id });
+    }
+  }
+
+  // A payment for a held order (the guardian it depends on deleted their
+  // account; migration 0102) is never applied: the database records the
+  // refused payment and staff are told to refund it, once per Shopify
+  // payment (held-payment-refusal.ts), with the same retry guarantees as the
+  // gift refusal above.
+  {
+    let refused = !result?.applied && result?.reason === 'order_held';
+    if (!refused && !result?.applied && result?.reason === 'duplicate_event') {
+      const recorded = await wasRefusedHeldPayment(supabase, existing.id, webhookId);
+      if (recorded === 'failed') {
+        return NextResponse.json({ error: 'refused held-order payment lookup failed' }, { status: 500 });
+      }
+      refused = recorded;
+    }
+    if (refused) {
+      const alerted = await alertRefusedHeldPayment(supabase, { orderRef, shopifyOrderId: extractShopifyOrderId(payload) });
+      if (!alerted) {
+        console.error('shopify webhook: refused held-order payment alert not confirmed, asking Shopify to retry', { orderRef });
+        return NextResponse.json({ error: 'refused held-order payment alert not yet sent' }, { status: 500 });
+      }
+      return NextResponse.json({ ok: true, applied: false, reason: 'order_held', orderId: existing.id });
     }
   }
 

@@ -119,6 +119,14 @@ describe('POST /api/builder-authority/guardian-email', () => {
     expect(mockSendBuilderGuardianApprovalEmail).not.toHaveBeenCalled();
   });
 
+  it('0102: a held order that has been paid is refused with 409 (refund or cancel first), and no email is sent', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { code: 'EMHLD', message: 'held_order_paid_refund_or_cancel_first' } });
+    const res = await post({ orderId: ORDER_ID, guardianEmail: 'guardian@example.test' });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/refund or cancel it before a new approval/);
+    expect(mockSendBuilderGuardianApprovalEmail).not.toHaveBeenCalled();
+  });
+
   it('reports failure (not ok:true) when the DB row is created but the email fails to send', async () => {
     // The Postgres write and the email send are not atomic — a failed send
     // must never be reported to the client as success, even though the

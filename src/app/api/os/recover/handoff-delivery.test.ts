@@ -2,6 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { createFakeSupabase } from '@/lib/fake-supabase.test-support';
 import { POST } from './route';
+vi.mock('@/lib/order-named-guardian', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/order-named-guardian')>();
+  // Neutral here: the named-guardian recovery rule is pinned in order-named-guardian.test.ts.
+  return { ...actual, checkOrderNamesSeparateGuardian: async () => ({ outcome: 'allowed' }), ordersNamingSeparateGuardian: async () => ({ ok: true, refused: new Set() }) };
+});
+
 
 const PURCHASER = 'aaaaaaaa-0000-4000-8000-000000000001';
 const PLAYER = 'cccccccc-0000-4000-8000-000000000003';

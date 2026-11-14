@@ -47,9 +47,13 @@ At the final erasure (0097, section 12, in the same transaction), wherever the o
 - A pending approval request is revoked, so its emailed link no longer works.
 - **Holds:** every affected order that isn't finished is held (`held_at`, `held_reason` `named_guardian_account_erased`).
   - Not finished means payment status `order_intent`, `pending_payment` or `paid`, and not `guardian_declined`.
-  - The database refuses to approve or fulfil a held order, for every role. Payments still apply.
+  - A held order can't be approved or fulfilled (the database refuses it, for every role), checked out (including a checkout opened before the hold), or marked paid (migration 0102). A payment Shopify takes anyway is recorded and staff are alerted to refund it.
   - The staff queue shows "Held" and no approve button.
-  - Staff release a hold only after confirming a guardian: clear `held_at` and `held_reason` together. Until a guardian address is recorded again, no profile invite is sent.
+  - **There is no release override.** A hold lifts only when the child's parent or guardian approves the order again through the normal approval flow, from an address that isn't the buyer's, while the order is still unpaid. The buyer starts that by naming the guardian again on the existing "name the guardian" step; the database does the rest.
+  - **A paid held order** is refunded or cancelled. It is never released or restarted; the buyer can place a new order.
+  - An ordinary order (no gift approval) has no approval flow, so a held one is cancelled or refunded.
+- **No fallback to the buyer:** an order whose named guardian was erased never sends the profile invite to the buyer, and the buyer can't recover the card themselves (below). The database also refuses any order profile invite to anyone but the order's confirmed recipient.
+- **Matching:** addresses are compared lower-cased with leading and trailing whitespace removed (including tabs, newlines and no-break spaces). If another sign-in now holds the same address, only records created before that sign-in are treated as the erased account's.
 - Nothing changes on an order because its buyer erased their account, unless the guardian's address is the same address.
 - An account whose deletion is under staff review changes nothing until staff complete the deletion.
 
@@ -58,6 +62,9 @@ At the final erasure (0097, section 12, in the same transaction), wherever the o
 - Invites the order created that were addressed to that account are revoked at erasure, and lose the address (0097, section 10).
 - A later invite or resend for the order goes only by a deliberate staff action.
 - Automatic order notifications still go to the address on the order. For example, the buyer is told when a guardian responds to a gift order (`/api/builder-authority/guardian-respond`).
+
+## Purchaser recovery
+The buyer of a fulfilled, single-card order can normally recover the card themselves (`/api/os/recover`). That is refused, for both choices (claim it, or send it to an address of their choosing), whenever the order names a separate parent or guardian, or once did and that guardian's account was erased. The named guardian is the one who sets the profile up. If the order can't be read, recovery fails closed.
 
 ## Follow-up (recorded 14 November 2026, not built)
 Order history is reached by email alone: the `orders: purchaser can view their own` policy matches `purchaser_email = auth.email()`. Anyone who later holds an account with that address sees every past order on it.

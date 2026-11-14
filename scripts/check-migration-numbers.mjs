@@ -18,7 +18,8 @@ const MIGRATION_FILE = /^(\d{4})_[a-z0-9_]+\.sql$/;
 // 0097_erase_print_pdfs_on_player_deletion.sql must take another number);
 // 0098 is the deletion-review safeguarding fix, 0099 the Season feature
 // states, acquisition samples move to 0100, and 0101 is the R5 gift-order
-// checkout and payment gate. New work starts at 0102.
+// checkout and payment gate, and 0102 closes checkout and payment for orders
+// held by 0097. New work starts at 0103.
 export const RESERVED_NUMBERS = {
   '0088': 'relationship_authorization_foundation',
   '0089': 'relationship_authorization_lockdown',
@@ -31,6 +32,7 @@ export const RESERVED_NUMBERS = {
   '0099': 'season_feature_states',
   '0100': 'acquisition_samples',
   '0101': 'gift_checkout_requires_guardian_approval',
+  '0102': 'held_orders_checkout_payment_and_fresh_approval',
 };
 
 /** Files that use a reserved number for a different migration. */

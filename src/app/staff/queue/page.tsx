@@ -241,7 +241,9 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
 
   const { data: orders } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name, source, authority_status')
+    // select('*'): intended_guardian_erased_at exists only from migration
+    // 0097, and the queue must work before and after it.
+    .select('*')
     .eq('payment_status', 'fulfilled')
     .order('approved_at', { ascending: false })
     // Not-searching keeps today's existing raw-fetch size (bounded, cheap);
@@ -332,7 +334,9 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
         inviteRecipient: recipient.ok ? recipient.email : null,
         inviteRecipientLabel: recipient.ok
           ? recipient.source === 'approved_guardian' ? 'Approving guardian' : null
-          : 'No approving guardian on record — invite withheld',
+          : recipient.reason === 'intended_guardian_erased'
+            ? 'The parent or guardian this order named deleted their Emblem account — invite withheld (never sent to the buyer)'
+            : 'No approving guardian on record — invite withheld',
       };
     }),
     total: page.total,

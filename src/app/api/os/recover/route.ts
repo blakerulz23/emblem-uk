@@ -6,6 +6,7 @@ import { ensureProfileRole } from '@/lib/relationship-writes';
 import { logRouteFailure, type DbError } from '@/lib/route-failure';
 import { checkFirstGuardianClaim } from '@/lib/guardian-invite-eligibility';
 import { checkGiftFirstGuardianClaim, GIFT_PROFILE_REFUSED_MESSAGE } from '@/lib/gift-order-guardian';
+import { checkOrderNamesSeparateGuardian, NAMED_GUARDIAN_RECOVERY_REFUSED_MESSAGE, ordersNamingSeparateGuardian } from '@/lib/order-named-guardian';
 
 export const runtime = 'nodejs';
 
@@ -54,6 +55,12 @@ export async function GET() {
   }
 
   const serviceRole = createServiceRoleClient();
+  // An order that names (or once named) a separate parent or guardian is
+  // never recoverable by the buyer: listed as held for its guardian.
+  const named = await ordersNamingSeparateGuardian(serviceRole, orders.map((o) => o.id));
+  if (!named.ok) {
+    return NextResponse.json({ error: 'Could not load your orders. Please try again.' }, { status: 500 });
+  }
   const { data: cards } = await serviceRole
     .from('cards')
     .select('id, status, access_status, player_id, order_id, players ( name )')
@@ -73,6 +80,10 @@ export async function GET() {
   const eligible = await Promise.all(
     orders.map(async (order) => {
       const orderCards = cardsByOrder.get(order.id) ?? [];
+      if (named.refused.has(order.id)) {
+        if (orderCards.some((c) => c.status !== 'claimed' && !c.access_status)) heldForGuardian.add(order.order_ref);
+        return { orderId: order.id, orderRef: order.order_ref, source: order.source, verificationRequired: orderCards.length !== 1, cards: [] };
+      }
       const openCards = await Promise.all(
         orderCards
           .filter((c) => c.status !== 'claimed' && !c.access_status)
@@ -191,6 +202,18 @@ export async function POST(request: NextRequest) {
     }
     return null;
   };
+
+  // Before any write, for both decisions: an order that names, or once
+  // named, a separate parent or guardian is theirs to set up. The buyer can
+  // neither claim it nor send it to an address of their choosing. Fails
+  // closed when the order can't be read.
+  const namedGuardian = await checkOrderNamesSeparateGuardian(serviceRole, card.order_id);
+  if (namedGuardian.outcome === 'failed') {
+    return NextResponse.json({ error: RECOVER_FAILED }, { status: 500 });
+  }
+  if (namedGuardian.outcome === 'refused') {
+    return NextResponse.json({ error: NAMED_GUARDIAN_RECOVERY_REFUSED_MESSAGE }, { status: 403 });
+  }
 
   // Both outcomes converge on the exact same shared operations the
   // primary card-code path uses — a verified purchaser email is just a

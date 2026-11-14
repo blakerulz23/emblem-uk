@@ -29,6 +29,11 @@ begin
   if to_regprocedure('public.gift_order_checkout_block_reason(uuid)') is null then
     raise exception '0101 rollback refused: gift_order_checkout_block_reason does not exist (0101 is not applied)';
   end if;
+  -- 0102 builds on 0101's checkout and payment functions and calls the
+  -- helper this drops; roll it back first.
+  if (select prosrc from pg_proc where oid = to_regprocedure('public.begin_gate3_checkout(uuid)')) like '%order_held%' then
+    raise exception '0101 rollback refused: 0102 is still applied; roll back 0102 first';
+  end if;
 end;
 $$;
 

@@ -78,6 +78,12 @@ import { POST as claimPOST } from './claim/route';
 import { POST as recoverPOST } from './recover/route';
 import { POST as redeemPOST } from './invites/redeem/route';
 import { GIFT_PROFILE_REFUSED_MESSAGE } from '@/lib/gift-order-guardian';
+vi.mock('@/lib/order-named-guardian', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/order-named-guardian')>();
+  // Neutral here: the named-guardian recovery rule is pinned in order-named-guardian.test.ts.
+  return { ...actual, checkOrderNamesSeparateGuardian: async () => ({ outcome: 'allowed' }), ordersNamingSeparateGuardian: async () => ({ ok: true, refused: new Set() }) };
+});
+
 
 const json = (url: string, body: unknown) => new NextRequest(url, { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } });
 const guardianLinks = () => writes.filter((w) => w.table === 'guardians');

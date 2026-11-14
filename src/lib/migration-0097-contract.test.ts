@@ -162,7 +162,7 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(code).toContain('revoke all on function public.guard_profile_deletion() from public, anon, authenticated, service_role;');
     expect(code).toContain('create trigger profiles_account_deletion_guard\n  before delete on public.profiles\n  for each row execute function public.guard_profile_deletion();');
     expect(code).toContain('a 0097 account-deletion function or trigger already exists (0097 already applied)');
-    expect(rollbackCode).toContain('drop trigger profiles_account_deletion_guard on public.profiles;\ndrop function public.guard_profile_deletion();\ndrop function public.complete_pending_profile_deletion(uuid, text);\ndrop function public.erase_account_for_deletion(uuid, text, uuid);\ndrop function public.revoke_invites_addressed_to(uuid, text);\ndrop function public.redact_order_guardian_addresses(uuid, text);\ndrop function public.account_deletion_blocking_reason(uuid);');
+    expect(rollbackCode).toContain('drop trigger profiles_account_deletion_guard on public.profiles;\ndrop function public.guard_profile_deletion();\ndrop function public.complete_pending_profile_deletion(uuid, text);\ndrop function public.erase_account_for_deletion(uuid, text, uuid);\ndrop function public.revoke_invites_addressed_to(uuid, text);\ndrop function public.redact_order_guardian_addresses(uuid, text);\ndrop function public.erased_account_addresses(uuid, text);\ndrop function public.email_match_key(text);\ndrop function public.account_deletion_blocking_reason(uuid);');
   });
 
   it('keeps the moment coach_verified: exactly one of verified_by or the marker, verified_at always required', () => {
@@ -273,14 +273,24 @@ describe('0097 rollback — emergency only', () => {
     expect(already).toBeGreaterThan(0);
     expect(already).toBeLessThan(complete.indexOf("resolved_at = now(), email = null"));
     expect(code).toContain('revoke all on function public.revoke_invites_addressed_to(uuid, text) from public, anon, authenticated, service_role;');
+    // One normalisation (0101's rule) and a time boundary for addresses a newer sign-in now holds; the tables are
+    // locked against concurrent writes for the rest of the erasure.
+    expect(code).toContain("select nullif(lower(regexp_replace(p_email, '^[\\s\\u00a0\\ufeff]+|[\\s\\u00a0\\ufeff]+$', '', 'g')), '')");
+    expect(code).toContain('and public.email_match_key(u.email::text) = k.match_key');
+    expect(revoke).toContain('in share row exclusive mode;');
+    expect(revoke.indexOf('in share row exclusive mode;')).toBeLessThan(revoke.indexOf('update public.player_invites'));
+    expect(code).not.toMatch(/lower\(btrim\(/);
     for (const t of ['player_invites', 'coach_invites', 'team_invites']) {
       // Revoked: a new random code, expired, no address, marked; only unused, not already revoked, addressed to the account.
-      expect(revoke).toContain(`  update public.${t}
+      expect(revoke).toContain(`  update public.${t} i
      set revoked_at = now(), revoked_reason = 'recipient_account_erased', invited_email = null,
-         expires_at = least(expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
-   where used_at is null and revoked_at is null and lower(btrim(invited_email)) = any(v_emails);`);
+         expires_at = least(i.expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
+    from public.erased_account_addresses(v_uid, p_email) a
+   where i.used_at is null and i.revoked_at is null
+     and public.email_match_key(i.invited_email) = a.match_key
+     and (a.created_before is null or i.created_at < a.created_before);`);
       // Used: the address goes (addressed to the account, or redeemed by it).
-      expect(revoke).toContain(`  update public.${t} set invited_email = null`);
+      expect(revoke).toContain(`  update public.${t} i set invited_email = null`);
       expect(code).toContain(`create trigger ${t}_revoked_guard before update on public.${t}`);
       expect(code).toContain(`add constraint ${t}_revoked_state check (`);
       expect(rollbackCode).toContain(`drop trigger ${t}_revoked_guard on public.${t};`);
