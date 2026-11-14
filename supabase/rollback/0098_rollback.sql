@@ -351,11 +351,16 @@ declare
   v_uid uuid;
   v_email text;
   v_blocking_reason text;
+  v_review_opened_at timestamptz;
 begin
   v_uid := auth.uid();
   if v_uid is null then
     raise exception 'Not authenticated';
   end if;
+
+  -- 0097: hold this account's profile row until the call ends, so a staff
+  -- completion of the same account waits (and then finds nothing to do).
+  perform 1 from public.profiles where id = v_uid for update;
 
   select email into v_email from auth.users where id = v_uid;
 
@@ -373,11 +378,21 @@ begin
     -- (complete_pending_profile_deletion).
     insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason)
     values (v_uid, v_email, v_blocking_reason)
-    on conflict (auth_user_id) do update set blocking_reason = excluded.blocking_reason;
+    -- A request after a resolved one (resolved by hand before 0097) is
+    -- pending again, as a new review round: first_detected_at becomes the
+    -- time this round began, and stays unchanged while it is pending, so
+    -- staff are notified once per round.
+    on conflict (auth_user_id) do update
+      set blocking_reason = excluded.blocking_reason, status = 'pending',
+          resolved_by = null, resolved_at = null,
+          first_detected_at = case when public.pending_profile_deletions.status = 'pending'
+                                   then public.pending_profile_deletions.first_detected_at else now() end
+    returning first_detected_at into v_review_opened_at;
     return jsonb_build_object(
       'playersUnlinked', '[]'::jsonb,
       'playersDeletionRequested', '[]'::jsonb,
-      'canDeleteIdentity', false
+      'canDeleteIdentity', false,
+      'reviewOpenedAt', v_review_opened_at
     );
   end if;
 

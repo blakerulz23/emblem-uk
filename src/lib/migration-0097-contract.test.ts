@@ -77,7 +77,9 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(decide).toBeLessThan(after.indexOf('insert into public.pending_profile_deletions'));
     // The review branch: one insert into pending_profile_deletions and the result; nothing else is written.
     expect(review.match(/\b(insert into|update|delete from|perform)\b/g)).toEqual(['insert into', 'update']);
-    expect(review).toContain('on conflict (auth_user_id) do update set blocking_reason = excluded.blocking_reason;');
+    expect(review).toMatch(/on conflict \(auth_user_id\) do update\s+set blocking_reason = excluded\.blocking_reason, status = 'pending',\s+resolved_by = null, resolved_at = null,[\s\S]*returning first_detected_at into v_review_opened_at;/);
+    // The account is locked first, so a staff completion of the same account waits for it.
+    expect(after.indexOf('perform 1 from public.profiles where id = v_uid for update;')).toBeLessThan(decide);
     expect(review).toContain("'canDeleteIdentity', false");
     // Otherwise the erasure, once.
     expect(after.split('public.erase_account_for_deletion(').length).toBe(2);

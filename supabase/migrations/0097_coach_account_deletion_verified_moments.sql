@@ -422,11 +422,16 @@ declare
   v_uid uuid;
   v_email text;
   v_blocking_reason text;
+  v_review_opened_at timestamptz;
 begin
   v_uid := auth.uid();
   if v_uid is null then
     raise exception 'Not authenticated';
   end if;
+
+  -- 0097: hold this account's profile row until the call ends, so a staff
+  -- completion of the same account waits (and then finds nothing to do).
+  perform 1 from public.profiles where id = v_uid for update;
 
   select email into v_email from auth.users where id = v_uid;
 
@@ -444,11 +449,21 @@ begin
     -- (complete_pending_profile_deletion).
     insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason)
     values (v_uid, v_email, v_blocking_reason)
-    on conflict (auth_user_id) do update set blocking_reason = excluded.blocking_reason;
+    -- A request after a resolved one (resolved by hand before 0097) is
+    -- pending again, as a new review round: first_detected_at becomes the
+    -- time this round began, and stays unchanged while it is pending, so
+    -- staff are notified once per round.
+    on conflict (auth_user_id) do update
+      set blocking_reason = excluded.blocking_reason, status = 'pending',
+          resolved_by = null, resolved_at = null,
+          first_detected_at = case when public.pending_profile_deletions.status = 'pending'
+                                   then public.pending_profile_deletions.first_detected_at else now() end
+    returning first_detected_at into v_review_opened_at;
     return jsonb_build_object(
       'playersUnlinked', '[]'::jsonb,
       'playersDeletionRequested', '[]'::jsonb,
-      'canDeleteIdentity', false
+      'canDeleteIdentity', false,
+      'reviewOpenedAt', v_review_opened_at
     );
   end if;
 
@@ -471,10 +486,14 @@ alter function public.delete_own_guardian_account() owner to postgres;
 -- attributes each card suspension to auth.uid(). Order:
 --   - staff only, with a reason;
 --   - locks the account, then its request (the order delete_own_guardian_
---     account uses), so a repeated or concurrent completion waits and then
---     reports already_completed, changing nothing;
---   - only a 'pending' request; refuses a staff account, the caller's own
---     account and an account that no longer exists;
+--     account uses: it locks the account first too), so a repeated or
+--     concurrent completion, or a self-service request racing it, waits and
+--     then reports already_completed or finds nothing to do;
+--   - a request marked resolved while the account still exists (resolved by
+--     hand before 0097) is refused rather than reported as completed;
+--   - only a 'pending' request; refuses a staff account and the caller's
+--     own account; a request whose account was already deleted another way
+--     is closed (account_already_deleted) with nothing to erase;
 --   - refuses, changing nothing, while anything still blocks the deletion
 --     (staff resolve those records first);
 --   - runs the erasure exactly once (section 4b), which resolves the request
@@ -512,6 +531,9 @@ begin
   select * into v_pending from public.pending_profile_deletions where id = p_pending_deletion_id for update;
 
   if v_pending.status = 'resolved' then
+    if exists (select 1 from public.profiles where id = v_uid) then
+      raise exception 'This profile deletion is marked resolved but the account still exists; it was not completed here';
+    end if;
     return jsonb_build_object('status', 'already_completed');
   end if;
   if v_pending.status <> 'pending' then
@@ -521,7 +543,13 @@ begin
     raise exception 'Staff accounts are removed by the manual staff procedure, not here';
   end if;
   if not exists (select 1 from public.profiles where id = v_uid) then
-    raise exception 'The account no longer exists';
+    -- Already deleted another way (before 0097, by removing the login): there
+    -- is nothing left to erase, so the request is closed, not left pending.
+    update public.pending_profile_deletions
+       set status = 'resolved', resolved_by = v_staff, resolved_at = now(),
+           notes = concat_ws(E'\n', notes, 'Closed by staff (account already deleted): ' || btrim(p_reason))
+     where id = p_pending_deletion_id;
+    return jsonb_build_object('status', 'account_already_deleted');
   end if;
   v_blocking_reason := public.account_deletion_blocking_reason(v_uid);
   if v_blocking_reason is not null then
@@ -537,7 +565,11 @@ begin
   insert into public.pending_auth_deletions (auth_user_id, email, last_error)
   values (v_uid, v_pending.email, 'Reviewed account deletion completed by staff; the sign-in identity still needs deleting')
   on conflict (auth_user_id) do update
-    set status = 'pending', resolved_by = null, resolved_at = null, last_attempted_at = now(),
+    set notes = concat_ws(E'\n', public.pending_auth_deletions.notes,
+                  'Earlier record: status ' || public.pending_auth_deletions.status
+                  || coalesce(', resolved at ' || public.pending_auth_deletions.resolved_at::text, '')
+                  || coalesce(' by ' || public.pending_auth_deletions.resolved_by::text, '')),
+        status = 'pending', resolved_by = null, resolved_at = null, last_attempted_at = now(),
         attempts = public.pending_auth_deletions.attempts + 1, last_error = excluded.last_error;
 
   return v_result || jsonb_build_object('status', 'completed');

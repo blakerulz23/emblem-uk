@@ -284,7 +284,13 @@ console.log('\n=== 5. Parent-only accounts delete as before ===');
     const mem = await w.submit('family_memory', 'Kit day');
     const ver = await w.submit('pending_verification', 'Goal');
     await w.verify(coach, ver);
+    const card = id();
+    await db.query(`insert into public.cards (id, player_id, claim_token, status) values ($1, $2, 'S5-CARD', 'claimed')`, [card, w.directPlayer]);
     const result = await deleteAccount(w, people.parent);
+    check('5: the sole-guardian child gets one automatic deletion request and its card is locked, audited to the parent',
+      await n(db, `select count(*)::int n from public.player_deletion_requests where player_id = $1 and status = 'pending' and execution_state = 'awaiting_staff_confirmation'`, [w.directPlayer]) === 1 &&
+      await n(db, `select count(*)::int n from public.cards where id = $1 and access_status = 'suspended' and access_status_reason = 'deletion_request'`, [card]) === 1 &&
+      await n(db, `select count(*)::int n from public.card_access_audit_events where card_id = $1 and actor_role = 'guardian' and actor_profile_id = $2`, [card, people.parent]) === 1);
     check('5: a parent co-guarding one child and sole guardian of another deletes as before',
       result.canDeleteIdentity === true && result.playersUnlinked.includes(w.player) && result.playersDeletionRequested.includes(w.directPlayer), JSON.stringify(result));
     const m = await moment(db, mem), v = await moment(db, ver);
@@ -381,6 +387,27 @@ console.log('\n=== 6. Coach with authored records and recognitions (staff-review
     check('6: once other references are cleared, a manual profile delete succeeds and marks the recognition (trigger)',
       manual === null && k3.verification_status === 'coach_verified' && k3.verified_by === null && k3.verifier_account_deleted_at !== null, JSON.stringify([manual, k3]));
 
+    // A request resolved by hand before 0097 reopens as pending when the account asks again (0097 alone).
+    const coach4 = await w.coach();
+    await w.user(coach4, `insert into public.player_assessments (player_id, created_by, body) values ($1, $2, 'Fictional assessment')`, [w.player, coach4]);
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, blocking_reason, status, resolved_by, resolved_at, first_detected_at) values ($1, 'coach_authored_player_records', 'resolved', $2, now(), now() - interval '30 days')`, [coach4, people.staff]);
+    const reopened = await deleteAccount(w, coach4);
+    const r4 = await one(db, `select status, resolved_by, resolved_at, first_detected_at from public.pending_profile_deletions where auth_user_id = $1`, [coach4]);
+    check('6: a request resolved by hand before 0097 reopens as pending, as a new review round',
+      reopened.canDeleteIdentity === false && r4.status === 'pending' && r4.resolved_by === null && r4.resolved_at === null &&
+      Date.now() - +r4.first_detected_at < 60_000 && new Date(reopened.reviewOpenedAt).getTime() === +r4.first_detected_at, JSON.stringify([reopened, r4]));
+    const again4 = await deleteAccount(w, coach4);
+    check('6: a repeat while pending keeps the same review round', again4.reviewOpenedAt === reopened.reviewOpenedAt, JSON.stringify([reopened.reviewOpenedAt, again4.reviewOpenedAt]));
+    // A request whose account was already deleted another way (before 0097, by removing the login) is closed, not stuck.
+    const gone = await w.coach();
+    await db.query(`delete from auth.users where id = $1`, [gone]);
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, blocking_reason) values ($1, 'coach_authored_player_records')`, [gone]);
+    const goneId = (await one(db, `select id from public.pending_profile_deletions where auth_user_id = $1`, [gone])).id;
+    const closed = await complete(people.staff, goneId, 'Account already removed');
+    const gr = await one(db, `select status, resolved_by, notes from public.pending_profile_deletions where id = $1`, [goneId]);
+    check('6: completing a request whose account is already gone closes it (account_already_deleted), resolved by the staff member, nothing else written',
+      closed.status === 'account_already_deleted' && gr.status === 'resolved' && gr.resolved_by === people.staff && gr.notes.includes('already deleted') &&
+      await n(db, `select count(*)::int n from public.pending_auth_deletions where auth_user_id = $1`, [gone]) === 0, JSON.stringify([closed, gr]));
     // A parent's login cannot be removed around the clean-up either.
     const g = await rowsOf(db, `select * from public.guardians order by player_id, profile_id`);
     const parentLogin = await attempt(() => db.query(`delete from auth.users where id = $1`, [people.coParent]));

@@ -6,9 +6,16 @@ import { logRouteFailure, raised } from '@/lib/route-failure';
 export const runtime = 'nodejs';
 
 const ACCOUNT_DELETE_FAILED_MESSAGE = 'Could not delete your account. Please try again.';
-// Migration 0097: a deletion that needs staff review changes nothing yet.
-const ACCOUNT_DELETE_UNDER_REVIEW_MESSAGE =
-  "Your request to delete your account has been sent to our team. Because your account is linked to records we're required to keep, a member of staff needs to review it first. Until then nothing has been deleted: your account and your children's cards stay as they are, and any coach access is paused. We'll be in touch.";
+// Migration 0097: a deletion that needs staff review deletes nothing yet.
+// 0098 pauses coach access meanwhile; say so only when it did.
+function underReviewMessage(coachAccessPaused: boolean) {
+  return (
+    "Your request to delete your account has been sent to our team. Because your account is linked to records we're required to keep, a member of staff needs to review it first. " +
+    'Until then nothing is permanently deleted and your account stays as it is' +
+    (coachAccessPaused ? ', except that your coach access is paused.' : '.') +
+    " We'll be in touch."
+  );
+}
 const STAFF_ACCOUNT_DELETE_REFUSED_MESSAGE =
   "Staff accounts can't be deleted here. Ask another member of staff to remove it.";
 
@@ -29,12 +36,15 @@ const RECENT_REAUTH_WINDOW_MS = 5 * 60 * 1000;
  * another user's (there is no id in this route's own path; it always
  * acts on the caller's own auth.uid(), both in the RPC and here).
  *
- * Order: the SQL side first (delete_own_guardian_account, 0042 — unlinks
+ * Order: the SQL side first (delete_own_guardian_account). When nothing
+ * blocks the deletion it erases the account (0042/0076/0097 — unlinks
  * shared players, files player_deletion_requests for any player this
  * guardian was the sole guardian of, cleans up this guardian's own
- * residual references, deletes their `profiles` row), only then the
+ * residual references, deletes their `profiles` row); only then the
  * Supabase Auth user itself via the service-role admin API — never from
  * the browser, never with the service-role key anywhere near the client.
+ * When something blocks it, the request goes to staff review instead and
+ * nothing is erased (see below).
  *
  * Partial-failure handling (audited case: DB cleanup succeeds, the Auth
  * admin delete then fails — e.g. a transient Supabase Auth API issue).
@@ -106,9 +116,14 @@ export async function POST() {
     // notification is currently the ONLY signal staff get for this case at
     // all, so the link points at the closest relevant staff area rather
     // than a page that would show nothing.
+    // One notification per review round: from 0097 the result carries when
+    // the current round began (0098 starts a new round when a request follows
+    // a rejection), so a repeat while still pending is not re-sent, but a
+    // new request after a rejection reaches staff.
+    const reviewOpenedAt = (rpcResult as { reviewOpenedAt?: unknown }).reviewOpenedAt;
     await enqueueAndDispatchStaffNotification(createServiceRoleClient(), {
       eventType: 'auth_deletion_stuck',
-      eventKey: `auth_deletion_stuck:profile:${user.id}`,
+      eventKey: typeof reviewOpenedAt === 'string' ? `auth_deletion_stuck:profile:${user.id}:${reviewOpenedAt}` : `auth_deletion_stuck:profile:${user.id}`,
       subjectId: user.id,
       recipientScope: 'all_staff',
       summary: { reason: 'Account deletion needs staff review (records that must be kept). Nothing has been removed yet; reject it, or complete it with complete_pending_profile_deletion. No staff page surfaces this yet' },
@@ -119,7 +134,7 @@ export async function POST() {
       ok: true,
       partial: true,
       identityRetained: true,
-      message: ACCOUNT_DELETE_UNDER_REVIEW_MESSAGE,
+      message: underReviewMessage(Number((rpcResult as { coachAccessSuspended?: unknown }).coachAccessSuspended) > 0),
       ...rpcResult,
     });
   }

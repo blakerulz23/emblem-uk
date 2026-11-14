@@ -57,8 +57,9 @@ describe('migration 0098 — deletion review suspension and verifier identity', 
     // pending_profile_deletions upsert (now reopening a decided request) and
     // the two result lines (each gains coachAccessSuspended).
     const changed = new Set([
-      '    on conflict (auth_user_id) do update set blocking_reason = excluded.blocking_reason;',
-      "      'canDeleteIdentity', false",
+      '          resolved_by = null, resolved_at = null,',
+      '    returning first_detected_at into v_review_opened_at;',
+      "      'reviewOpenedAt', v_review_opened_at",
       "    || jsonb_build_object('canDeleteIdentity', true);",
     ]);
     let at = 0;

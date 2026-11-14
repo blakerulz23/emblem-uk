@@ -933,6 +933,20 @@ trigger, so neither runs over an earlier draft of 0097. A precondition
 refuses unless the 0020 rule, the original cancellation rules and the 0076
 function are in place, and refuses a second application.
 
+**Completing a reviewed deletion (staff).** There is no staff page yet.
+`complete_pending_profile_deletion(request_id, reason)` must run as a
+signed-in staff member (`auth.uid()` is the staff profile; it is not
+executable by `service_role`, because the card lockdown attributes each
+suspension to `auth.uid()`). From the Supabase SQL editor that means running
+it as role `authenticated` impersonating the staff member's own user. Resolve
+the blocking records first, or it refuses and names the reason code. Then
+remove the sign-in identity listed on `/staff/pending-auth-deletions`; until
+then that login can still sign in to an empty account. A request whose
+account was already deleted another way is closed with
+`account_already_deleted`. An account that is both staff and a parent cannot
+be removed by any of these paths until its `staff_accounts` row is removed
+(the manual staff procedure).
+
 **Rollback: emergency only.** `supabase/rollback/0097_rollback.sql` breaks
 coach account deletion again. It needs, in the same transaction,
 `select set_config('emblem.acknowledge_0097_rollback', 'BREAK-COACH-ACCOUNT-DELETION', true);`,

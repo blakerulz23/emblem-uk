@@ -85,7 +85,8 @@ begin
   if v_body is null
      or v_body not like '%public.account_deletion_blocking_reason(v_uid)%'
      or v_body not like '%public.erase_account_for_deletion(v_uid, v_email, null)%'
-     or v_body not like '%on conflict (auth_user_id) do update set blocking_reason = excluded.blocking_reason;%'
+     or v_body not like '%set blocking_reason = excluded.blocking_reason, status = ''pending'',%resolved_by = null, resolved_at = null,%returning first_detected_at into v_review_opened_at;%'
+     or v_body not like '%perform 1 from public.profiles where id = v_uid for update;%'
      or v_body like '%account_deletion_review%' then
     v_problems := v_problems || 'public.delete_own_guardian_account() is not the 0097 definition'::text;
   end if;
@@ -425,6 +426,7 @@ declare
   v_uid uuid;
   v_email text;
   v_blocking_reason text;
+  v_review_opened_at timestamptz;
   v_pending_id uuid;
   v_row record;
   v_suspended int := 0;
@@ -440,9 +442,10 @@ begin
     raise exception 'Staff accounts cannot be deleted from the app';
   end if;
 
-  -- 0098: hold this account's profile row until the call ends, so a coach
-  -- grant racing this call either commits first (and is suspended below)
-  -- or waits and then sees the pending review (section 4).
+  -- 0097: hold this account's profile row until the call ends, so a staff
+  -- completion of the same account waits (and then finds nothing to do).
+  -- 0098: likewise a coach grant racing this call either commits first (and
+  -- is suspended below) or waits and then sees the pending review (section 4).
   perform 1 from public.profiles where id = v_uid for update;
 
   select email into v_email from auth.users where id = v_uid;
@@ -459,13 +462,19 @@ begin
     -- account still exists, and staff may reject the deletion. The clean-up
     -- runs once, if and when staff complete it
     -- (complete_pending_profile_deletion).
-    -- 0098: a new request after a rejected (or resolved) one is pending again.
     insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason)
     values (v_uid, v_email, v_blocking_reason)
+    -- A request after a resolved one (resolved by hand before 0097) is
+    -- pending again, as a new review round: first_detected_at becomes the
+    -- time this round began, and stays unchanged while it is pending, so
+    -- staff are notified once per round.
+    -- 0098: so is a new request after a rejected one (decision cleared).
     on conflict (auth_user_id) do update
       set blocking_reason = excluded.blocking_reason, status = 'pending',
-          resolved_by = null, resolved_at = null, rejection_reason = null
-    returning id into v_pending_id;
+          resolved_by = null, resolved_at = null, rejection_reason = null,
+          first_detected_at = case when public.pending_profile_deletions.status = 'pending'
+                                   then public.pending_profile_deletions.first_detected_at else now() end
+    returning id, first_detected_at into v_pending_id, v_review_opened_at;
 
     -- 0098: suspend coach access while staff review the deletion. Ends every
     -- not-yet-ended assignment and removes every direct link, snapshotting
@@ -508,6 +517,7 @@ begin
       'playersUnlinked', '[]'::jsonb,
       'playersDeletionRequested', '[]'::jsonb,
       'canDeleteIdentity', false,
+      'reviewOpenedAt', v_review_opened_at,
       'coachAccessSuspended', v_suspended
     );
   end if;

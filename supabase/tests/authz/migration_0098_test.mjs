@@ -799,6 +799,11 @@ console.log('\n=== 17. A parent-coach under review keeps the whole family; staff
     await w.user(parent, `insert into public.coach_invites (player_id, code, created_by) values ($1, 'S17-COACH-1', $2)`, [w.directPlayer, parent]);
     await w.service(`insert into public.team_invites (team_id, code, created_by) values ($1, 'S17-TEAM-1', $2)`, [w.team, parent]);
     await w.service(`insert into public.player_invites (player_id, code, created_by) values ($1, 'S17-PLAYER-1', $2)`, [w.player, parent]);
+    await w.service(`insert into public.team_invites (team_id, code, used_by, used_at) values ($1, 'S17-TEAM-USED', $2, now())`, [w.team, parent]);
+    await db.query(
+      `insert into public.orders (id, order_ref, purchaser_email, source, payment_status, authority_status, currency, pricing_tier, paid_player_count,
+         total_print_quantity, unit_price_pence, subtotal_pence, pricing_version, priced_at, approved_by)
+       values ($1, 'S17-ORDER', 'p@example.test', 'standalone_order', 'order_intent', 'confirmed', 'GBP', 'single', 1, 1, 2499, 2499, 1, now(), $2)`, [id(), parent]);
     await db.query(`insert into public.active_viewers (profile_id, scope) values ($1, 'story')`, [parent]);
     await w.service(`insert into public.story_updates (recipient_profile_id, actor_profile_id, player_id, event_type, category, title, body, related_moment_id)
       values ($1, $2, $3, 'recognition', 'coach', 'Coach Recognition', 'Recognised', $4)`, [parent, otherCoach, w.player, rec]);
@@ -818,6 +823,7 @@ console.log('\n=== 17. A parent-coach under review keeps the whole family; staff
         (select json_agg(i order by i.code) from public.player_invites i) player_invites,
         (select json_agg(a order by a.scope) from public.active_viewers a) active_viewers,
         (select json_agg(s order by s.id) from public.story_updates s) story_updates,
+        (select json_agg(o.approved_by order by o.order_ref) from public.orders o) order_approvers,
         (select count(*) from public.profiles where id = $1) profile`, [parent]);
     const F0 = await family();
     const C0 = await coachRows(db, parent);
@@ -851,6 +857,10 @@ console.log('\n=== 17. A parent-coach under review keeps the whole family; staff
     // --- Second request, then final staff completion ---
     const r2 = await deleteAccount(w, parent);
     check('17: a second request goes to review again; the family is still unchanged', r2.canDeleteIdentity === false && r2.coachAccessSuspended === 1 && (await family()) === F0, JSON.stringify(r2));
+    const r2b = await deleteAccount(w, parent);
+    check('17: each review round has its own reviewOpenedAt (staff are notified once per round); a repeat while pending keeps it',
+      typeof r1.reviewOpenedAt === 'string' && r2.reviewOpenedAt !== r1.reviewOpenedAt && r2b.reviewOpenedAt === r2.reviewOpenedAt && r2b.coachAccessSuspended === 0 && (await family()) === F0,
+      JSON.stringify([r1.reviewOpenedAt, r2.reviewOpenedAt, r2b.reviewOpenedAt]));
     const blocked = await attempt(() => complete(w, pid));
     check('17: completion is refused while the coach-authored record exists, changing nothing', blocked?.includes('(coach_authored_player_records)') && (await family()) === F0, blocked);
     check('17: completion by the account itself (not staff) is refused', (await attempt(() => complete(w, pid, parent)))?.includes('Not authorized: staff only'));
@@ -880,7 +890,8 @@ console.log('\n=== 17. A parent-coach under review keeps the whole family; staff
     check('17: final completion — invites, viewers and story updates are cleared as in 0076',
       await n(db, `select (select count(*) from public.coach_invites where created_by = $1) + (select count(*) from public.team_invites where created_by = $1)
         + (select count(*) from public.player_invites where created_by = $1) + (select count(*) from public.active_viewers where profile_id = $1)
-        + (select count(*) from public.story_updates where recipient_profile_id = $1) as n`, [parent]) === 0);
+        + (select count(*) from public.story_updates where recipient_profile_id = $1) + (select count(*) from public.team_invites where used_by = $1)
+        + (select count(*) from public.orders where approved_by = $1) as n`, [parent]) === 0);
     const pd = (await db.query(`select status, resolved_by from public.pending_profile_deletions where id = $1`, [pid])).rows[0];
     check('17: final completion — the request is resolved by the staff member; the open suspension is closed as account_deleted',
       pd.status === 'resolved' && pd.resolved_by === people.staff &&
@@ -945,12 +956,24 @@ console.log('\n=== 18. Parent-only under review, staff targets, and completion e
     check('18: an existing pending child request is reused at completion (still exactly one)',
       done2.status === 'completed' && await n(db, `select count(*)::int n from public.player_deletion_requests where player_id = $1 and status = 'pending'`, [w.player]) === 1, JSON.stringify([existing, done2]));
 
-    // Staff accounts: a (pre-0098) pending row for a staff account cannot be completed here.
-    await db.query(`insert into public.pending_profile_deletions (auth_user_id, blocking_reason) values ($1, 'coach_authored_player_records')`, [people.staff]);
-    const spid = (await pendingOf(db, people.staff)).id;
+    // Staff accounts: a (pre-0098) pending row for a staff account cannot be completed here, by another staff
+    // member or by the account itself.
+    const staff2 = id();
+    await w.person(staff2);
+    await db.query(`insert into public.staff_accounts (profile_id) values ($1)`, [staff2]);
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, blocking_reason) values ($1, 'coach_authored_player_records'), ($2, 'coach_authored_player_records')`, [people.staff, staff2]);
+    const spid = (await pendingOf(db, people.staff)).id, spid2 = (await pendingOf(db, staff2)).id;
     const s1 = await attempt(() => complete(w, spid));
-    check('18: completing a staff account\'s deletion (including one\'s own) is refused, changing nothing',
-      s1?.includes('Staff accounts are removed by the manual staff procedure') && await n(db, `select count(*)::int n from public.profiles where id = $1`, [people.staff]) === 1, s1);
+    const s1b = await attempt(() => complete(w, spid2));
+    check('18: completing a staff account\'s deletion (one\'s own, or another staff member\'s) is refused, changing nothing',
+      s1?.includes('Staff accounts are removed by the manual staff procedure') && s1b?.includes('Staff accounts are removed by the manual staff procedure') &&
+      await n(db, `select count(*)::int n from public.profiles where id = any($1::uuid[])`, [[people.staff, staff2]]) === 2, `${s1} / ${s1b}`);
+    // A request resolved by hand (before 0097) while the account still exists is not reported as completed.
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, blocking_reason, status, resolved_by, resolved_at) values ($1, 'coach_authored_player_records', 'resolved', $2, now())`, [people.coParent, people.staff]);
+    const handId = (await pendingOf(db, people.coParent)).id;
+    const hand = await attempt(() => complete(w, handId));
+    check('18: a request marked resolved while the account still exists is refused (not reported as completed)',
+      hand?.includes('marked resolved but the account still exists') && await n(db, `select count(*)::int n from public.profiles where id = $1`, [people.coParent]) === 1, hand);
     const s2 = await attempt(() => complete(w, id()));
     check('18: an unknown request is refused', s2?.includes('Pending profile deletion not found'), s2);
     // A coach-only account that requests while its blocker is already cleared deletes at once (no review).
