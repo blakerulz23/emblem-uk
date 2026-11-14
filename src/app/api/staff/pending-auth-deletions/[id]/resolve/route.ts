@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
+import { redactEmails } from '@/lib/redact-email';
 
 export const runtime = 'nodejs';
 
@@ -21,7 +22,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 
   const body = await request.json().catch(() => null);
-  const note = typeof body?.note === 'string' ? body.note.trim() : '';
+  // A retry record of an erased account: never store an email address in its note (migration 0097).
+  const note = typeof body?.note === 'string' ? redactEmails(body.note.trim()) : '';
   if (!note) {
     return NextResponse.json({ error: 'A confirmation note is required.' }, { status: 400 });
   }

@@ -246,6 +246,14 @@ describe('0097 rollback — emergency only', () => {
     expect(complete).toContain('on conflict (auth_user_id) do update set email = null;');
     expect(complete).toContain('set email = null,');
     expect(code).toContain("action in ('complete', 'reject', 'restore', 'remove_sign_in', 'self_deleted')");
+    // The review row is locked before its status is read; the event is tied to the erased record this call inserted.
+    expect(erase).toContain('from public.pending_profile_deletions where auth_user_id = v_uid for update;');
+    expect(erase).toContain('get diagnostics v_erased_now = row_count;');
+    expect(erase).toContain('if p_completed_by is null and v_review_id is not null and v_erased_now = 1 then');
+    // Older Auth-retry rows lose the email at every erasure.
+    expect(erase).toContain('update public.pending_auth_deletions set email = null');
+    // The permanent audit refuses an email-shaped reason.
+    expect(code).toContain('constraint account_deletion_staff_actions_reason_no_email');
   });
 
   it('restores the 0076 function body exactly', () => {

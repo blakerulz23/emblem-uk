@@ -11,9 +11,9 @@ import AccountDeletionsView, { accountLabel, requestRef, type ActionRow, type De
 const NoActions = () => null;
 const pendingRow: PendingRow = { id: 'aaaa1111-2222-4333-8444-555566667777', auth_user_id: 'u-pending', email: 'pending@example.test', blocking_reason: 'coach_authored_player_records', first_detected_at: '2026-11-14T09:00:00Z' };
 const decided = (over: Partial<DecidedRow>): DecidedRow => ({ ...pendingRow, id: 'bbbb1111-2222-4333-8444-555566667777', auth_user_id: 'u-x', email: 'kept@example.test', status: 'rejected', resolved_at: '2026-11-14T10:00:00Z', ...over });
-const render = (props: { decided?: DecidedRow[]; erased?: string[]; actions?: ActionRow[]; pending?: PendingRow[] }) =>
+const render = (props: { decided?: DecidedRow[]; erased?: string[]; actions?: ActionRow[]; pending?: PendingRow[]; decidedUnavailable?: boolean }) =>
   renderToStaticMarkup(
-    <AccountDeletionsView pending={props.pending ?? []} decided={props.decided ?? []} signInPending={[]} erased={props.erased ?? []} unrestored={{}} actions={props.actions ?? []} previews={{}} Actions={NoActions} />
+    <AccountDeletionsView pending={props.pending ?? []} decided={props.decided ?? []} signInPending={[]} erased={props.erased ?? []} unrestored={{}} actions={props.actions ?? []} previews={{}} Actions={NoActions} decidedUnavailable={props.decidedUnavailable} />
   );
 
 describe('staff account deletions page', () => {
@@ -32,6 +32,12 @@ describe('staff account deletions page', () => {
     expect(html).toContain('Deleted');
     expect(html).not.toContain('Rejected');
     expect(html).not.toContain('@');
+  });
+
+  it('if the erased-account lookup failed, decided requests are not shown at all (never mislabelled as Rejected)', () => {
+    const html = render({ decided: [], decidedUnavailable: true });
+    expect(html).toContain('Could not check which of these accounts were deleted');
+    expect(html).not.toContain('Rejected');
   });
 
   it('a staff-completed review reads Deleted with no email', () => {

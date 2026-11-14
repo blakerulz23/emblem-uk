@@ -43,9 +43,9 @@ export default async function AccountDeletionsPage() {
   const pending = (pendingData ?? []) as PendingRow[];
   const decidedRaw = (decidedData ?? []) as DecidedRow[];
   const decidedUsers = decidedRaw.map((r) => r.auth_user_id);
-  const { data: erasedData } = decidedUsers.length
+  const { data: erasedData, error: erasedError } = decidedUsers.length
     ? await service.from('erased_accounts').select('profile_id').in('profile_id', decidedUsers)
-    : { data: [] };
+    : { data: [], error: null };
   // erased_accounts is the authoritative current state. An erased account's
   // review keeps no email (0097 clears it); none is passed to the page even
   // if an older row still had one.
@@ -68,7 +68,8 @@ export default async function AccountDeletionsPage() {
   return (
     <AccountDeletionsView
       pending={pending}
-      decided={decided}
+      decided={erasedError ? [] : decided}
+      decidedUnavailable={!!erasedError}
       signInPending={((authData ?? []) as { auth_user_id: string }[]).map((r) => r.auth_user_id)}
       erased={Array.from(erasedIds)}
       unrestored={unrestored}

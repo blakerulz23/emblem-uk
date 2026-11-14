@@ -42,6 +42,7 @@ export default function AccountDeletionsView({
   decided,
   signInPending,
   erased,
+  decidedUnavailable = false,
   unrestored,
   actions,
   previews,
@@ -53,6 +54,8 @@ export default function AccountDeletionsView({
   signInPending: string[];
   /** auth user ids recorded in erased_accounts (actually deleted). */
   erased: string[];
+  /** The erased-account lookup failed: decided requests are not shown (they could be mislabelled). */
+  decidedUnavailable?: boolean;
   /** rejected request id -> coaching suspensions still not restored. */
   unrestored: Record<string, number>;
   actions: ActionRow[];
@@ -90,7 +93,11 @@ export default function AccountDeletionsView({
       )}
 
       <h2 style={{ fontFamily: font.head, fontWeight: 700, fontSize: 18, color: 'var(--ink)', margin: '32px 0 12px' }}>Recently decided</h2>
-      {decided.length === 0 ? (
+      {decidedUnavailable ? (
+        <p role="alert" style={{ fontFamily: font.sans, fontSize: 14, color: '#b91c1c' }}>
+          Could not check which of these accounts were deleted, so decided requests are not shown. Refresh the page.
+        </p>
+      ) : decided.length === 0 ? (
         <p style={{ fontFamily: font.sans, fontSize: 14, color: 'var(--ink-soft)' }}>None yet.</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

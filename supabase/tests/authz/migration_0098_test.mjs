@@ -1012,7 +1012,12 @@ console.log('\n=== 18. Parent-only under review, staff targets, and completion e
     await db.query(`delete from public.profiles where id = $1`, [orphan]);
     await db.query(`insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason) values ($1, 'o@example.test', 'coach_authored_player_records')`, [orphan]);
     const orphanId = (await pendingOf(db, orphan)).id;
+    // An older 0043-era retry row for the same login, still carrying the email.
+    await db.query(`insert into public.pending_auth_deletions (auth_user_id, email, last_error) values ($1, 'o@example.test', 'older failure')`, [orphan]);
     const oc = await complete(w, orphanId);
+    check('18: closing an already-deleted account clears the email from the review and from the retry record',
+      (await pendingOf(db, orphan)).email === null
+        && await n(db, `select count(*)::int n from public.pending_auth_deletions where auth_user_id = $1 and email is null`, [orphan]) === 1);
     check('18: a pending request whose profile is gone but whose login remains is closed and the login is queued for staff',
       oc.status === 'account_already_deleted' && (await pendingOf(db, orphan)).status === 'resolved' &&
       await n(db, `select count(*)::int n from public.pending_auth_deletions where auth_user_id = $1 and status = 'pending'`, [orphan]) === 1, JSON.stringify(oc));
@@ -1316,6 +1321,54 @@ console.log('\n=== 21. Erasure keeps no plaintext email; a later self-deletion i
     const emailPlain = await emailOf(plain);
     await deleteAccount(w, plain);
     check('21: an immediate deletion with no review writes no self_deleted event and leaves no email', await selfEvents() === before && (await emailHits(emailPlain)).length === 0);
+
+    // --- F. A review resolved by hand (before 0097), then the account deletes itself ---
+    const coachF = await w.coach();
+    await w.assess(coachF);
+    await deleteAccount(w, coachF);
+    const pF = await pendingOf(db, coachF);
+    await db.query(`update public.pending_profile_deletions set status = 'resolved', resolved_at = now() where id = $1`, [pF.id]);
+    await db.query(`delete from public.player_assessments where created_by = $1`, [coachF]);
+    await deleteAccount(w, coachF);
+    check('21: a hand-resolved review followed by self-deletion: one self_deleted event, erased_after_resolved_review, email cleared',
+      JSON.stringify((await auditOf(pF.id)).map((a) => [a.action, a.outcome])) === JSON.stringify([['self_deleted', 'erased_after_resolved_review']])
+        && (await pendingOf(db, coachF)).email === null);
+
+    // --- G. An older Auth-retry row with the email, then a successful immediate self-deletion ---
+    const coachG = await w.coach();
+    const emailG = await emailOf(coachG);
+    await db.query(`insert into public.pending_auth_deletions (auth_user_id, email, status, last_error) values ($1, $2, 'resolved', 'older failure')`, [coachG, emailG]);
+    await deleteAccount(w, coachG);
+    check('21: an immediate self-deletion clears the email from an older Auth-retry row too; no public column holds it',
+      await n(db, `select count(*)::int n from public.pending_auth_deletions where auth_user_id = $1 and email is null`, [coachG]) === 1 && (await emailHits(emailG)).length === 0);
+
+    // --- H. An email typed into a staff reason is refused (the audit is permanent) ---
+    const coachH = await w.coach();
+    await w.assess(coachH);
+    await deleteAccount(w, coachH);
+    const pH = await pendingOf(db, coachH);
+    await db.query(`delete from public.player_assessments where created_by = $1`, [coachH]);
+    const withEmail = await errOf(() => complete(w, pH.id, people.staff, 'Parent confirmed from someone@example.test'));
+    const rejectEmail = await errOf(() => reject(w, pH.id, people.staff, 'Asked by someone@example.test to stay'));
+    check('21: a staff reason holding an email address is refused (complete and reject), changing nothing',
+      withEmail?.includes('account_deletion_staff_actions_reason_no_email') && rejectEmail?.includes('account_deletion_staff_actions_reason_no_email')
+        && (await pendingOf(db, coachH)).status === 'pending' && await n(db, `select count(*)::int n from public.profiles where id = $1`, [coachH]) === 1, `${withEmail} / ${rejectEmail}`);
+
+    // --- I. Documented retention outside the review record (an owner decision, not cleared by the erasure):
+    //        the account's own child deletion request (requester_email, the contact for that request) and an
+    //        invite addressed to it (invited_email). Nothing else keeps the address. ---
+    const acctI = id();
+    await w.person(acctI);
+    const emailI = await emailOf(acctI);
+    const playerI = id();
+    await db.query(`insert into public.players (id, name) values ($1, 'Fictional Shared')`, [playerI]);
+    await db.query(`insert into public.guardians (player_id, profile_id, created_via, created_by) values ($1, $2, 'card_claim', $2), ($1, $3, 'card_claim', $3)`, [playerI, acctI, people.coParent]);
+    await w.user(acctI, `select public.request_player_deletion($1, $2, null)`, [playerI, emailI]);
+    await db.query(`insert into public.coach_invites (player_id, code, created_by, invited_email, used_by, used_at) values ($1, 'S21-INVITEE', $2, $3, $4, now())`, [playerI, people.coParent, emailI, acctI]);
+    const rI = await deleteAccount(w, acctI);
+    const hitsI = await emailHits(emailI);
+    check('21: documented retention: after erasure the address remains only on the account\'s own child deletion request and an invite addressed to it',
+      rI.canDeleteIdentity === true && JSON.stringify(hitsI.sort()) === JSON.stringify(['coach_invites.invited_email:1', 'player_deletion_requests.requester_email:1']), hitsI.join(', '));
   } catch (e) {
     check('21: email redaction and self-deletion audit', false, e.stack);
   }

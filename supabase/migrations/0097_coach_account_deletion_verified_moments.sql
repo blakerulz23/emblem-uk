@@ -344,6 +344,7 @@ declare
   v_request_id uuid;
   v_review_id uuid;
   v_review_status text;
+  v_erased_now int;
 begin
   -- An account already erased has nothing left to erase. A still-valid
   -- access token of that account calling delete_own_guardian_account again
@@ -418,8 +419,11 @@ begin
   -- rejected, or resolved earlier) is its own append-only audit event; the
   -- review keeps its historical status (a rejected review stays rejected),
   -- and erased_accounts is the authoritative current state.
+  -- Locked (profile first, then review, as every deletion function locks),
+  -- so a staff decision cannot change the status between this read and the
+  -- update below.
   select status, id into v_review_status, v_review_id
-    from public.pending_profile_deletions where auth_user_id = v_uid;
+    from public.pending_profile_deletions where auth_user_id = v_uid for update;
   update public.pending_profile_deletions
      set status = 'resolved', resolved_by = p_completed_by, resolved_at = now()
    where auth_user_id = v_uid and status = 'pending';
@@ -429,8 +433,12 @@ begin
   insert into public.erased_accounts (profile_id, completed_by, pending_deletion_id)
   values (v_uid, p_completed_by, v_review_id)
   on conflict (profile_id) do nothing;
+  -- Exactly once comes from the unique key: only the call that recorded the
+  -- erasure writes the self-deletion event (a concurrent duplicate, possible
+  -- only when no profile row exists to lock, writes nothing).
+  get diagnostics v_erased_now = row_count;
 
-  if p_completed_by is null and v_review_id is not null then
+  if p_completed_by is null and v_review_id is not null and v_erased_now = 1 then
     insert into public.account_deletion_staff_actions (pending_deletion_id, profile_id, actor_profile_id, action, reason, outcome)
     values (v_review_id, v_uid, v_uid, 'self_deleted',
             'The account deleted itself through the app once nothing blocked the deletion',
@@ -445,6 +453,10 @@ begin
   -- account: only its id, the erased account's uuid, timestamps, the staff
   -- actor, reason, outcome and the append-only audit remain.
   update public.pending_profile_deletions set email = null
+   where auth_user_id = v_uid and email is not null;
+  -- Nor does any Auth-removal retry record for it (an older 0043-era row
+  -- written by a failed self-deletion may still hold one).
+  update public.pending_auth_deletions set email = null
    where auth_user_id = v_uid and email is not null;
 
   -- The profiles delete trigger (section 7) marks this account's
@@ -781,6 +793,10 @@ create table public.account_deletion_staff_actions (
   actor_profile_id uuid not null,
   action text not null check (action in ('complete', 'reject', 'restore', 'remove_sign_in', 'self_deleted')),
   reason text not null check (char_length(btrim(reason)) between 1 and 500),
+  -- Append-only, so it must never hold an email address (it could never be
+  -- removed): a reason containing one is refused, and with it the decision.
+  constraint account_deletion_staff_actions_reason_no_email
+    check (reason !~ '[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+'),
   outcome text not null,
   created_at timestamptz not null default now()
 );

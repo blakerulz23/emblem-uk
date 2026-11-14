@@ -9,3 +9,15 @@ describe('redactEmails', () => {
     expect(redactEmails('Auth service unavailable (500)')).toBe('Auth service unavailable (500)');
   });
 });
+
+describe('redactEmails — less common forms', () => {
+  it('non-ASCII local parts, IDN and punycode domains, and encoded @', () => {
+    for (const addr of ['josé@example.com', 'user@пример.рф', 'user@example.xn--p1ai', 'user%40example.com', 'user\u0040example.com']) {
+      const out = redactEmails(`failed for ${addr}: done`);
+      expect(out).toBe(`failed for ${EMAIL_REDACTED}: done`);
+    }
+  });
+  it('keeps surrounding punctuation', () => {
+    expect(redactEmails('<a@b.co>, "c@d.org"')).toBe(`<${EMAIL_REDACTED}>, "${EMAIL_REDACTED}"`);
+  });
+});

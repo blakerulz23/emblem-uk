@@ -13,6 +13,9 @@ export function validateStaffReason(reason: string): string | null {
   const trimmed = reason.trim();
   if (!trimmed) return 'Enter a reason.';
   if (trimmed.length > 500) return 'Keep the reason to 500 characters or fewer.';
+  // The reason is kept permanently in an append-only audit, so it must not
+  // hold an email address (the database refuses one too).
+  if (/[^\s@]+@[^\s@]+\.[^\s@]+/.test(trimmed)) return 'Leave email addresses out of the reason: it is kept permanently in the audit.';
   return null;
 }
 
