@@ -66,6 +66,21 @@ describe('POST /api/orders/[id]/resend-invite', () => {
     expect(mockCreateGuardianInvite).toHaveBeenCalledWith(expect.anything(), 'player-1', null, 'guardian@example.test', 'order_approval', 'order-1');
   });
 
+  it('0097: a held order is refused with 409 and nothing is sent', async () => {
+    order = { ...order, held_at: '2026-11-14T00:00:00Z' };
+    const res = await resend();
+    expect(res.status).toBe(409);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
+  it('0097: an order whose named guardian was erased is refused with 409, never resent to the buyer', async () => {
+    order = { ...order, authority_status: 'confirmed', intended_guardian_email: null, intended_guardian_erased_at: '2026-11-14T00:00:00Z' };
+    const res = await resend();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/deleted their Emblem account/);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
   it('two different children is still a multi-card order: 400, nothing sent', async () => {
     cardRows = [{ player_id: 'player-1' }, { player_id: 'player-2' }];
     const res = await resend();

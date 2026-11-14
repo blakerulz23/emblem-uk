@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { POST } from './route';
-import { GIFT_APPROVAL_MISSING_MESSAGE } from '@/lib/gift-order-guardian';
+import { GIFT_APPROVAL_MISSING_MESSAGE, ORDER_HELD_MESSAGE } from '@/lib/gift-order-guardian';
 
 /**
  * Same deviation-from-DI reasoning as every other route.test.ts in this
@@ -61,6 +61,9 @@ type Fixture = {
   approvalLookupFails?: boolean;
   // R3a: the linked-cards read fails
   cardsReadFails?: boolean;
+  // migration 0097: held_at / intended_guardian_erased_at on the order
+  orderHeld?: boolean;
+  intendedGuardianErased?: boolean;
 };
 
 let fixture: Fixture;
@@ -89,8 +92,10 @@ vi.mock('@/lib/supabase/server', () => ({
           select: (cols: string) => ({
             eq: () => ({
               maybeSingle: async () => ({
-                data: cols.startsWith('source')
+                // The route reads the order with select('*') (works before and after 0097).
+                data: cols === '*'
                   ? {
+                      id: ORDER_ID,
                       source: fixture.orderSource,
                       authority_status: fixture.orderAuthorityStatus,
                       pricing_tier: fixture.orderPricingTier ?? null,
@@ -98,6 +103,8 @@ vi.mock('@/lib/supabase/server', () => ({
                       order_ref: 'EMB-APPROVE-1',
                       purchaser_email: fixture.orderRow?.purchaser_email ?? null,
                       intended_guardian_email: fixture.orderRow?.intended_guardian_email ?? null,
+                      held_at: fixture.orderHeld ? '2026-11-14T00:00:00Z' : null,
+                      intended_guardian_erased_at: fixture.intendedGuardianErased ? '2026-11-14T00:00:00Z' : null,
                     }
                   : fixture.orderRow,
               }),
@@ -230,6 +237,52 @@ describe('POST /api/orders/[id]/approve — normal orders (unchanged)', () => {
     expect(auditInserts).toHaveLength(0);
     expect(mockRpc).not.toHaveBeenCalled();
     expect(mockSendEarlyPreviewEmail).not.toHaveBeenCalled();
+  });
+
+  it('0097: a held order (its named guardian deleted their account) is refused with 409 before anything is written or sent', async () => {
+    fixture = {
+      orderSource: 'standalone_order',
+      orderAuthorityStatus: 'confirmed',
+      orderHeld: true,
+      intendedGuardianErased: true,
+      cards: [{ player_id: 'player-1' }],
+      orderRow: { id: ORDER_ID, purchaser_email: 'buyer@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe(ORDER_HELD_MESSAGE);
+    expect(orderUpdates).toHaveLength(0);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+    expect(mockCreateTeamInvite).not.toHaveBeenCalled();
+  });
+
+  it('0097: once staff release the hold, the order approves but the profile invite never falls back to the buyer', async () => {
+    fixture = {
+      orderSource: 'standalone_order',
+      orderAuthorityStatus: 'confirmed',
+      intendedGuardianErased: true,
+      cards: [{ player_id: 'player-1' }],
+      orderRow: { id: ORDER_ID, purchaser_email: 'buyer@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.inviteTriggered).toBe(false);
+    expect(body.inviteSkippedReason).toBe('intended_guardian_erased');
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
+  it('0097: a guardian address recorded again after the erasure is used as before', async () => {
+    fixture = {
+      orderSource: 'standalone_order',
+      orderAuthorityStatus: 'confirmed',
+      intendedGuardianErased: true,
+      cards: [{ player_id: 'player-1' }],
+      orderRow: { id: ORDER_ID, purchaser_email: 'buyer@example.test', intended_guardian_email: 'new-guardian@example.test' },
+    };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect(mockCreateGuardianInvite).toHaveBeenCalledWith(expect.anything(), 'player-1', null, 'new-guardian@example.test', 'order_approval', ORDER_ID);
   });
 
   it('a standalone-source order is treated identically to a team_order (normal path, not squad_invite)', async () => {

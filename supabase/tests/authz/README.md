@@ -978,6 +978,7 @@ revoked any invite.
   - a trigger refuses any change that would reopen it, for every role (SQLSTATE EMRVK);
   - used invites addressed to the account, or redeemed by it, lose the address;
   - nothing changes while the deletion is only under review.
+- **A named guardian's address on orders** (0097 section 12): at the final erasure, `orders.intended_guardian_email` and gift `builder_guardian_approval_requests.guardian_email` that match the account's address are cleared. The approval evidence stays without the address (`guardian_email_redacted_at`, `guardian_distinct_from_buyer`), a pending request is revoked, and every unfinished affected order is held (`held_at`). The database refuses approving or fulfilling a held order (EMHLD) and an address back on a redacted request (EMRDA). The buyer's own addresses never change. Proved in `migration_0098_test.mjs` section 25.
 - **Child-deletion contact** (`requester_email` on both request tables): cleared in the write that completes, rejects or cancels the request, by any path. A `NOT VALID` CHECK backs it. Staff get the address once, at the moment they close a request, to reply: the player-deletion staff page shows it, and the Squad Invite staff routes (which have no page) return it in their response.
 - **Order emails** are never touched (`docs/order-email-retention.md`).
 

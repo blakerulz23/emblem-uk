@@ -40,7 +40,11 @@
 --     closed, are not restored;
 --   - no invite has been revoked because its recipient account was erased
 --     (the revocation record and the guard that keeps it unredeemable are
---     not dropped while anything uses them).
+--     not dropped while anything uses them);
+--   - no order or guardian approval request carries a section 12 marker
+--     (a named guardian erased, a hold, a redacted approval): without them
+--     a profile invite could fall back to the buyer, and a redacted
+--     approval request could not satisfy the NOT NULL restored here.
 --   - the SAME TRANSACTION first sets this exact acknowledgement,
 --     transaction-local (third argument true):
 --
@@ -126,8 +130,32 @@ begin
   if v_marked > 0 then
     raise exception '0097 rollback refused: % invite(s) were revoked because their recipient account was erased; dropping the revocation record and its guard is not allowed. Fix forward instead.', v_marked;
   end if;
+  if to_regprocedure('public.redact_order_guardian_addresses(uuid, text)') is null
+     or to_regprocedure('public.refuse_held_order_progress()') is null
+     or to_regprocedure('public.refuse_redacted_approval_change()') is null then
+    raise exception '0097 rollback refused: 0097 is not applied (order guardian redaction missing)';
+  end if;
+  select (select count(*) from public.orders where intended_guardian_erased_at is not null or held_at is not null)
+       + (select count(*) from public.builder_guardian_approval_requests where guardian_email_redacted_at is not null)
+    into v_marked;
+  if v_marked > 0 then
+    raise exception '0097 rollback refused: % order(s) or guardian approval request(s) record an erased named guardian or a hold; dropping that record is not allowed. Fix forward instead.', v_marked;
+  end if;
 end;
 $$;
+
+-- 12 reversed (no row carries a section 12 marker: checked above).
+drop trigger builder_guardian_approval_requests_redacted_guard on public.builder_guardian_approval_requests;
+drop function public.refuse_redacted_approval_change();
+drop trigger orders_held_guard on public.orders;
+drop function public.refuse_held_order_progress();
+alter table public.builder_guardian_approval_requests alter column guardian_email set not null;
+alter table public.builder_guardian_approval_requests
+  drop constraint builder_guardian_approval_requests_redaction_state,
+  drop column guardian_distinct_from_buyer, drop column guardian_email_redacted_at;
+alter table public.orders
+  drop constraint orders_hold_state,
+  drop column held_reason, drop column held_at, drop column intended_guardian_erased_at;
 
 -- 11 reversed (addresses already cleared stay cleared).
 alter table public.squad_invite_participation_deletion_requests drop constraint sipdr_closed_has_no_contact;
@@ -161,6 +189,7 @@ drop function public.guard_profile_deletion();
 drop function public.complete_pending_profile_deletion(uuid, text);
 drop function public.erase_account_for_deletion(uuid, text, uuid);
 drop function public.revoke_invites_addressed_to(uuid, text);
+drop function public.redact_order_guardian_addresses(uuid, text);
 drop function public.account_deletion_blocking_reason(uuid);
 
 -- 4 reversed: the 0076 function body, exactly.

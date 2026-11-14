@@ -1561,6 +1561,13 @@ console.log('\n=== 22. Invites addressed to an erased account are revoked for go
       serviceExtend: await errOf(() => w.service(`update public.coach_invites set expires_at = now() + interval '7 days' where id = $1`, [A.ids.ciUnused])),
       serviceUse: await errOf(() => w.service(`update public.team_invites set used_at = now(), used_by = $2 where id = $1`, [A.ids.tiUnused, redeemer])),
     };
+    // The CHECK alone (triggers off): a revocation time without its reason is refused (no NULL loophole).
+    await db.exec(`set session_replication_role = replica;`);
+    const halfRevoked = await errOf(() => db.query(`update public.player_invites set revoked_reason = null where id = $1`, [A.ids.piUnused]));
+    const insertHalf = await errOf(() => db.query(`insert into public.coach_invites (player_id, code, created_by, revoked_at) values ($1, 'S22-HALF', $2, now())`, [w.directPlayer, people.parent]));
+    await db.exec(`set session_replication_role = origin;`);
+    check('22: the revoked-state CHECK refuses a revocation time without its reason (update or insert), even with triggers off',
+      halfRevoked?.includes('player_invites_revoked_state') && insertHalf?.includes('coach_invites_revoked_state'), `${halfRevoked} | ${insertHalf}`);
     check('22: a revoked invite can never be reopened, by the owner or service_role (new expiry, use, address, old code, un-revoking: all EMRVK)',
       Object.values(reopen).every((e) => e === 'EMRVK:invite_revoked'), JSON.stringify(reopen));
     const allowed = {
@@ -1712,7 +1719,8 @@ console.log('\n=== 24. R0 legacy-row count and the service_role privilege pre-ch
     const row = (await db.exec(sql)).at(-1).rows[0];
     return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, typeof v === 'bigint' ? Number(v) : v]));
   };
-  const STOP = ['auth_retry_rows_with_email', 'resolved_reviews_with_email', 'closed_child_requests_with_contact', 'closed_participation_requests_with_contact', 'used_invites_redeemer_gone_with_email', 'invites_to_deleted_accounts'];
+  const STOP = ['auth_retry_rows_with_email', 'resolved_reviews_with_email', 'closed_child_requests_with_contact', 'closed_participation_requests_with_contact', 'used_invites_redeemer_gone_with_email', 'invites_to_deleted_accounts',
+    'order_guardian_addresses_of_deleted_accounts'];
   const w = await world({ through: '0096' });
   const { db, people } = w;
   try {
@@ -1732,17 +1740,22 @@ console.log('\n=== 24. R0 legacy-row count and the service_role privilege pre-ch
     await db.query(`insert into public.player_invites (player_id, code, invited_email, origin, used_at) values ($1, 'S24-USED', 'legacy-d@example.test', 'second_guardian', now())`, [w.player]);
     await db.query(`insert into public.coach_invites (player_id, code, created_by, invited_email) values ($1, 'S24-UNUSED', $2, 'nobody-yet@example.test')`, [w.directPlayer, people.parent]);
     await db.query(`insert into public.team_invites (team_id, code, invited_email) values ($1, 'S24-TO-GONE', ' Legacy-A@example.test')`, [w.otherTeam]);
+    // An order naming the deleted account as guardian, and an approval request addressed to it (the buyer's address is never counted).
+    const legacyOrder = (await db.query(`insert into public.orders (order_ref, purchaser_email, intended_guardian_email, source) values ('S24-ORDER', 'legacy-a@example.test', 'LEGACY-A@example.test', 'standalone_order') returning id`)).rows[0].id;
+    await db.query(`insert into public.builder_guardian_approval_requests (order_id, guardian_email, token_hash, status, declaration_version, expires_at) values ($1, ' legacy-a@example.test', repeat('e', 64), 'approved', 'v1', now())`, [legacyOrder]);
     const legacy = await runCheck(db, LEGACY);
     const expected = { auth_retry_rows_with_email: 1, resolved_reviews_with_email: 1, closed_child_requests_with_contact: 1, closed_participation_requests_with_contact: 1, used_invites_redeemer_gone_with_email: 1,
-      invites_to_deleted_accounts: 1, pending_reviews_with_email: 1, open_child_requests_with_contact: 1, unused_invites_with_email_no_account: 2 };
-    check('24: legacy check counts each kind of pre-0097 row (every STOP figure 1, so R0 stops) and the expected pending ones',
+      invites_to_deleted_accounts: 1, order_guardian_addresses_of_deleted_accounts: 2, pending_reviews_with_email: 1, open_child_requests_with_contact: 1, unused_invites_with_email_no_account: 2 };
+    check('24: legacy check counts each kind of pre-0097 row (every STOP figure non-zero, so R0 stops) and the expected pending ones',
       legacy.read_only_guard === 'on' && Object.entries(expected).every(([k, v]) => legacy[k] === v), JSON.stringify(legacy));
     const snapshot = async () => rowsOf(db, `select (select json_agg(t order by t.auth_user_id) from public.pending_auth_deletions t) a,
         (select json_agg(t order by t.auth_user_id) from public.pending_profile_deletions t) b,
         (select json_agg(t order by t.id) from public.player_deletion_requests t) c,
         (select json_agg(t order by t.id) from public.squad_invite_participation_deletion_requests t) d,
         (select json_agg(t order by t.id) from public.player_invites t) e,
-        (select json_agg(t order by t.id) from public.team_invites t) f`);
+        (select json_agg(t order by t.id) from public.team_invites t) f,
+        (select json_agg(t order by t.id) from public.orders t) g,
+        (select json_agg(t order by t.id) from public.builder_guardian_approval_requests t) h`);
     const before = await snapshot();
     const applied97 = await applyMigrations(db, { from: '0097', through: '0097' }).then(() => null).catch((e) => e.message);
     const privs = await runCheck(db, PRIVS);
@@ -1757,7 +1770,7 @@ console.log('\n=== 24. R0 legacy-row count and the service_role privilege pre-ch
     const pick = (rows, keys) => rows.map((r) => Object.fromEntries(keys.map((k) => [k, r[k]])));
     const unchanged = (t) => JSON.stringify(b[t]) === JSON.stringify(pick(a[t], Object.keys(b[t][0])));
     const addedNull = (t) => a[t].every((r) => Object.keys(r).filter((k) => !(k in b[t][0])).every((k) => r[k] === null));
-    const sameRows = ['a', 'b', 'c', 'd', 'e', 'f'].every((t) => unchanged(t) && addedNull(t));
+    const sameRows = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].every((t) => unchanged(t) && addedNull(t));
     check('24: 0097 and 0098 apply over the legacy rows without changing any of them (no automatic clean-up); the counts are unchanged',
       applied98 === null && STOP.every((k) => after[k] === legacy[k]) && sameRows, `${applied98} ${JSON.stringify(after)}`);
     const privsAfter = await runCheck(db, PRIVS);
@@ -1780,6 +1793,176 @@ console.log('\n=== 24. R0 legacy-row count and the service_role privilege pre-ch
     await w3.db.close();
   } catch (e) {
     check('24: pre-checks', false, e.stack);
+  }
+  await db.close();
+}
+
+console.log('\n=== 25. A named guardian\'s address on an order goes with their account; affected orders are held ===');
+{
+  const w = await world({ through: '0101' });
+  const { db, people } = w;
+  const emailOf = async (uid) => (await db.query(`select email from auth.users where id = $1`, [uid])).rows[0]?.email;
+  const ord = (oid) => db.query(`select * from public.orders where id = $1`, [oid]).then((r) => r.rows[0]);
+  const appr = (rid) => db.query(`select * from public.builder_guardian_approval_requests where id = $1`, [rid]).then((r) => r.rows[0]);
+  let k = 0;
+  const mkOrder = async ({ purchaser, intended = null, authority = null, payment = 'order_intent' }) =>
+    (await db.query(`insert into public.orders (order_ref, purchaser_email, intended_guardian_email, source, payment_status, authority_status)
+      values ($1, $2, $3, 'standalone_order', $4, $5) returning id`, [`S25-${++k}-${crypto.randomUUID().slice(0, 6)}`, purchaser, intended, payment, authority])).rows[0].id;
+  const mkDecl = (oid, adult) => db.query(`insert into public.builder_order_authority_declarations (submission_key, order_id, adult_user_id, adult_email, relationship, declaration_version, confirmed_age_and_authority, confirmed_photo_permission, confirmed_card_creation)
+      values ($1, $2, $3, $4, 'other_adult', 'v1', true, true, true)`, [id(), oid, id(), adult]);
+  const mkAppr = async (oid, email, status) => (await db.query(`insert into public.builder_guardian_approval_requests (order_id, guardian_email, token_hash, status, declaration_version, expires_at, responded_at)
+      values ($1, $2, $3, $4, 'v1', now() + interval '14 days', case when $4 in ('approved', 'declined') then now() end) returning id`, [oid, email, crypto.randomBytes(16).toString('hex'), status])).rows[0].id;
+  const snap = async () => rowsOf(db, `select (select json_agg(t order by t.id) from public.orders t) o, (select json_agg(t order by t.id) from public.builder_guardian_approval_requests t) r`);
+  const BUYER = 'S25-buyer@example.test', OTHER = 'S25-someone-else@example.test';
+  try {
+    // --- A. A guardian named on ordinary and gift orders erases their account (immediate self-deletion) ---
+    const g = id();
+    await w.person(g);
+    const eg = await emailOf(g);
+    const o = {
+      named: await mkOrder({ purchaser: BUYER, intended: `  ${eg.toUpperCase()} ` }),
+      namedDone: await mkOrder({ purchaser: BUYER, intended: eg, payment: 'fulfilled' }),
+      giftApproved: await mkOrder({ purchaser: BUYER, authority: 'guardian_approved', payment: 'paid' }),
+      giftPending: await mkOrder({ purchaser: BUYER, authority: 'guardian_approval_pending' }),
+      giftDeclined: await mkOrder({ purchaser: BUYER, authority: 'guardian_declined' }),
+      giftSelf: await mkOrder({ purchaser: OTHER, authority: 'guardian_approved' }),
+      control: await mkOrder({ purchaser: BUYER, intended: OTHER }),
+    };
+    for (const oid of [o.giftApproved, o.giftPending, o.giftDeclined]) await mkDecl(oid, BUYER);
+    await mkDecl(o.giftSelf, eg); // the approving address is a declaring adult's: not a genuine guardian approval
+    const a = {
+      approved: await mkAppr(o.giftApproved, eg, 'approved'),
+      oldRevoked: await mkAppr(o.giftApproved, OTHER, 'revoked'),
+      pending: await mkAppr(o.giftPending, ` ${eg.toUpperCase()}`, 'pending'),
+      declined: await mkAppr(o.giftDeclined, eg, 'declined'),
+      self: await mkAppr(o.giftSelf, eg, 'approved'),
+    };
+    const blockBefore = (await db.query(`select public.gift_order_checkout_block_reason($1) r`, [o.giftApproved])).rows[0].r;
+    const controlBefore = JSON.stringify(await ord(o.control)), oldRevokedBefore = JSON.stringify(await appr(a.oldRevoked));
+    const rG = await deleteAccount(w, g);
+    const O = Object.fromEntries(await Promise.all(Object.entries(o).map(async ([key, oid]) => [key, await ord(oid)])));
+    const A = Object.fromEntries(await Promise.all(Object.entries(a).map(async ([key, rid]) => [key, await appr(rid)])));
+    check('25: an order naming the erased guardian (case and spaces ignored) loses the address, records the erasure, and is held while unfinished',
+      rG.canDeleteIdentity === true && O.named.intended_guardian_email === null && O.named.intended_guardian_erased_at !== null
+        && O.named.held_at !== null && O.named.held_reason === 'named_guardian_account_erased' && O.named.purchaser_email === BUYER, JSON.stringify(O.named));
+    check('25: a finished (fulfilled) order loses the address and records it, but is not held',
+      O.namedDone.intended_guardian_email === null && O.namedDone.intended_guardian_erased_at !== null && O.namedDone.held_at === null, JSON.stringify(O.namedDone));
+    check('25: an approved gift approval keeps its evidence without the address (status, times, token hash, version; redacted_at; distinct from the buyer: true) and the paid order is held',
+      A.approved.guardian_email === null && A.approved.status === 'approved' && A.approved.responded_at !== null && A.approved.token_hash && A.approved.declaration_version === 'v1'
+        && A.approved.guardian_email_redacted_at !== null && A.approved.guardian_distinct_from_buyer === true
+        && O.giftApproved.held_reason === 'named_guardian_account_erased' && O.giftApproved.payment_status === 'paid', JSON.stringify([A.approved, O.giftApproved]));
+    const blockAfter = (await db.query(`select public.gift_order_checkout_block_reason($1) r`, [o.giftApproved])).rows[0].r;
+    check('25: the 0101 gate then fails closed for that gift order (no approving address left)', blockBefore === null && blockAfter === 'gift_approval_missing', `${blockBefore} -> ${blockAfter}`);
+    check('25: a pending approval request to the guardian is revoked (its emailed link can no longer be used) and its order is held',
+      A.pending.status === 'revoked' && A.pending.guardian_email === null && A.pending.guardian_email_redacted_at !== null && O.giftPending.held_at !== null, JSON.stringify([A.pending, O.giftPending]));
+    check('25: a declined gift order loses the address but is not held (declined is final)',
+      A.declined.guardian_email === null && A.declined.status === 'declined' && O.giftDeclined.held_at === null, JSON.stringify([A.declined, O.giftDeclined]));
+    check('25: an approval given from a declaring adult\'s own address is recorded as not distinct from the buyer; the buyer\'s declaration keeps its address',
+      A.self.guardian_distinct_from_buyer === false && A.self.guardian_email === null
+        && await n(db, `select count(*)::int n from public.builder_order_authority_declarations where order_id = $1 and adult_email = $2`, [o.giftSelf, eg]) === 1, JSON.stringify(A.self));
+    check('25: an order naming someone else, and an earlier request to someone else on the same order, are untouched',
+      JSON.stringify(await ord(o.control)) === controlBefore && JSON.stringify(await appr(a.oldRevoked)) === oldRevokedBefore);
+    const hitsG = await emailHitsIn(db, eg);
+    check('25: the guardian\'s address remains only where it is the buyer\'s (a declaring adult, kept by design)',
+      JSON.stringify(hitsG) === JSON.stringify(['builder_order_authority_declarations.adult_email:1']), hitsG.join(', '));
+
+    // --- B. The hold: approving or fulfilling a held order is refused for every role; payment still applies; staff release it ---
+    const staffApprove = (oid) => errOf(() => w.service(`update public.orders set payment_status = 'fulfilled', approved_by = $2, approved_at = now() where id = $1`, [oid, people.staff]));
+    const held = {
+      approve: await staffApprove(o.named),
+      fulfilOnly: await errOf(() => w.service(`update public.orders set payment_status = 'fulfilled' where id = $1`, [o.giftApproved])),
+      owner: await errOf(() => db.query(`update public.orders set approved_at = now() where id = $1`, [o.named])),
+      unrecord: await errOf(() => db.query(`update public.orders set intended_guardian_erased_at = null where id = $1`, [o.namedDone])),
+      halfHold: await errOf(() => db.query(`update public.orders set held_reason = null where id = $1`, [o.named])),
+    };
+    check('25: a held order cannot be approved or fulfilled (service_role or owner: EMHLD); the erasure record cannot be removed; a half-cleared hold is refused (CHECK)',
+      held.approve === 'EMHLD:order_held' && held.fulfilOnly === 'EMHLD:order_held' && held.owner === 'EMHLD:order_held'
+        && held.unrecord === 'EMHLD:intended_guardian_erasure_is_permanent' && held.halfHold?.includes('orders_hold_state'), JSON.stringify(held));
+    const pay = await errOf(() => w.service(`update public.orders set payment_status = 'paid' where id = $1`, [o.named]));
+    const release = await errOf(() => w.service(`update public.orders set held_at = null, held_reason = null where id = $1`, [o.named]));
+    const afterRelease = await staffApprove(o.named);
+    check('25: a payment still applies to a held order; staff release the hold; then approval works (the erasure record stays)',
+      pay === null && release === null && afterRelease === null && (await ord(o.named)).intended_guardian_erased_at !== null, JSON.stringify([pay, release, afterRelease]));
+
+    // --- C. A redacted approval request never gets an address back ---
+    const reopen = {
+      address: await errOf(() => w.service(`update public.builder_guardian_approval_requests set guardian_email = $2 where id = $1`, [a.approved, eg])),
+      ownerAddress: await errOf(() => db.query(`update public.builder_guardian_approval_requests set guardian_email = $2 where id = $1`, [a.pending, eg])),
+      repend: await errOf(() => w.service(`update public.builder_guardian_approval_requests set status = 'pending' where id = $1`, [a.pending])),
+      unredact: await errOf(() => db.query(`update public.builder_guardian_approval_requests set guardian_email_redacted_at = null where id = $1`, [a.declined])),
+      flag: await errOf(() => db.query(`update public.builder_guardian_approval_requests set guardian_distinct_from_buyer = false where id = $1`, [a.approved])),
+    };
+    const revokeOk = await errOf(() => w.service(`update public.builder_guardian_approval_requests set status = 'revoked' where id = $1`, [a.approved]));
+    check('25: a redacted approval request refuses an address, re-opening, un-redacting or a changed flag (EMRDA), for service_role and the owner; staff may still revoke it',
+      Object.values(reopen).every((e) => e === 'EMRDA:guardian_approval_redacted') && revokeOk === null, JSON.stringify([reopen, revokeOk]));
+    await db.exec(`set session_replication_role = replica;`);
+    const viaCheck = await errOf(() => db.query(`update public.builder_guardian_approval_requests set guardian_email = null where id = $1`, [a.oldRevoked]));
+    await db.exec(`set session_replication_role = origin;`);
+    check('25: with triggers off, the CHECK still refuses a request with no address and no redaction record', viaCheck?.includes('builder_guardian_approval_requests_redaction_state'), viaCheck);
+
+    // --- D. Only a matching address: a buyer's erasure changes their orders only where they named themselves ---
+    const p = id();
+    await w.person(p);
+    const ep = await emailOf(p);
+    const byP = await mkOrder({ purchaser: ep, intended: OTHER });
+    const byPself = await mkOrder({ purchaser: ep, intended: ep });
+    const giftByP = await mkOrder({ purchaser: ep, authority: 'guardian_approved' });
+    await mkDecl(giftByP, ep);
+    const giftByPappr = await mkAppr(giftByP, OTHER, 'approved');
+    const beforeP = JSON.stringify([await ord(byP), await ord(giftByP), await appr(giftByPappr)]);
+    await deleteAccount(w, p);
+    const selfRow = await ord(byPself);
+    check('25: the buyer\'s erasure leaves their orders, declarations and the other guardian\'s approval exactly as they were',
+      JSON.stringify([await ord(byP), await ord(giftByP), await appr(giftByPappr)]) === beforeP, beforeP);
+    check('25: …except where the named guardian is the same address: that address goes (the purchaser address stays) and the order is held',
+      selfRow.intended_guardian_email === null && selfRow.purchaser_email === ep && selfRow.held_at !== null, JSON.stringify(selfRow));
+
+    // --- E. Repeat: the helper again, and a new account on the same address erased later, change nothing (a released hold is not set again) ---
+    const beforeRepeat = await snap();
+    await db.query(`select public.redact_order_guardian_addresses($1, $2)`, [g, eg]);
+    const g2 = id();
+    await db.query(`insert into auth.users (id, email) values ($1, $2)`, [g2, eg]);
+    await w.user(g2, `insert into public.profiles (id) values ($1)`, [g2]);
+    await deleteAccount(w, g2);
+    check('25: repeat — run again, or a later account on the same address erased, nothing changes and a released hold stays released', (await snap()) === beforeRepeat);
+
+    // --- F. Transactional: an erasure that fails at its last step changes no order or approval ---
+    const f = id();
+    await w.person(f);
+    const ef = await emailOf(f);
+    const fo = await mkOrder({ purchaser: BUYER, intended: ef });
+    const fa = await mkAppr(await mkOrder({ purchaser: BUYER, authority: 'guardian_approval_pending' }), ef, 'pending');
+    const beforeF = await snap();
+    await db.exec(`create function public.s25_forced_failure() returns trigger language plpgsql as $x$ begin raise exception 'S25 forced failure'; end $x$;
+                   create trigger s25_forced_failure before delete on public.profiles for each row execute function public.s25_forced_failure();`);
+    const failedF = await errOf(() => deleteAccount(w, f));
+    await db.exec(`drop trigger s25_forced_failure on public.profiles; drop function public.s25_forced_failure();`);
+    check('25: transactional — a failed erasure leaves every order and approval request as it was', failedF?.includes('S25 forced failure') && (await snap()) === beforeF, failedF);
+    await deleteAccount(w, f);
+    check('25: …and the retried erasure redacts and holds', (await ord(fo)).intended_guardian_email === null && (await ord(fo)).held_at !== null && (await appr(fa)).status === 'revoked');
+
+    // --- G. Staff review: nothing changes while under review; completion redacts. Already-deleted path too ---
+    const x = await w.coach();
+    const ex = await emailOf(x);
+    const xo = await mkOrder({ purchaser: BUYER, intended: ex });
+    await w.assess(x);
+    const beforeX = await snap();
+    const rX = await deleteAccount(w, x);
+    check('25: while the deletion is under staff review no order or approval changes', rX.canDeleteIdentity === false && (await snap()) === beforeX);
+    await db.query(`delete from public.player_assessments where created_by = $1`, [x]);
+    await complete(w, (await pendingOf(db, x)).id);
+    check('25: staff completion redacts and holds', (await ord(xo)).intended_guardian_email === null && (await ord(xo)).held_at !== null);
+    const d = id();
+    const ed = `S25-gone-${d.slice(0, 8)}@example.test`;
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason) values ($1, $2, 'coach_authored_player_records')`, [d, ed]);
+    const dOrder = await mkOrder({ purchaser: BUYER, intended: ed });
+    const dAppr = await mkAppr(await mkOrder({ purchaser: BUYER, authority: 'guardian_approval_pending' }), ed, 'pending');
+    const cD = await complete(w, (await pendingOf(db, d)).id);
+    check('25: staff closing a review whose account was already deleted another way redacts and holds, from the review\'s address, before clearing it',
+      cD.status === 'account_already_deleted' && (await ord(dOrder)).intended_guardian_email === null && (await ord(dOrder)).held_at !== null
+        && (await appr(dAppr)).guardian_email === null && (await emailHitsIn(db, ed)).length === 0, JSON.stringify(cD));
+  } catch (e) {
+    check('25: order guardian redaction', false, e.stack);
   }
   await db.close();
 }

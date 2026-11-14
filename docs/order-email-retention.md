@@ -1,10 +1,15 @@
-# Order purchaser emails: purpose, access and retention
+# Order emails: purpose, access and retention
 
-Decision (Blake, 14 November 2026): an order's purchaser email is kept with the order. Deleting the purchaser's Emblem account doesn't change it. Migration 0097's account erasure never changes an order's emails. The only order field it touches is `approved_by`, which is cleared when the approving staff account is erased, as before 0097.
+Decisions (Blake, 14 November 2026):
+- **The buyer's address is kept with the order.** Deleting the buyer's Emblem account doesn't change it.
+- **A named guardian's address goes when that guardian's account is erased.** Migration 0097, section 12.
+
+Migration 0097's account erasure never changes a buyer's address. Apart from section 12, the only order field it touches is `approved_by`, which is cleared when the approving staff account is erased, as before 0097.
 
 ## What this covers
-- `orders.purchaser_email`: the address the buyer gave at checkout.
-- `orders.intended_guardian_email`: the address the buyer named for the child's parent, when they gave one. It is held on the same order record and treated the same way. Open decision: confirm this rule for it.
+- `orders.purchaser_email`: the address the buyer gave at checkout. Kept, as below.
+- `builder_order_authority_declarations.adult_email`: the buyer's verified address on a gift order's permission step. Kept the same way.
+- `orders.intended_guardian_email`, and `builder_guardian_approval_requests.guardian_email` on gift orders: the address of the child's parent or guardian, named by the buyer. Kept with the order on the same terms, **until that guardian's own account is erased**. See "When a named guardian deletes their account".
 
 ## Purpose
 - **Financial:** the order is part of the company's accounting records (payments, refunds and partner commissions are worked out from it).
@@ -32,8 +37,31 @@ Don't copy order emails into logs, alerts, analytics, or any table or record tha
   - Nothing removes them automatically, and no app route may delete or rewrite orders for retention.
   - The clean-up procedure isn't written yet: write it before the first orders reach the end of their period.
 
+## When a named guardian deletes their account
+At the final erasure (0097, section 12, in the same transaction), wherever the order names the erased account's address:
+- `orders.intended_guardian_email` is cleared. `intended_guardian_erased_at` records, permanently, that a named guardian was erased, so the profile invite never falls back to the buyer.
+- `builder_guardian_approval_requests.guardian_email` is cleared. The approval evidence stays, without the address:
+  - the request, its status and times, its token hash and declaration version;
+  - `guardian_email_redacted_at`;
+  - `guardian_distinct_from_buyer`: whether the approving address was different from the buyer's (purchaser and declaring adults), worked out before the address goes.
+- A pending approval request is revoked, so its emailed link no longer works.
+- **Holds:** every affected order that isn't finished is held (`held_at`, `held_reason` `named_guardian_account_erased`).
+  - Not finished means payment status `order_intent`, `pending_payment` or `paid`, and not `guardian_declined`.
+  - The database refuses to approve or fulfil a held order, for every role. Payments still apply.
+  - The staff queue shows "Held" and no approve button.
+  - Staff release a hold only after confirming a guardian: clear `held_at` and `held_reason` together. Until a guardian address is recorded again, no profile invite is sent.
+- Nothing changes on an order because its buyer erased their account, unless the guardian's address is the same address.
+- An account whose deletion is under staff review changes nothing until staff complete the deletion.
+
 ## When the purchaser deletes their account
-- The order and its emails stay as they are.
+- The order and the buyer's emails stay as they are (a guardian address that is the same address goes, as above).
 - Invites the order created that were addressed to that account are revoked at erasure, and lose the address (0097, section 10).
 - A later invite or resend for the order goes only by a deliberate staff action.
 - Automatic order notifications still go to the address on the order. For example, the buyer is told when a guardian responds to a gift order (`/api/builder-authority/guardian-respond`).
+
+## Follow-up (recorded 14 November 2026, not built)
+Order history is reached by email alone: the `orders: purchaser can view their own` policy matches `purchaser_email = auth.email()`. Anyone who later holds an account with that address sees every past order on it.
+- **Follow-up:** replace that with account-bound access, or access after an extra recovery check.
+  - Account-bound: orders linked to the buying account when placed or first claimed.
+  - Recovery check: a deliberate, verified recovery step before past orders show.
+- The access rule above stays until that change is designed, reviewed and released separately.

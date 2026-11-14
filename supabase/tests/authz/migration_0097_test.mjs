@@ -623,8 +623,16 @@ let c96, c97, db9, w9, data96;
       ...['player_invites', 'coach_invites', 'team_invites'].flatMap((t) => [`column:${t}.revoked_at`, `column:${t}.revoked_reason`, `constraint:${t}.${t}_revoked_state`, `trigger:${t}.${t}_revoked_guard`]),
       'function:refuse_revoked_invite_reuse()', 'function:redact_closed_deletion_request_contact()', 'function:revoke_invites_addressed_to(p_profile_id uuid, p_email text)',
       'trigger:player_deletion_requests.player_deletion_requests_redact_closed_contact', 'trigger:squad_invite_participation_deletion_requests.sipdr_redact_closed_contact',
-      'constraint:player_deletion_requests.player_deletion_requests_closed_has_no_contact', 'constraint:squad_invite_participation_deletion_requests.sipdr_closed_has_no_contact'].sort(),
-    changed: ['constraint:moments.moments_verification_status_consistency', 'constraint:player_deletion_requests.player_deletion_requests_cancellation_requires_actor', 'constraint:squad_invite_participation_deletion_requests.sipdr_cancellation_requires_actor', 'function:delete_own_guardian_account()'].sort(),
+      'constraint:player_deletion_requests.player_deletion_requests_closed_has_no_contact', 'constraint:squad_invite_participation_deletion_requests.sipdr_closed_has_no_contact',
+      // Section 12: a named guardian's address on orders.
+      'column:orders.intended_guardian_erased_at', 'column:orders.held_at', 'column:orders.held_reason', 'constraint:orders.orders_hold_state',
+      'trigger:orders.orders_held_guard', 'function:refuse_held_order_progress()',
+      'column:builder_guardian_approval_requests.guardian_email_redacted_at', 'column:builder_guardian_approval_requests.guardian_distinct_from_buyer',
+      'constraint:builder_guardian_approval_requests.builder_guardian_approval_requests_redaction_state',
+      'trigger:builder_guardian_approval_requests.builder_guardian_approval_requests_redacted_guard', 'function:refuse_redacted_approval_change()',
+      'function:redact_order_guardian_addresses(p_profile_id uuid, p_email text)'].sort(),
+    // guardian_email loses NOT NULL (only a redacted row may have none: the redaction_state CHECK).
+    changed: ['column:builder_guardian_approval_requests.guardian_email', 'constraint:moments.moments_verification_status_consistency', 'constraint:player_deletion_requests.player_deletion_requests_cancellation_requires_actor', 'constraint:squad_invite_participation_deletion_requests.sipdr_cancellation_requires_actor', 'function:delete_own_guardian_account()'].sort(),
   };
   check('9: the catalog change is exactly: three marker columns, one restrictive policy, three rules, the changed function, the blocker helper, the erasure, the staff completion, the profile-deletion guard trigger with its function, the invite revocation and the contact redaction',
     JSON.stringify(d.added.sort()) === JSON.stringify(expected.added) && JSON.stringify(d.changed.sort()) === JSON.stringify(expected.changed) && d.removed.length === 0, JSON.stringify(d));
@@ -748,6 +756,27 @@ console.log('\n=== 10. Rollback ===');
   check('10: rollback is refused once an erasure has revoked an invite, changing nothing',
     gone.canDeleteIdentity === true && rr?.includes('1 invite(s) were revoked because their recipient account was erased') && keysOf(diffCatalog(beforeInvite, await snapshotCatalog(wr.db))).length === 0, rr);
   await wr.db.close();
+
+  // An order whose named guardian was erased refuses the rollback (no invite involved). Fresh database.
+  const wo = await world();
+  const guardianX = id();
+  await wo.db.query(`insert into auth.users (id, email) values ($1, 'S10-guardian@example.test')`, [guardianX]);
+  await wo.user(guardianX, `insert into public.profiles (id) values ($1)`, [guardianX]);
+  await wo.db.query(`insert into public.orders (order_ref, purchaser_email, intended_guardian_email, source) values ('S10-ORDER', 'S10-buyer@example.test', 'S10-guardian@example.test', 'standalone_order')`);
+  const goneG = await deleteAccount(wo, guardianX);
+  const beforeOrder = await snapshotCatalog(wo.db);
+  await wo.db.exec('begin;');
+  let ro = null;
+  try {
+    await wo.db.query(`select set_config($1, $2, true)`, ACK);
+    await wo.db.exec(ROLLBACK);
+  } catch (e) {
+    ro = e.message;
+    await wo.db.exec('rollback;').catch(() => {});
+  }
+  check('10: rollback is refused once an erasure has cleared a named guardian on an order, changing nothing',
+    goneG.canDeleteIdentity === true && ro?.includes('1 order(s) or guardian approval request(s) record an erased named guardian or a hold') && keysOf(diffCatalog(beforeOrder, await snapshotCatalog(wo.db))).length === 0, ro);
+  await wo.db.close();
 }
 
 const failed = results.filter((r) => !r.pass);

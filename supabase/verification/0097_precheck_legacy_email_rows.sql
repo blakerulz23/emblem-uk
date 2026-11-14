@@ -39,6 +39,12 @@ set transaction read only;
 --                                          deletion record (pending_profile_deletions or pending_auth_deletions)
 --                                          holds for an account whose sign-in no longer exists: invites 0097 would
 --                                          have revoked or cleared at the erasure
+--   STOP order_guardian_addresses_of_deleted_accounts
+--                                          orders.intended_guardian_email and
+--                                          builder_guardian_approval_requests.guardian_email still holding an
+--                                          address such a deletion record holds (as above): addresses 0097
+--                                          would have cleared at the erasure (section 12). Buyer addresses
+--                                          (purchaser_email, declaring adults) are kept by design and not counted
 --   info pending_reviews_with_email        pending reviews (they keep the email while pending: expected)
 --   info open_child_requests_with_contact  pending child-deletion requests (both tables) with a contact (expected)
 --   info unused_invites_with_email_no_account
@@ -64,6 +70,15 @@ select
      union
      select lower(btrim(a.email)) from public.pending_auth_deletions a
       where a.email is not null and not exists (select 1 from auth.users u where u.id = a.auth_user_id))) as invites_to_deleted_accounts,
+  (select count(*) from (
+     select intended_guardian_email as addr from public.orders where intended_guardian_email is not null
+     union all select guardian_email from public.builder_guardian_approval_requests where guardian_email is not null) g
+   where lower(btrim(g.addr)) in (
+     select lower(btrim(d.email)) from public.pending_profile_deletions d
+      where d.email is not null and not exists (select 1 from auth.users u where u.id = d.auth_user_id)
+     union
+     select lower(btrim(a.email)) from public.pending_auth_deletions a
+      where a.email is not null and not exists (select 1 from auth.users u where u.id = a.auth_user_id))) as order_guardian_addresses_of_deleted_accounts,
   (select count(*) from public.pending_profile_deletions where status = 'pending' and email is not null) as pending_reviews_with_email,
   (select count(*) from public.player_deletion_requests where status = 'pending' and requester_email is not null)
     + (select count(*) from public.squad_invite_participation_deletion_requests where status = 'pending' and requester_email is not null) as open_child_requests_with_contact,

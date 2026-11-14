@@ -139,6 +139,18 @@ function representativeName(names: string[]): string {
 type PrintFileRef = { playerId?: string | null; playerName?: string | null; key: string };
 
 /**
+ * Orders held because the guardian they depend on deleted their account
+ * (migration 0097). Before 0097 the column doesn't exist, the read errors,
+ * and nothing is shown as held (nothing can be).
+ */
+async function getHeldOrderIds(supabase: ReturnType<typeof createServiceRoleClient>, orderIds: string[]): Promise<Set<string>> {
+  if (orderIds.length === 0) return new Set();
+  const { data, error } = await supabase.from('orders').select('id').in('id', orderIds).not('held_at', 'is', null);
+  if (error) return new Set();
+  return new Set(((data ?? []) as Array<{ id: string }>).map((o) => o.id));
+}
+
+/**
  * Section 1 — orders not yet approved. No display cap exists for this
  * section (never has), so it isn't paginated — approvalQ/approvalSort
  * filter and sort the full set server-side.
@@ -164,6 +176,7 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
   }
 
   const orderIds = (data ?? []).map((o) => o.id);
+  const heldOrderIds = await getHeldOrderIds(supabase, orderIds);
   const cardCounts = await getCardCountsByOrder(supabase, orderIds);
   const playerNamesByOrder = await getPlayerNamesByOrder(supabase, orderIds);
   const designPreviewsByOrder = await getDesignPreviewsByOrder(supabase, orderIds);
@@ -187,6 +200,7 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
         cardCount: cardCounts.get(order.id) ?? 0,
         playerNames: playerNamesByOrder.get(order.id) ?? [],
         designPreview: designPreviewsByOrder.get(order.id) ?? null,
+        held: heldOrderIds.has(order.id),
       };
     })
   );
@@ -708,7 +722,12 @@ export default async function StaffQueuePage({
                 )}
               </div>
             </div>
-            {order.designPreview?.photoStatus !== 'rejected' && (
+            {order.held && (
+              <p role="status" style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>
+                Held: the parent or guardian this order names deleted their Emblem account. Confirm a guardian before approving.
+              </p>
+            )}
+            {order.designPreview?.photoStatus !== 'rejected' && !order.held && (
               order.cardCount > 1 ? (
                 <ApproveTeamOrderButton
                   orderId={order.id}

@@ -114,20 +114,28 @@ begin
   if not exists (select 1 from pg_proc where oid = to_regprocedure('public.erase_account_for_deletion(uuid, text, uuid)')
                    and prosrc like '%insert into public.erased_accounts%'
                    and prosrc like '%set email = null%' and prosrc like '%''self_deleted''%'
-                   and prosrc like '%public.revoke_invites_addressed_to(v_uid, v_email)%')
+                   and prosrc like '%public.revoke_invites_addressed_to(v_uid, v_email)%'
+                   and prosrc like '%public.redact_order_guardian_addresses(v_uid, v_email)%')
      or not exists (select 1 from pg_proc where oid = to_regprocedure('public.revoke_invites_addressed_to(uuid, text)')
                    and prosrc like '%''recipient_account_erased''%')
+     or not exists (select 1 from pg_proc where oid = to_regprocedure('public.redact_order_guardian_addresses(uuid, text)')
+                   and prosrc like '%''named_guardian_account_erased''%')
      or (select count(*) from pg_trigger t where not t.tgisinternal and t.tgenabled <> 'D' and (t.tgname, t.tgrelid) in (
            ('player_invites_revoked_guard', 'public.player_invites'::regclass),
            ('coach_invites_revoked_guard', 'public.coach_invites'::regclass),
            ('team_invites_revoked_guard', 'public.team_invites'::regclass),
            ('player_deletion_requests_redact_closed_contact', 'public.player_deletion_requests'::regclass),
-           ('sipdr_redact_closed_contact', 'public.squad_invite_participation_deletion_requests'::regclass))) <> 5
+           ('sipdr_redact_closed_contact', 'public.squad_invite_participation_deletion_requests'::regclass),
+           ('orders_held_guard', 'public.orders'::regclass),
+           ('builder_guardian_approval_requests_redacted_guard', 'public.builder_guardian_approval_requests'::regclass))) <> 7
      or (select count(*) from pg_constraint where conname in (
            'player_invites_revoked_state', 'coach_invites_revoked_state', 'team_invites_revoked_state',
-           'player_deletion_requests_closed_has_no_contact', 'sipdr_closed_has_no_contact')) <> 5
+           'player_deletion_requests_closed_has_no_contact', 'sipdr_closed_has_no_contact',
+           'orders_hold_state', 'builder_guardian_approval_requests_redaction_state')) <> 7
      or not exists (select 1 from pg_proc where oid = to_regprocedure('public.complete_pending_profile_deletion(uuid, text)')
-                   and prosrc like '%account_deletion_staff_actions%' and prosrc like '%''profileId''%')
+                   and prosrc like '%account_deletion_staff_actions%' and prosrc like '%''profileId''%'
+                   and prosrc like '%public.revoke_invites_addressed_to(v_uid, v_pending.email)%'
+                   and prosrc like '%public.redact_order_guardian_addresses(v_uid, v_pending.email)%')
      or to_regprocedure('public.record_account_sign_in_removal(uuid, text, text)') is null then
     v_problems := v_problems || 'the 0097 erasure or staff completion is not the current version'::text;
   end if;

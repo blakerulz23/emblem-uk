@@ -132,6 +132,28 @@
 --      a closed request with an address. Staff still get the address once,
 --      at the moment they close a request, to reply: the player-deletion
 --      staff page shows it, and the Squad Invite staff routes return it.
+--  12. A named guardian's address on an order. At the final erasure, in
+--      the same transaction and with the same address matching as section
+--      10 (redact_order_guardian_addresses, on both final paths):
+--        - orders.intended_guardian_email that matches is cleared, and
+--          orders.intended_guardian_erased_at records (permanently) that a
+--          named guardian's account was erased, so the profile invite never
+--          falls back to the buyer instead;
+--        - builder_guardian_approval_requests.guardian_email that matches is
+--          cleared. The approval evidence stays, without the address: the
+--          request, its status, times, token hash and declaration version,
+--          plus guardian_email_redacted_at and guardian_distinct_from_buyer
+--          (whether the approving address differed from the buyer's, by
+--          0101's rule, worked out before the address goes). A pending
+--          request is revoked: its emailed link can no longer be used;
+--        - every affected order not yet finished (payment_status
+--          order_intent, pending_payment or paid, and not guardian_declined)
+--          is held: held_at / held_reason 'named_guardian_account_erased'.
+--          A trigger refuses approving or fulfilling a held order, for every
+--          role, until staff release the hold.
+--      Nothing on an order changes because its buyer erased their account,
+--      unless the named guardian's address is the same address. A trigger
+--      refuses putting an address back on a redacted approval request.
 --  Order purchaser emails (orders.purchaser_email) are NOT changed by any
 --  erasure: they are kept with the order for financial, contractual and
 --  audit purposes (docs/order-email-retention.md).
@@ -186,6 +208,24 @@ begin
      or to_regprocedure('public.revoke_invites_addressed_to(uuid, text)') is not null
      or to_regprocedure('public.redact_closed_deletion_request_contact()') is not null then
     raise exception '0097 refused: the 0097 invite revocation or contact redaction already exists (0097 already applied)';
+  end if;
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public'
+               and ((table_name = 'orders' and column_name in ('intended_guardian_erased_at', 'held_at', 'held_reason'))
+                 or (table_name = 'builder_guardian_approval_requests'
+                     and column_name in ('guardian_email_redacted_at', 'guardian_distinct_from_buyer'))))
+     or to_regprocedure('public.redact_order_guardian_addresses(uuid, text)') is not null
+     or to_regprocedure('public.refuse_held_order_progress()') is not null
+     or to_regprocedure('public.refuse_redacted_approval_change()') is not null then
+    raise exception '0097 refused: the 0097 order guardian redaction already exists (0097 already applied)';
+  end if;
+  if (select count(*) from information_schema.columns
+       where table_schema = 'public'
+         and ((table_name = 'orders' and column_name in ('intended_guardian_email', 'purchaser_email', 'payment_status',
+                                                          'authority_status', 'approved_at', 'approved_by'))
+           or (table_name = 'builder_guardian_approval_requests' and column_name in ('order_id', 'guardian_email', 'status'))
+           or (table_name = 'builder_order_authority_declarations' and column_name in ('order_id', 'adult_email')))) <> 11 then
+    v_problems := v_problems || 'an order, guardian approval request or authority declaration column is not as expected'::text;
   end if;
   if (select count(*) from information_schema.columns
        where table_schema = 'public' and table_name in ('player_invites', 'coach_invites', 'team_invites')
@@ -412,6 +452,78 @@ revoke all on function public.revoke_invites_addressed_to(uuid, text) from publi
 alter function public.revoke_invites_addressed_to(uuid, text) owner to postgres;
 
 -- ---------------------------------------------------------------------------
+-- 4a3. A named guardian's address on orders (section 12), owner-only.
+-- ---------------------------------------------------------------------------
+-- Same callers and address matching as 4a2. The buyer's own address
+-- (orders.purchaser_email, builder_order_authority_declarations.adult_email)
+-- is never changed here. Changes nothing on a repeat: nothing matches once
+-- the addresses are gone, so a hold staff have released is not set again.
+create function public.redact_order_guardian_addresses(p_profile_id uuid, p_email text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := p_profile_id;
+  v_emails text[];
+  v_live_orders uuid[];
+  v_named_orders uuid[];
+begin
+  select coalesce(array_agg(distinct lower(btrim(a))) filter (where a is not null and btrim(a) <> ''), '{}')
+    into v_emails
+    from unnest(array[p_email, (select u.email::text from auth.users u where u.id = v_uid)]) as a;
+  if cardinality(v_emails) = 0 then
+    return;
+  end if;
+
+  -- Gift orders whose live approval request (pending or approved) names
+  -- this guardian: held below.
+  select coalesce(array_agg(distinct r.order_id), '{}') into v_live_orders
+    from public.builder_guardian_approval_requests r
+   where r.guardian_email is not null and lower(btrim(r.guardian_email)) = any(v_emails)
+     and r.status in ('pending', 'approved');
+
+  -- The approval evidence stays without the address. Whether the approving
+  -- address was the buyer's is worked out first, by 0101's rule (trimmed,
+  -- lower-cased, against the purchaser and every declaring adult). A
+  -- pending request is revoked: its emailed link can no longer be used.
+  update public.builder_guardian_approval_requests r
+     set guardian_distinct_from_buyer = (
+           lower(regexp_replace(r.guardian_email, '^[\s ﻿]+|[\s ﻿]+$', '', 'g'))
+             is distinct from (select lower(regexp_replace(coalesce(o.purchaser_email, ''), '^[\s ﻿]+|[\s ﻿]+$', '', 'g'))
+                                 from public.orders o where o.id = r.order_id)
+           and not exists (select 1 from public.builder_order_authority_declarations d
+                            where d.order_id = r.order_id
+                              and lower(regexp_replace(d.adult_email, '^[\s ﻿]+|[\s ﻿]+$', '', 'g'))
+                                  = lower(regexp_replace(r.guardian_email, '^[\s ﻿]+|[\s ﻿]+$', '', 'g')))),
+         guardian_email = null,
+         guardian_email_redacted_at = now(),
+         status = case when r.status = 'pending' then 'revoked' else r.status end
+   where r.guardian_email is not null and lower(btrim(r.guardian_email)) = any(v_emails);
+
+  -- Orders that named this guardian: the address goes, the fact stays.
+  with redacted as (
+    update public.orders o
+       set intended_guardian_email = null,
+           intended_guardian_erased_at = coalesce(o.intended_guardian_erased_at, now())
+     where o.intended_guardian_email is not null and lower(btrim(o.intended_guardian_email)) = any(v_emails)
+     returning o.id)
+  select coalesce(array_agg(id), '{}') into v_named_orders from redacted;
+
+  -- Every affected order not yet finished is held for staff.
+  update public.orders o
+     set held_at = now(), held_reason = 'named_guardian_account_erased'
+   where o.id = any(v_live_orders || v_named_orders)
+     and o.held_at is null
+     and o.payment_status in ('order_intent', 'pending_payment', 'paid')
+     and o.authority_status is distinct from 'guardian_declined';
+end;
+$$;
+revoke all on function public.redact_order_guardian_addresses(uuid, text) from public, anon, authenticated, service_role;
+alter function public.redact_order_guardian_addresses(uuid, text) owner to postgres;
+
+-- ---------------------------------------------------------------------------
 -- 4b. The account erasure (owner-only): the whole 0076 clean-up, then the
 --     profile delete. Runs only when the account is actually being deleted.
 -- ---------------------------------------------------------------------------
@@ -452,6 +564,9 @@ begin
   -- 0097 (section 10): invites addressed to this account, first, while
   -- used_by still names the account.
   perform public.revoke_invites_addressed_to(v_uid, v_email);
+  -- 0097 (section 12): this account's address where an order names it as
+  -- the child's guardian.
+  perform public.redact_order_guardian_addresses(v_uid, v_email);
 
   select array_agg(player_id) into v_player_ids from public.guardians where profile_id = v_uid;
 
@@ -719,8 +834,10 @@ begin
     -- is nothing left to erase, so the request is closed, not left pending.
     -- Invites addressed to it are revoked first (section 10), while the
     -- review still holds the address; then the email is cleared: the account
-    -- is gone.
+    -- is gone. Likewise its address where an order names it as guardian
+    -- (section 12).
     perform public.revoke_invites_addressed_to(v_uid, v_pending.email);
+    perform public.redact_order_guardian_addresses(v_uid, v_pending.email);
     update public.pending_profile_deletions
        set status = 'resolved', resolved_by = v_staff, resolved_at = now(), email = null,
            notes = concat_ws(E'\n', notes, 'Closed by staff (account already deleted): ' || btrim(p_reason))
@@ -973,6 +1090,8 @@ alter function public.record_account_sign_in_removal(uuid, text, text) owner to 
 -- ---------------------------------------------------------------------------
 -- 10. Invites addressed to an erased account are revoked for good
 -- ---------------------------------------------------------------------------
+-- (In these CHECKs "x is not null and x = '...'" is deliberate: a bare
+-- comparison with NULL is unknown, and a CHECK lets unknown through.)
 -- Written only by revoke_invites_addressed_to (section 4a2). Every existing row
 -- gets NULL in both columns. The revocation cuts the expiry to now at the
 -- latest; the trigger below refuses any later expiry in the future. Signed-in users' column-level INSERT grants
@@ -982,21 +1101,21 @@ alter table public.player_invites
   add column revoked_reason text,
   add constraint player_invites_revoked_state check (
     (revoked_at is null and revoked_reason is null)
-    or (revoked_reason = 'recipient_account_erased' and revoked_at is not null
+    or (revoked_reason is not null and revoked_reason = 'recipient_account_erased' and revoked_at is not null
         and used_at is null and invited_email is null));
 alter table public.coach_invites
   add column revoked_at timestamptz,
   add column revoked_reason text,
   add constraint coach_invites_revoked_state check (
     (revoked_at is null and revoked_reason is null)
-    or (revoked_reason = 'recipient_account_erased' and revoked_at is not null
+    or (revoked_reason is not null and revoked_reason = 'recipient_account_erased' and revoked_at is not null
         and used_at is null and invited_email is null));
 alter table public.team_invites
   add column revoked_at timestamptz,
   add column revoked_reason text,
   add constraint team_invites_revoked_state check (
     (revoked_at is null and revoked_reason is null)
-    or (revoked_reason = 'recipient_account_erased' and revoked_at is not null
+    or (revoked_reason is not null and revoked_reason = 'recipient_account_erased' and revoked_at is not null
         and used_at is null and invited_email is null));
 comment on column public.player_invites.revoked_at is
   'Set when the invite''s recipient account was erased (0097): the code was replaced and the invite can never be redeemed.';
@@ -1074,5 +1193,88 @@ alter table public.player_deletion_requests
 alter table public.squad_invite_participation_deletion_requests
   add constraint sipdr_closed_has_no_contact
   check (status = 'pending' or requester_email is null) not valid;
+
+-- ---------------------------------------------------------------------------
+-- 12. A named guardian's address on an order goes with their account
+-- ---------------------------------------------------------------------------
+-- Written by redact_order_guardian_addresses (section 4a3); staff release a
+-- hold by clearing held_at and held_reason together (service role). Every
+-- existing row gets NULL in the new columns.
+alter table public.orders
+  add column intended_guardian_erased_at timestamptz,
+  add column held_at timestamptz,
+  add column held_reason text,
+  add constraint orders_hold_state check (
+    (held_at is null and held_reason is null)
+    or (held_at is not null and held_reason is not null and held_reason = 'named_guardian_account_erased'));
+comment on column public.orders.intended_guardian_erased_at is
+  'Set (permanently) when the account of the guardian this order named was erased and intended_guardian_email was cleared (0097). The profile invite then never falls back to the buyer.';
+comment on column public.orders.held_at is
+  'Set when the guardian this order depends on (intended guardian or approving guardian) had their account erased before the order finished (0097). A held order cannot be approved or fulfilled until staff release the hold.';
+
+-- Existing rows all hold an address (the column was NOT NULL), so the CHECK
+-- is validated, and the NOT NULL is relaxed only for redacted rows.
+alter table public.builder_guardian_approval_requests
+  add column guardian_email_redacted_at timestamptz,
+  add column guardian_distinct_from_buyer boolean,
+  add constraint builder_guardian_approval_requests_redaction_state check (
+    (guardian_email is not null and guardian_email_redacted_at is null and guardian_distinct_from_buyer is null)
+    or (guardian_email is null and guardian_email_redacted_at is not null and guardian_distinct_from_buyer is not null));
+alter table public.builder_guardian_approval_requests alter column guardian_email drop not null;
+comment on column public.builder_guardian_approval_requests.guardian_email_redacted_at is
+  'Set when the approving (or asked) guardian''s account was erased and guardian_email was cleared (0097). The request stays as evidence, without the address.';
+comment on column public.builder_guardian_approval_requests.guardian_distinct_from_buyer is
+  'Worked out at redaction (0097): whether guardian_email differed from the buyer''s addresses (purchaser and declaring adults), by 0101''s rule.';
+
+-- A held order cannot be approved or fulfilled, by any role (payment events
+-- still apply); the record that a named guardian was erased is permanent.
+create function public.refuse_held_order_progress()
+returns trigger
+language plpgsql
+set search_path = ''
+as $fn$
+begin
+  if old.intended_guardian_erased_at is not null
+     and new.intended_guardian_erased_at is distinct from old.intended_guardian_erased_at then
+    raise exception using errcode = 'EMHLD', message = 'intended_guardian_erasure_is_permanent';
+  end if;
+  if new.held_at is not null and (
+       (new.payment_status = 'fulfilled' and old.payment_status is distinct from 'fulfilled')
+    or (new.approved_at is not null and new.approved_at is distinct from old.approved_at)
+    or (new.approved_by is not null and new.approved_by is distinct from old.approved_by)) then
+    raise exception using errcode = 'EMHLD', message = 'order_held';
+  end if;
+  return new;
+end;
+$fn$;
+alter function public.refuse_held_order_progress() owner to postgres;
+revoke all on function public.refuse_held_order_progress() from public, anon, authenticated, service_role;
+create trigger orders_held_guard before update on public.orders
+  for each row execute function public.refuse_held_order_progress();
+
+-- A redacted approval request never gets an address back or changes what
+-- it records (staff may still revoke it).
+create function public.refuse_redacted_approval_change()
+returns trigger
+language plpgsql
+set search_path = ''
+as $fn$
+begin
+  if old.guardian_email_redacted_at is not null and (
+       new.guardian_email is not null
+    or new.guardian_email_redacted_at is distinct from old.guardian_email_redacted_at
+    or new.guardian_distinct_from_buyer is distinct from old.guardian_distinct_from_buyer
+    or new.order_id is distinct from old.order_id
+    or new.token_hash is distinct from old.token_hash
+    or (new.status is distinct from old.status and new.status <> 'revoked')) then
+    raise exception using errcode = 'EMRDA', message = 'guardian_approval_redacted';
+  end if;
+  return new;
+end;
+$fn$;
+alter function public.refuse_redacted_approval_change() owner to postgres;
+revoke all on function public.refuse_redacted_approval_change() from public, anon, authenticated, service_role;
+create trigger builder_guardian_approval_requests_redacted_guard before update on public.builder_guardian_approval_requests
+  for each row execute function public.refuse_redacted_approval_change();
 
 commit;

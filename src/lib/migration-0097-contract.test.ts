@@ -162,7 +162,7 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(code).toContain('revoke all on function public.guard_profile_deletion() from public, anon, authenticated, service_role;');
     expect(code).toContain('create trigger profiles_account_deletion_guard\n  before delete on public.profiles\n  for each row execute function public.guard_profile_deletion();');
     expect(code).toContain('a 0097 account-deletion function or trigger already exists (0097 already applied)');
-    expect(rollbackCode).toContain('drop trigger profiles_account_deletion_guard on public.profiles;\ndrop function public.guard_profile_deletion();\ndrop function public.complete_pending_profile_deletion(uuid, text);\ndrop function public.erase_account_for_deletion(uuid, text, uuid);\ndrop function public.revoke_invites_addressed_to(uuid, text);\ndrop function public.account_deletion_blocking_reason(uuid);');
+    expect(rollbackCode).toContain('drop trigger profiles_account_deletion_guard on public.profiles;\ndrop function public.guard_profile_deletion();\ndrop function public.complete_pending_profile_deletion(uuid, text);\ndrop function public.erase_account_for_deletion(uuid, text, uuid);\ndrop function public.revoke_invites_addressed_to(uuid, text);\ndrop function public.redact_order_guardian_addresses(uuid, text);\ndrop function public.account_deletion_blocking_reason(uuid);');
   });
 
   it('keeps the moment coach_verified: exactly one of verified_by or the marker, verified_at always required', () => {
@@ -238,10 +238,12 @@ describe('0097 rollback — emergency only', () => {
     expect(erase.indexOf('update public.pending_profile_deletions set email = null')).toBeLessThan(erase.indexOf('delete from public.profiles where id = v_uid'));
     expect(erase).toContain("'self_deleted'");
     const complete = defOf(code, 'create function public.complete_pending_profile_deletion(p_pending_deletion_id uuid, p_reason text)');
-    // The only uses of the email: handed to the erasure (for the 0076 child deletion request and the invite
-    // revocation), or, for an account already deleted another way, to the invite revocation; then cleared.
-    expect(complete.match(/v_pending\.email/g)).toEqual(['v_pending.email', 'v_pending.email']);
+    // The only uses of the email: handed to the erasure (for the 0076 child deletion request, the invite
+    // revocation and the order guardian redaction), or, for an account already deleted another way, to the
+    // invite revocation and the order guardian redaction; then cleared.
+    expect(complete.match(/v_pending\.email/g)).toEqual(['v_pending.email', 'v_pending.email', 'v_pending.email']);
     expect(complete).toContain('perform public.revoke_invites_addressed_to(v_uid, v_pending.email);');
+    expect(complete).toContain('perform public.redact_order_guardian_addresses(v_uid, v_pending.email);');
     expect(complete).toContain('public.erase_account_for_deletion(v_uid, v_pending.email, v_staff)');
     expect(complete.match(/insert into public\.pending_auth_deletions \(auth_user_id, email, last_error\)\s+values \(v_uid, null,/g)).toHaveLength(2);
     expect(complete).toContain('on conflict (auth_user_id) do update set email = null;');
@@ -289,10 +291,43 @@ describe('0097 rollback — emergency only', () => {
     expect(code).toContain('before insert or update on public.player_deletion_requests');
     expect(code).toContain('before insert or update on public.squad_invite_participation_deletion_requests');
     expect(code).toContain("check (status = 'pending' or requester_email is null) not valid;");
-    // Orders are never touched by the erasure.
+    // The buyer's address is never changed by the erasure (the order guardian helper only reads it).
     expect(erase).not.toMatch(/purchaser_email/);
     // The rollback refuses while any invite is revoked.
     expect(rollbackCode).toContain('were revoked because their recipient account was erased');
+  });
+
+  it("a named guardian's address on orders goes at the final erasure; affected unfinished orders are held", () => {
+    const defOf = (text: string, header: string, end = '\n$$;') => text.slice(text.indexOf(header), text.indexOf(end, text.indexOf(header)) + end.length);
+    const CLEANUP_START = '  select array_agg(player_id) into v_player_ids from public.guardians where profile_id = v_uid;';
+    const erase = defOf(code, 'create function public.erase_account_for_deletion(p_profile_id uuid, p_email text, p_completed_by uuid)');
+    const complete = defOf(code, 'create function public.complete_pending_profile_deletion(p_pending_deletion_id uuid, p_reason text)');
+    const redact = defOf(code, 'create function public.redact_order_guardian_addresses(p_profile_id uuid, p_email text)');
+    // Both final paths, inside their transaction; the already-deleted path before the review email is cleared.
+    expect(erase.indexOf('perform public.redact_order_guardian_addresses(v_uid, v_email);')).toBeGreaterThan(erase.indexOf("errcode = 'EMERA'"));
+    expect(erase.indexOf('perform public.redact_order_guardian_addresses(v_uid, v_email);')).toBeLessThan(erase.indexOf(CLEANUP_START));
+    const already = complete.indexOf('perform public.redact_order_guardian_addresses(v_uid, v_pending.email);');
+    expect(already).toBeGreaterThan(0);
+    expect(already).toBeLessThan(complete.indexOf('resolved_at = now(), email = null'));
+    expect(code).toContain('revoke all on function public.redact_order_guardian_addresses(uuid, text) from public, anon, authenticated, service_role;');
+    // Only the named guardian's addresses are written; the buyer's are only read.
+    expect(redact).toContain('set intended_guardian_email = null,');
+    expect(redact).toContain('guardian_email = null,');
+    expect(redact).not.toMatch(/set\s+purchaser_email|adult_email\s*=\s*null/);
+    expect(redact).toContain("status = case when r.status = 'pending' then 'revoked' else r.status end");
+    expect(redact).toContain("set held_at = now(), held_reason = 'named_guardian_account_erased'");
+    expect(redact).toContain("and o.payment_status in ('order_intent', 'pending_payment', 'paid')");
+    expect(redact).toContain("and o.authority_status is distinct from 'guardian_declined';");
+    expect(code).toContain("raise exception using errcode = 'EMHLD', message = 'order_held';");
+    expect(code).toContain("raise exception using errcode = 'EMRDA', message = 'guardian_approval_redacted';");
+    expect(code).toContain('create trigger orders_held_guard before update on public.orders');
+    expect(code).toContain('create trigger builder_guardian_approval_requests_redacted_guard before update on public.builder_guardian_approval_requests');
+    // No NULL loophole in the state CHECKs.
+    expect(code).toContain("or (held_at is not null and held_reason is not null and held_reason = 'named_guardian_account_erased'));");
+    expect(code.match(/or \(revoked_reason is not null and revoked_reason = 'recipient_account_erased' and revoked_at is not null/g)).toHaveLength(3);
+    // The rollback refuses while any order or approval carries a marker, and restores NOT NULL only then.
+    expect(rollbackCode).toContain('record an erased named guardian or a hold');
+    expect(rollbackCode).toContain('alter table public.builder_guardian_approval_requests alter column guardian_email set not null;');
   });
 
   it('restores the 0076 function body exactly', () => {

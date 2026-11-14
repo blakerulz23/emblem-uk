@@ -5,6 +5,7 @@ import {
   checkGiftOrderInviteRedemption,
   chooseProfileInviteRecipient,
   isGiftAuthorityStatus,
+  isOrderHeld,
   resolveProfileInviteRecipient,
   retireOtherOrderApprovalInvites,
 } from './gift-order-guardian';
@@ -93,6 +94,24 @@ describe('chooseProfileInviteRecipient', () => {
     expect(chooseProfileInviteRecipient({ ...base, authority_status: null, intended_guardian_email: 'p@example.test' }, null)).toEqual({
       ok: true, email: 'p@example.test', source: 'intended_guardian',
     });
+  });
+
+  it('0097: an order whose named guardian was erased never falls back to the buyer; a guardian recorded again is used', () => {
+    const erased = { ...base, intended_guardian_erased_at: '2026-11-14T00:00:00Z' };
+    expect(chooseProfileInviteRecipient({ ...erased, authority_status: 'confirmed' }, null)).toEqual({ ok: false, reason: 'intended_guardian_erased' });
+    expect(chooseProfileInviteRecipient({ ...erased, authority_status: null }, null)).toEqual({ ok: false, reason: 'intended_guardian_erased' });
+    expect(chooseProfileInviteRecipient({ ...erased, authority_status: 'confirmed', intended_guardian_email: 'new@example.test' }, null)).toEqual({
+      ok: true, email: 'new@example.test', source: 'intended_guardian',
+    });
+    // Before 0097 the field is absent: unchanged behaviour.
+    expect(chooseProfileInviteRecipient({ ...base, authority_status: 'confirmed', intended_guardian_erased_at: undefined }, null)).toEqual({ ok: true, email: 'buyer@example.test', source: 'purchaser' });
+  });
+
+  it('0097: isOrderHeld reads held_at, and an order read before 0097 (no column) is never held', () => {
+    expect(isOrderHeld({ held_at: '2026-11-14T00:00:00Z' })).toBe(true);
+    expect(isOrderHeld({ held_at: null })).toBe(false);
+    expect(isOrderHeld({})).toBe(false);
+    expect(isOrderHeld(null)).toBe(false);
   });
 
   it('guardian_approved: only the approving guardian, normalised', () => {

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { createGuardianInvite } from '@/lib/create-guardian-invite';
-import { resolveProfileInviteRecipient, retireOtherOrderApprovalInvites } from '@/lib/gift-order-guardian';
+import { ORDER_HELD_MESSAGE, isOrderHeld, resolveProfileInviteRecipient, retireOtherOrderApprovalInvites } from '@/lib/gift-order-guardian';
 
 export const runtime = 'nodejs';
 
@@ -28,12 +28,18 @@ export async function POST(_request: Request, { params }: { params: { id: string
 
   const { data: order, error } = await serviceRole
     .from('orders')
-    .select('id, payment_status, purchaser_email, intended_guardian_email, authority_status')
+    // select('*'): held_at / intended_guardian_erased_at exist only from
+    // migration 0097, and this route must work before and after it.
+    .select('*')
     .eq('id', params.id)
     .single();
 
   if (error || !order) {
     return NextResponse.json({ error: error?.message ?? 'Order not found' }, { status: 404 });
+  }
+
+  if (isOrderHeld(order)) {
+    return NextResponse.json({ error: ORDER_HELD_MESSAGE }, { status: 409 });
   }
 
   if (order.payment_status !== 'fulfilled') {
@@ -63,9 +69,15 @@ export async function POST(_request: Request, { params }: { params: { id: string
     authority_status: order.authority_status ?? null,
     purchaser_email: order.purchaser_email ?? null,
     intended_guardian_email: order.intended_guardian_email ?? null,
+    intended_guardian_erased_at: order.intended_guardian_erased_at ?? null,
   });
   if (!recipient.ok && (recipient.reason === 'guardian_not_approved' || recipient.reason === 'approved_guardian_missing')) {
     return NextResponse.json({ error: 'This order has no approving guardian on record, so no profile invite can be sent' }, { status: 409 });
+  }
+  // The guardian the order named deleted their account (0097): the invite
+  // never falls back to the buyer.
+  if (!recipient.ok && recipient.reason === 'intended_guardian_erased') {
+    return NextResponse.json({ error: 'The parent or guardian this order named deleted their Emblem account, so no profile invite can be sent until a guardian is recorded again' }, { status: 409 });
   }
   if (!recipient.ok && recipient.reason === 'lookup_failed') {
     return NextResponse.json({ error: 'Could not resend the invite. Please try again.' }, { status: 500 });

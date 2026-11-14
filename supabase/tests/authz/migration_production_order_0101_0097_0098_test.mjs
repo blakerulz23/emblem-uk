@@ -81,7 +81,14 @@ async function readyDatabase(through) {
 async function dataSnapshot(db) {
   const tables = (await db.query(`select tablename from pg_tables where schemaname = 'public' order by 1`)).rows.map((r) => r.tablename);
   const parts = [`auth.users:${(await db.query(`select coalesce(md5(string_agg(x::text, '|' order by x::text)), 'e') h from auth.users x`)).rows[0].h}`];
-  for (const t of tables) parts.push(`${t}:${(await db.query(`select coalesce(md5(string_agg(x::text, '|' order by x::text)), 'e') h from public."${t}" x`)).rows[0].h}`);
+  // Columns 0097 adds (all NULL on existing rows) are left out, so a row compares equal before and after.
+  const ADDED = new Set(['orders.intended_guardian_erased_at', 'orders.held_at', 'orders.held_reason',
+    'builder_guardian_approval_requests.guardian_email_redacted_at', 'builder_guardian_approval_requests.guardian_distinct_from_buyer']);
+  for (const t of tables) {
+    const cols = (await db.query(`select column_name c from information_schema.columns where table_schema = 'public' and table_name = $1 order by ordinal_position`, [t])).rows
+      .map((r) => r.c).filter((c) => !ADDED.has(`${t}.${c}`)).map((c) => `x."${c}"`).join(', ');
+    parts.push(`${t}:${(await db.query(`select coalesce(md5(string_agg(y::text, '|' order by y::text)), 'e') h from (select row(${cols}) y from public."${t}" x) z`)).rows[0].h}`);
+  }
   return parts.join(',');
 }
 // Same data: every table present in both snapshots is identical, and any table that exists in

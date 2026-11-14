@@ -98,20 +98,36 @@ export type ProfileInviteOrder = {
   authority_status: string | null;
   purchaser_email: string | null;
   intended_guardian_email: string | null;
+  /**
+   * Set when the guardian this order named had their account erased and the
+   * address was cleared (migration 0097). Absent before 0097.
+   */
+  intended_guardian_erased_at?: string | null;
 };
+
+/** Staff-facing refusal for an order held because the guardian it depends on erased their account (0097). */
+export const ORDER_HELD_MESSAGE =
+  "This order is held: the parent or guardian it names deleted their Emblem account. It can't be approved or have an invite sent until staff confirm a guardian and release the hold.";
+
+/** Whether an order row (read with select('*'), so this also works before 0097) is held. */
+export function isOrderHeld(order: { held_at?: string | null } | null | undefined): boolean {
+  return !!order?.held_at;
+}
 
 export type ProfileInviteRecipient =
   | { ok: true; email: string; source: 'approved_guardian' | 'intended_guardian' | 'purchaser' }
-  | { ok: false; reason: 'guardian_not_approved' | 'approved_guardian_missing' | 'no_recipient' | 'lookup_failed' };
+  | { ok: false; reason: 'guardian_not_approved' | 'approved_guardian_missing' | 'intended_guardian_erased' | 'no_recipient' | 'lookup_failed' };
 
 /**
  * Pure choice of who receives a single-card order's profile (guardian)
- * invite. Non-gift orders: unchanged (intended guardian, else purchaser).
- * Gift orders: only the approving guardian, and only once approved — the
- * buyer is never a fallback.
+ * invite. Non-gift orders: the intended guardian, else the purchaser, unless
+ * the order named a guardian whose account was since erased (0097): then
+ * nobody, until staff record a guardian again — the buyer is not a fallback
+ * for someone else's child. Gift orders: only the approving guardian, and
+ * only once approved — the buyer is never a fallback.
  */
 export function chooseProfileInviteRecipient(
-  order: Pick<ProfileInviteOrder, 'authority_status' | 'purchaser_email' | 'intended_guardian_email'>,
+  order: Pick<ProfileInviteOrder, 'authority_status' | 'purchaser_email' | 'intended_guardian_email' | 'intended_guardian_erased_at'>,
   approvedGuardianEmail: string | null
 ): ProfileInviteRecipient {
   if (isGiftAuthorityStatus(order.authority_status)) {
@@ -121,6 +137,7 @@ export function chooseProfileInviteRecipient(
   }
   const intended = order.intended_guardian_email?.trim();
   if (intended) return { ok: true, email: intended, source: 'intended_guardian' };
+  if (order.intended_guardian_erased_at) return { ok: false, reason: 'intended_guardian_erased' };
   const purchaser = order.purchaser_email?.trim();
   if (purchaser) return { ok: true, email: purchaser, source: 'purchaser' };
   return { ok: false, reason: 'no_recipient' };
