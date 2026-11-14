@@ -11,9 +11,9 @@ import AccountDeletionsView, { accountLabel, requestRef, type ActionRow, type De
 const NoActions = () => null;
 const pendingRow: PendingRow = { id: 'aaaa1111-2222-4333-8444-555566667777', auth_user_id: 'u-pending', email: 'pending@example.test', blocking_reason: 'coach_authored_player_records', first_detected_at: '2026-11-14T09:00:00Z' };
 const decided = (over: Partial<DecidedRow>): DecidedRow => ({ ...pendingRow, id: 'bbbb1111-2222-4333-8444-555566667777', auth_user_id: 'u-x', email: 'kept@example.test', status: 'rejected', resolved_at: '2026-11-14T10:00:00Z', ...over });
-const render = (props: { decided?: DecidedRow[]; erased?: string[]; actions?: ActionRow[]; pending?: PendingRow[]; decidedUnavailable?: boolean }) =>
+const render = (props: { decided?: DecidedRow[]; erased?: string[]; erasedAt?: Record<string, string>; actions?: ActionRow[]; pending?: PendingRow[]; decidedUnavailable?: boolean }) =>
   renderToStaticMarkup(
-    <AccountDeletionsView pending={props.pending ?? []} decided={props.decided ?? []} signInPending={[]} erased={props.erased ?? []} unrestored={{}} actions={props.actions ?? []} previews={{}} Actions={NoActions} decidedUnavailable={props.decidedUnavailable} />
+    <AccountDeletionsView pending={props.pending ?? []} decided={props.decided ?? []} signInPending={[]} erased={props.erased ?? []} unrestored={{}} actions={props.actions ?? []} previews={{}} Actions={NoActions} decidedUnavailable={props.decidedUnavailable} erasedAt={props.erasedAt} />
   );
 
 describe('staff account deletions page', () => {
@@ -38,6 +38,12 @@ describe('staff account deletions page', () => {
     const html = render({ decided: [], decidedUnavailable: true });
     expect(html).toContain('Could not check which of these accounts were deleted');
     expect(html).not.toContain('Rejected');
+  });
+
+  it('a Deleted row shows when the account was erased, not when the review was rejected', () => {
+    const html = render({ decided: [decided({ auth_user_id: 'u-gone', status: 'rejected', resolved_at: '2026-11-09T12:00:00Z' })], erased: ['u-gone'], erasedAt: { 'u-gone': '2026-11-13T18:02:00Z' } });
+    expect(html).toContain('Deleted 13 Nov 2026');
+    expect(html).not.toContain('9 Nov 2026');
   });
 
   it('a staff-completed review reads Deleted with no email', () => {

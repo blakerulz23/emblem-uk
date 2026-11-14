@@ -42,6 +42,7 @@ export default function AccountDeletionsView({
   decided,
   signInPending,
   erased,
+  erasedAt = {},
   decidedUnavailable = false,
   unrestored,
   actions,
@@ -54,6 +55,8 @@ export default function AccountDeletionsView({
   signInPending: string[];
   /** auth user ids recorded in erased_accounts (actually deleted). */
   erased: string[];
+  /** auth user id -> when it was erased (erased_accounts.erased_at): the date a Deleted row shows. */
+  erasedAt?: Record<string, string>;
   /** The erased-account lookup failed: decided requests are not shown (they could be mislabelled). */
   decidedUnavailable?: boolean;
   /** rejected request id -> coaching suspensions still not restored. */
@@ -110,7 +113,7 @@ export default function AccountDeletionsView({
                   : r.status === 'rejected'
                     ? 'Rejected (account kept)'
                     : 'Closed (not deleted here)'}{' '}
-                {at(r.resolved_at)}
+                {at(erased.includes(r.auth_user_id) ? (erasedAt[r.auth_user_id] ?? r.resolved_at) : r.resolved_at)}
               </div>
               {r.status === 'rejected' && !erased.includes(r.auth_user_id) && (unrestored[r.id] ?? 0) > 0 && (
                 <div style={{ marginTop: 6 }}>
