@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ClosedRequestContact from './ClosedRequestContact';
 
 /**
  * Migration 0076: pressing "Confirm erasure" now DOES perform the
@@ -17,13 +18,14 @@ import { useRouter } from 'next/navigation';
  */
 const ATTESTATION_TEXT = 'I have verified this request and I am authorising permanent erasure of this child’s data now.';
 
-export default function MarkCompletedButton({ requestId }: { requestId: string }) {
+export default function MarkCompletedButton({ requestId, contactEmail = null }: { requestId: string; contactEmail?: string | null }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [attested, setAttested] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [closed, setClosed] = useState(false);
 
   const complete = async () => {
     const trimmed = note.trim();
@@ -41,9 +43,21 @@ export default function MarkCompletedButton({ requestId }: { requestId: string }
       setBusy(false);
       return;
     }
-    router.refresh();
+    // Completed: the contact address is now gone from the request, so it is
+    // shown once more here. Still pending (storage clean-up or a supplier
+    // step outstanding): the page keeps showing it.
+    const body = (await res.json().catch(() => null)) as { completed?: boolean } | null;
     setBusy(false);
+    if (body?.completed === true) {
+      setClosed(true);
+      return;
+    }
+    router.refresh();
   };
+
+  if (closed) {
+    return <ClosedRequestContact outcome="completed" contactEmail={contactEmail} onDone={() => router.refresh()} />;
+  }
 
   if (!confirming) {
     return (

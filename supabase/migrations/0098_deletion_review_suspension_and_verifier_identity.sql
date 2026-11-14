@@ -113,7 +113,11 @@ begin
   -- audits an account's own later self-deletion (self_deleted).
   if not exists (select 1 from pg_proc where oid = to_regprocedure('public.erase_account_for_deletion(uuid, text, uuid)')
                    and prosrc like '%insert into public.erased_accounts%'
-                   and prosrc like '%set email = null%' and prosrc like '%''self_deleted''%')
+                   and prosrc like '%set email = null%' and prosrc like '%''self_deleted''%'
+                   and prosrc like '%''recipient_account_erased''%')
+     or (select count(*) from pg_trigger where not tgisinternal and tgenabled <> 'D' and tgname in (
+           'player_invites_revoked_guard', 'coach_invites_revoked_guard', 'team_invites_revoked_guard',
+           'player_deletion_requests_redact_closed_contact', 'sipdr_redact_closed_contact')) <> 5
      or not exists (select 1 from pg_proc where oid = to_regprocedure('public.complete_pending_profile_deletion(uuid, text)')
                    and prosrc like '%account_deletion_staff_actions%' and prosrc like '%''profileId''%')
      or to_regprocedure('public.record_account_sign_in_removal(uuid, text, text)') is null then

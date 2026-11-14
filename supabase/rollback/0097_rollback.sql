@@ -35,7 +35,12 @@
 --     record of each erased account stays cleared: the account is gone and
 --     the plaintext email must not come back. A self_deleted audit event
 --     counts as a recorded decision above, so the rollback refuses once any
---     reviewed account has erased itself.
+--     reviewed account has erased itself. Likewise invite addresses cleared
+--     by an erasure, and child-deletion contacts cleared when a request
+--     closed, are not restored;
+--   - no invite has been revoked because its recipient account was erased
+--     (the revocation record and the guard that keeps it unredeemable are
+--     not dropped while anything uses them).
 --   - the SAME TRANSACTION first sets this exact acknowledgement,
 --     transaction-local (third argument true):
 --
@@ -109,8 +114,35 @@ begin
   if v_marked > 0 then
     raise exception '0097 rollback refused: % cancelled deletion request(s) were cancelled by an account that has since been deleted; the original cancellation rules cannot hold them. Fix forward instead.', v_marked;
   end if;
+  select (select count(*) from public.player_invites where revoked_at is not null)
+       + (select count(*) from public.coach_invites where revoked_at is not null)
+       + (select count(*) from public.team_invites where revoked_at is not null)
+    into v_marked;
+  if v_marked > 0 then
+    raise exception '0097 rollback refused: % invite(s) were revoked because their recipient account was erased; dropping the revocation record and its guard is not allowed. Fix forward instead.', v_marked;
+  end if;
+  if to_regprocedure('public.refuse_revoked_invite_reuse()') is null
+     or to_regprocedure('public.redact_closed_deletion_request_contact()') is null then
+    raise exception '0097 rollback refused: 0097 is not applied (invite revocation or contact redaction missing)';
+  end if;
 end;
 $$;
+
+-- 11 reversed (addresses already cleared stay cleared).
+alter table public.squad_invite_participation_deletion_requests drop constraint sipdr_closed_has_no_contact;
+alter table public.player_deletion_requests drop constraint player_deletion_requests_closed_has_no_contact;
+drop trigger sipdr_redact_closed_contact on public.squad_invite_participation_deletion_requests;
+drop trigger player_deletion_requests_redact_closed_contact on public.player_deletion_requests;
+drop function public.redact_closed_deletion_request_contact();
+
+-- 10 reversed (no invite is revoked: checked above).
+drop trigger team_invites_revoked_guard on public.team_invites;
+drop trigger coach_invites_revoked_guard on public.coach_invites;
+drop trigger player_invites_revoked_guard on public.player_invites;
+drop function public.refuse_revoked_invite_reuse();
+alter table public.team_invites drop constraint team_invites_revoked_state, drop column revoked_reason, drop column revoked_at;
+alter table public.coach_invites drop constraint coach_invites_revoked_state, drop column revoked_reason, drop column revoked_at;
+alter table public.player_invites drop constraint player_invites_revoked_state, drop column revoked_reason, drop column revoked_at;
 
 -- 9 reversed (the erased-account records left are for identities already
 -- removed, so nothing they protected remains).

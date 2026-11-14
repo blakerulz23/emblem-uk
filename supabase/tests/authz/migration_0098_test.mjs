@@ -1354,9 +1354,9 @@ console.log('\n=== 21. Erasure keeps no plaintext email; a later self-deletion i
       withEmail?.includes('account_deletion_staff_actions_reason_no_email') && rejectEmail?.includes('account_deletion_staff_actions_reason_no_email')
         && (await pendingOf(db, coachH)).status === 'pending' && await n(db, `select count(*)::int n from public.profiles where id = $1`, [coachH]) === 1, `${withEmail} / ${rejectEmail}`);
 
-    // --- I. Documented retention outside the review record (an owner decision, not cleared by the erasure):
-    //        the account's own child deletion request (requester_email, the contact for that request) and an
-    //        invite addressed to it (invited_email). Nothing else keeps the address. ---
+    // --- I. Retention outside the review record (Blake's decisions, 14 Nov): the account's own pending child
+    //        deletion request keeps its contact while the request is open; an invite addressed to the account
+    //        loses the address at erasure (section 22); once the request closes nothing keeps it. ---
     const acctI = id();
     await w.person(acctI);
     const emailI = await emailOf(acctI);
@@ -1367,8 +1367,11 @@ console.log('\n=== 21. Erasure keeps no plaintext email; a later self-deletion i
     await db.query(`insert into public.coach_invites (player_id, code, created_by, invited_email, used_by, used_at) values ($1, 'S21-INVITEE', $2, $3, $4, now())`, [playerI, people.coParent, emailI, acctI]);
     const rI = await deleteAccount(w, acctI);
     const hitsI = await emailHits(emailI);
-    check('21: documented retention: after erasure the address remains only on the account\'s own child deletion request and an invite addressed to it',
-      rI.canDeleteIdentity === true && JSON.stringify(hitsI.sort()) === JSON.stringify(['coach_invites.invited_email:1', 'player_deletion_requests.requester_email:1']), hitsI.join(', '));
+    check('21: retention: after erasure the address remains only on the account\'s own still-pending child deletion request (the invite addressed to it is cleared)',
+      rI.canDeleteIdentity === true && JSON.stringify(hitsI.sort()) === JSON.stringify(['player_deletion_requests.requester_email:1']), hitsI.join(', '));
+    const reqI = (await db.query(`select id from public.player_deletion_requests where player_id = $1 and status = 'pending'`, [playerI])).rows[0].id;
+    await w.user(people.staff, `select public.staff_reject_player_deletion_request($1, 'Fictional: the other guardian objected')`, [reqI]);
+    check('21: …and once that request closes, no column anywhere holds the address', (await emailHits(emailI)).length === 0, (await emailHits(emailI)).join(', '));
   } catch (e) {
     check('21: email redaction and self-deletion audit', false, e.stack);
   }
@@ -1473,6 +1476,287 @@ console.log('\n=== 21. Erasure keeps no plaintext email; a later self-deletion i
     await vdb.close();
   } catch (e) {
     check('21: stale token probe', false, e.stack);
+  }
+  await db.close();
+}
+
+// Every text, json and array column of every public table, searched as the owner (no RLS).
+async function emailHitsIn(db, email) {
+  const cols = (await db.query(`select c.table_name t, c.column_name c from information_schema.columns c
+      join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name
+     where c.table_schema = 'public' and t.table_type = 'BASE TABLE'
+       and c.data_type in ('text', 'character varying', 'jsonb', 'json', 'ARRAY')`)).rows;
+  const hits = [];
+  for (const { t, c } of cols) {
+    const k = await n(db, `select count(*)::int n from public."${t}" where position(lower($1) in lower("${c}"::text)) > 0`, [email]);
+    if (k) hits.push(`${t}.${c}:${k}`);
+  }
+  return hits;
+}
+const INVITE_TABLES = ['player_invites', 'coach_invites', 'team_invites'];
+const inviteRows = async (db) => {
+  const out = {};
+  for (const t of INVITE_TABLES) out[t] = (await db.query(`select * from public.${t} order by id`)).rows;
+  return JSON.stringify(out);
+};
+
+console.log('\n=== 22. Invites addressed to an erased account are revoked for good; their addresses go ===');
+{
+  const w = await world();
+  const { db, people } = w;
+  const emailOf = async (uid) => (await db.query(`select email from auth.users where id = $1`, [uid])).rows[0]?.email;
+  const inv = (t, iid) => db.query(`select * from public.${t} where id = $1`, [iid]).then((r) => r.rows[0]);
+  // Unused (live and expired) and used invites addressed to addr, on all three tables.
+  async function addInvites(addr, tag) {
+    const code = (k) => `S22-${tag}-${k}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
+    const ids = {}, codes = {};
+    const ins = async (key, sql, params) => { codes[key] = params[1]; ids[key] = (await db.query(sql, params)).rows[0].id; };
+    // Upper case and padded: the match is case-insensitive and trimmed.
+    await ins('piUnused', `insert into public.player_invites (player_id, code, created_by, invited_email, origin) values ($1, $2, $3, $4, 'second_guardian') returning id`, [w.player, code('PU'), people.coParent, `  ${addr.toUpperCase()} `]);
+    await ins('piExpired', `insert into public.player_invites (player_id, code, created_by, invited_email, origin, created_at, expires_at) values ($1, $2, $3, $4, 'second_guardian', now() - interval '8 days', now() - interval '1 day') returning id`, [w.player, code('PE'), people.coParent, addr]);
+    await ins('ciUnused', `insert into public.coach_invites (player_id, code, created_by, invited_email) values ($1, $2, $3, $4) returning id`, [w.directPlayer, code('CU'), people.parent, addr]);
+    await ins('tiUnused', `insert into public.team_invites (team_id, code, invited_email) values ($1, $2, $3) returning id`, [w.otherTeam, code('TU'), addr]);
+    await ins('piUsedByOther', `insert into public.player_invites (player_id, code, created_by, invited_email, origin, used_at, used_by) values ($1, $2, $3, $4, 'second_guardian', now(), $3) returning id`, [w.player, code('PO'), people.coParent, addr]);
+    return { ids, codes };
+  }
+  const UNUSED = [['piUnused', 'player_invites'], ['piExpired', 'player_invites'], ['ciUnused', 'coach_invites'], ['tiUnused', 'team_invites']];
+  const revokedOk = (r, orig) => r && r.revoked_at !== null && r.revoked_reason === 'recipient_account_erased' && r.invited_email === null && r.used_at === null
+    && new Date(r.expires_at) <= new Date(r.revoked_at) && r.code.startsWith('revoked:') && r.code !== orig;
+  const codeCount = (codes) => n(db, `select count(*)::int n from (select code from public.player_invites union all select code from public.coach_invites union all select code from public.team_invites) c where code = any($1) or code = any(array(select upper(x) from unnest($1::text[]) x))`, [codes]);
+  try {
+    // --- A. A coach whose deletion goes to staff review, then is completed by staff ---
+    const x = await w.coach();
+    const ex = await emailOf(x);
+    const A = await addInvites(ex, 'A');
+    const ciUsedByX = (await db.query(`insert into public.coach_invites (player_id, code, created_by, invited_email, used_at, used_by) values ($1, 'S22-A-USEDBYX', $2, 'Someone.Else@example.test', now(), $3) returning id`, [w.directPlayer, people.parent, x])).rows[0].id;
+    const control = (await db.query(`insert into public.player_invites (player_id, code, created_by, invited_email, origin) values ($1, 'S22-CONTROL', $2, 'unrelated-person@example.test', 'second_guardian') returning id`, [w.player, people.coParent])).rows[0].id;
+    const controlBefore = JSON.stringify(await inv('player_invites', control));
+    await w.assess(x);
+    const before = await inviteRows(db);
+    const rX = await deleteAccount(w, x);
+    check('22: while the deletion is under staff review no invite changes (addresses, codes, expiry all kept)', rX.canDeleteIdentity === false && (await inviteRows(db)) === before);
+    await db.query(`delete from public.player_assessments where created_by = $1`, [x]);
+    const cX = await complete(w, (await pendingOf(db, x)).id);
+    const rows = Object.fromEntries(await Promise.all(UNUSED.map(async ([k, t]) => [k, await inv(t, A.ids[k])])));
+    check('22: staff completion revokes every unused invite addressed to the account on all three tables (live and already expired; case and spaces ignored): revoked_at, reason, no address, expiry cut, new code',
+      cX.status === 'completed' && UNUSED.every(([k]) => revokedOk(rows[k], A.codes[k])), JSON.stringify(rows));
+    check('22: the code that was sent exists nowhere any more (exact or upper-cased, as the app normalises input)', await codeCount(UNUSED.map(([k]) => A.codes[k])) === 0);
+    const redeemer = await w.coach();
+    const coachTry = (await w.service(`select status from public.redeem_coach_invite($1, $2)`, [A.codes.ciUnused, redeemer])).rows[0].status;
+    const teamTry = (await w.service(`select status from public.redeem_team_invite($1, $2)`, [A.codes.tiUnused, redeemer])).rows[0].status;
+    const coachTryNew = (await w.service(`select status from public.redeem_coach_invite($1, $2)`, [rows.ciUnused.code, redeemer])).rows[0].status;
+    const teamTryNew = (await w.service(`select status from public.redeem_team_invite($1, $2)`, [rows.tiUnused.code, redeemer])).rows[0].status;
+    check('22: redeeming with the sent code, or even with the replacement code, is invalid on coach and team invites and grants nothing',
+      [coachTry, teamTry, coachTryNew, teamTryNew].every((s) => s === 'invalid')
+        && await n(db, `select count(*)::int n from public.coach_players where profile_id = $1`, [redeemer]) === 0
+        && await n(db, `select count(*)::int n from public.coach_team where profile_id = $1 and team_id = $2`, [redeemer, w.otherTeam]) === 0, `${coachTry} ${teamTry} ${coachTryNew} ${teamTryNew}`);
+    check('22: the app\'s guardian-invite lookup (code = upper-cased input) finds nothing for the sent or the replacement code',
+      await n(db, `select count(*)::int n from public.player_invites where code = upper($1) or code = upper($2)`, [A.codes.piUnused, rows.piUnused.code]) === 0);
+    const reopen = {
+      extend: await errOf(() => db.query(`update public.player_invites set expires_at = now() + interval '7 days' where id = $1`, [A.ids.piUnused])),
+      use: await errOf(() => db.query(`update public.player_invites set used_at = now(), used_by = $2 where id = $1`, [A.ids.piUnused, redeemer])),
+      address: await errOf(() => db.query(`update public.coach_invites set invited_email = 'new@example.test' where id = $1`, [A.ids.ciUnused])),
+      code: await errOf(() => db.query(`update public.team_invites set code = $2 where id = $1`, [A.ids.tiUnused, A.codes.tiUnused])),
+      unrevoke: await errOf(() => db.query(`update public.player_invites set revoked_at = null, revoked_reason = null where id = $1`, [A.ids.piExpired])),
+      serviceExtend: await errOf(() => w.service(`update public.coach_invites set expires_at = now() + interval '7 days' where id = $1`, [A.ids.ciUnused])),
+      serviceUse: await errOf(() => w.service(`update public.team_invites set used_at = now(), used_by = $2 where id = $1`, [A.ids.tiUnused, redeemer])),
+    };
+    check('22: a revoked invite can never be reopened, by the owner or service_role (new expiry, use, address, old code, un-revoking: all EMRVK)',
+      Object.values(reopen).every((e) => e === 'EMRVK:invite_revoked'), JSON.stringify(reopen));
+    const allowed = {
+      status: await errOf(() => w.service(`update public.player_invites set email_status = 'skipped_no_email' where id = $1`, [A.ids.piUnused])),
+      creator: await errOf(() => db.query(`update public.coach_invites set created_by = null where id = $1`, [A.ids.ciUnused])),
+    };
+    check('22: …while delivery status and clearing the creator still work on a revoked invite', Object.values(allowed).every((e) => e === null), JSON.stringify(allowed));
+    const usedOther = await inv('player_invites', A.ids.piUsedByOther), usedX = await inv('coach_invites', ciUsedByX);
+    check('22: used invites lose the address and keep the record of the use (addressed to the account: user and code kept; redeemed by the account: user cleared as before)',
+      usedOther.invited_email === null && usedOther.used_by === people.coParent && usedOther.used_at !== null && usedOther.code === A.codes.piUsedByOther && usedOther.revoked_at === null
+        && usedX.invited_email === null && usedX.used_at !== null && usedX.used_by === null && usedX.revoked_at === null, JSON.stringify([usedOther, usedX]));
+    check('22: an invite addressed to someone else is untouched', JSON.stringify(await inv('player_invites', control)) === controlBefore);
+    const hitsX = await emailHitsIn(db, ex);
+    check('22: after staff completion no column anywhere holds the account\'s address', hitsX.length === 0, hitsX.join(', '));
+
+    // --- B. Immediate self-deletion (no review), then the same address registered again and erased again ---
+    const y = id();
+    await w.person(y);
+    const ey = await emailOf(y);
+    const B = await addInvites(ey, 'B');
+    const rY = await deleteAccount(w, y);
+    const rowsB = await Promise.all(UNUSED.map(([k, t]) => inv(t, B.ids[k])));
+    check('22: an immediate self-deletion (the app path) revokes the same way', rY.canDeleteIdentity === true && UNUSED.every(([k], i) => revokedOk(rowsB[i], B.codes[k])), JSON.stringify(rowsB));
+    const afterFirst = await inviteRows(db);
+    const y2 = id();
+    await db.query(`insert into auth.users (id, email) values ($1, $2)`, [y2, ey]);
+    await w.user(y2, `insert into public.profiles (id) values ($1)`, [y2]);
+    const late = (await db.query(`insert into public.coach_invites (player_id, code, created_by, invited_email) values ($1, 'S22-B-LATER', $2, $3) returning id`, [w.directPlayer, people.parent, ey])).rows[0].id;
+    await deleteAccount(w, y2);
+    const lateRow = await inv('coach_invites', late);
+    const afterFirstObj = JSON.parse(afterFirst), nowObj = JSON.parse(await inviteRows(db));
+    const earlierRevokedSame = INVITE_TABLES.every((t) => afterFirstObj[t].filter((r) => r.revoked_at).every((r) => JSON.stringify(nowObj[t].find((q) => q.id === r.id)) === JSON.stringify(r)));
+    check('22: repeat run — a new account on the same address, erased later: only its new invite is revoked; earlier revocations are not touched again',
+      revokedOk(lateRow, 'S22-B-LATER') && earlierRevokedSame, JSON.stringify(lateRow));
+
+    // --- C. Transactional: an erasure that fails after the invite step leaves every invite as it was ---
+    const z = id();
+    await w.person(z);
+    const ez = await emailOf(z);
+    const C = await addInvites(ez, 'C');
+    const beforeC = await inviteRows(db);
+    await db.exec(`create function public.s22_forced_failure() returns trigger language plpgsql as $f$ begin raise exception 'S22 forced failure'; end $f$;
+                   create trigger s22_forced_failure before delete on public.profiles for each row execute function public.s22_forced_failure();`);
+    const failed = await errOf(() => deleteAccount(w, z));
+    await db.exec(`drop trigger s22_forced_failure on public.profiles; drop function public.s22_forced_failure();`);
+    check('22: transactional — when the erasure fails at its last step, no invite is revoked or changed and nothing is recorded',
+      failed?.includes('S22 forced failure') && (await inviteRows(db)) === beforeC
+        && await n(db, `select count(*)::int n from public.erased_accounts where profile_id = $1`, [z]) === 0, failed);
+    const rZ = await deleteAccount(w, z);
+    const afterZ = await inviteRows(db);
+    const again = await errOf(() => db.query(`select public.erase_account_for_deletion($1, $2, null)`, [z, ez]));
+    check('22: idempotent — retried, it revokes; run again for the same account it is refused (EMERA) and changes nothing',
+      rZ.canDeleteIdentity === true && revokedOk(await inv('coach_invites', C.ids.ciUnused), C.codes.ciUnused) && again === 'EMERA:account_erased' && (await inviteRows(db)) === afterZ, again);
+    check('22: invite rows hold no address of any erased account in this world',
+      (await emailHitsIn(db, ey)).length === 0 && (await emailHitsIn(db, ez)).length === 0, [...await emailHitsIn(db, ey), ...await emailHitsIn(db, ez)].join(', '));
+  } catch (e) {
+    check('22: invite revocation', false, e.stack);
+  }
+  await db.close();
+}
+
+console.log('\n=== 23. A child-deletion request keeps its contact only while it is pending ===');
+{
+  const w = await world();
+  const { db, people } = w;
+  const contactOf = (rid, t = 'player_deletion_requests') => db.query(`select status, requester_email from public.${t} where id = $1`, [rid]).then((r) => r.rows[0]);
+  const soleChild = async (name) => {
+    const pid = id();
+    await db.query(`insert into public.players (id, name) values ($1, $2)`, [pid, name]);
+    await db.query(`insert into public.guardians (player_id, profile_id, created_via, created_by) values ($1, $2, 'card_claim', $2)`, [pid, people.parent]);
+    return pid;
+  };
+  const MAIL = 'S23-parent@example.test';
+  const fileRequest = async (pid) => (await w.user(people.parent, `select public.request_player_deletion($1, $2, null) as rid`, [pid, MAIL])).rows[0].rid;
+  try {
+    // Completed: confirm (erasure runs, still pending) then finalize.
+    const r1 = await fileRequest(await soleChild('S23 Complete'));
+    const pending1 = await contactOf(r1);
+    await w.user(people.staff, `select public.confirm_player_deletion_erasure($1, 'Fictional: verified with the guardian')`, [r1]);
+    const erasing1 = await contactOf(r1);
+    const fin = (await w.user(people.staff, `select public.finalize_player_deletion_erasure($1) as r`, [r1])).rows[0].r;
+    const done1 = await contactOf(r1);
+    const fin2 = (await w.user(people.staff, `select public.finalize_player_deletion_erasure($1) as r`, [r1])).rows[0].r;
+    check('23: kept while pending, and while the erasure runs (still pending, staff may need to reply)', pending1.requester_email === MAIL && erasing1.status === 'pending' && erasing1.requester_email === MAIL, JSON.stringify([pending1, erasing1]));
+    check('23: cleared in the same write that completes the request; a repeat finalize changes nothing',
+      fin.completed === true && done1.status === 'completed' && done1.requester_email === null && fin2.completed === true && (await contactOf(r1)).requester_email === null, JSON.stringify([fin, done1, fin2]));
+    // Rejected (staff), repeated.
+    const r2 = await fileRequest(await soleChild('S23 Reject'));
+    await w.user(people.staff, `select public.staff_reject_player_deletion_request($1, 'Fictional: not the guardian')`, [r2]);
+    const rej = await contactOf(r2);
+    await w.user(people.staff, `select public.staff_reject_player_deletion_request($1, 'Fictional: not the guardian')`, [r2]);
+    check('23: cleared when staff reject; a repeat rejection keeps it cleared', rej.status === 'rejected' && rej.requester_email === null && (await contactOf(r2)).requester_email === null, JSON.stringify(rej));
+    // Cancelled (the guardian), repeated.
+    const p3 = await soleChild('S23 Cancel');
+    const r3 = await fileRequest(p3);
+    await w.user(people.parent, `select public.cancel_own_player_deletion_request($1)`, [p3]);
+    const can = await contactOf(r3);
+    await w.user(people.parent, `select public.cancel_own_player_deletion_request($1)`, [p3]);
+    check('23: cleared when the guardian cancels; a repeat cancel keeps it cleared', can.status === 'cancelled' && can.requester_email === null && (await contactOf(r3)).requester_email === null, JSON.stringify(can));
+    // Any other path or role: inserted closed, or an address written back onto a closed row.
+    const r4 = (await db.query(`insert into public.player_deletion_requests (player_id, requested_by, requester_email, status, cancelled_by, cancelled_at) values ($1, $2, $3, 'cancelled', $2, now()) returning id`, [w.player, people.parent, MAIL])).rows[0].id;
+    await w.service(`update public.player_deletion_requests set requester_email = $2 where id = $1`, [r2, MAIL]);
+    check('23: by any path or role — a row written closed, or an address written back onto a closed row, holds no address',
+      (await contactOf(r4)).requester_email === null && (await contactOf(r2)).requester_email === null);
+    // The CHECK backs the trigger: with triggers off, a closed row with an address is still refused.
+    await db.exec(`set session_replication_role = replica;`);
+    const viaCheck = await errOf(() => db.query(`insert into public.player_deletion_requests (player_id, requested_by, requester_email, status, cancelled_by, cancelled_at) values ($1, $2, $3, 'cancelled', $2, now())`, [w.player, people.parent, MAIL]));
+    await db.exec(`set session_replication_role = origin;`);
+    check('23: the CHECK refuses a closed request with an address even with triggers off', viaCheck?.includes('player_deletion_requests_closed_has_no_contact'), viaCheck);
+    // Squad Invite participation deletion requests: the same rule.
+    await db.exec(`set session_replication_role = replica;`);
+    const part = (await db.query(`insert into public.squad_invite_participations (campaign_id, guardian_profile_id, builder_token_hash) values ($1, $2, repeat('c', 64)) returning id`, [id(), people.parent])).rows[0].id;
+    await db.exec(`set session_replication_role = origin;`);
+    const s1 = (await db.query(`insert into public.squad_invite_participation_deletion_requests (participation_id, requested_by, requester_email) values ($1, $2, $3) returning id`, [part, people.parent, MAIL])).rows[0].id;
+    const sPending = await contactOf(s1, 'squad_invite_participation_deletion_requests');
+    await w.user(people.staff, `select public.staff_reject_squad_invite_participation_deletion_request($1, 'Fictional: duplicate')`, [s1]);
+    const sRej = await contactOf(s1, 'squad_invite_participation_deletion_requests');
+    const s2 = (await db.query(`insert into public.squad_invite_participation_deletion_requests (participation_id, requested_by, requester_email) values ($1, $2, $3) returning id`, [part, people.parent, MAIL])).rows[0].id;
+    await db.query(`update public.squad_invite_participation_deletion_requests set status = 'cancelled', cancelled_by = $2, cancelled_at = now() where id = $1`, [s2, people.parent]);
+    const sCan = await contactOf(s2, 'squad_invite_participation_deletion_requests');
+    check('23: Squad Invite participation requests: kept while pending, cleared on rejection and on cancellation',
+      sPending.requester_email === MAIL && sRej.status === 'rejected' && sRej.requester_email === null && sCan.status === 'cancelled' && sCan.requester_email === null, JSON.stringify([sPending, sRej, sCan]));
+    const hits = await emailHitsIn(db, MAIL);
+    check('23: with every request closed, no column anywhere holds the contact address', hits.length === 0, hits.join(', '));
+  } catch (e) {
+    check('23: child-deletion contact lifecycle', false, e.stack);
+  }
+  await db.close();
+}
+
+console.log('\n=== 24. R0 legacy-row count and the service_role privilege pre-check (read-only) ===');
+{
+  const LEGACY = fs.readFileSync(path.resolve(HERE, '../../verification/0097_precheck_legacy_email_rows.sql'), 'utf8');
+  const PRIVS = fs.readFileSync(path.resolve(HERE, '../../verification/0098_precheck_service_role_privileges.sql'), 'utf8');
+  const runCheck = async (db, sql) => {
+    const row = (await db.exec(sql)).at(-1).rows[0];
+    return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, typeof v === 'bigint' ? Number(v) : v]));
+  };
+  const STOP = ['auth_retry_rows_with_email', 'resolved_reviews_with_email', 'closed_child_requests_with_contact', 'closed_participation_requests_with_contact', 'used_invites_redeemer_gone_with_email'];
+  const w = await world({ through: '0096' });
+  const { db, people } = w;
+  try {
+    const clean = await runCheck(db, LEGACY);
+    check('24: legacy check on a clean 0096 database: read-only, every STOP figure 0', clean.read_only_guard === 'on' && STOP.every((k) => clean[k] === 0), JSON.stringify(clean));
+    // Rows written under the pre-0097 rules (fictional).
+    const gone = id();
+    await db.query(`insert into public.pending_auth_deletions (auth_user_id, email, status, last_error) values ($1, 'legacy-a@example.test', 'resolved', 'older record')`, [gone]);
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason, status, resolved_at) values ($1, 'legacy-a@example.test', 'coach_authored_player_records', 'resolved', now())`, [gone]);
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason) values ($1, 'legacy-b@example.test', 'coach_authored_player_records')`, [id()]);
+    const legacyReq = (await db.query(`insert into public.player_deletion_requests (player_id, requested_by, requester_email, status, cancelled_by, cancelled_at) values ($1, $2, 'legacy-c@example.test', 'cancelled', $2, now()) returning id`, [w.player, people.parent])).rows[0].id;
+    await db.query(`insert into public.player_deletion_requests (player_id, requested_by, requester_email) values ($1, $2, 'legacy-c@example.test')`, [w.directPlayer, people.parent]);
+    await db.exec(`set session_replication_role = replica;`);
+    const part = (await db.query(`insert into public.squad_invite_participations (campaign_id, guardian_profile_id, builder_token_hash) values ($1, $2, repeat('d', 64)) returning id`, [id(), people.parent])).rows[0].id;
+    await db.exec(`set session_replication_role = origin;`);
+    await db.query(`insert into public.squad_invite_participation_deletion_requests (participation_id, requested_by, requester_email, status, cancelled_by, cancelled_at) values ($1, $2, 'legacy-c@example.test', 'cancelled', $2, now())`, [part, people.parent]);
+    await db.query(`insert into public.player_invites (player_id, code, invited_email, origin, used_at) values ($1, 'S24-USED', 'legacy-d@example.test', 'second_guardian', now())`, [w.player]);
+    await db.query(`insert into public.coach_invites (player_id, code, created_by, invited_email) values ($1, 'S24-UNUSED', $2, 'nobody-yet@example.test')`, [w.directPlayer, people.parent]);
+    const legacy = await runCheck(db, LEGACY);
+    const expected = { auth_retry_rows_with_email: 1, resolved_reviews_with_email: 1, closed_child_requests_with_contact: 1, closed_participation_requests_with_contact: 1, used_invites_redeemer_gone_with_email: 1,
+      pending_reviews_with_email: 1, open_child_requests_with_contact: 1, unused_invites_with_email_no_account: 1 };
+    check('24: legacy check counts each kind of pre-0097 row (every STOP figure 1, so R0 stops) and the expected pending ones',
+      legacy.read_only_guard === 'on' && Object.entries(expected).every(([k, v]) => legacy[k] === v), JSON.stringify(legacy));
+    const snapshot = async () => rowsOf(db, `select (select json_agg(t order by t.auth_user_id) from public.pending_auth_deletions t) a,
+        (select json_agg(t order by t.auth_user_id) from public.pending_profile_deletions t) b,
+        (select json_agg(t order by t.id) from public.player_deletion_requests t) c,
+        (select json_agg(t order by t.id) from public.squad_invite_participation_deletion_requests t) d,
+        (select json_agg(t order by t.id) from public.player_invites t) e`);
+    const before = await snapshot();
+    const applied97 = await applyMigrations(db, { from: '0097', through: '0097' }).then(() => null).catch((e) => e.message);
+    const privs = await runCheck(db, PRIVS);
+    check('24: privilege check before 0098: read-only, the four expected privileges present (expected_four_present true)',
+      applied97 === null && privs.read_only_guard === 'on' && privs.expected_four_present === true && privs.service_role_insert && privs.service_role_update && privs.service_role_delete && privs.service_role_truncate, JSON.stringify(privs) + ' ' + applied97);
+    const applied98 = await applyMigrations(db, { from: '0098', through: '0098' }).then(() => null).catch((e) => e.message);
+    const after = await runCheck(db, LEGACY);
+    const strip = (s) => JSON.parse(s);
+    const b = strip(before)[0], a = strip(await snapshot())[0];
+    // Every pre-existing column of every row is identical (the migrations only add columns, all NULL).
+    const pick = (rows, keys) => rows.map((r) => Object.fromEntries(keys.map((k) => [k, r[k]])));
+    const unchanged = (t) => JSON.stringify(b[t]) === JSON.stringify(pick(a[t], Object.keys(b[t][0])));
+    const addedNull = (t) => a[t].every((r) => Object.keys(r).filter((k) => !(k in b[t][0])).every((k) => r[k] === null));
+    const sameRows = ['a', 'b', 'c', 'd', 'e'].every((t) => unchanged(t) && addedNull(t));
+    check('24: 0097 and 0098 apply over the legacy rows without changing any of them (no automatic clean-up); the counts are unchanged',
+      applied98 === null && STOP.every((k) => after[k] === legacy[k]) && sameRows, `${applied98} ${JSON.stringify(after)}`);
+    const privsAfter = await runCheck(db, PRIVS);
+    check('24: after 0098 the same check shows the four revoked (select kept)', privsAfter.expected_four_present === false && privsAfter.service_role_select === true, JSON.stringify(privsAfter));
+    // A mismatch stops before 0098: one privilege missing.
+    const w2 = await world({ through: '0097' });
+    await w2.db.query(`revoke truncate on public.pending_profile_deletions from service_role`);
+    const mism = await runCheck(w2.db, PRIVS);
+    const refused = await applyMigrations(w2.db, { from: '0098', through: '0098' }).then(() => null).catch((e) => e.message);
+    await w2.db.exec('rollback;').catch(() => {});
+    check('24: with one of the four missing the check reads false (STOP), and 0098 itself refuses, changing nothing',
+      mism.expected_four_present === false && mism.service_role_truncate === false && refused?.includes('unexpected privileges') && (await n(w2.db, `select count(*)::int n from pg_proc where proname = 'account_deletion_preview'`)) === 0, `${JSON.stringify(mism)} ${refused}`);
+    await w2.db.close();
+  } catch (e) {
+    check('24: pre-checks', false, e.stack);
   }
   await db.close();
 }

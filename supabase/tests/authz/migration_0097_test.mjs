@@ -618,10 +618,15 @@ let c96, c97, db9, w9, data96;
       'trigger:profiles.profiles_refuse_erased_account', 'function:record_account_sign_in_removal(p_pending_deletion_id uuid, p_reason text, p_outcome text)',
       'function:reject_account_deletion_record_change()', 'trigger:account_deletion_staff_actions.account_deletion_staff_actions_append_only',
       'trigger:account_deletion_staff_actions.account_deletion_staff_actions_no_truncate', 'trigger:erased_accounts.erased_accounts_append_only',
-      'trigger:erased_accounts.erased_accounts_no_truncate'].sort(),
+      'trigger:erased_accounts.erased_accounts_no_truncate',
+      // Section 10: invite revocation; section 11: child-deletion contact redaction.
+      ...['player_invites', 'coach_invites', 'team_invites'].flatMap((t) => [`column:${t}.revoked_at`, `column:${t}.revoked_reason`, `constraint:${t}.${t}_revoked_state`, `trigger:${t}.${t}_revoked_guard`]),
+      'function:refuse_revoked_invite_reuse()', 'function:redact_closed_deletion_request_contact()',
+      'trigger:player_deletion_requests.player_deletion_requests_redact_closed_contact', 'trigger:squad_invite_participation_deletion_requests.sipdr_redact_closed_contact',
+      'constraint:player_deletion_requests.player_deletion_requests_closed_has_no_contact', 'constraint:squad_invite_participation_deletion_requests.sipdr_closed_has_no_contact'].sort(),
     changed: ['constraint:moments.moments_verification_status_consistency', 'constraint:player_deletion_requests.player_deletion_requests_cancellation_requires_actor', 'constraint:squad_invite_participation_deletion_requests.sipdr_cancellation_requires_actor', 'function:delete_own_guardian_account()'].sort(),
   };
-  check('9: the catalog change is exactly: three marker columns, one restrictive policy, three rules, the changed function, the blocker helper, the erasure, the staff completion, and the profile-deletion guard trigger with its function',
+  check('9: the catalog change is exactly: three marker columns, one restrictive policy, three rules, the changed function, the blocker helper, the erasure, the staff completion, the profile-deletion guard trigger with its function, the invite revocation and the contact redaction',
     JSON.stringify(d.added.sort()) === JSON.stringify(expected.added) && JSON.stringify(d.changed.sort()) === JSON.stringify(expected.changed) && d.removed.length === 0, JSON.stringify(d));
   check('9: delete_own_guardian_account keeps SECURITY DEFINER, empty search_path, owner postgres, and EXECUTE for authenticated only',
     c97.get('function:delete_own_guardian_account()').split(' | ').slice(0, 5).join(' | ') === c96.get('function:delete_own_guardian_account()').split(' | ').slice(0, 5).join(' | '));
@@ -722,6 +727,27 @@ console.log('\n=== 10. Rollback ===');
     r?.includes('1 account-deletion audit event(s)') && keysOf(diffCatalog(beforeAudit, await snapshotCatalog(db))).length === 0, r);
   check('10: …and no acknowledgement persists', await noAck());
   await db.close();
+
+  // A revoked invite refuses the rollback (its record and guard stay). Fresh database: no earlier refusal applies.
+  const wr = await world();
+  const stranger = id();
+  await wr.db.query(`insert into auth.users (id, email) values ($1, 'S10-recipient@example.test')`, [stranger]);
+  await wr.user(stranger, `insert into public.profiles (id) values ($1)`, [stranger]);
+  await wr.db.query(`insert into public.coach_invites (player_id, code, created_by, invited_email) values ($1, 'S10-INVITE', $2, 'S10-recipient@example.test')`, [wr.directPlayer, wr.people.parent]);
+  const gone = await deleteAccount(wr, stranger);
+  const beforeInvite = await snapshotCatalog(wr.db);
+  await wr.db.exec('begin;');
+  let rr = null;
+  try {
+    await wr.db.query(`select set_config($1, $2, true)`, ACK);
+    await wr.db.exec(ROLLBACK);
+  } catch (e) {
+    rr = e.message;
+    await wr.db.exec('rollback;').catch(() => {});
+  }
+  check('10: rollback is refused once an erasure has revoked an invite, changing nothing',
+    gone.canDeleteIdentity === true && rr?.includes('1 invite(s) were revoked because their recipient account was erased') && keysOf(diffCatalog(beforeInvite, await snapshotCatalog(wr.db))).length === 0, rr);
+  await wr.db.close();
 }
 
 const failed = results.filter((r) => !r.pass);

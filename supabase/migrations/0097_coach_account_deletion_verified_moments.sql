@@ -101,6 +101,36 @@
 --      Every erasure clears the email from the account's review record, and
 --      no retry record (pending_auth_deletions) written here carries one;
 --      pending and rejected reviews keep it while staff may need it.
+--  10. Invites addressed to an erased account (player_invites,
+--      coach_invites, team_invites). The final erasure, in its own
+--      transaction, matches invited_email case-insensitively against the
+--      address the deletion was given and the Auth account's current one:
+--        - every unused invite addressed to it (expired or not) is revoked
+--          for good: revoked_at / revoked_reason 'recipient_account_erased'
+--          set, expires_at cut to now at the latest, invited_email cleared,
+--          and its code replaced by a random value no one holds, so the
+--          token that was sent can never match an invite again;
+--        - every used invite addressed to it, or redeemed by it, loses
+--          invited_email.
+--      What stays is non-identifying: ids, player/team, order, creator,
+--      created/used/expiry times, email delivery status, revoked_at and
+--      the reason code. A trigger refuses any later change that would
+--      reopen a revoked invite (code, used_at/used_by, a later expiry, an
+--      email, or the revocation itself), for every role. The step changes
+--      nothing on a repeat. Only the final erasure revokes: an account
+--      whose deletion is under staff review keeps its invites.
+--  11. Child-deletion contact emails (requester_email on
+--      player_deletion_requests and
+--      squad_invite_participation_deletion_requests) are kept only while
+--      the request is pending: a trigger clears the address in the same
+--      write that moves the request to completed, rejected or cancelled
+--      (by any path), and on any write to a row already closed. A CHECK
+--      (NOT VALID, so it does not judge rows written before 0097) refuses
+--      a closed request with an address. The staff page shows the address
+--      once more when staff close the request, so they can reply.
+--  Order purchaser emails (orders.purchaser_email) are NOT changed by any
+--  erasure: they are kept with the order for financial, contractual and
+--  audit purposes (docs/order-email-retention.md).
 --
 -- No app code reads moments.verified_by (it is only written, by
 -- /api/os/celebrate and /api/os/moments/verify), so NULL is already safe in
@@ -144,6 +174,21 @@ begin
      or to_regprocedure('public.record_account_sign_in_removal(uuid, text, text)') is not null
      or to_regprocedure('public.reject_account_deletion_record_change()') is not null then
     raise exception '0097 refused: a 0097 account-deletion function or trigger already exists (0097 already applied)';
+  end if;
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and column_name in ('revoked_at', 'revoked_reason')
+               and table_name in ('player_invites', 'coach_invites', 'team_invites'))
+     or to_regprocedure('public.refuse_revoked_invite_reuse()') is not null
+     or to_regprocedure('public.redact_closed_deletion_request_contact()') is not null then
+    raise exception '0097 refused: the 0097 invite revocation or contact redaction already exists (0097 already applied)';
+  end if;
+  if (select count(*) from information_schema.columns
+       where table_schema = 'public' and table_name in ('player_invites', 'coach_invites', 'team_invites')
+         and column_name in ('code', 'invited_email', 'used_at', 'used_by', 'expires_at')) <> 15
+     or (select count(*) from information_schema.columns
+          where table_schema = 'public' and column_name = 'requester_email'
+            and table_name in ('player_deletion_requests', 'squad_invite_participation_deletion_requests')) <> 2 then
+    v_problems := v_problems || 'an invite table or a deletion request contact column is not as expected'::text;
   end if;
   if to_regclass('public.player_deletion_requests') is null or to_regclass('public.squad_invite_participation_deletion_requests') is null then
     raise exception '0097 refused: a deletion request table is missing';
@@ -345,6 +390,7 @@ declare
   v_review_id uuid;
   v_review_status text;
   v_erased_now int;
+  v_emails text[];
 begin
   -- An account already erased has nothing left to erase. A still-valid
   -- access token of that account calling delete_own_guardian_account again
@@ -352,6 +398,34 @@ begin
   if exists (select 1 from public.erased_accounts where profile_id = v_uid) then
     raise exception using errcode = 'EMERA', message = 'account_erased';
   end if;
+
+  -- 0097 (section 10): invites addressed to this account. First, while
+  -- used_by still names the account. Its addresses: the one the deletion was
+  -- given and the Auth account's current one, compared case-insensitively.
+  select coalesce(array_agg(distinct lower(btrim(a))) filter (where a is not null and btrim(a) <> ''), '{}')
+    into v_emails
+    from unnest(array[v_email, (select u.email::text from auth.users u where u.id = v_uid)]) as a;
+  -- Unused (expired or not): revoked for good; the sent code can never match again.
+  update public.player_invites
+     set revoked_at = now(), revoked_reason = 'recipient_account_erased', invited_email = null,
+         expires_at = least(expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
+   where used_at is null and revoked_at is null and lower(btrim(invited_email)) = any(v_emails);
+  update public.coach_invites
+     set revoked_at = now(), revoked_reason = 'recipient_account_erased', invited_email = null,
+         expires_at = least(expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
+   where used_at is null and revoked_at is null and lower(btrim(invited_email)) = any(v_emails);
+  update public.team_invites
+     set revoked_at = now(), revoked_reason = 'recipient_account_erased', invited_email = null,
+         expires_at = least(expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
+   where used_at is null and revoked_at is null and lower(btrim(invited_email)) = any(v_emails);
+  -- Used: the recipient's address goes; the record of the use stays.
+  update public.player_invites set invited_email = null
+   where invited_email is not null and (lower(btrim(invited_email)) = any(v_emails) or used_by = v_uid);
+  update public.coach_invites set invited_email = null
+   where invited_email is not null and (lower(btrim(invited_email)) = any(v_emails) or used_by = v_uid);
+  update public.team_invites set invited_email = null
+   where invited_email is not null and (lower(btrim(invited_email)) = any(v_emails) or used_by = v_uid);
+
   select array_agg(player_id) into v_player_ids from public.guardians where profile_id = v_uid;
 
   if v_player_ids is not null then
@@ -865,5 +939,108 @@ $$;
 revoke all on function public.record_account_sign_in_removal(uuid, text, text) from public, anon, service_role;
 grant execute on function public.record_account_sign_in_removal(uuid, text, text) to authenticated;
 alter function public.record_account_sign_in_removal(uuid, text, text) owner to postgres;
+
+-- ---------------------------------------------------------------------------
+-- 10. Invites addressed to an erased account are revoked for good
+-- ---------------------------------------------------------------------------
+-- Written only by erase_account_for_deletion (section 4b). Every existing row
+-- gets NULL in both columns. Signed-in users' column-level INSERT grants
+-- (0089, 0090) do not include them.
+alter table public.player_invites
+  add column revoked_at timestamptz,
+  add column revoked_reason text,
+  add constraint player_invites_revoked_state check (
+    (revoked_at is null and revoked_reason is null)
+    or (revoked_reason = 'recipient_account_erased' and revoked_at is not null
+        and used_at is null and invited_email is null and expires_at <= revoked_at));
+alter table public.coach_invites
+  add column revoked_at timestamptz,
+  add column revoked_reason text,
+  add constraint coach_invites_revoked_state check (
+    (revoked_at is null and revoked_reason is null)
+    or (revoked_reason = 'recipient_account_erased' and revoked_at is not null
+        and used_at is null and invited_email is null and expires_at <= revoked_at));
+alter table public.team_invites
+  add column revoked_at timestamptz,
+  add column revoked_reason text,
+  add constraint team_invites_revoked_state check (
+    (revoked_at is null and revoked_reason is null)
+    or (revoked_reason = 'recipient_account_erased' and revoked_at is not null
+        and used_at is null and invited_email is null and expires_at <= revoked_at));
+comment on column public.player_invites.revoked_at is
+  'Set when the invite''s recipient account was erased (0097): the code was replaced and the invite can never be redeemed.';
+comment on column public.coach_invites.revoked_at is
+  'Set when the invite''s recipient account was erased (0097): the code was replaced and the invite can never be redeemed.';
+comment on column public.team_invites.revoked_at is
+  'Set when the invite''s recipient account was erased (0097): the code was replaced and the invite can never be redeemed.';
+
+-- A revoked invite can never be reopened, by any role (the owner included):
+-- no new code, no use, no later expiry, no address, no change to the
+-- revocation. Clearing created_by / used_by (account deletion) and email
+-- delivery status still work; deleting the row (child erasure) is unaffected.
+create function public.refuse_revoked_invite_reuse()
+returns trigger
+language plpgsql
+set search_path = ''
+as $fn$
+begin
+  if old.revoked_at is not null and (
+       new.revoked_at is distinct from old.revoked_at
+    or new.revoked_reason is distinct from old.revoked_reason
+    or new.code is distinct from old.code
+    or new.used_at is distinct from old.used_at
+    or (new.used_by is not null and new.used_by is distinct from old.used_by)
+    or new.expires_at > old.expires_at
+    or new.invited_email is not null) then
+    raise exception using errcode = 'EMRVK', message = 'invite_revoked';
+  end if;
+  return new;
+end;
+$fn$;
+alter function public.refuse_revoked_invite_reuse() owner to postgres;
+revoke all on function public.refuse_revoked_invite_reuse() from public, anon, authenticated, service_role;
+create trigger player_invites_revoked_guard before update on public.player_invites
+  for each row execute function public.refuse_revoked_invite_reuse();
+create trigger coach_invites_revoked_guard before update on public.coach_invites
+  for each row execute function public.refuse_revoked_invite_reuse();
+create trigger team_invites_revoked_guard before update on public.team_invites
+  for each row execute function public.refuse_revoked_invite_reuse();
+
+-- ---------------------------------------------------------------------------
+-- 11. A child-deletion request keeps its contact address only while pending
+-- ---------------------------------------------------------------------------
+-- The address is needed while staff may have to contact the requester or
+-- act on the request. Cleared in the same write that closes it (completed,
+-- rejected or cancelled, by whichever function or role), and on any later
+-- write to a closed row. Idempotent: a closed row stays without an address.
+create function public.redact_closed_deletion_request_contact()
+returns trigger
+language plpgsql
+set search_path = ''
+as $fn$
+begin
+  if new.status <> 'pending' then
+    new.requester_email := null;
+  end if;
+  return new;
+end;
+$fn$;
+alter function public.redact_closed_deletion_request_contact() owner to postgres;
+revoke all on function public.redact_closed_deletion_request_contact() from public, anon, authenticated, service_role;
+create trigger player_deletion_requests_redact_closed_contact
+  before insert or update on public.player_deletion_requests
+  for each row execute function public.redact_closed_deletion_request_contact();
+create trigger sipdr_redact_closed_contact
+  before insert or update on public.squad_invite_participation_deletion_requests
+  for each row execute function public.redact_closed_deletion_request_contact();
+-- NOT VALID: rows closed before 0097 are not judged here; the R0 pre-check
+-- (supabase/verification/0097_precheck_legacy_email_rows.sql) counts them,
+-- and any found are cleared only by a separately reviewed one-off change.
+alter table public.player_deletion_requests
+  add constraint player_deletion_requests_closed_has_no_contact
+  check (status = 'pending' or requester_email is null) not valid;
+alter table public.squad_invite_participation_deletion_requests
+  add constraint sipdr_closed_has_no_contact
+  check (status = 'pending' or requester_email is null) not valid;
 
 commit;

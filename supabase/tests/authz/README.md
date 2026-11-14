@@ -968,7 +968,22 @@ coach account deletion again. It needs, in the same transaction,
 and refuses, changing nothing, while a review is pending for an account that
 still has parent links (the 0076 function it restores has no completion step),
 or once any row carries any 0097 marker (those rows cannot satisfy the 0020
-rule). It restores the exact 0096 catalog.
+rule). It restores the exact 0096 catalog. It also refuses once an erasure has
+revoked any invite.
+
+**Emails at erasure (0097 sections 10 and 11; 0098 suite sections 21–24).**
+- **Review record and Auth-removal retry rows:** the address is cleared at every erasure.
+- **Invites addressed to the account** (`player_invites`, `coach_invites`, `team_invites`; matched case-insensitively on the address given and the Auth address):
+  - every unused one is revoked for good, in the same transaction: a new random code, expiry cut to now, no address, and `revoked_at` / `revoked_reason` set;
+  - a trigger refuses any change that would reopen it, for every role (SQLSTATE EMRVK);
+  - used invites addressed to the account, or redeemed by it, lose the address;
+  - nothing changes while the deletion is only under review.
+- **Child-deletion contact** (`requester_email` on both request tables): cleared in the write that completes, rejects or cancels the request, by any path. A `NOT VALID` CHECK backs it. The staff page shows the address once more when staff close a request.
+- **Order emails** are never touched (`docs/order-email-retention.md`).
+
+Read-only pre-checks, both proven in the 0098 suite (section 24):
+- `supabase/verification/0097_precheck_legacy_email_rows.sql` (R0): counts rows written under the old rules. Any non-zero STOP figure stops the release until a separately reviewed one-off clean-up has run. The migrations leave those rows unchanged.
+- `supabase/verification/0098_precheck_service_role_privileges.sql`: run before 0098. STOP unless `expected_four_present` is true.
 
 ## Migration 0098 (deletion review suspension and verifier identity)
 

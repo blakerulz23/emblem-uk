@@ -255,6 +255,38 @@ describe('0097 rollback — emergency only', () => {
     expect(code).toContain('constraint account_deletion_staff_actions_reason_no_email');
   });
 
+  it('invites addressed to an erased account are revoked in the erasure itself, and child-deletion contacts go when a request closes', () => {
+    const defOf = (text: string, header: string, end = '\n$$;') => text.slice(text.indexOf(header), text.indexOf(end, text.indexOf(header)) + end.length);
+    const CLEANUP_START = '  select array_agg(player_id) into v_player_ids from public.guardians where profile_id = v_uid;';
+    const erase = defOf(code, 'create function public.erase_account_for_deletion(p_profile_id uuid, p_email text, p_completed_by uuid)');
+    for (const t of ['player_invites', 'coach_invites', 'team_invites']) {
+      // Revoked: a new random code, expired, no address, marked; only unused, not already revoked, addressed to the account.
+      expect(erase).toContain(`  update public.${t}
+     set revoked_at = now(), revoked_reason = 'recipient_account_erased', invited_email = null,
+         expires_at = least(expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
+   where used_at is null and revoked_at is null and lower(btrim(invited_email)) = any(v_emails);`);
+      // Used: the address goes, before used_by is cleared by the 0076 clean-up.
+      const used = erase.indexOf(`  update public.${t} set invited_email = null`);
+      expect(used).toBeGreaterThan(0);
+      expect(used).toBeLessThan(erase.indexOf(CLEANUP_START));
+      expect(code).toContain(`create trigger ${t}_revoked_guard before update on public.${t}`);
+      expect(code).toContain(`add constraint ${t}_revoked_state check (`);
+      expect(rollbackCode).toContain(`drop trigger ${t}_revoked_guard on public.${t};`);
+    }
+    // After the EMERA guard (a repeat changes nothing) and inside the one erasure transaction.
+    expect(erase.indexOf("errcode = 'EMERA'")).toBeLessThan(erase.indexOf('recipient_account_erased'));
+    expect(code).toContain("raise exception using errcode = 'EMRVK', message = 'invite_revoked';");
+    // Contact cleared whenever the request is not pending, on every write, on both tables; NOT VALID check.
+    expect(code).toContain("  if new.status <> 'pending' then\n    new.requester_email := null;");
+    expect(code).toContain('before insert or update on public.player_deletion_requests');
+    expect(code).toContain('before insert or update on public.squad_invite_participation_deletion_requests');
+    expect(code).toContain("check (status = 'pending' or requester_email is null) not valid;");
+    // Orders are never touched by the erasure.
+    expect(erase).not.toMatch(/purchaser_email/);
+    // The rollback refuses while any invite is revoked.
+    expect(rollbackCode).toContain('were revoked because their recipient account was erased');
+  });
+
   it('restores the 0076 function body exactly', () => {
     expect(fnOf(rollback)).toBe(fnOf(m0076));
   });
