@@ -34,14 +34,25 @@
 --      state is reachable only through account deletion. authenticated has
 --      no UPDATE privilege on the new column (0029's column grant is
 --      unchanged), so an update cannot set it either.
---   4. delete_own_guardian_account: the 0076 body with one statement
---      changed and moved. A moment this account verified keeps its status
---      and verified_at; verified_by becomes NULL and
---      verifier_account_deleted_at is set, ONLY in the branch that actually
---      deletes the profile. A deletion that goes to staff review
---      (pending_profile_deletions) leaves the verifier as it is: the account
---      still exists, and a rejected deletion must not change attribution.
---      (0076 cleared verified_by before deciding; that statement is gone.)
+--   4. delete_own_guardian_account decides first, then does one of two
+--      things (0076 cleaned up first and decided after):
+--        - something blocks the deletion (coach-authored player records,
+--          Squad Invite history): it records the request in
+--          pending_profile_deletions for staff review and changes NOTHING
+--          else. Parent links, child deletion requests, cards and their
+--          lock state, moments (uploaded_by and verified_by), invites and
+--          every other reference stay as they are, because the account
+--          still exists and staff may reject the deletion;
+--        - nothing blocks it: it erases the account at once
+--          (erase_account_for_deletion, section 4b: the 0076 clean-up,
+--          unchanged apart from the verifier statement, then the profile
+--          delete).
+--      The 0076 blocker detection is now account_deletion_blocking_reason
+--      (section 4a), unchanged. A moment this account verified keeps its
+--      status and verified_at; verified_by becomes NULL and
+--      verifier_account_deleted_at is set ONLY as the profile row is
+--      deleted (section 7). (0076 cleared verified_by before deciding,
+--      which broke every coach deletion; that statement is gone.)
 --      Grants re-stated unchanged (authenticated only).
 --
 --
@@ -59,19 +70,27 @@
 --          before).
 --      The precondition also proves authenticated holds no INSERT or UPDATE
 --      on either table, so no signed-in user can set the marker.
---   6. delete_own_guardian_account marks this account's cancellations the
---      same way it marks its verifications, and also only at actual
---      deletion (the second "0097" block below): the record that a
---      cancellation happened, and when, is kept. Nothing is marked when the
---      deletion only goes to staff review.
---   7. A backstop for every other way a profile is actually deleted (staff
---      completing a reviewed deletion by removing the login account, whose
---      ON DELETE CASCADE deletes the profile, or a manual delete): a BEFORE
---      DELETE trigger on profiles writes the same two markers for the
---      profile being deleted. delete_own_guardian_account marks first, so
---      the trigger then finds nothing; on any other path it is what keeps
---      the child's record and lets the deletion succeed. It never runs for
---      a deletion that only goes to staff review (no profile is deleted).
+--   6. Cancellations are marked the same way and at the same moment as
+--      verifications (section 7): the record that a cancellation happened,
+--      and when, is kept. Nothing is marked while the deletion is only
+--      under staff review.
+--   7. A BEFORE DELETE trigger on profiles (guard_profile_deletion):
+--        - refuses the delete while the account still has a guardians row,
+--          or while its deletion is pending staff review. Removing the login
+--          account (auth.users) deletes the profile by ON DELETE CASCADE,
+--          which would drop those guardians rows without filing a child
+--          deletion request or locking a card; the erasure removes both
+--          conditions before it deletes the profile;
+--        - otherwise writes the two markers for the profile being deleted.
+--          It is the only place either marker is written, so each is
+--          written once, whichever path deletes the profile.
+--   8. complete_pending_profile_deletion(request, reason): the explicit
+--      final step for a reviewed deletion, for a signed-in staff member.
+--      Refuses unless the request is pending and nothing blocks the
+--      deletion any more; then runs the erasure exactly once (resolving the
+--      request with the staff member as resolved_by) and records in
+--      pending_auth_deletions (0043) that the sign-in identity still needs
+--      deleting. A repeat reports already_completed and changes nothing.
 --
 -- No app code reads moments.verified_by (it is only written, by
 -- /api/os/celebrate and /api/os/moments/verify), so NULL is already safe in
@@ -103,9 +122,12 @@ begin
                and table_name in ('player_deletion_requests', 'squad_invite_participation_deletion_requests')) then
     raise exception '0097 refused: cancelled_by_account_deleted_at already exists (0097 already applied)';
   end if;
-  if to_regprocedure('public.mark_deleted_account_attribution()') is not null
-     or exists (select 1 from pg_trigger where tgname = 'profiles_mark_deleted_account_attribution') then
-    raise exception '0097 refused: the deleted-account attribution trigger already exists (0097 already applied)';
+  if to_regprocedure('public.guard_profile_deletion()') is not null
+     or exists (select 1 from pg_trigger where tgname = 'profiles_account_deletion_guard')
+     or to_regprocedure('public.account_deletion_blocking_reason(uuid)') is not null
+     or to_regprocedure('public.erase_account_for_deletion(uuid, text, uuid)') is not null
+     or to_regprocedure('public.complete_pending_profile_deletion(uuid, text)') is not null then
+    raise exception '0097 refused: a 0097 account-deletion function or trigger already exists (0097 already applied)';
   end if;
   if to_regclass('public.player_deletion_requests') is null or to_regclass('public.squad_invite_participation_deletion_requests') is null then
     raise exception '0097 refused: a deletion request table is missing';
@@ -146,6 +168,11 @@ begin
      or v_body not like '%coach_authored_player_records%' then
     v_problems := v_problems || 'public.delete_own_guardian_account() is not the 0076 definition'::text;
   end if;
+  if to_regclass('public.pending_profile_deletions') is null or to_regclass('public.pending_auth_deletions') is null
+     or to_regclass('public.staff_accounts') is null
+     or to_regprocedure('public.lockdown_for_player_deletion_request(uuid, uuid)') is null then
+    v_problems := v_problems || 'pending_profile_deletions, pending_auth_deletions, staff_accounts or the 0076 lockdown helper is missing'::text;
+  end if;
   if exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'moments'
              and policyname = 'moments: only account deletion marks a verifier as deleted') then
     v_problems := v_problems || 'the 0097 restrictive insert policy already exists'::text;
@@ -162,7 +189,7 @@ $$;
 alter table public.moments add column verifier_account_deleted_at timestamptz;
 
 comment on column public.moments.verifier_account_deleted_at is
-  'Set only when the account is actually deleted (delete_own_guardian_account, or the profiles delete trigger, 0097), when the coach who verified this moment deleted their account. The moment stays coach_verified with its original verified_at; verified_by is then NULL. Never set by the app.';
+  'Set only by the profiles delete trigger (guard_profile_deletion, 0097), as the account is actually deleted, when the coach who verified this moment deleted their account. The moment stays coach_verified with its original verified_at; verified_by is then NULL. Never set by the app.';
 
 -- ---------------------------------------------------------------------------
 -- 2. The consistency rule, with the deleted-verifier state
@@ -203,9 +230,9 @@ alter table public.player_deletion_requests add column cancelled_by_account_dele
 alter table public.squad_invite_participation_deletion_requests add column cancelled_by_account_deleted_at timestamptz;
 
 comment on column public.player_deletion_requests.cancelled_by_account_deleted_at is
-  'Set only when the account is actually deleted (delete_own_guardian_account, or the profiles delete trigger, 0097), when the account that cancelled this request was deleted. The request stays cancelled with its original cancelled_at; cancelled_by is then NULL.';
+  'Set only by the profiles delete trigger (guard_profile_deletion, 0097), as the account is actually deleted, when the account that cancelled this request was deleted. The request stays cancelled with its original cancelled_at; cancelled_by is then NULL.';
 comment on column public.squad_invite_participation_deletion_requests.cancelled_by_account_deleted_at is
-  'Set only when the account is actually deleted (delete_own_guardian_account, or the profiles delete trigger, 0097), when the account that cancelled this request was deleted. The request stays cancelled with its original cancelled_at; cancelled_by is then NULL.';
+  'Set only by the profiles delete trigger (guard_profile_deletion, 0097), as the account is actually deleted, when the account that cancelled this request was deleted. The request stays cancelled with its original cancelled_at; cancelled_by is then NULL.';
 
 alter table public.player_deletion_requests drop constraint player_deletion_requests_cancellation_requires_actor;
 alter table public.player_deletion_requests add constraint player_deletion_requests_cancellation_requires_actor
@@ -230,35 +257,76 @@ alter table public.squad_invite_participation_deletion_requests add constraint s
 alter table public.squad_invite_participation_deletion_requests validate constraint sipdr_cancellation_requires_actor;
 
 -- ---------------------------------------------------------------------------
--- 4 and 6. delete_own_guardian_account: the 0076 body with one statement
---    changed and moved, and one block added, both inside the branch that
---    deletes the profile (marked "0097" below)
+-- 4a. What stops an account being deleted now (owner-only helper)
 -- ---------------------------------------------------------------------------
-create or replace function public.delete_own_guardian_account()
+-- The 0076 NOT-NULL blocker detection, unchanged, as a function so that the
+-- self-service request and the staff completion decide the same way. These
+-- rows cannot be nulled and are required campaign/financial/audit records
+-- that must not be destroyed. Returns NULL when nothing blocks the deletion.
+create function public.account_deletion_blocking_reason(p_profile_id uuid)
+returns text
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if exists (
+    select 1 from public.player_assessments where created_by = p_profile_id
+    union all select 1 from public.player_goals where created_by = p_profile_id
+    union all select 1 from public.player_season_focus where created_by = p_profile_id
+    union all select 1 from public.player_strengths where created_by = p_profile_id
+  ) then
+    return 'coach_authored_player_records';
+  end if;
+  if exists (
+    select 1 from public.squad_invite_links where created_by_profile_id = p_profile_id
+    union all select 1 from public.squad_invite_organiser_ownership where organiser_profile_id = p_profile_id
+    union all select 1 from public.squad_invite_requests where organiser_profile_id = p_profile_id
+    union all select 1 from public.squad_invites where organiser_profile_id = p_profile_id
+  ) then
+    return 'squad_invite_organiser_history';
+  end if;
+  if exists (
+    select 1 from public.squad_invite_request_declarations where actor_profile_id = p_profile_id
+  ) then
+    return 'squad_invite_audit_history';
+  end if;
+  return null;
+end;
+$$;
+
+revoke all on function public.account_deletion_blocking_reason(uuid) from public, anon, authenticated, service_role;
+alter function public.account_deletion_blocking_reason(uuid) owner to postgres;
+
+-- ---------------------------------------------------------------------------
+-- 4b. The account erasure (owner-only): the whole 0076 clean-up, then the
+--     profile delete. Runs only when the account is actually being deleted.
+-- ---------------------------------------------------------------------------
+-- Callers: delete_own_guardian_account when nothing blocks the deletion
+-- (auth.uid() is the account), and complete_pending_profile_deletion when
+-- staff complete a reviewed deletion (auth.uid() is the staff member). The
+-- card lockdown below calls suspend_card, which accepts either: the
+-- account's own guardians row still exists at that point, or the caller is
+-- staff. The clean-up is the 0076 block, unchanged, except that it no longer
+-- clears moments.verified_by: the profiles delete trigger (section 7) marks
+-- verifications and cancellations once, as the profile row is deleted.
+create function public.erase_account_for_deletion(p_profile_id uuid, p_email text, p_completed_by uuid)
 returns jsonb
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
-  v_uid uuid;
-  v_email text;
+  v_uid uuid := p_profile_id;
+  v_email text := p_email;
   v_player_ids uuid[];
   v_player_id uuid;
   v_other_guardians_count int;
   v_players_unlinked uuid[] := '{}';
   v_players_deletion_requested uuid[] := '{}';
   v_request_id uuid;
-  v_blocked boolean;
-  v_blocking_reason text;
 begin
-  v_uid := auth.uid();
-  if v_uid is null then
-    raise exception 'Not authenticated';
-  end if;
-
-  select email into v_email from auth.users where id = v_uid;
-
   select array_agg(player_id) into v_player_ids from public.guardians where profile_id = v_uid;
 
   if v_player_ids is not null then
@@ -319,68 +387,73 @@ begin
   update public.squad_invite_permissions set actor_profile_id = null where actor_profile_id = v_uid;
   update public.squad_invite_request_audit_events set actor_profile_id = null where actor_profile_id = v_uid;
 
-  -- NOT-NULL blockers: cannot be nulled, and their rows are required
-  -- campaign/financial/audit records that must not be destroyed. Detect
-  -- rather than attempt and fail.
-  select exists (
-    select 1 from public.player_assessments where created_by = v_uid
-    union all select 1 from public.player_goals where created_by = v_uid
-    union all select 1 from public.player_season_focus where created_by = v_uid
-    union all select 1 from public.player_strengths where created_by = v_uid
-  ) into v_blocked;
-  if v_blocked then
-    v_blocking_reason := 'coach_authored_player_records';
-  else
-    select exists (
-      select 1 from public.squad_invite_links where created_by_profile_id = v_uid
-      union all select 1 from public.squad_invite_organiser_ownership where organiser_profile_id = v_uid
-      union all select 1 from public.squad_invite_requests where organiser_profile_id = v_uid
-      union all select 1 from public.squad_invites where organiser_profile_id = v_uid
-    ) into v_blocked;
-    if v_blocked then
-      v_blocking_reason := 'squad_invite_organiser_history';
-    else
-      select exists (
-        select 1 from public.squad_invite_request_declarations where actor_profile_id = v_uid
-      ) into v_blocked;
-      if v_blocked then
-        v_blocking_reason := 'squad_invite_audit_history';
-      end if;
-    end if;
-  end if;
+  -- 0097: a staff review of this deletion, if one is open, is now complete
+  -- (p_completed_by is the staff member, or NULL for a self-service request
+  -- made again once nothing blocked it).
+  update public.pending_profile_deletions
+     set status = 'resolved', resolved_by = p_completed_by, resolved_at = now()
+   where auth_user_id = v_uid and status = 'pending';
 
-  if v_blocked then
-    insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason)
-    values (v_uid, v_email, v_blocking_reason)
-    on conflict (auth_user_id) do update set blocking_reason = excluded.blocking_reason;
-  else
-    -- 0097: only here, as the profile is actually deleted, does a moment
-    -- this account verified lose its verifier's identity. It stays
-    -- coach_verified with its verified_at, so the child keeps the record,
-    -- and verifier_account_deleted_at records why. A deletion that goes to
-    -- staff review (the branch above) changes neither, so attribution stays
-    -- exactly as it was while the account exists and after a rejection.
-    update public.moments
-       set verified_by = null, verifier_account_deleted_at = now()
-     where verified_by = v_uid;
-    -- 0097: likewise, only at actual deletion, a cancellation this account
-    -- made stays recorded as cancelled with its cancelled_at and loses only
-    -- the canceller's identity. (Left to ON DELETE SET NULL, cancelled_by
-    -- would break the cancellation rule and roll the whole deletion back.)
-    update public.player_deletion_requests
-       set cancelled_by = null, cancelled_by_account_deleted_at = now()
-     where cancelled_by = v_uid and status = 'cancelled';
-    update public.squad_invite_participation_deletion_requests
-       set cancelled_by = null, cancelled_by_account_deleted_at = now()
-     where cancelled_by = v_uid and status = 'cancelled';
-    delete from public.profiles where id = v_uid;
-  end if;
+  -- The profiles delete trigger (section 7) marks this account's
+  -- verifications and cancellations as the row goes.
+  delete from public.profiles where id = v_uid;
 
   return jsonb_build_object(
     'playersUnlinked', to_jsonb(v_players_unlinked),
-    'playersDeletionRequested', to_jsonb(v_players_deletion_requested),
-    'canDeleteIdentity', not v_blocked
+    'playersDeletionRequested', to_jsonb(v_players_deletion_requested)
   );
+end;
+$$;
+
+revoke all on function public.erase_account_for_deletion(uuid, text, uuid) from public, anon, authenticated, service_role;
+alter function public.erase_account_for_deletion(uuid, text, uuid) owner to postgres;
+
+-- ---------------------------------------------------------------------------
+-- 4c and 6. delete_own_guardian_account: decide first, then either record
+--    the request for staff review (nothing else changes) or erase the account
+-- ---------------------------------------------------------------------------
+create or replace function public.delete_own_guardian_account()
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid;
+  v_email text;
+  v_blocking_reason text;
+begin
+  v_uid := auth.uid();
+  if v_uid is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  select email into v_email from auth.users where id = v_uid;
+
+  -- 0097: decide before changing anything. The blocker tables are not
+  -- touched by the clean-up, so deciding first gives the same answer 0076
+  -- gave after it.
+  v_blocking_reason := public.account_deletion_blocking_reason(v_uid);
+
+  if v_blocking_reason is not null then
+    -- 0097: staff review. Only the request is recorded. Parent links, child
+    -- deletion requests, cards, moments (uploaded_by and verified_by),
+    -- invites and every other reference stay exactly as they are: the
+    -- account still exists, and staff may reject the deletion. The clean-up
+    -- runs once, if and when staff complete it
+    -- (complete_pending_profile_deletion).
+    insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason)
+    values (v_uid, v_email, v_blocking_reason)
+    on conflict (auth_user_id) do update set blocking_reason = excluded.blocking_reason;
+    return jsonb_build_object(
+      'playersUnlinked', '[]'::jsonb,
+      'playersDeletionRequested', '[]'::jsonb,
+      'canDeleteIdentity', false
+    );
+  end if;
+
+  return public.erase_account_for_deletion(v_uid, v_email, null)
+    || jsonb_build_object('canDeleteIdentity', true);
 end;
 $$;
 
@@ -390,17 +463,121 @@ grant execute on function public.delete_own_guardian_account() to authenticated;
 alter function public.delete_own_guardian_account() owner to postgres;
 
 -- ---------------------------------------------------------------------------
--- 7. Backstop: mark attribution whenever a profile is actually deleted
+-- 8. Staff: complete a reviewed account deletion
 -- ---------------------------------------------------------------------------
-create function public.mark_deleted_account_attribution()
+-- The explicit final step for a deletion that went to staff review. Called
+-- in a signed-in staff session (auth.uid() is the staff member), as the 0076
+-- child-erasure staff functions are: the card lockdown in the erasure
+-- attributes each card suspension to auth.uid(). Order:
+--   - staff only, with a reason;
+--   - locks the account, then its request (the order delete_own_guardian_
+--     account uses), so a repeated or concurrent completion waits and then
+--     reports already_completed, changing nothing;
+--   - only a 'pending' request; refuses a staff account, the caller's own
+--     account and an account that no longer exists;
+--   - refuses, changing nothing, while anything still blocks the deletion
+--     (staff resolve those records first);
+--   - runs the erasure exactly once (section 4b), which resolves the request
+--     with this staff member as resolved_by and deletes the profile;
+--   - records in pending_auth_deletions (0043) that the sign-in identity
+--     still needs deleting, so it appears on /staff/pending-auth-deletions.
+create function public.complete_pending_profile_deletion(p_pending_deletion_id uuid, p_reason text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_staff uuid := auth.uid();
+  v_uid uuid;
+  v_pending public.pending_profile_deletions%rowtype;
+  v_blocking_reason text;
+  v_result jsonb;
+begin
+  if v_staff is null then
+    raise exception 'Not authenticated';
+  end if;
+  if not exists (select 1 from public.staff_accounts where profile_id = v_staff) then
+    raise exception 'Not authorized: staff only';
+  end if;
+  if p_reason is null or char_length(btrim(p_reason)) = 0 or char_length(btrim(p_reason)) > 500 then
+    raise exception 'A reason (up to 500 characters) is required';
+  end if;
+
+  select auth_user_id into v_uid from public.pending_profile_deletions where id = p_pending_deletion_id;
+  if v_uid is null then
+    raise exception 'Pending profile deletion not found';
+  end if;
+  perform 1 from public.profiles where id = v_uid for update;
+  select * into v_pending from public.pending_profile_deletions where id = p_pending_deletion_id for update;
+
+  if v_pending.status = 'resolved' then
+    return jsonb_build_object('status', 'already_completed');
+  end if;
+  if v_pending.status <> 'pending' then
+    raise exception 'Only a pending profile deletion can be completed (it is %)', v_pending.status;
+  end if;
+  if v_uid = v_staff or exists (select 1 from public.staff_accounts where profile_id = v_uid) then
+    raise exception 'Staff accounts are removed by the manual staff procedure, not here';
+  end if;
+  if not exists (select 1 from public.profiles where id = v_uid) then
+    raise exception 'The account no longer exists';
+  end if;
+  v_blocking_reason := public.account_deletion_blocking_reason(v_uid);
+  if v_blocking_reason is not null then
+    raise exception 'The account still has records that block deletion (%); resolve them first', v_blocking_reason;
+  end if;
+
+  update public.pending_profile_deletions
+     set notes = concat_ws(E'\n', notes, 'Completed by staff: ' || btrim(p_reason))
+   where id = p_pending_deletion_id;
+
+  v_result := public.erase_account_for_deletion(v_uid, v_pending.email, v_staff);
+
+  insert into public.pending_auth_deletions (auth_user_id, email, last_error)
+  values (v_uid, v_pending.email, 'Reviewed account deletion completed by staff; the sign-in identity still needs deleting')
+  on conflict (auth_user_id) do update
+    set status = 'pending', resolved_by = null, resolved_at = null, last_attempted_at = now(),
+        attempts = public.pending_auth_deletions.attempts + 1, last_error = excluded.last_error;
+
+  return v_result || jsonb_build_object('status', 'completed');
+end;
+$$;
+
+revoke all on function public.complete_pending_profile_deletion(uuid, text) from public, anon, service_role;
+grant execute on function public.complete_pending_profile_deletion(uuid, text) to authenticated;
+alter function public.complete_pending_profile_deletion(uuid, text) owner to postgres;
+
+-- ---------------------------------------------------------------------------
+-- 7. Every profile delete: refuse one that would skip the erasure, and mark
+--    attribution for one that goes ahead
+-- ---------------------------------------------------------------------------
+-- Removing the login account (auth.users) deletes the profile by ON DELETE
+-- CASCADE, which never runs the clean-up: the cascade would drop the
+-- account's guardians rows without filing a child deletion request or
+-- locking a card. So a profile delete is refused while the account still
+-- has a guardians row, or while its deletion is pending staff review; the
+-- erasure (section 4b) removes both before it deletes the profile. (Every
+-- other reference the clean-up clears is NO ACTION or RESTRICT, so a
+-- cascade that skipped it fails on its own.)
+-- When the delete goes ahead, the moments this account verified keep their
+-- status and verified_at, lose verified_by and gain
+-- verifier_account_deleted_at; its cancellations keep their status and
+-- cancelled_at, lose cancelled_by and gain cancelled_by_account_deleted_at.
+-- This is the one place either marker is written.
+create function public.guard_profile_deletion()
 returns trigger
 language plpgsql
 security definer
 set search_path = ''
 as $fn$
 begin
-  -- Same statements as delete_own_guardian_account's deleting branch, for
-  -- the profile being deleted. Runs only when a profile row is deleted.
+  if exists (select 1 from public.guardians where profile_id = old.id) then
+    raise exception 'Profile deletion refused: the account still has parent links; delete it through account deletion or complete_pending_profile_deletion, which run the child-data clean-up first';
+  end if;
+  if exists (select 1 from public.pending_profile_deletions where auth_user_id = old.id and status = 'pending') then
+    raise exception 'Profile deletion refused: the account deletion is under staff review; complete it with complete_pending_profile_deletion';
+  end if;
   update public.moments
      set verified_by = null, verifier_account_deleted_at = now()
    where verified_by = old.id;
@@ -414,11 +591,11 @@ begin
 end;
 $fn$;
 
-revoke all on function public.mark_deleted_account_attribution() from public, anon, authenticated, service_role;
-alter function public.mark_deleted_account_attribution() owner to postgres;
+revoke all on function public.guard_profile_deletion() from public, anon, authenticated, service_role;
+alter function public.guard_profile_deletion() owner to postgres;
 
-create trigger profiles_mark_deleted_account_attribution
+create trigger profiles_account_deletion_guard
   before delete on public.profiles
-  for each row execute function public.mark_deleted_account_attribution();
+  for each row execute function public.guard_profile_deletion();
 
 commit;

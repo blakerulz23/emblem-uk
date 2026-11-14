@@ -16,6 +16,10 @@
 //   6. emergency rollback of 0101 with 0097/0098 applied: refused without its
 //      acknowledgement; with it, the catalog is exactly a 0097 + 0098 build;
 //      0101 then reapplies to the step 3 catalog
+//   7. the account-deletion lifecycle on that database: a parent-coach's
+//      request goes to review and changes nothing but coaching access; reject
+//      and restore; a second request; staff completion erases once; the 0101
+//      post-check is still 8/8 with identical counts
 //
 // Fictional data: one closed (cancelled, guardian_declined) gift order, which
 // 0101 counts as blocked but leaves alone, so blocked_total = 1 and every other
@@ -23,6 +27,8 @@
 // checks therefore cover the order data 0101 reads; the tables 0097/0098 change
 // (moments, deletion requests, suspensions) are empty here, and their data
 // paths, including the rollback refusals that depend on rows, are proven in
+// migration_0097_test.mjs and migration_0098_test.mjs (step 7 adds a short
+// lifecycle at the end, after the last catalog comparison). Those suites:
 // migration_0097_test.mjs and migration_0098_test.mjs.
 //
 // Run: node --no-warnings supabase/tests/authz/migration_production_order_0101_0097_0098_test.mjs
@@ -238,6 +244,71 @@ diff = catalogDiff(cProd, await snapshotCatalog(db));
 check('6. catalog identical to step 3 again', diff.length === 0, diff);
 check('6. fixture rows unchanged', sameData(dataProd, await dataSnapshot(db)));
 await post0101(db, '6');
+
+// --- 7. the deletion lifecycle on the production-order database ---------------------------------
+console.log('\n=== 7. deletion lifecycle in production order (review keeps the family; staff completion erases once) ===');
+{
+  async function as(role, uid, fn) {
+    await db.exec('begin;');
+    try {
+      await db.exec(`set local role ${role};`);
+      await db.query(`select set_config('request.jwt.claim.sub', $1, true);`, [uid ?? '']);
+      const out = await fn();
+      await db.exec('commit;');
+      return out;
+    } catch (e) {
+      await db.exec('rollback;');
+      throw e;
+    }
+  }
+  const user = (uid, sql, params) => as('authenticated', uid, () => db.query(sql, params));
+  const service = (sql, params) => as('service_role', null, () => db.query(sql, params));
+  const n = async (sql, params) => Number((await db.query(sql, params)).rows[0].n);
+  const staff = id(), parent = id(), season = id(), player = id(), card = id();
+  for (const [uid, email] of [[staff, 'po-staff@example.test'], [parent, 'po-parent-coach@example.test']]) {
+    await db.query(`insert into auth.users (id, email) values ($1, $2)`, [uid, email]);
+    await user(uid, `insert into public.profiles (id) values ($1)`, [uid]);
+  }
+  await db.query(`insert into public.staff_accounts (profile_id) values ($1)`, [staff]);
+  await db.query(`insert into public.seasons (id, label, normalized_label) values ($1, 'PO Season', 'po season')`, [season]);
+  await db.query(`insert into public.players (id, name) values ($1, 'PO Player')`, [player]);
+  await service(`insert into public.guardians (player_id, profile_id, created_via, created_by) values ($1, $2, 'card_claim', $2)`, [player, parent]);
+  await db.query(`insert into public.cards (id, player_id, claim_token, status) values ($1, $2, 'PO-CARD-1', 'claimed')`, [card, player]);
+  const req = (await user(parent, `insert into public.coach_team_requests (club_name, team_name) values ('PO FC', 'PO U12') returning id`)).rows[0].id;
+  const team = (await service(`select public.approve_coach_team_request($1, $2, null, null, $3) as t`, [req, staff, season])).rows[0].t;
+  await service(`update public.players set team_id = $1 where id = $2`, [team, player]);
+  const rec = (await user(parent, `insert into public.moments (player_id, title, trust, note, uploaded_by, verified_by, verified_at, verification_status)
+      values ($1, 'PO Award', 'coach', 'Well done', $2, $2, now(), 'coach_verified') returning id`, [player, parent])).rows[0].id;
+  await user(parent, `insert into public.player_assessments (player_id, created_by, body) values ($1, $2, 'PO assessment')`, [player, parent]);
+  const family = async () => JSON.stringify((await db.query(`select
+      (select json_agg(g order by g.player_id) from public.guardians g where g.player_id = $1) g,
+      (select json_agg(r order by r.id) from public.player_deletion_requests r where r.player_id = $1) r,
+      (select json_agg(c order by c.id) from public.cards c where c.player_id = $1) c,
+      (select json_agg(m order by m.id) from public.moments m where m.player_id = $1) m`, [player])).rows[0]);
+  const F0 = await family();
+  const r1 = (await user(parent, `select public.delete_own_guardian_account() as r`)).rows[0].r;
+  check('7. review: identity kept, coach access suspended, family (links, requests, cards, moments) unchanged',
+    r1.canDeleteIdentity === false && r1.coachAccessSuspended === 1 && (await family()) === F0, r1);
+  const pid = (await db.query(`select id from public.pending_profile_deletions where auth_user_id = $1`, [parent])).rows[0].id;
+  check('7. removing the login while under review is refused', /Profile deletion refused/.test(await db.query(`delete from auth.users where id = $1`, [parent]).then(() => '').catch((e) => e.message)));
+  await service(`select public.reject_pending_profile_deletion($1, $2, 'PO: stays')`, [pid, staff]);
+  const rs = (await service(`select public.restore_coach_access_after_deletion_rejection($1, $2, 'PO: stays') as r`, [pid, staff])).rows[0].r;
+  check('7. reject + restore: coaching back, family unchanged', rs.restored === 1 && (await family()) === F0 &&
+    await n(`select count(*)::int n from public.coach_team where profile_id = $1 and ended_at is null`, [parent]) === 1, rs);
+  await user(parent, `select public.delete_own_guardian_account()`);
+  await db.query(`delete from public.player_assessments where created_by = $1`, [parent]);
+  const done = (await user(staff, `select public.complete_pending_profile_deletion($1, 'PO: approved') as r`, [pid])).rows[0].r;
+  check('7. staff completion: one child deletion request, card locked, verifier marked, profile gone',
+    done.status === 'completed' &&
+    await n(`select count(*)::int n from public.player_deletion_requests where player_id = $1 and status = 'pending'`, [player]) === 1 &&
+    await n(`select count(*)::int n from public.cards where id = $1 and access_status = 'suspended'`, [card]) === 1 &&
+    await n(`select count(*)::int n from public.moments where id = $1 and verified_by is null and verifier_account_deleted_at is not null`, [rec]) === 1 &&
+    await n(`select count(*)::int n from public.profiles where id = $1`, [parent]) === 0, done);
+  const again = (await user(staff, `select public.complete_pending_profile_deletion($1, 'PO: approved') as r`, [pid])).rows[0].r;
+  check('7. a repeated completion is already_completed (still one child request)', again.status === 'already_completed' &&
+    await n(`select count(*)::int n from public.player_deletion_requests where player_id = $1`, [player]) === 1, again);
+  await post0101(db, '7');
+}
 
 await db.close();
 const failed = results.filter((x) => !x.pass);

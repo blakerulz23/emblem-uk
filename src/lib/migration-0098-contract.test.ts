@@ -34,11 +34,15 @@ describe('migration 0098 — deletion review suspension and verifier identity', 
     expect(code).toContain('(0098 already applied)');
   });
 
-  it('requires the current 0097 (its deleted-account attribution trigger), in the precondition and in the rollback', () => {
-    const TRIGGER_CHECK = "not exists (select 1 from pg_trigger where tgname = 'profiles_mark_deleted_account_attribution'";
-    expect(code).toContain("to_regprocedure('public.mark_deleted_account_attribution()') is null");
+  it('requires the current 0097 (its erasure, staff completion and enabled profile-deletion guard), in the precondition and in the rollback', () => {
+    const TRIGGER_CHECK = "not exists (select 1 from pg_trigger where tgname = 'profiles_account_deletion_guard'";
+    for (const fn of ['account_deletion_blocking_reason(uuid)', 'erase_account_for_deletion(uuid, text, uuid)', 'complete_pending_profile_deletion(uuid, text)', 'guard_profile_deletion()']) {
+      expect(code).toContain(`to_regprocedure('public.${fn}') is null`);
+      expect(rollbackCode).toContain(`to_regprocedure('public.${fn}') is null`);
+    }
     expect(code).toContain(TRIGGER_CHECK);
-    expect(code).toContain('the 0097 deleted-account attribution trigger is missing (0097 not applied, or an earlier 0097)');
+    expect(code).toContain("and tgrelid = 'public.profiles'::regclass and not tgisinternal and tgenabled <> 'D'");
+    expect(code).toContain('the 0097 account-deletion functions or profile-deletion guard are missing (0097 not applied, or an earlier 0097)');
     expect(code.indexOf(TRIGGER_CHECK)).toBeLessThan(code.search(/^(alter|create)\b/im));
     const refusal = rollbackCode.indexOf('0098 rollback refused: the 0097 underneath is not the current version');
     expect(rollbackCode).toContain(TRIGGER_CHECK);
@@ -51,10 +55,11 @@ describe('migration 0098 — deletion review suspension and verifier identity', 
     const after = fnOf(sql);
     // Every line of the 0097 body is still there, in order, apart from the
     // pending_profile_deletions upsert (now reopening a decided request) and
-    // the result object's last line.
+    // the two result lines (each gains coachAccessSuspended).
     const changed = new Set([
       '    on conflict (auth_user_id) do update set blocking_reason = excluded.blocking_reason;',
-      "    'canDeleteIdentity', not v_blocked",
+      "      'canDeleteIdentity', false",
+      "    || jsonb_build_object('canDeleteIdentity', true);",
     ]);
     let at = 0;
     for (const line of before.split('\n')) {
@@ -65,11 +70,33 @@ describe('migration 0098 — deletion review suspension and verifier identity', 
     }
     expect(after).toMatch(/if exists \(select 1 from public\.staff_accounts where profile_id = v_uid\) then\s+raise exception 'Staff accounts cannot be deleted from the app';/);
     // The staff refusal comes before any change.
-    expect(after.indexOf('Staff accounts cannot be deleted from the app')).toBeLessThan(after.indexOf('delete from public.guardians'));
+    expect(after.indexOf('Staff accounts cannot be deleted from the app')).toBeLessThan(after.indexOf('insert into public.pending_profile_deletions'));
+    expect(after.indexOf('Staff accounts cannot be deleted from the app')).toBeLessThan(after.indexOf('public.erase_account_for_deletion('));
     expect(after).toContain("end_reason = 'account_deletion_review'");
     expect(after).toContain("perform set_config('emblem.trusted_operation', 'account_deletion_review', true);");
     expect(after).toContain('delete from public.coach_players where player_id = v_row.player_id and profile_id = v_uid;');
     expect(after).toContain("'coachAccessSuspended', v_suspended");
+    expect(after).toContain("|| jsonb_build_object('canDeleteIdentity', true, 'coachAccessSuspended', 0);");
+  });
+
+  it('a deletion sent to staff review writes only the request, the suspension snapshot and the suspended relationships', () => {
+    const after = fnOf(sql).replace(/^\s*--.*\n/gm, '');
+    const review = after.slice(after.indexOf('  if v_blocking_reason is not null then'), after.indexOf('  end if;\n\n  return public.erase_account_for_deletion'));
+    const written = Array.from(review.matchAll(/(?:insert into|update|delete from) public\.(\w+)/g)).map((m) => m[1]);
+    expect(Array.from(new Set(written)).sort()).toEqual(['coach_players', 'coach_team', 'deletion_review_access_suspensions', 'pending_profile_deletions']);
+    expect(review).not.toMatch(/guardians|lockdown|uploaded_by|verified_by|erase_account_for_deletion|profiles/);
+    expect(after.split('public.erase_account_for_deletion(').length).toBe(2);
+  });
+
+  it('closes any open suspension as account_deleted when the profile is actually deleted (after the 0097 guard)', () => {
+    expect(code).toMatch(/create function public\.close_deletion_review_suspensions\(\)\s+returns trigger\s+language plpgsql\s+security definer\s+set search_path = ''/);
+    expect(code).toContain("set resolved_at = now(), resolution = 'account_deleted', resolution_note = 'the account was deleted'\n   where profile_id = old.id and resolved_at is null;");
+    expect(code).toContain('revoke all on function public.close_deletion_review_suspensions() from public, anon, authenticated, service_role;');
+    expect(code).toContain('create trigger profiles_close_deletion_review_suspensions\n  before delete on public.profiles');
+    // Same-event triggers fire in name order: the 0097 guard first.
+    expect('profiles_account_deletion_guard' < 'profiles_close_deletion_review_suspensions').toBe(true);
+    expect(code).toContain("resolution text check (resolution in ('restored', 'not_restorable', 'superseded', 'account_deleted')),");
+    expect(rollbackCode).toContain('drop trigger profiles_close_deletion_review_suspensions on public.profiles;\ndrop function public.close_deletion_review_suspensions();');
   });
 
   it('the staff functions are definer, staff-checked, and executable by service_role only', () => {
@@ -155,7 +182,8 @@ describe('migration 0098 — no new coach access while a deletion is under revie
   it('delete_own_guardian_account locks the account first, so a racing grant is serialised', () => {
     const fn = fnOf(sql);
     expect(fn).toContain('perform 1 from public.profiles where id = v_uid for update;');
-    expect(fn.indexOf('for update;')).toBeLessThan(fn.indexOf('delete from public.guardians'));
+    expect(fn.indexOf('for update;')).toBeLessThan(fn.indexOf('public.account_deletion_blocking_reason(v_uid)'));
+    expect(fn.indexOf('for update;')).toBeLessThan(fn.indexOf('insert into public.pending_profile_deletions'));
   });
 });
 

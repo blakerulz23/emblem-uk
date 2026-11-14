@@ -7,7 +7,9 @@
 --    the profile and files pending_profile_deletions for staff. Until now
 --    the coach's coach_team assignments and direct coach_players links
 --    stayed live, so signing in again still gave full coach access. From
---    0098 the same call, in the same transaction:
+--    0098 the same call, in the same transaction (and, as in 0097, changing
+--    nothing else: no parent link, child deletion request, card, moment or
+--    other reference is touched while the deletion is under review):
 --      - ends every not-yet-ended coach_team row (ended_at = now(),
 --        ended_by = the account, end_reason = 'account_deletion_review'),
 --        the ended-assignment state end_coach_assignment produces, so
@@ -31,6 +33,9 @@
 --        change nothing. Restoration is never automatic.
 --    A later deletion request from the same account reopens the same
 --    pending_profile_deletions row as pending and suspends again.
+--    When the account is actually deleted (0097's erasure, after a
+--    self-service request or complete_pending_profile_deletion), a trigger
+--    closes any suspension still open for it as 'account_deleted' (section 5).
 -- 2. Staff accounts: delete_own_guardian_account refuses, changing nothing,
 --    for any account in staff_accounts. Staff removal stays manual.
 -- 3. Verifier identity: two RESTRICTIVE policies on moments for
@@ -78,19 +83,25 @@ begin
   end if;
   select p.prosrc into v_body from pg_proc p where p.oid = to_regprocedure('public.delete_own_guardian_account()');
   if v_body is null
-     or v_body not like '%set verified_by = null, verifier_account_deleted_at = now()%'
-     or v_body not like '%set cancelled_by = null, cancelled_by_account_deleted_at = now()%'
+     or v_body not like '%public.account_deletion_blocking_reason(v_uid)%'
+     or v_body not like '%public.erase_account_for_deletion(v_uid, v_email, null)%'
      or v_body not like '%on conflict (auth_user_id) do update set blocking_reason = excluded.blocking_reason;%'
      or v_body like '%account_deletion_review%' then
     v_problems := v_problems || 'public.delete_own_guardian_account() is not the 0097 definition'::text;
   end if;
-  -- The current 0097 adds a BEFORE DELETE trigger on profiles; an earlier
-  -- draft of 0097 (which cleared attribution when a deletion only went to
-  -- staff review) did not. The function body alone cannot tell them apart.
-  if to_regprocedure('public.mark_deleted_account_attribution()') is null
-     or not exists (select 1 from pg_trigger where tgname = 'profiles_mark_deleted_account_attribution'
+  -- The current 0097 decides before any clean-up and guards every profile
+  -- delete with a trigger; earlier drafts of 0097 did neither.
+  if to_regprocedure('public.account_deletion_blocking_reason(uuid)') is null
+     or to_regprocedure('public.erase_account_for_deletion(uuid, text, uuid)') is null
+     or to_regprocedure('public.complete_pending_profile_deletion(uuid, text)') is null
+     or to_regprocedure('public.guard_profile_deletion()') is null
+     or not exists (select 1 from pg_trigger where tgname = 'profiles_account_deletion_guard'
                     and tgrelid = 'public.profiles'::regclass and not tgisinternal and tgenabled <> 'D') then
-    v_problems := v_problems || 'the 0097 deleted-account attribution trigger is missing (0097 not applied, or an earlier 0097)'::text;
+    v_problems := v_problems || 'the 0097 account-deletion functions or profile-deletion guard are missing (0097 not applied, or an earlier 0097)'::text;
+  end if;
+  if to_regprocedure('public.close_deletion_review_suspensions()') is not null
+     or exists (select 1 from pg_trigger where tgname = 'profiles_close_deletion_review_suspensions') then
+    v_problems := v_problems || 'the 0098 suspension-closing trigger already exists'::text;
   end if;
   select pg_get_constraintdef(oid) into v_def from pg_constraint
   where conrelid = 'public.pending_profile_deletions'::regclass and conname = 'pending_profile_deletions_status_check';
@@ -176,7 +187,7 @@ create table public.deletion_review_access_suspensions (
   original_row jsonb not null,
   suspended_at timestamptz not null default now(),
   resolved_at timestamptz,
-  resolution text check (resolution in ('restored', 'not_restorable', 'superseded')),
+  resolution text check (resolution in ('restored', 'not_restorable', 'superseded', 'account_deleted')),
   resolved_by uuid,
   resolution_reason text,
   resolution_note text,
@@ -186,7 +197,7 @@ create table public.deletion_review_access_suspensions (
   ),
   constraint deletion_review_access_suspensions_resolved_state_check check (
     (resolved_at is null and resolution is null and resolved_by is null and resolution_reason is null and resolution_note is null)
-    or (resolved_at is not null and resolution = 'superseded')
+    or (resolved_at is not null and resolution in ('superseded', 'account_deleted'))
     or (resolved_at is not null and resolution in ('restored', 'not_restorable') and resolved_by is not null
         and resolution_reason is not null and char_length(btrim(resolution_reason)) between 1 and 500)
   )
@@ -401,7 +412,8 @@ create policy "moments: a verifier change can only name the caller as coach"
 
 -- ---------------------------------------------------------------------------
 -- 1e and 2. delete_own_guardian_account: the 0097 body with the staff
---    refusal and the staff-review suspension added (marked "0098" below)
+--    refusal, the lock, the reopening request and the staff-review
+--    suspension added (marked "0098" below)
 -- ---------------------------------------------------------------------------
 create or replace function public.delete_own_guardian_account()
 returns jsonb
@@ -412,13 +424,6 @@ as $$
 declare
   v_uid uuid;
   v_email text;
-  v_player_ids uuid[];
-  v_player_id uuid;
-  v_other_guardians_count int;
-  v_players_unlinked uuid[] := '{}';
-  v_players_deletion_requested uuid[] := '{}';
-  v_request_id uuid;
-  v_blocked boolean;
   v_blocking_reason text;
   v_pending_id uuid;
   v_row record;
@@ -442,97 +447,18 @@ begin
 
   select email into v_email from auth.users where id = v_uid;
 
-  select array_agg(player_id) into v_player_ids from public.guardians where profile_id = v_uid;
+  -- 0097: decide before changing anything. The blocker tables are not
+  -- touched by the clean-up, so deciding first gives the same answer 0076
+  -- gave after it.
+  v_blocking_reason := public.account_deletion_blocking_reason(v_uid);
 
-  if v_player_ids is not null then
-    foreach v_player_id in array v_player_ids loop
-      select count(*) into v_other_guardians_count
-      from public.guardians
-      where player_id = v_player_id and profile_id <> v_uid;
-
-      if v_other_guardians_count > 0 then
-        delete from public.guardians where player_id = v_player_id and profile_id = v_uid;
-        update public.moments set uploaded_by = null where player_id = v_player_id and uploaded_by = v_uid;
-        update public.coach_invites set created_by = null where player_id = v_player_id and created_by = v_uid;
-        update public.coach_invites set used_by = null where player_id = v_player_id and used_by = v_uid;
-        update public.player_invites set created_by = null where player_id = v_player_id and created_by = v_uid;
-        update public.player_invites set used_by = null where player_id = v_player_id and used_by = v_uid;
-        v_players_unlinked := v_players_unlinked || v_player_id;
-      else
-        select id into v_request_id
-        from public.player_deletion_requests
-        where player_id = v_player_id and status = 'pending'
-        limit 1;
-
-        if v_request_id is null then
-          insert into public.player_deletion_requests (player_id, requested_by, requester_email, notes)
-          values (v_player_id, v_uid, v_email, 'Automatic: filed because the sole guardian deleted their account')
-          returning id into v_request_id;
-          -- Same immediate lockdown a guardian-filed request gets — this
-          -- guardian's own `guardians` row for this player still exists
-          -- at this point (removed below), so suspend_card's own
-          -- authorization check passes exactly as it would for a direct
-          -- guardian call.
-          perform public.lockdown_for_player_deletion_request(v_request_id, v_player_id);
-        end if;
-
-        delete from public.guardians where player_id = v_player_id and profile_id = v_uid;
-        v_players_deletion_requested := v_players_deletion_requested || v_player_id;
-      end if;
-    end loop;
-  end if;
-
-  -- Defense-in-depth pass, unscoped to any specific player.
-  delete from public.active_viewers where profile_id = v_uid;
-  delete from public.story_updates where recipient_profile_id = v_uid;
-  update public.coach_invites set created_by = null where created_by = v_uid;
-  update public.coach_invites set used_by = null where used_by = v_uid;
-  update public.player_invites set created_by = null where created_by = v_uid;
-  update public.player_invites set used_by = null where used_by = v_uid;
-  update public.moments set uploaded_by = null where uploaded_by = v_uid;
-  -- Newly covered nullable references (previously left untouched, which
-  -- would have blocked the profiles delete via NO ACTION/RESTRICT).
-  update public.orders set approved_by = null where approved_by = v_uid;
-  update public.team_invites set created_by = null where created_by = v_uid;
-  update public.team_invites set used_by = null where used_by = v_uid;
-  update public.squad_invite_audit_events set actor_profile_id = null where actor_profile_id = v_uid;
-  update public.squad_invite_link_audit_events set actor_profile_id = null where actor_profile_id = v_uid;
-  update public.squad_invite_notification_outbox set recipient_profile_id = null where recipient_profile_id = v_uid;
-  update public.squad_invite_participations set guardian_profile_id = null where guardian_profile_id = v_uid;
-  update public.squad_invite_permissions set actor_profile_id = null where actor_profile_id = v_uid;
-  update public.squad_invite_request_audit_events set actor_profile_id = null where actor_profile_id = v_uid;
-
-  -- NOT-NULL blockers: cannot be nulled, and their rows are required
-  -- campaign/financial/audit records that must not be destroyed. Detect
-  -- rather than attempt and fail.
-  select exists (
-    select 1 from public.player_assessments where created_by = v_uid
-    union all select 1 from public.player_goals where created_by = v_uid
-    union all select 1 from public.player_season_focus where created_by = v_uid
-    union all select 1 from public.player_strengths where created_by = v_uid
-  ) into v_blocked;
-  if v_blocked then
-    v_blocking_reason := 'coach_authored_player_records';
-  else
-    select exists (
-      select 1 from public.squad_invite_links where created_by_profile_id = v_uid
-      union all select 1 from public.squad_invite_organiser_ownership where organiser_profile_id = v_uid
-      union all select 1 from public.squad_invite_requests where organiser_profile_id = v_uid
-      union all select 1 from public.squad_invites where organiser_profile_id = v_uid
-    ) into v_blocked;
-    if v_blocked then
-      v_blocking_reason := 'squad_invite_organiser_history';
-    else
-      select exists (
-        select 1 from public.squad_invite_request_declarations where actor_profile_id = v_uid
-      ) into v_blocked;
-      if v_blocked then
-        v_blocking_reason := 'squad_invite_audit_history';
-      end if;
-    end if;
-  end if;
-
-  if v_blocked then
+  if v_blocking_reason is not null then
+    -- 0097: staff review. Only the request is recorded. Parent links, child
+    -- deletion requests, cards, moments (uploaded_by and verified_by),
+    -- invites and every other reference stay exactly as they are: the
+    -- account still exists, and staff may reject the deletion. The clean-up
+    -- runs once, if and when staff complete it
+    -- (complete_pending_profile_deletion).
     -- 0098: a new request after a rejected (or resolved) one is pending again.
     insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason)
     values (v_uid, v_email, v_blocking_reason)
@@ -545,7 +471,8 @@ begin
     -- not-yet-ended assignment and removes every direct link, snapshotting
     -- each first; the relationship_audit trigger records each change as
     -- trusted_function 'account_deletion_review'. A still-open suspension
-    -- of the same relationship from an earlier request is superseded.
+    -- of the same relationship from an earlier request is superseded. This
+    -- is the only change besides the request itself.
     perform set_config('emblem.trusted_operation', 'account_deletion_review', true);
     perform set_config('emblem.actor_profile_id', v_uid::text, true);
     perform set_config('emblem.trusted_reason', 'account_deletion_review', true);
@@ -576,35 +503,17 @@ begin
     perform set_config('emblem.trusted_operation', '', true);
     perform set_config('emblem.actor_profile_id', '', true);
     perform set_config('emblem.trusted_reason', '', true);
-  else
-    -- 0097: only here, as the profile is actually deleted, does a moment
-    -- this account verified lose its verifier's identity. It stays
-    -- coach_verified with its verified_at, so the child keeps the record,
-    -- and verifier_account_deleted_at records why. A deletion that goes to
-    -- staff review (the branch above) changes neither, so attribution stays
-    -- exactly as it was while the account exists and after a rejection.
-    update public.moments
-       set verified_by = null, verifier_account_deleted_at = now()
-     where verified_by = v_uid;
-    -- 0097: likewise, only at actual deletion, a cancellation this account
-    -- made stays recorded as cancelled with its cancelled_at and loses only
-    -- the canceller's identity. (Left to ON DELETE SET NULL, cancelled_by
-    -- would break the cancellation rule and roll the whole deletion back.)
-    update public.player_deletion_requests
-       set cancelled_by = null, cancelled_by_account_deleted_at = now()
-     where cancelled_by = v_uid and status = 'cancelled';
-    update public.squad_invite_participation_deletion_requests
-       set cancelled_by = null, cancelled_by_account_deleted_at = now()
-     where cancelled_by = v_uid and status = 'cancelled';
-    delete from public.profiles where id = v_uid;
+
+    return jsonb_build_object(
+      'playersUnlinked', '[]'::jsonb,
+      'playersDeletionRequested', '[]'::jsonb,
+      'canDeleteIdentity', false,
+      'coachAccessSuspended', v_suspended
+    );
   end if;
 
-  return jsonb_build_object(
-    'playersUnlinked', to_jsonb(v_players_unlinked),
-    'playersDeletionRequested', to_jsonb(v_players_deletion_requested),
-    'canDeleteIdentity', not v_blocked,
-    'coachAccessSuspended', v_suspended
-  );
+  return public.erase_account_for_deletion(v_uid, v_email, null)
+    || jsonb_build_object('canDeleteIdentity', true, 'coachAccessSuspended', 0);
 end;
 $$;
 
@@ -613,6 +522,34 @@ grant execute on function public.delete_own_guardian_account() to authenticated;
 
 
 alter function public.delete_own_guardian_account() owner to postgres;
+
+-- ---------------------------------------------------------------------------
+-- 5. When the account is actually deleted, its open suspensions are closed
+-- ---------------------------------------------------------------------------
+-- Whatever path deletes the profile (the 0097 erasure after a self-service
+-- request, or staff completing a review), a suspension still open for it has
+-- nothing left to restore: it is closed as 'account_deleted'. Runs after the
+-- 0097 guard (triggers on the same event fire in name order), so only for a
+-- delete that guard allows.
+create function public.close_deletion_review_suspensions()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $fn$
+begin
+  update public.deletion_review_access_suspensions
+     set resolved_at = now(), resolution = 'account_deleted', resolution_note = 'the account was deleted'
+   where profile_id = old.id and resolved_at is null;
+  return old;
+end;
+$fn$;
+alter function public.close_deletion_review_suspensions() owner to postgres;
+revoke all on function public.close_deletion_review_suspensions() from public, anon, authenticated, service_role;
+
+create trigger profiles_close_deletion_review_suspensions
+  before delete on public.profiles
+  for each row execute function public.close_deletion_review_suspensions();
 
 -- ---------------------------------------------------------------------------
 -- 4. No new coach access while a deletion is under staff review

@@ -15,6 +15,12 @@
 -- It refuses to run, changing nothing, unless:
 --   - 0097 is applied (the column, the policy and the 0097 function body are
 --     all present);
+--   - no account deletion is pending staff review while that account still
+--     has parent links (guardians rows). From 0097 a deletion that goes to
+--     staff review changes nothing but the request; the 0076 function this
+--     restores has no completion step, and removing such an account's login
+--     would drop its parent links without the child-data clean-up. Complete
+--     (complete_pending_profile_deletion) or reject those first.
 --   - NO row carries any 0097 marker (moments.verifier_account_deleted_at,
 --     or cancelled_by_account_deleted_at on either deletion-request table).
 --     Once any account deletion has used one, those rows have the actor
@@ -46,8 +52,11 @@ begin
   end if;
   if not exists (select 1 from information_schema.columns
                  where table_schema = 'public' and table_name = 'moments' and column_name = 'verifier_account_deleted_at')
-     or to_regprocedure('public.mark_deleted_account_attribution()') is null
-     or not exists (select 1 from pg_trigger where tgname = 'profiles_mark_deleted_account_attribution')
+     or to_regprocedure('public.guard_profile_deletion()') is null
+     or not exists (select 1 from pg_trigger where tgname = 'profiles_account_deletion_guard')
+     or to_regprocedure('public.account_deletion_blocking_reason(uuid)') is null
+     or to_regprocedure('public.erase_account_for_deletion(uuid, text, uuid)') is null
+     or to_regprocedure('public.complete_pending_profile_deletion(uuid, text)') is null
      or not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'moments'
                     and policyname = 'moments: only account deletion marks a verifier as deleted')
      or (select count(*) from information_schema.columns where table_schema = 'public' and column_name = 'cancelled_by_account_deleted_at'
@@ -59,8 +68,14 @@ begin
     raise exception '0097 rollback refused: 0098 is still applied; roll back 0098 first';
   end if;
   select p.prosrc into v_body from pg_proc p where p.oid = to_regprocedure('public.delete_own_guardian_account()');
-  if v_body is null or v_body not like '%verifier_account_deleted_at = now()%' then
+  if v_body is null or v_body not like '%public.erase_account_for_deletion(v_uid, v_email, null)%' then
     raise exception '0097 rollback refused: delete_own_guardian_account() is not the 0097 definition';
+  end if;
+  select count(distinct d.auth_user_id) into v_marked
+    from public.pending_profile_deletions d join public.guardians g on g.profile_id = d.auth_user_id
+   where d.status = 'pending';
+  if v_marked > 0 then
+    raise exception '0097 rollback refused: % account deletion(s) are pending staff review with parent links still in place; complete or reject them first.', v_marked;
   end if;
   select count(*) into v_marked from public.moments where verifier_account_deleted_at is not null;
   if v_marked > 0 then
@@ -75,9 +90,12 @@ begin
 end;
 $$;
 
--- 7 reversed.
-drop trigger profiles_mark_deleted_account_attribution on public.profiles;
-drop function public.mark_deleted_account_attribution();
+-- 7, 8, 4b and 4a reversed.
+drop trigger profiles_account_deletion_guard on public.profiles;
+drop function public.guard_profile_deletion();
+drop function public.complete_pending_profile_deletion(uuid, text);
+drop function public.erase_account_for_deletion(uuid, text, uuid);
+drop function public.account_deletion_blocking_reason(uuid);
 
 -- 4 reversed: the 0076 function body, exactly.
 create or replace function public.delete_own_guardian_account()

@@ -20,14 +20,14 @@ Supabase Auth or real JWTs; see "Not represented" below.
 | `migration_0089_test.mjs` | Migration 0089 and its rollback, on fresh 0088 databases with fictional rows. |
 | `migration_0090_test.mjs` | Migration 0090 (guardian-invite write lockdown) and its rollback, on a fresh 0089 database with fictional rows. |
 | `migration_0091_test.mjs` | Migration 0091 (guardian-invite code confidentiality) and its rollback, on a fresh 0090 database with fictional rows. |
-| `migration_0097_test.mjs` | Migration 0097 (coach account deletion keeps coach-verified moments): every coach/parent deletion path on the final schema, the consistency rule, who can set the marker, apply on a 0096 database, re-run refusal and rollback. |
-| `migration_0098_test.mjs` | Migration 0098 (deletion-review suspension, staff refusal, verifier identity): access lost at once when a deletion goes to staff review, staff reject and exact restore, changes made while under review, staff self-deletion refused, verifier impersonation refused, ordinary deletions unchanged, apply, re-run refusal and rollback; no new coach access while a deletion is pending (invite redemption, staff approval, team requests, `activate_coach_assignment`, raw writes as owner and `service_role`), normal routes after rejection; the read-only pre-check `supabase/verification/0098_precheck_pending_deletion_reviews.sql` and the manual suspension of a review pending before 0098. |
+| `migration_0097_test.mjs` | Migration 0097 (coach account deletion keeps coach-verified moments): every coach/parent deletion path on the final schema (immediate erasure; staff review that changes nothing; staff completion; the profile-deletion guard), the consistency rule, who can set the marker, apply on a 0096 database, re-run refusal and rollback. |
+| `migration_0098_test.mjs` | Migration 0098 (deletion-review suspension, staff refusal, verifier identity): access lost at once when a deletion goes to staff review, staff reject and exact restore, changes made while under review, staff self-deletion refused, verifier impersonation refused, ordinary deletions unchanged, apply, re-run refusal and rollback; no new coach access while a deletion is pending (invite redemption, staff approval, team requests, `activate_coach_assignment`, raw writes as owner and `service_role`), normal routes after rejection; the read-only pre-check `supabase/verification/0098_precheck_pending_deletion_reviews.sql` and the manual suspension of a review pending before 0098. A parent-coach under review keeps every parent link, child request, card and attribution through rejection and restore; staff completion erases once (repeats idempotent); parent-only, staff-target and reused-request cases. |
 | `rollback_order_test.mjs` | The rollback chain 0091 → 0090 → 0089: the 0089 rollback refuses, changing nothing, while 0091 or 0090 is applied; in order it reaches the exact 0088 catalog; 0089–0091 re-apply to the exact final catalog; no acknowledgement persists. |
 | `guardian_account_control_test.mjs` | Card suspend/unsuspend and child-deletion request/cancel on the final schema: every refusal the routes report leaves no state behind; each success and idempotent repeat makes exactly its intended change. |
 | `guardian_invite_redemption_test.mjs` | Who may redeem a guardian invite: runs the app's `src/lib/guardian-invite-eligibility.ts` against the final schema, read-only as `service_role`. |
 | `gift_order_invite_redemption_test.mjs` | Gift-order guardian invites: runs `guardian-invite-eligibility.ts` and `gift-order-guardian.ts` in the redeem route's order against the final schema, read-only as `service_role`. An invite carrying a single-card gift order's `order_id` is redeemable only by the approving guardian, even after the child has a guardian. |
 | `migration_0101_test.mjs` | Migration 0101 (R5: gift-order checkout and payment need a genuine guardian approval), its pre/post checks (`supabase/verification/0101_precheck.sql`, `0101_postcheck.sql`) and its rollback, on a fresh 0096 database with fictional rows. Self-approved and approval-missing gift orders can't open checkout or be marked paid; genuine gift, ordinary, historical and Squad Invite orders are unchanged; both paths fail closed when the approval read fails; the helper agrees with `gift-order-guardian.ts`; the rollback restores the exact 0096 catalog. |
-| `migration_production_order_0101_0097_0098_test.mjs` | Production order for PR #140: 0101 reached production before 0097 and 0098. Builds through 0096, applies 0101, then 0097 and 0098, and proves the 0101 post-check stays 8/8 with unchanged counts and the whole public catalog equals a database built in filename order. Rolls back 0098 then 0097 (0097 first is refused) with 0101 intact and 8/8, each step restoring the exact intermediate catalog with the fixture order rows unchanged, then reapplies both. Finally rolls back 0101 with 0097/0098 applied (catalog equals a 0097 + 0098 build) and reapplies it. The tables 0097/0098 change are empty here; their data paths are in the 0097/0098 suites. |
+| `migration_production_order_0101_0097_0098_test.mjs` | Production order for PR #140: 0101 reached production before 0097 and 0098. Builds through 0096, applies 0101, then 0097 and 0098, and proves the 0101 post-check stays 8/8 with unchanged counts and the whole public catalog equals a database built in filename order. Rolls back 0098 then 0097 (0097 first is refused) with 0101 intact and 8/8, each step restoring the exact intermediate catalog with the fixture order rows unchanged, then reapplies both. Finally rolls back 0101 with 0097/0098 applied (catalog equals a 0097 + 0098 build) and reapplies it. The tables 0097/0098 change are empty here; their data paths are in the 0097/0098 suites. Finally runs a parent-coach deletion lifecycle (review, reject, restore, staff completion) on that database with the 0101 post-check still 8/8. |
 | `pr140_app_before_0097_0098_test.mjs` | Deployment order for PR #140: reads the six changed route files and, on a database with 0101 but without 0097/0098, proves every RPC they call binds with the argument names they send, every column they write exists, and no database function can yet produce the signals their new branches handle (`account_deletion_review_pending`, SQLSTATE `EMDRP`, the staff-deletion refusal). So the app can deploy before the migrations. After 0097 + 0098 the bindings still hold and the signals exist. |
 
 Related: `supabase/rollback/0088_rollback.sql`, `supabase/rollback/0089_rollback.sql`,
@@ -895,35 +895,51 @@ coach who had ever verified a moment or sent a recognition: it set
 `moments.verified_by` to NULL, which `moments_verification_status_consistency`
 forbids on a `coach_verified` moment. 0097 adds
 `moments.verifier_account_deleted_at`; a `coach_verified` moment now needs
-`verified_at` and exactly one of `verified_by` or the marker. The deletion
-function (the 0076 body with one statement changed and moved into the
-branch that deletes the profile) sets the marker and clears `verified_by`
-only when the account is actually deleted, so the child's moment stays
-`coach_verified` with its original `verified_at`. A deletion that only goes
-to staff review changes neither. A BEFORE DELETE trigger on `profiles`
-(`mark_deleted_account_attribution`, callable by no API role) does the same
-for a profile deleted any other way, such as staff removing the login
-account after a review. A restrictive insert policy keeps the marker out of
-every insert a signed-in user can make; `authenticated` has no UPDATE on it.
-The same migration fixes the same failure for any account that ever
-cancelled a child-deletion or Squad Invite participation deletion request
-(`cancelled_by` was nulled into the cancellation rule): both tables get
+`verified_at` and exactly one of `verified_by` or the marker.
+
+`delete_own_guardian_account` now decides first
+(`account_deletion_blocking_reason`, the 0076 blocker rule unchanged). If
+something blocks the deletion it records the request in
+`pending_profile_deletions` for staff review and changes nothing else:
+parent links, child deletion requests, cards and their lock state, moments
+(uploader and verifier), invites and every other reference stay as they are,
+so a rejected deletion leaves the family intact. Otherwise it erases the
+account at once (`erase_account_for_deletion`: the 0076 clean-up, unchanged
+apart from the statement that broke coach deletion, then the profile delete).
+Staff finish a reviewed deletion with `complete_pending_profile_deletion`
+(signed-in staff session, a reason required): it refuses unless the request
+is pending and nothing blocks the deletion any more, runs the same erasure
+exactly once, resolves the request with the staff member, and queues the
+sign-in identity in `pending_auth_deletions`; a repeat reports
+`already_completed`. A BEFORE DELETE trigger on `profiles`
+(`guard_profile_deletion`, callable by no API role) refuses any profile
+delete while the account still has a `guardians` row or a pending review, so
+removing the login account (whose cascade would skip the clean-up) cannot
+bypass it; for a delete that goes ahead it is the one place the markers are
+written: the child's moment stays `coach_verified` with its original
+`verified_at`. A restrictive insert policy keeps the marker out of every
+insert a signed-in user can make; `authenticated` has no UPDATE on it. The
+same migration fixes the same failure for any account that ever cancelled a
+child-deletion or Squad Invite participation deletion request (`cancelled_by`
+was nulled into the cancellation rule): both tables get
 `cancelled_by_account_deleted_at`, a cancelled request needs `cancelled_at`
-and exactly one of `cancelled_by` or the marker, and the function (or the
-trigger) sets it, again only at actual deletion.
-Signed-in users hold no write privilege on either table (the precondition
-checks this). The catalog delta from 0096 is exactly the three marker
-columns, the policy, the three rules, the function, and the trigger with
-its function; no row changes. 0098's precondition and rollback both require
-that trigger, so neither runs over an earlier draft of 0097. A
-precondition refuses unless the 0020 rule, the original cancellation rules
-and the 0076 function are in place, and refuses a second application.
+and exactly one of `cancelled_by` or the marker, and the trigger sets it,
+again only at actual deletion. Signed-in users hold no write privilege on
+either table (the precondition checks this). The catalog delta from 0096 is
+exactly the three marker columns, the policy, the three rules, the changed
+deletion function, the four new functions and the trigger; no row changes.
+0098's precondition and rollback both require those functions and an enabled
+trigger, so neither runs over an earlier draft of 0097. A precondition
+refuses unless the 0020 rule, the original cancellation rules and the 0076
+function are in place, and refuses a second application.
 
 **Rollback: emergency only.** `supabase/rollback/0097_rollback.sql` breaks
 coach account deletion again. It needs, in the same transaction,
 `select set_config('emblem.acknowledge_0097_rollback', 'BREAK-COACH-ACCOUNT-DELETION', true);`,
-and refuses, changing nothing, once any row carries any 0097 marker (those
-rows cannot satisfy the 0020 rule). It restores the exact 0096 catalog.
+and refuses, changing nothing, while a review is pending for an account that
+still has parent links (the 0076 function it restores has no completion step),
+or once any row carries any 0097 marker (those rows cannot satisfy the 0020
+rule). It restores the exact 0096 catalog.
 
 ## Migration 0098 (deletion review suspension and verifier identity)
 
@@ -941,7 +957,10 @@ each through the existing `relationship_audit` trigger. Staff decide with
 `reject_pending_profile_deletion` and then, explicitly,
 `restore_coach_access_after_deletion_rejection`, which restores exactly
 what is still restorable and records the outcome per row. A later request
-reopens the same pending row. Staff accounts are refused, changing nothing.
+reopens the same pending row. As in 0097, nothing else changes while the
+deletion is under review. When the account is actually deleted a trigger
+closes any still-open suspension as `account_deleted`. Staff accounts are
+refused, changing nothing.
 Two restrictive policies on `moments` stop a signed-in user naming anyone
 but themselves as verifier, or taking over another coach's verification.
 

@@ -32,40 +32,106 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(code).toContain('(0097 already applied)');
   });
 
-  it('changes delete_own_guardian_account only by moving verifier clearing into the deleting branch (with the two cancellation markers)', () => {
-    const strip = (t: string) => t.replace(/^\s*--.*\n/gm, '');
-    const before = strip(fnOf(m0076));
-    const after = strip(fnOf(sql));
+  // The 0076 clean-up: from the guardians scan to the last nullable reference.
+  const CLEANUP_START = '  select array_agg(player_id) into v_player_ids from public.guardians where profile_id = v_uid;';
+  const CLEANUP_END = '  update public.squad_invite_request_audit_events set actor_profile_id = null where actor_profile_id = v_uid;';
+  const cleanupOf = (text: string) => text.slice(text.indexOf(CLEANUP_START), text.indexOf(CLEANUP_END) + CLEANUP_END.length);
+  const defOf = (text: string, header: string, end = '\n$$;') => text.slice(text.indexOf(header), text.indexOf(end, text.indexOf(header)) + end.length);
+  const ERASE = 'create function public.erase_account_for_deletion(p_profile_id uuid, p_email text, p_completed_by uuid)';
+  const COMPLETE = 'create function public.complete_pending_profile_deletion(p_pending_deletion_id uuid, p_reason text)';
+  const BLOCKING = 'create function public.account_deletion_blocking_reason(p_profile_id uuid)';
+  const GUARD = 'create function public.guard_profile_deletion()';
+
+  it('the erasure is the 0076 clean-up exactly, minus only the statement that broke coach deletion', () => {
+    const before = cleanupOf(fnOf(m0076));
+    const erase = defOf(sql, ERASE);
     expect(before).toContain(OLD_STATEMENT);
+    expect(cleanupOf(erase)).toBe(before.replace(OLD_STATEMENT + '\n', ''));
+    expect(erase).toContain('  v_uid uuid := p_profile_id;\n  v_email text := p_email;');
+    // Then, in order: the open review (if any) is resolved, then the profile is deleted.
+    const resolve = erase.indexOf("set status = 'resolved', resolved_by = p_completed_by, resolved_at = now()");
+    const del = erase.indexOf('  delete from public.profiles where id = v_uid;');
+    expect(resolve).toBeGreaterThan(erase.indexOf(CLEANUP_END));
+    expect(del).toBeGreaterThan(resolve);
+    expect(code).toContain('revoke all on function public.erase_account_for_deletion(uuid, text, uuid) from public, anon, authenticated, service_role;');
+  });
+
+  it('the blocker detection is the 0076 rule unchanged: same tables, same order, same reason codes', () => {
+    const before = fnOf(m0076);
+    const helper = defOf(sql, BLOCKING);
+    const tables = (t: string) => Array.from(t.matchAll(/from public\.(\w+) where (\w+) = /g)).filter((m) => !['guardians', 'player_deletion_requests', 'profiles'].includes(m[1])).map((m) => `${m[1]}.${m[2]}`);
+    const blockerTables = (t: string) => tables(t).filter((x) => /player_assessments|player_goals|player_season_focus|player_strengths|squad_invite_links|squad_invite_organiser_ownership|squad_invite_requests|squad_invites|squad_invite_request_declarations/.test(x));
+    expect(blockerTables(helper)).toEqual(blockerTables(before.slice(before.indexOf('NOT-NULL blockers'))));
+    const codes = (t: string) => Array.from(t.matchAll(/'(coach_authored_player_records|squad_invite_organiser_history|squad_invite_audit_history)'/g)).map((m) => m[1]);
+    expect(codes(helper)).toEqual(codes(before.slice(before.indexOf('NOT-NULL blockers'))));
+    expect(code).toContain('revoke all on function public.account_deletion_blocking_reason(uuid) from public, anon, authenticated, service_role;');
+  });
+
+  it('delete_own_guardian_account decides first; a deletion sent to staff review only records the request', () => {
+    const strip = (t: string) => t.replace(/^\s*--.*\n/gm, '');
+    const after = strip(fnOf(sql));
     expect(after).not.toContain(OLD_STATEMENT);
-    // The marking block sits only in the branch that actually deletes the
-    // profile, immediately before that delete. A deletion that goes to staff
-    // review (the pending_profile_deletions branch) marks nothing.
-    const DELETE = '    delete from public.profiles where id = v_uid;\n';
-    const MARKING =
-      '    update public.moments\n       set verified_by = null, verifier_account_deleted_at = now()\n     where verified_by = v_uid;\n' +
-      '    update public.player_deletion_requests\n       set cancelled_by = null, cancelled_by_account_deleted_at = now()\n     where cancelled_by = v_uid and status = \'cancelled\';\n' +
-      '    update public.squad_invite_participation_deletion_requests\n       set cancelled_by = null, cancelled_by_account_deleted_at = now()\n     where cancelled_by = v_uid and status = \'cancelled\';\n';
-    expect(after.split(MARKING).length).toBe(2);
-    expect(after).toContain('  else\n' + MARKING + DELETE);
-    expect(after.indexOf(MARKING)).toBeGreaterThan(after.indexOf('  if v_blocked then\n    insert into public.pending_profile_deletions'));
-    // Everything else is the 0076 body: remove the old statement from 0076 and
-    // the marking block from 0097, and the two bodies are identical.
-    expect(after.replace(MARKING, '')).toBe(before.replace(OLD_STATEMENT + '\n', ''));
+    const decide = after.indexOf('v_blocking_reason := public.account_deletion_blocking_reason(v_uid);');
+    const review = after.slice(after.indexOf('  if v_blocking_reason is not null then'), after.indexOf('  end if;\n\n  return public.erase_account_for_deletion'));
+    expect(decide).toBeGreaterThan(0);
+    expect(decide).toBeLessThan(after.indexOf('insert into public.pending_profile_deletions'));
+    // The review branch: one insert into pending_profile_deletions and the result; nothing else is written.
+    expect(review.match(/\b(insert into|update|delete from|perform)\b/g)).toEqual(['insert into', 'update']);
+    expect(review).toContain('on conflict (auth_user_id) do update set blocking_reason = excluded.blocking_reason;');
+    expect(review).toContain("'canDeleteIdentity', false");
+    // Otherwise the erasure, once.
+    expect(after.split('public.erase_account_for_deletion(').length).toBe(2);
+    expect(after).toContain("  return public.erase_account_for_deletion(v_uid, v_email, null)\n    || jsonb_build_object('canDeleteIdentity', true);");
+    expect(after).not.toMatch(/delete from public\.(profiles|guardians)|lockdown_for_player_deletion_request|set uploaded_by = null|verifier_account_deleted_at/);
     expect(after).toContain('security definer');
     expect(after).toContain("set search_path = ''");
     expect(after).toContain('revoke all on function public.delete_own_guardian_account() from public, anon;');
   });
 
-  it('backstop: a BEFORE DELETE trigger on profiles writes the same markers whenever a profile is actually deleted, callable by no API role', () => {
-    expect(code).toContain('create function public.mark_deleted_account_attribution()\nreturns trigger\nlanguage plpgsql\nsecurity definer\nset search_path = \'\'');
-    expect(code).toMatch(/update public\.moments\s+set verified_by = null, verifier_account_deleted_at = now\(\)\s+where verified_by = old\.id;/);
-    expect(code).toMatch(/update public\.player_deletion_requests\s+set cancelled_by = null, cancelled_by_account_deleted_at = now\(\)\s+where cancelled_by = old\.id and status = 'cancelled';/);
-    expect(code).toMatch(/update public\.squad_invite_participation_deletion_requests\s+set cancelled_by = null, cancelled_by_account_deleted_at = now\(\)\s+where cancelled_by = old\.id and status = 'cancelled';/);
-    expect(code).toContain('revoke all on function public.mark_deleted_account_attribution() from public, anon, authenticated, service_role;');
-    expect(code).toContain('create trigger profiles_mark_deleted_account_attribution\n  before delete on public.profiles\n  for each row execute function public.mark_deleted_account_attribution();');
-    expect(code).toContain('the deleted-account attribution trigger already exists (0097 already applied)');
-    expect(rollbackCode).toContain('drop trigger profiles_mark_deleted_account_attribution on public.profiles;\ndrop function public.mark_deleted_account_attribution();');
+  it('staff completion: staff session only, reasoned, locks account then request, refuses unless pending and unblocked, erases once', () => {
+    const fn = defOf(sql, COMPLETE);
+    const at = (s: string) => {
+      const i = fn.indexOf(s);
+      expect(i, s).toBeGreaterThan(0);
+      return i;
+    };
+    const staff = at("raise exception 'Not authorized: staff only';");
+    const reason = at("raise exception 'A reason (up to 500 characters) is required';");
+    const lockProfile = at('perform 1 from public.profiles where id = v_uid for update;');
+    const lockRequest = at('select * into v_pending from public.pending_profile_deletions where id = p_pending_deletion_id for update;');
+    const already = at("return jsonb_build_object('status', 'already_completed');");
+    const notPending = at("raise exception 'Only a pending profile deletion can be completed (it is %)'");
+    const staffTarget = at("raise exception 'Staff accounts are removed by the manual staff procedure, not here';");
+    const blocked = at("raise exception 'The account still has records that block deletion (%); resolve them first'");
+    const erase = at('v_result := public.erase_account_for_deletion(v_uid, v_pending.email, v_staff);');
+    const authQueue = at('insert into public.pending_auth_deletions (auth_user_id, email, last_error)');
+    expect(fn).toContain('v_staff uuid := auth.uid();');
+    for (const [a, b] of [[staff, reason], [reason, lockProfile], [lockProfile, lockRequest], [lockRequest, already], [already, notPending], [notPending, staffTarget], [staffTarget, blocked], [blocked, erase], [erase, authQueue]]) {
+      expect(a).toBeLessThan(b);
+    }
+    expect(fn.split('erase_account_for_deletion(').length).toBe(2);
+    expect(code).toContain('revoke all on function public.complete_pending_profile_deletion(uuid, text) from public, anon, service_role;');
+    expect(code).toContain('grant execute on function public.complete_pending_profile_deletion(uuid, text) to authenticated;');
+  });
+
+  it('every profile delete: refused while parent links or a pending review remain; otherwise marks attribution (the one place)', () => {
+    const fn = defOf(sql, GUARD, '\n$fn$;');
+    const links = fn.indexOf('if exists (select 1 from public.guardians where profile_id = old.id) then');
+    const review = fn.indexOf("if exists (select 1 from public.pending_profile_deletions where auth_user_id = old.id and status = 'pending') then");
+    const mark = fn.indexOf('update public.moments');
+    expect(links).toBeGreaterThan(0);
+    expect(review).toBeGreaterThan(links);
+    expect(mark).toBeGreaterThan(review);
+    expect(fn).toMatch(/update public\.moments\s+set verified_by = null, verifier_account_deleted_at = now\(\)\s+where verified_by = old\.id;/);
+    expect(fn).toMatch(/update public\.player_deletion_requests\s+set cancelled_by = null, cancelled_by_account_deleted_at = now\(\)\s+where cancelled_by = old\.id and status = 'cancelled';/);
+    expect(fn).toMatch(/update public\.squad_invite_participation_deletion_requests\s+set cancelled_by = null, cancelled_by_account_deleted_at = now\(\)\s+where cancelled_by = old\.id and status = 'cancelled';/);
+    // The markers are written nowhere else.
+    expect(code.split('verifier_account_deleted_at = now()').length).toBe(2);
+    expect(code.split('cancelled_by_account_deleted_at = now()').length).toBe(3);
+    expect(code).toContain('revoke all on function public.guard_profile_deletion() from public, anon, authenticated, service_role;');
+    expect(code).toContain('create trigger profiles_account_deletion_guard\n  before delete on public.profiles\n  for each row execute function public.guard_profile_deletion();');
+    expect(code).toContain('a 0097 account-deletion function or trigger already exists (0097 already applied)');
+    expect(rollbackCode).toContain('drop trigger profiles_account_deletion_guard on public.profiles;\ndrop function public.guard_profile_deletion();\ndrop function public.complete_pending_profile_deletion(uuid, text);\ndrop function public.erase_account_for_deletion(uuid, text, uuid);\ndrop function public.account_deletion_blocking_reason(uuid);');
   });
 
   it('keeps the moment coach_verified: exactly one of verified_by or the marker, verified_at always required', () => {
@@ -91,9 +157,13 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(code).toContain("'authenticated can write a deletion request table'");
   });
 
-  it('only account deletion can set the marker: a restrictive insert policy, and no new grant', () => {
+  it('only account deletion can set the marker: a restrictive insert policy, and no grant beyond the staff completion', () => {
     expect(code).toMatch(/create policy "moments: only account deletion marks a verifier as deleted"\s+on public\.moments\s+as restrictive\s+for insert\s+to authenticated\s+with check \(verifier_account_deleted_at is null\);/);
-    expect(code).not.toMatch(/^\s*grant\b(?!.*delete_own_guardian_account)/im);
+    // The only grants: delete_own_guardian_account (re-stated) and the staff completion (which checks staff itself).
+    expect(code.match(/^\s*grant\b.*$/gim)).toEqual([
+      'grant execute on function public.delete_own_guardian_account() to authenticated;',
+      'grant execute on function public.complete_pending_profile_deletion(uuid, text) to authenticated;',
+    ]);
     // No data change at top level (function bodies and DO blocks excluded).
     const topLevel = code.replace(/\$(\w*)\$[\s\S]*?\$\1\$/g, '');
     expect(topLevel).not.toMatch(/^\s*(insert into|update public\.|delete from|truncate)\b/im);
@@ -105,13 +175,17 @@ describe('0097 rollback — emergency only', () => {
     expect(rollback.split('\n').slice(0, 4).join('\n')).toContain('EMERGENCY ONLY: THIS ROLLBACK BREAKS ACCOUNT DELETION FOR COACHES AGAIN.');
   });
 
-  it('refuses before any change without the acknowledgement, unless 0097 is applied, or once any moment is marked', () => {
+  it('refuses before any change without the acknowledgement, unless 0097 is applied, while a review is pending with parent links, or once any moment is marked', () => {
     expect(rollbackCode.trim().startsWith('begin;')).toBe(true);
     expect(rollbackCode.trim().endsWith('commit;')).toBe(true);
     const guard = rollbackCode.indexOf("current_setting('emblem.acknowledge_0097_rollback', true) is distinct from 'BREAK-COACH-ACCOUNT-DELETION'");
     const marked = rollbackCode.indexOf('where verifier_account_deleted_at is not null');
+    const reviewWithLinks = rollbackCode.indexOf('join public.guardians g on g.profile_id = d.auth_user_id');
     const firstChange = rollbackCode.indexOf(FN_START);
     expect(guard).toBeGreaterThan(0);
+    expect(reviewWithLinks).toBeGreaterThan(guard);
+    expect(reviewWithLinks).toBeLessThan(firstChange);
+    expect(rollbackCode.indexOf('drop trigger profiles_account_deletion_guard')).toBeGreaterThan(marked);
     expect(marked).toBeGreaterThan(guard);
     expect(firstChange).toBeGreaterThan(marked);
     expect(rollbackCode).toContain("select set_config('emblem.acknowledge_0097_rollback', '', false);");

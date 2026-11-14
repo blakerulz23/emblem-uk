@@ -204,6 +204,9 @@ export default function AccountSettings({
   // sign-in revocation still finishing (see the route's own doc comment).
   // Must never be papered over as a flat "deleted" success.
   const [deleteAccountPartial, setDeleteAccountPartial] = useState(false);
+  // Set when the deletion went to staff review (migration 0097): nothing has
+  // been deleted yet, so this must never read as "removed" either.
+  const [deleteAccountUnderReview, setDeleteAccountUnderReview] = useState(false);
 
   const sendReauthCode = async () => {
     if (!email || reauthStatus === 'sending') return;
@@ -256,8 +259,9 @@ export default function AccountSettings({
       }
       const body = await res.json().catch(() => null);
       setDeleteAccountPartial(!!body?.partial);
+      setDeleteAccountUnderReview(!!body?.identityRetained);
       setDeleteStep('done');
-      setTimeout(() => window.location.assign('/os'), body?.partial ? 3200 : 2200);
+      setTimeout(() => window.location.assign('/os'), body?.identityRetained ? 6000 : body?.partial ? 3200 : 2200);
     } catch {
       setDeleteAccountStatus('error');
       setDeleteAccountError('Could not reach the server — check your connection and try again.');
@@ -598,7 +602,9 @@ export default function AccountSettings({
 
           {deleteStep === 'done' && (
             <p style={{ fontSize: 13.5, fontWeight: 700, color: '#2E9E5B', textAlign: 'center', padding: '10px 0', lineHeight: 1.5 }}>
-              {deleteAccountPartial
+              {deleteAccountUnderReview
+                ? "Your request has been sent to our team for review. Nothing has been deleted yet: your account and your children's cards stay as they are, and any coach access is paused. We'll be in touch. Signing you out…"
+                : deleteAccountPartial
                 ? "Your account data has been removed. We're still finishing the revocation of your sign-in — this happens automatically, no action needed. Signing you out…"
                 : 'Your account has been deleted. Signing you out…'}
             </p>

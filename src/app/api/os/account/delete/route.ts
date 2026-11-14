@@ -6,6 +6,9 @@ import { logRouteFailure, raised } from '@/lib/route-failure';
 export const runtime = 'nodejs';
 
 const ACCOUNT_DELETE_FAILED_MESSAGE = 'Could not delete your account. Please try again.';
+// Migration 0097: a deletion that needs staff review changes nothing yet.
+const ACCOUNT_DELETE_UNDER_REVIEW_MESSAGE =
+  "Your request to delete your account has been sent to our team. Because your account is linked to records we're required to keep, a member of staff needs to review it first. Until then nothing has been deleted: your account and your children's cards stay as they are, and any coach access is paused. We'll be in touch.";
 const STAFF_ACCOUNT_DELETE_REFUSED_MESSAGE =
   "Staff accounts can't be deleted here. Ask another member of staff to remove it.";
 
@@ -89,14 +92,14 @@ export async function POST() {
 
   // canDeleteIdentity is false when a NOT-NULL profile-referencing row
   // still exists (Squad Invite organiser/audit history, coach-authored
-  // player records) — profiles.id references auth.users.id ON DELETE
-  // CASCADE, so calling admin.deleteUser() while any such row remains
-  // would fail outright rather than deleting anything. Every other part
-  // of this guardian's own access has already been removed by the RPC
-  // above (their own guardians links, and every nullable reference); this
-  // is a deliberate stop, not a retry-later failure, and pending_profile_
-  // deletions (0076) durably records it for staff review rather than
-  // silently leaving the guardian's login live with no explanation.
+  // player records). From migration 0097 the RPC then only records the
+  // request in pending_profile_deletions for staff review (0098 also pauses
+  // any coach access); it changes nothing else — parent links, children's
+  // cards, moments and every other reference stay as they are, because
+  // staff may reject the deletion. If staff approve, they complete it with
+  // complete_pending_profile_deletion, which runs the clean-up then.
+  // admin.deleteUser() is not called: the profile still exists, and the
+  // database refuses to delete it around the clean-up.
   if (rpcResult && typeof rpcResult === 'object' && (rpcResult as { canDeleteIdentity?: boolean }).canDeleteIdentity === false) {
     // pending_profile_deletions (0076) has no staff-facing page anywhere in
     // the app today (confirmed: no route/page queries that table) — this
@@ -108,7 +111,7 @@ export async function POST() {
       eventKey: `auth_deletion_stuck:profile:${user.id}`,
       subjectId: user.id,
       recipientScope: 'all_staff',
-      summary: { reason: 'Profile deletion blocked by a referencing record (campaign/audit history) — needs direct review, no staff page surfaces this yet' },
+      summary: { reason: 'Account deletion needs staff review (records that must be kept). Nothing has been removed yet; reject it, or complete it with complete_pending_profile_deletion. No staff page surfaces this yet' },
       linkPath: '/staff/deletion-requests',
     });
     await supabase.auth.signOut();
@@ -116,8 +119,7 @@ export async function POST() {
       ok: true,
       partial: true,
       identityRetained: true,
-      message:
-        "Your access and personal data have been removed. Because your account is linked to campaign records we're required to keep, finishing the removal of your sign-in needs a quick staff review — we'll be in touch.",
+      message: ACCOUNT_DELETE_UNDER_REVIEW_MESSAGE,
       ...rpcResult,
     });
   }
