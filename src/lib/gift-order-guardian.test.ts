@@ -4,8 +4,10 @@ import {
   checkGiftFirstGuardianClaim,
   checkGiftOrderInviteRedemption,
   chooseProfileInviteRecipient,
+  heldOrderIdsFromRead,
   isGiftAuthorityStatus,
   isOrderHeld,
+  latestApprovalByOrder,
   resolveProfileInviteRecipient,
   retireOtherOrderApprovalInvites,
 } from './gift-order-guardian';
@@ -103,6 +105,31 @@ describe('chooseProfileInviteRecipient', () => {
     expect(chooseProfileInviteRecipient({ ...erased, authority_status: 'confirmed', intended_guardian_email: 'new@example.test' }, null)).toEqual({ ok: false, reason: 'intended_guardian_erased' });
     // Before 0097 the field is absent: unchanged behaviour.
     expect(chooseProfileInviteRecipient({ ...base, authority_status: 'confirmed', intended_guardian_erased_at: undefined }, null)).toEqual({ ok: true, email: 'buyer@example.test', source: 'purchaser' });
+  });
+
+  it('latestApprovalByOrder: the latest response wins (missing time first, then created_at), so a redacted earlier approval never stands in for the current one', () => {
+    const rows = [
+      { order_id: 'o1', guardian_email: 'new@example.test', responded_at: '2026-11-14T10:00:00.123456+00:00', created_at: '2026-11-14T09:00:00Z' },
+      { order_id: 'o1', guardian_email: null, responded_at: '2026-11-01T10:00:00Z', created_at: '2026-11-01T09:00:00Z' },
+      { order_id: 'o2', guardian_email: null, responded_at: '2026-11-14T10:00:00Z', created_at: '2026-11-14T09:00:00Z' },
+      { order_id: 'o2', guardian_email: 'old@example.test', responded_at: '2026-11-01T10:00:00Z', created_at: '2026-11-01T09:00:00Z' },
+      { order_id: 'o3', guardian_email: 'a@example.test', responded_at: '2026-11-14T10:00:00Z', created_at: '2026-11-14T09:00:00Z' },
+      { order_id: 'o3', guardian_email: 'b@example.test', responded_at: null, created_at: '2026-11-01T09:00:00Z' },
+    ];
+    // Same rows, reversed: the order they arrive in doesn't matter.
+    for (const input of [rows, [...rows].reverse()]) {
+      const latest = latestApprovalByOrder(input);
+      expect(latest.get('o1')?.guardian_email).toBe('new@example.test');
+      expect(latest.get('o2')?.guardian_email).toBeNull();
+      expect(latest.get('o3')?.guardian_email).toBe('b@example.test');
+    }
+  });
+
+  it('heldOrderIdsFromRead: before 0097 (42703) nothing is held; any other read error fails closed (every order held)', () => {
+    expect(heldOrderIdsFromRead(['a', 'b'], { data: [{ id: 'b' }], error: null })).toEqual(new Set(['b']));
+    expect(heldOrderIdsFromRead(['a', 'b'], { data: null, error: { code: '42703' } })).toEqual(new Set());
+    expect(heldOrderIdsFromRead(['a', 'b'], { data: null, error: { code: '57014' } })).toEqual(new Set(['a', 'b']));
+    expect(heldOrderIdsFromRead(['a', 'b'], { data: null, error: {} })).toEqual(new Set(['a', 'b']));
   });
 
   it('0097: isOrderHeld reads held_at, and an order read before 0097 (no column) is never held', () => {

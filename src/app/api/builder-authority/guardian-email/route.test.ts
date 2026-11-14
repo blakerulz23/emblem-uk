@@ -123,7 +123,15 @@ describe('POST /api/builder-authority/guardian-email', () => {
     mockRpc.mockResolvedValue({ data: null, error: { code: 'EMHLD', message: 'held_order_paid_refund_or_cancel_first' } });
     const res = await post({ orderId: ORDER_ID, guardianEmail: 'guardian@example.test' });
     expect(res.status).toBe(409);
-    expect((await res.json()).error).toMatch(/refund or cancel it before a new approval/);
+    expect((await res.json()).error).toMatch(/a new approval can’t be requested/);
+    expect(mockSendBuilderGuardianApprovalEmail).not.toHaveBeenCalled();
+  });
+
+  it('0102: a held order with a refused payment (cancel instead) is refused with 409 too, never a generic retry message', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { code: 'EMHLD', message: 'held_order_payment_refused_cancel_instead' } });
+    const res = await post({ orderId: ORDER_ID, guardianEmail: 'guardian@example.test' });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).not.toMatch(/try again/i);
     expect(mockSendBuilderGuardianApprovalEmail).not.toHaveBeenCalled();
   });
 

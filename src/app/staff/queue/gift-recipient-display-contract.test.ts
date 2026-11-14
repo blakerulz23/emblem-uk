@@ -12,8 +12,11 @@ describe('staff queue: gift order invite recipient display', () => {
   it('reads the buyer declarations and skips an approval from a buyer address', () => {
     expect(source).toContain(".from('builder_order_authority_declarations')");
     expect(source).toMatch(/if \(!a\.guardian_email \|\| buyerEmails\.get\(orderId\)\?\.has\(normaliseEmail\(a\.guardian_email\)\)\) return;/);
-    // Only the latest approval per order counts (a restart leaves an earlier, redacted one behind).
+    // Only the latest approval per order counts (a restart leaves an earlier, redacted one behind):
+    // behaviour pinned in gift-order-guardian.test.ts (latestApprovalByOrder).
     expect(source).toContain(".select('order_id, guardian_email, responded_at, created_at')");
+    expect(source).toContain('latestApprovalByOrder((approvals ?? []) as ApprovalRow[])');
+    expect(source).toContain('return heldOrderIdsFromRead(orderIds,');
     expect(source).toContain('No approving guardian on record — invite withheld');
   });
 });

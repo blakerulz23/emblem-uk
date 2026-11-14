@@ -6,7 +6,7 @@ import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
 import { positionCardLabel } from '@/lib/player-position';
-import { chooseProfileInviteRecipient, isGiftAuthorityStatus, normaliseEmail } from '@/lib/gift-order-guardian';
+import { chooseProfileInviteRecipient, heldOrderIdsFromRead, isGiftAuthorityStatus, latestApprovalByOrder, normaliseEmail, type ApprovalRow } from '@/lib/gift-order-guardian';
 import {
   APPROVED_SORT_OPTIONS,
   buildStaffQueueUrl,
@@ -146,11 +146,8 @@ type PrintFileRef = { playerId?: string | null; playerName?: string | null; key:
 async function getHeldOrderIds(supabase: ReturnType<typeof createServiceRoleClient>, orderIds: string[]): Promise<Set<string>> {
   if (orderIds.length === 0) return new Set();
   const { data, error } = await supabase.from('orders').select('id').in('id', orderIds).not('held_at', 'is', null);
-  // Before 0097 the column doesn't exist (42703): nothing can be held. Any
-  // other failure fails closed: every order is shown as held, with no
-  // approve button (the server refuses a held order anyway).
-  if (error) return error.code === '42703' ? new Set() : new Set(orderIds);
-  return new Set(((data ?? []) as Array<{ id: string }>).map((o) => o.id));
+  // Fails closed except before 0097 (see heldOrderIdsFromRead).
+  return heldOrderIdsFromRead(orderIds, { data: (data ?? null) as Array<{ id: string }> | null, error });
 }
 
 /**
@@ -326,14 +323,7 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
     // time first, then created_at descending: the same order as
     // loadApprovedGuardianEmail), so a redacted earlier approval left by a
     // restart (0102) never hides, or stands in for, the current one.
-    const time = (v: string | null | undefined) => (v ? Date.parse(v) : Number.POSITIVE_INFINITY);
-    const latest = new Map<string, { guardian_email: string | null; responded_at: string | null; created_at: string | null }>();
-    for (const a of (approvals ?? []) as Array<{ order_id: string; guardian_email: string | null; responded_at: string | null; created_at: string | null }>) {
-      const cur = latest.get(a.order_id);
-      if (!cur || time(a.responded_at) > time(cur.responded_at)
-        || (time(a.responded_at) === time(cur.responded_at) && time(a.created_at) > time(cur.created_at))) latest.set(a.order_id, a);
-    }
-    latest.forEach((a, orderId) => {
+    latestApprovalByOrder((approvals ?? []) as ApprovalRow[]).forEach((a, orderId) => {
       if (!a.guardian_email || buyerEmails.get(orderId)?.has(normaliseEmail(a.guardian_email))) return;
       approvedGuardianByOrder.set(orderId, a.guardian_email);
     });

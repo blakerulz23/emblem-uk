@@ -109,6 +109,37 @@ export type ProfileInviteOrder = {
 export const ORDER_HELD_MESSAGE =
   "This order is held: the parent or guardian it depends on deleted their Emblem account. It can't be approved, paid for or have an invite sent. Staff can't release it: it lifts only when the child's parent or guardian approves a gift order again through the normal approval step, while it is unpaid. Otherwise cancel it, or refund it if it was paid.";
 
+export type ApprovalRow = { order_id: string; guardian_email: string | null; responded_at: string | null; created_at: string | null };
+
+/**
+ * The latest approved request per order: responded_at descending (a missing
+ * time counts as latest), then created_at descending — the same order as
+ * loadApprovedGuardianEmail and the 0097 invite trigger. A restart (0102)
+ * leaves an earlier, redacted approval behind; it must never hide, or stand
+ * in for, the current one.
+ */
+export function latestApprovalByOrder(rows: ApprovalRow[]): Map<string, ApprovalRow> {
+  const time = (v: string | null | undefined) => (v ? Date.parse(v) : Number.POSITIVE_INFINITY);
+  const latest = new Map<string, ApprovalRow>();
+  for (const a of rows) {
+    const cur = latest.get(a.order_id);
+    if (!cur || time(a.responded_at) > time(cur.responded_at)
+      || (time(a.responded_at) === time(cur.responded_at) && time(a.created_at) > time(cur.created_at))) latest.set(a.order_id, a);
+  }
+  return latest;
+}
+
+/**
+ * Which orders to show as held, from the read of held_at. Before 0097 the
+ * column doesn't exist (PostgREST error 42703): nothing can be held. Any
+ * other failure fails closed: every order is shown as held (no approve
+ * button; the server refuses a held order anyway).
+ */
+export function heldOrderIdsFromRead(orderIds: string[], result: { data: Array<{ id: string }> | null; error: { code?: string } | null }): Set<string> {
+  if (result.error) return result.error.code === '42703' ? new Set() : new Set(orderIds);
+  return new Set((result.data ?? []).map((o) => o.id));
+}
+
 /** Whether an order row (read with select('*'), so this also works before 0097) is held. */
 export function isOrderHeld(order: { held_at?: string | null } | null | undefined): boolean {
   return !!order?.held_at;

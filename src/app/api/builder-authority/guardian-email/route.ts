@@ -85,9 +85,9 @@ export async function POST(request: NextRequest) {
 
   // Migration 0102: a held order that has been paid restarts only after a
   // refund or cancellation.
-  if (error && /held_order_paid_refund_or_cancel_first/.test(error.message ?? '')) {
+  if (error && /held_order_paid_refund_or_cancel_first|held_order_payment_refused_cancel_instead/.test(error.message ?? '')) {
     return NextResponse.json(
-      { error: 'This order has been paid for and is on hold. Emblem will refund or cancel it before a new approval can be requested.' },
+      { error: 'This order is on hold and a payment was taken for it, so a new approval can’t be requested. Emblem will refund it; please place a new order.' },
       { status: 409 }
     );
   }

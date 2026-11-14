@@ -248,6 +248,13 @@ begin
           where table_schema = 'public' and table_name = 'player_invites' and column_name in ('origin', 'order_id')) <> 2 then
     v_problems := v_problems || 'a created_at column (invites, orders, approval requests, auth.users) or player_invites.origin/order_id is missing'::text;
   end if;
+  -- Section 12 lets only the owner of respond_to_builder_guardian_approval
+  -- (the emailed-token flow) record an approval or lift a hold. That is
+  -- only meaningful while the owner is postgres, never an API role.
+  if (select pg_get_userbyid(p.proowner)::text from pg_proc p
+       where p.oid = to_regprocedure('public.respond_to_builder_guardian_approval(text, text)')) is distinct from 'postgres' then
+    v_problems := v_problems || 'respond_to_builder_guardian_approval is missing or not owned by postgres'::text;
+  end if;
   if (select count(*) from information_schema.columns
        where table_schema = 'public'
          and ((table_name = 'orders' and column_name in ('intended_guardian_email', 'purchaser_email', 'payment_status',
@@ -1489,8 +1496,9 @@ begin
     into v_order
     from public.orders o where o.id = new.order_id for share;
   if new.origin is distinct from 'order_approval' then
-    if v_order.id is not null
-       and (v_order.intended_guardian_erased_at is not null
+    -- Fails closed when the order can't be read.
+    if v_order.id is null
+       or (v_order.intended_guardian_erased_at is not null
             or (public.email_match_key(v_order.intended_guardian_email) is not null
                 and public.email_match_key(v_order.intended_guardian_email) is distinct from public.email_match_key(v_order.purchaser_email))) then
       raise exception using errcode = 'EMINV', message = 'order_invite_recipient_unconfirmed';

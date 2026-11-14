@@ -45,8 +45,8 @@ export async function alertRefusedHeldPayment(
       orderRef: input.orderRef,
       reason:
         `Shopify reports a payment (${payment}) for an order that is on hold because the parent or guardian it depends on deleted their Emblem account, ` +
-        'so Emblem did not mark it paid. Refund it in Shopify. Do not produce the order or change its approval: it can only restart after a refund ' +
-        'or cancellation, with a fresh approval from the child\'s parent or guardian.',
+        'so Emblem did not mark it paid. Refund it in Shopify and cancel the order. Do not produce it or change its approval: once a payment has been ' +
+        'refused it can never be restarted (so it can never be charged twice); the buyer places a new order.',
     },
     linkPath: '/staff/queue',
   });
