@@ -394,6 +394,8 @@ let db9, c97, c98;
       'constraint:pending_profile_deletions.pending_profile_deletions_rejection_check',
       'function:moment_verifier_unchanged(p_moment_id uuid, p_verified_by uuid)',
       'function:close_deletion_review_suspensions()',
+      'function:account_deletion_preview(p_pending_deletion_id uuid)',
+      'function:my_account_deletion_review()',
       'trigger:profiles.profiles_close_deletion_review_suspensions',
       'function:profile_has_pending_deletion_review(p_profile_id uuid)',
       'function:refuse_coach_access_during_deletion_review()',
@@ -992,6 +994,102 @@ console.log('\n=== 18. Parent-only under review, staff targets, and completion e
     check('18: a coach-only account with nothing blocking deletes at once', r3.canDeleteIdentity === true && r3.coachAccessSuspended === 0, JSON.stringify(r3));
   } catch (e) {
     check('18: parent-only, staff targets and edge cases', false, e.stack);
+  }
+  await db.close();
+}
+
+console.log('\n=== 19. Erased accounts stay out; staff decisions audited once; preview and own status ===');
+{
+  const w = await world();
+  const { db, people } = w;
+  const audit = (pid) => db.query(`select action, actor_profile_id, reason, outcome from public.account_deletion_staff_actions where pending_deletion_id = $1 order by created_at, action`, [pid]).then((r) => r.rows);
+  const preview = (pid, actor = people.staff) => w.user(actor, `select public.account_deletion_preview($1) as p`, [pid]).then((r) => r.rows[0].p);
+  const myReview = (uid) => w.user(uid, `select public.my_account_deletion_review() as r`).then((r) => r.rows[0].r);
+  try {
+    // Immediate deletion: the erased record is written; an old session cannot recreate the profile.
+    const plain = await w.coach();
+    await deleteAccount(w, plain); // also removes auth.users, as the route does
+    check('19: immediate deletion records the account as erased (no staff, no request)',
+      await n(db, `select count(*)::int n from public.erased_accounts where profile_id = $1 and completed_by is null`, [plain]) === 1);
+    // An erased account whose login still exists (Auth deletion failed or not yet attempted).
+    const lingering = await w.coach();
+    await w.user(lingering, `select public.delete_own_guardian_account()`);
+    const recreate = await errOf(() => w.user(lingering, `insert into public.profiles (id) values ($1)`, [lingering]));
+    const recreateSvc = await errOf(() => w.service(`insert into public.profiles (id) values ($1)`, [lingering]));
+    const recreateOwner = await errOf(() => db.query(`insert into public.profiles (id) values ($1)`, [lingering]));
+    check('19: a still-valid session of an erased account cannot recreate its profile (signed-in and table owner: EMERA; service_role has no insert on profiles at all)',
+      recreate === 'EMERA:account_erased' && recreateSvc?.startsWith('42501:') && recreateOwner === 'EMERA:account_erased', `${recreate} / ${recreateSvc} / ${recreateOwner}`);
+    const reKey = await errOf(() => db.query(`update public.profiles set id = $1 where id = $2`, [lingering, people.stranger]));
+    check('19: …nor move another profile onto that id', reKey === 'EMERA:account_erased', reKey);
+    check('19: account_is_erased() is true for that session and false for a live account; anon cannot call it',
+      (await w.user(lingering, `select public.account_is_erased() as e`)).rows[0].e === true &&
+      (await w.user(people.parent, `select public.account_is_erased() as e`)).rows[0].e === false &&
+      (await attempt(() => w.as('anon', null, () => db.query(`select public.account_is_erased()`))))?.includes('permission denied'));
+    check('19: the erased-account record and the audit are readable by service_role only',
+      (await attempt(() => w.user(people.staff, `select * from public.erased_accounts`)))?.includes('permission denied') &&
+      (await attempt(() => w.user(people.staff, `select * from public.account_deletion_staff_actions`)))?.includes('permission denied') &&
+      (await attempt(() => w.service(`insert into public.account_deletion_staff_actions (pending_deletion_id, profile_id, actor_profile_id, action, reason, outcome) values ($1, $1, $1, 'complete', 'x', 'x')`, [id()])))?.includes('permission denied'));
+
+    // Parent-coach review: own status, preview counts, audited reject / restore / complete.
+    const parent = people.parent;
+    const card = id();
+    await db.query(`insert into public.cards (id, player_id, claim_token, status) values ($1, $2, 'S19-CARD', 'claimed')`, [card, w.directPlayer]);
+    const req = (await w.user(parent, `insert into public.coach_team_requests (club_name, team_name) values ('Fictional FC', 'S19') returning id`)).rows[0].id;
+    await w.service(`select public.approve_coach_team_request($1, $2, $3, null, null)`, [req, people.staff, w.team]);
+    const rec = await w.recognise(parent);
+    await w.user(parent, `insert into public.player_assessments (player_id, created_by, body) values ($1, $2, 'Fictional assessment')`, [w.player, parent]);
+    check('19: before any request, own status is not under review', JSON.stringify(await myReview(parent)) === JSON.stringify({ underReview: false, coachAccessPaused: false }));
+    await deleteAccount(w, parent);
+    const pid = (await pendingOf(db, parent)).id;
+    check('19: under review — own status says under review with coaching paused', JSON.stringify(await myReview(parent)) === JSON.stringify({ underReview: true, coachAccessPaused: true }));
+    check('19: anon cannot read a review status', (await attempt(() => w.as('anon', null, () => db.query(`select public.my_account_deletion_review()`))))?.includes('permission denied'));
+    const p = await preview(pid);
+    check('19: preview gives counts only: one blocker, one shared child, one child to deletion review, one card to lock, one verified moment, coaching suspended',
+      p.status === 'pending' && p.blockingReason === 'coach_authored_player_records' && p.accountExists === true && p.isStaffAccount === false &&
+      p.blockers.coachAuthoredRecords === 1 && p.blockers.squadInviteOrganiser === 0 && p.removes.parentLinksShared === 1 && p.removes.childrenToDeletionReview === 1 &&
+      p.removes.cardsToLock === 1 && p.marks.verifiedMoments === 1 && p.coaching.suspendedForReview === 1 && p.coaching.activeAssignments === 0 &&
+      !JSON.stringify(p).includes(w.player) && !JSON.stringify(p).includes('Fictional'), JSON.stringify(p));
+    check('19: preview is refused for a non-staff caller and not callable by service_role or anon',
+      (await attempt(() => preview(pid, parent)))?.includes('Not authorized: staff only') &&
+      (await attempt(() => w.service(`select public.account_deletion_preview($1)`, [pid])))?.includes('permission denied') &&
+      (await attempt(() => w.as('anon', null, () => db.query(`select public.account_deletion_preview($1)`, [pid]))))?.includes('permission denied'));
+
+    await reject(w, pid, people.staff, 'Parent asked to stay');
+    await reject(w, pid, people.staff, 'Parent asked to stay');
+    await restore(w, pid, people.staff, 'Parent asked to stay');
+    await restore(w, pid, people.staff, 'Parent asked to stay');
+    const a1 = await audit(pid);
+    check('19: reject and restore are each audited once (repeats write nothing), with actor, reason and outcome',
+      a1.length === 2 && a1.every((r) => r.actor_profile_id === people.staff && r.reason === 'Parent asked to stay') &&
+      a1.some((r) => r.action === 'reject' && r.outcome === 'rejected') && a1.some((r) => r.action === 'restore' && r.outcome === 'restored 1, not restorable 0'), JSON.stringify(a1));
+    check('19: after reject + restore the own status is no longer under review', (await myReview(parent)).underReview === false);
+
+    await deleteAccount(w, parent);
+    await db.query(`delete from public.player_assessments where created_by = $1`, [parent]);
+    // A staff member whose staff access was removed can neither preview nor complete.
+    const exStaff = id();
+    await w.person(exStaff);
+    await db.query(`insert into public.staff_accounts (profile_id) values ($1)`, [exStaff]);
+    await db.query(`delete from public.staff_accounts where profile_id = $1`, [exStaff]);
+    check('19: a removed staff account can neither preview nor complete',
+      (await attempt(() => preview(pid, exStaff)))?.includes('Not authorized: staff only') && (await attempt(() => complete(w, pid, exStaff)))?.includes('Not authorized: staff only'));
+    const done = await complete(w, pid, people.staff, 'Records reassigned; approved');
+    const again = await complete(w, pid, people.staff, 'Records reassigned; approved');
+    const a2 = (await audit(pid)).filter((r) => r.action === 'complete');
+    check('19: completion returns the account id, is audited once (the repeat returns already_completed and writes no audit row)',
+      done.status === 'completed' && done.profileId === parent && again.status === 'already_completed' && again.profileId === parent &&
+      a2.length === 1 && a2[0].actor_profile_id === people.staff && a2[0].outcome === 'completed' && a2[0].reason === 'Records reassigned; approved', JSON.stringify([done, again, a2]));
+    check('19: the completed account is recorded as erased by the staff member for this request',
+      await n(db, `select count(*)::int n from public.erased_accounts where profile_id = $1 and completed_by = $2 and pending_deletion_id = $3`, [parent, people.staff, pid]) === 1);
+    check('19: its login (not yet removed) cannot recreate the profile; it is reported erased',
+      (await errOf(() => w.user(parent, `insert into public.profiles (id) values ($1)`, [parent]))) === 'EMERA:account_erased' &&
+      (await w.user(parent, `select public.account_is_erased() as e`)).rows[0].e === true);
+    check('19: one child deletion request and one card lock, however many completions were called',
+      await n(db, `select count(*)::int n from public.player_deletion_requests where player_id = $1 and status = 'pending'`, [w.directPlayer]) === 1 &&
+      await n(db, `select count(*)::int n from public.card_access_audit_events where card_id = $1`, [card]) === 1 &&
+      await n(db, `select count(*)::int n from public.moments where id = $1 and verifier_account_deleted_at is not null`, [rec]) === 1);
+  } catch (e) {
+    check('19: erased accounts, audit, preview, own status', false, e.stack);
   }
   await db.close();
 }

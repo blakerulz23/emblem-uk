@@ -91,6 +91,10 @@
 --      request with the staff member as resolved_by) and records in
 --      pending_auth_deletions (0043) that the sign-in identity still needs
 --      deleting. A repeat reports already_completed and changes nothing.
+--   9. erased_accounts: the erasure records the account; no profile can be
+--      created for it again, and account_is_erased() lets the app refuse
+--      its sessions at once (an issued access token outlives Auth user
+--      deletion). account_deletion_staff_actions audits staff decisions.
 --
 -- No app code reads moments.verified_by (it is only written, by
 -- /api/os/celebrate and /api/os/moments/verify), so NULL is already safe in
@@ -126,7 +130,11 @@ begin
      or exists (select 1 from pg_trigger where tgname = 'profiles_account_deletion_guard')
      or to_regprocedure('public.account_deletion_blocking_reason(uuid)') is not null
      or to_regprocedure('public.erase_account_for_deletion(uuid, text, uuid)') is not null
-     or to_regprocedure('public.complete_pending_profile_deletion(uuid, text)') is not null then
+     or to_regprocedure('public.complete_pending_profile_deletion(uuid, text)') is not null
+     or to_regclass('public.erased_accounts') is not null
+     or to_regclass('public.account_deletion_staff_actions') is not null
+     or to_regprocedure('public.account_is_erased()') is not null
+     or to_regprocedure('public.refuse_erased_account_profile()') is not null then
     raise exception '0097 refused: a 0097 account-deletion function or trigger already exists (0097 already applied)';
   end if;
   if to_regclass('public.player_deletion_requests') is null or to_regclass('public.squad_invite_participation_deletion_requests') is null then
@@ -394,6 +402,12 @@ begin
      set status = 'resolved', resolved_by = p_completed_by, resolved_at = now()
    where auth_user_id = v_uid and status = 'pending';
 
+  -- 0097: from now on no profile can be created again for this account and
+  -- the app refuses its sessions (section 9).
+  insert into public.erased_accounts (profile_id, completed_by, pending_deletion_id)
+  values (v_uid, p_completed_by, (select id from public.pending_profile_deletions where auth_user_id = v_uid))
+  on conflict (profile_id) do nothing;
+
   -- The profiles delete trigger (section 7) marks this account's
   -- verifications and cancellations as the row goes.
   delete from public.profiles where id = v_uid;
@@ -499,7 +513,13 @@ alter function public.delete_own_guardian_account() owner to postgres;
 --   - runs the erasure exactly once (section 4b), which resolves the request
 --     with this staff member as resolved_by and deletes the profile;
 --   - records in pending_auth_deletions (0043) that the sign-in identity
---     still needs deleting, so it appears on /staff/pending-auth-deletions.
+--     still needs deleting; the staff route then bans and deletes it (and
+--     retries idempotently), and the erased_accounts record (section 9)
+--     shuts the account out meanwhile;
+--   - audits the decision once (account_deletion_staff_actions); a repeat
+--     writes nothing. Every result carries profileId for the staff route.
+-- The tables used here are created in section 9 (later in this file); the
+-- function body is only resolved when it runs.
 create function public.complete_pending_profile_deletion(p_pending_deletion_id uuid, p_reason text)
 returns jsonb
 language plpgsql
@@ -534,7 +554,7 @@ begin
     if exists (select 1 from public.profiles where id = v_uid) then
       raise exception 'This profile deletion is marked resolved but a profile with this id exists (resolved by hand, or the login signed in again after completion); nothing was changed';
     end if;
-    return jsonb_build_object('status', 'already_completed');
+    return jsonb_build_object('status', 'already_completed', 'profileId', v_uid);
   end if;
   if v_pending.status <> 'pending' then
     raise exception 'Only a pending profile deletion can be completed (it is %)', v_pending.status;
@@ -555,7 +575,9 @@ begin
       values (v_uid, v_pending.email, 'Reviewed account deletion closed by staff (profile already gone); the sign-in identity still needs deleting')
       on conflict (auth_user_id) do nothing;
     end if;
-    return jsonb_build_object('status', 'account_already_deleted');
+    insert into public.account_deletion_staff_actions (pending_deletion_id, profile_id, actor_profile_id, action, reason, outcome)
+    values (p_pending_deletion_id, v_uid, v_staff, 'complete', btrim(p_reason), 'account_already_deleted');
+    return jsonb_build_object('status', 'account_already_deleted', 'profileId', v_uid);
   end if;
   v_blocking_reason := public.account_deletion_blocking_reason(v_uid);
   if v_blocking_reason is not null then
@@ -578,7 +600,10 @@ begin
         status = 'pending', resolved_by = null, resolved_at = null, last_attempted_at = now(),
         attempts = public.pending_auth_deletions.attempts + 1, last_error = excluded.last_error;
 
-  return v_result || jsonb_build_object('status', 'completed');
+  insert into public.account_deletion_staff_actions (pending_deletion_id, profile_id, actor_profile_id, action, reason, outcome)
+  values (p_pending_deletion_id, v_uid, v_staff, 'complete', btrim(p_reason), 'completed');
+
+  return v_result || jsonb_build_object('status', 'completed', 'profileId', v_uid);
 end;
 $$;
 
@@ -635,5 +660,83 @@ alter function public.guard_profile_deletion() owner to postgres;
 create trigger profiles_account_deletion_guard
   before delete on public.profiles
   for each row execute function public.guard_profile_deletion();
+
+-- ---------------------------------------------------------------------------
+-- 9. Erased accounts stay erased, and staff decisions are audited
+-- ---------------------------------------------------------------------------
+-- Deleting the Auth user (or banning it) does not invalidate an access token
+-- already issued: it stays valid until it expires. So the erasure records the
+-- account here, in the same transaction, and from then on:
+--   - no profile can be created again for it, from any route or role
+--     (profiles_refuse_erased_account), so an old session cannot recreate an
+--     empty account;
+--   - account_is_erased() (callable only for the caller's own uid) lets the
+--     app refuse the session on every request.
+-- profile_id is a plain uuid (never a foreign key): it must never block
+-- anything, and once the Auth user is gone it identifies no one.
+create table public.erased_accounts (
+  profile_id uuid primary key,
+  erased_at timestamptz not null default now(),
+  completed_by uuid,
+  pending_deletion_id uuid
+);
+comment on table public.erased_accounts is
+  'Accounts erased by account deletion (0097). No profile may be created again for these ids; the app refuses their sessions. Written only by erase_account_for_deletion.';
+alter table public.erased_accounts enable row level security;
+revoke all on public.erased_accounts from public, anon, authenticated, service_role;
+grant select on public.erased_accounts to service_role;
+
+create function public.refuse_erased_account_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $fn$
+begin
+  if exists (select 1 from public.erased_accounts where profile_id = new.id) then
+    raise exception using errcode = 'EMERA', message = 'account_erased';
+  end if;
+  return new;
+end;
+$fn$;
+revoke all on function public.refuse_erased_account_profile() from public, anon, authenticated, service_role;
+alter function public.refuse_erased_account_profile() owner to postgres;
+
+create trigger profiles_refuse_erased_account
+  before insert or update of id on public.profiles
+  for each row execute function public.refuse_erased_account_profile();
+
+create function public.account_is_erased()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (select 1 from public.erased_accounts where profile_id = auth.uid());
+$$;
+revoke all on function public.account_is_erased() from public, anon, service_role;
+grant execute on function public.account_is_erased() to authenticated;
+alter function public.account_is_erased() owner to postgres;
+
+-- Every staff decision on a reviewed account deletion: who, which request,
+-- why, and what happened. Written only by the staff functions, once per
+-- decision that changed something (a repeat that changes nothing writes
+-- nothing). Plain uuids: history must never block a deletion.
+create table public.account_deletion_staff_actions (
+  id uuid primary key default gen_random_uuid(),
+  pending_deletion_id uuid not null,
+  profile_id uuid not null,
+  actor_profile_id uuid not null,
+  action text not null check (action in ('complete', 'reject', 'restore')),
+  reason text not null check (char_length(btrim(reason)) between 1 and 500),
+  outcome text not null,
+  created_at timestamptz not null default now()
+);
+comment on table public.account_deletion_staff_actions is
+  'Audit of staff decisions on reviewed account deletions (0097/0098): actor, request, reason, outcome. Written only by the staff functions; service_role may read.';
+alter table public.account_deletion_staff_actions enable row level security;
+revoke all on public.account_deletion_staff_actions from public, anon, authenticated, service_role;
+grant select on public.account_deletion_staff_actions to service_role;
 
 commit;

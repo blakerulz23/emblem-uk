@@ -56,6 +56,9 @@
 --    staff reject the deletion everything works as before, including the
 --    restore. Reviews pending before 0098 are not suspended retroactively;
 --    see supabase/verification/0098_precheck_pending_deletion_reviews.sql.
+-- 6. Staff page support: account_deletion_preview (counts only, signed-in
+--    staff) and my_account_deletion_review (the account's own status).
+--    reject and restore are audited in account_deletion_staff_actions (0097).
 --
 --   0. Precondition: refuses, changing nothing, unless the exact 0097 state
 --      is in place and 0098 has not been applied.
@@ -99,6 +102,16 @@ begin
      or not exists (select 1 from pg_trigger where tgname = 'profiles_account_deletion_guard'
                     and tgrelid = 'public.profiles'::regclass and not tgisinternal and tgenabled <> 'D') then
     v_problems := v_problems || 'the 0097 account-deletion functions or profile-deletion guard are missing (0097 not applied, or an earlier 0097)'::text;
+  end if;
+  if to_regclass('public.erased_accounts') is null or to_regclass('public.account_deletion_staff_actions') is null
+     or to_regprocedure('public.account_is_erased()') is null
+     or not exists (select 1 from pg_trigger where tgname = 'profiles_refuse_erased_account'
+                    and tgrelid = 'public.profiles'::regclass and not tgisinternal and tgenabled <> 'D') then
+    v_problems := v_problems || 'the 0097 erased-account record or staff audit is missing (0097 not applied, or an earlier 0097)'::text;
+  end if;
+  if to_regprocedure('public.account_deletion_preview(uuid)') is not null
+     or to_regprocedure('public.my_account_deletion_review()') is not null then
+    v_problems := v_problems || 'a 0098 staff-page function already exists'::text;
   end if;
   if to_regprocedure('public.close_deletion_review_suspensions()') is not null
      or exists (select 1 from pg_trigger where tgname = 'profiles_close_deletion_review_suspensions') then
@@ -249,6 +262,9 @@ begin
   update public.pending_profile_deletions
      set status = 'rejected', resolved_by = p_staff_profile_id, resolved_at = now(), rejection_reason = btrim(p_reason)
    where id = p_pending_deletion_id;
+  insert into public.account_deletion_staff_actions (pending_deletion_id, profile_id, actor_profile_id, action, reason, outcome)
+  select id, auth_user_id, p_staff_profile_id, 'reject', btrim(p_reason), 'rejected'
+    from public.pending_profile_deletions where id = p_pending_deletion_id;
   return 'rejected';
 end;
 $$;
@@ -354,6 +370,12 @@ begin
   perform set_config('emblem.trusted_operation', '', true);
   perform set_config('emblem.actor_profile_id', '', true);
   perform set_config('emblem.trusted_reason', '', true);
+
+  if v_open > 0 then
+    insert into public.account_deletion_staff_actions (pending_deletion_id, profile_id, actor_profile_id, action, reason, outcome)
+    values (p_pending_deletion_id, v_pending.auth_user_id, p_staff_profile_id, 'restore', btrim(p_reason),
+            format('restored %s, not restorable %s', v_restored, v_not_restorable));
+  end if;
 
   return jsonb_build_object('restored', v_restored, 'notRestorable', v_not_restorable, 'nothingToRestore', v_open = 0);
 end;
@@ -560,6 +582,96 @@ revoke all on function public.close_deletion_review_suspensions() from public, a
 create trigger profiles_close_deletion_review_suspensions
   before delete on public.profiles
   for each row execute function public.close_deletion_review_suspensions();
+
+-- ---------------------------------------------------------------------------
+-- 6. Staff page support: counts-only preview, and the account's own status
+-- ---------------------------------------------------------------------------
+-- What completing a reviewed deletion would do, as counts only (no child
+-- names, ids or content), for a signed-in staff member. Read-only.
+create function public.account_deletion_preview(p_pending_deletion_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_staff uuid := auth.uid();
+  v_p public.pending_profile_deletions%rowtype;
+  v_uid uuid;
+begin
+  if v_staff is null or not exists (select 1 from public.staff_accounts where profile_id = v_staff) then
+    raise exception 'Not authorized: staff only';
+  end if;
+  select * into v_p from public.pending_profile_deletions where id = p_pending_deletion_id;
+  if v_p.id is null then
+    raise exception 'Pending profile deletion not found';
+  end if;
+  v_uid := v_p.auth_user_id;
+  return jsonb_build_object(
+    'status', v_p.status,
+    'blockingReason', public.account_deletion_blocking_reason(v_uid),
+    'accountExists', exists (select 1 from public.profiles where id = v_uid),
+    'isStaffAccount', exists (select 1 from public.staff_accounts where profile_id = v_uid),
+    'blockers', jsonb_build_object(
+      'coachAuthoredRecords',
+        (select count(*) from public.player_assessments where created_by = v_uid)
+        + (select count(*) from public.player_goals where created_by = v_uid)
+        + (select count(*) from public.player_season_focus where created_by = v_uid)
+        + (select count(*) from public.player_strengths where created_by = v_uid),
+      'squadInviteOrganiser',
+        (select count(*) from public.squad_invite_links where created_by_profile_id = v_uid)
+        + (select count(*) from public.squad_invite_organiser_ownership where organiser_profile_id = v_uid)
+        + (select count(*) from public.squad_invite_requests where organiser_profile_id = v_uid)
+        + (select count(*) from public.squad_invites where organiser_profile_id = v_uid),
+      'squadInviteAudit', (select count(*) from public.squad_invite_request_declarations where actor_profile_id = v_uid)),
+    'removes', jsonb_build_object(
+      'parentLinksShared', (select count(*) from public.guardians g where g.profile_id = v_uid
+                             and exists (select 1 from public.guardians o where o.player_id = g.player_id and o.profile_id <> v_uid)),
+      'childrenToDeletionReview', (select count(*) from public.guardians g where g.profile_id = v_uid
+                             and not exists (select 1 from public.guardians o where o.player_id = g.player_id and o.profile_id <> v_uid)),
+      'cardsToLock', (select count(*) from public.cards c join public.guardians g on g.player_id = c.player_id and g.profile_id = v_uid
+                       where c.access_status is null
+                         and not exists (select 1 from public.guardians o where o.player_id = g.player_id and o.profile_id <> v_uid)
+                         and not exists (select 1 from public.player_deletion_requests r where r.player_id = g.player_id and r.status = 'pending'))),
+    'clears', jsonb_build_object(
+      'momentsUploaded', (select count(*) from public.moments where uploaded_by = v_uid),
+      'invites', (select count(*) from public.coach_invites where created_by = v_uid or used_by = v_uid)
+                 + (select count(*) from public.player_invites where created_by = v_uid or used_by = v_uid)
+                 + (select count(*) from public.team_invites where created_by = v_uid or used_by = v_uid),
+      'ordersApproved', (select count(*) from public.orders where approved_by = v_uid)),
+    'marks', jsonb_build_object(
+      'verifiedMoments', (select count(*) from public.moments where verified_by = v_uid),
+      'cancelledRequests', (select count(*) from public.player_deletion_requests where cancelled_by = v_uid and status = 'cancelled')
+                           + (select count(*) from public.squad_invite_participation_deletion_requests where cancelled_by = v_uid and status = 'cancelled')),
+    'coaching', jsonb_build_object(
+      'suspendedForReview', (select count(*) from public.deletion_review_access_suspensions where profile_id = v_uid and resolved_at is null),
+      'activeAssignments', (select count(*) from public.coach_team where profile_id = v_uid and public.coach_assignment_is_active(ended_at, expires_at)),
+      'directLinks', (select count(*) from public.coach_players where profile_id = v_uid))
+  );
+end;
+$$;
+alter function public.account_deletion_preview(uuid) owner to postgres;
+revoke all on function public.account_deletion_preview(uuid) from public, anon, service_role;
+grant execute on function public.account_deletion_preview(uuid) to authenticated;
+
+-- The signed-in account's own deletion review, for Account Settings.
+create function public.my_account_deletion_review()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'underReview', exists (select 1 from public.pending_profile_deletions where auth_user_id = auth.uid() and status = 'pending'),
+    'coachAccessPaused', exists (select 1 from public.pending_profile_deletions d
+                                 join public.deletion_review_access_suspensions s on s.pending_deletion_id = d.id and s.resolved_at is null
+                                 where d.auth_user_id = auth.uid() and d.status = 'pending'));
+$$;
+alter function public.my_account_deletion_review() owner to postgres;
+revoke all on function public.my_account_deletion_review() from public, anon, service_role;
+grant execute on function public.my_account_deletion_review() to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 4. No new coach access while a deletion is under staff review

@@ -2,23 +2,11 @@ import { NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notification';
 import { logRouteFailure, raised } from '@/lib/route-failure';
+import { STAFF_ACCOUNT_DELETE_REFUSED, deletionReviewResponse } from '@/lib/account-deletion-copy';
 
 export const runtime = 'nodejs';
 
 const ACCOUNT_DELETE_FAILED_MESSAGE = 'Could not delete your account. Please try again.';
-// Migration 0097: a deletion that needs staff review deletes nothing yet.
-// 0098 pauses coach access meanwhile; say so only when it did.
-function underReviewMessage(coachAccessPaused: boolean) {
-  return (
-    "Your request to delete your account has been sent to our team. Because your account is linked to records we're required to keep, a member of staff needs to review it first. " +
-    'Until then nothing is permanently deleted and your account stays as it is' +
-    (coachAccessPaused ? ', except that your coach access is paused.' : '.') +
-    " We'll be in touch."
-  );
-}
-const STAFF_ACCOUNT_DELETE_REFUSED_MESSAGE =
-  "Staff accounts can't be deleted here. Ask another member of staff to remove it.";
-
 // This app has no password — guardians sign in by email OTP
 // (src/app/os/overlays/SignIn.tsx), so "re-authentication" here can't mean
 // "re-enter your password." The client re-runs the exact same
@@ -94,7 +82,7 @@ export async function POST() {
     // Migration 0098: staff accounts are removed by a manual, two-person
     // procedure, never here. Nothing was changed.
     if (raised(rpcError, 'Staff accounts cannot be deleted from the app')) {
-      return NextResponse.json({ error: STAFF_ACCOUNT_DELETE_REFUSED_MESSAGE }, { status: 403 });
+      return NextResponse.json({ error: STAFF_ACCOUNT_DELETE_REFUSED }, { status: 403 });
     }
     logRouteFailure('account deletion: cleanup', rpcError);
     return NextResponse.json({ error: ACCOUNT_DELETE_FAILED_MESSAGE }, { status: 500 });
@@ -111,11 +99,8 @@ export async function POST() {
   // admin.deleteUser() is not called: the profile still exists, and the
   // database refuses to delete it around the clean-up.
   if (rpcResult && typeof rpcResult === 'object' && (rpcResult as { canDeleteIdentity?: boolean }).canDeleteIdentity === false) {
-    // pending_profile_deletions (0076) has no staff-facing page anywhere in
-    // the app today (confirmed: no route/page queries that table) — this
-    // notification is currently the ONLY signal staff get for this case at
-    // all, so the link points at the closest relevant staff area rather
-    // than a page that would show nothing.
+    // Staff review and decide these at /staff/account-deletions; this
+    // notification tells them a new review round has started.
     // One notification per review round: from 0097 the result carries when
     // the current round began (0098 starts a new round when a request follows
     // a rejection), so a repeat while still pending is not re-sent, but a
@@ -126,15 +111,15 @@ export async function POST() {
       eventKey: typeof reviewOpenedAt === 'string' ? `auth_deletion_stuck:profile:${user.id}:${reviewOpenedAt}` : `auth_deletion_stuck:profile:${user.id}`,
       subjectId: user.id,
       recipientScope: 'all_staff',
-      summary: { reason: 'Account deletion needs staff review (records that must be kept). Nothing has been removed yet; reject it, or complete it with complete_pending_profile_deletion. No staff page surfaces this yet' },
-      linkPath: '/staff/deletion-requests',
+      summary: { reason: 'Account deletion needs staff review (records that must be kept). Nothing has been removed yet; reject it or complete it at /staff/account-deletions' },
+      linkPath: '/staff/account-deletions',
     });
     await supabase.auth.signOut();
     return NextResponse.json({
       ok: true,
       partial: true,
       identityRetained: true,
-      message: underReviewMessage(Number((rpcResult as { coachAccessSuspended?: unknown }).coachAccessSuspended) > 0),
+      message: deletionReviewResponse(Number((rpcResult as { coachAccessSuspended?: unknown }).coachAccessSuspended) > 0),
       ...rpcResult,
     });
   }

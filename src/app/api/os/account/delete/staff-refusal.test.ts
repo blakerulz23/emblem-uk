@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createFakeSupabase } from '@/lib/fake-supabase.test-support';
 import { captureLogs, expectRedacted, sentinelError } from '@/lib/route-failure.test-support';
+import { STAFF_ACCOUNT_DELETE_REFUSED } from '@/lib/account-deletion-copy';
 
 /**
  * Migration 0098: delete_own_guardian_account refuses a staff account,
@@ -35,7 +36,7 @@ afterEach(() => logs.restore());
 
 describe('POST /api/os/account/delete — staff account', () => {
   it('is a fixed 403 with no database text; the Auth identity is not deleted and the session is not signed out', async () => {
-    await expectRedacted(await deleteAccount(), 403, "Staff accounts can't be deleted here. Ask another member of staff to remove it.", logs);
+    await expectRedacted(await deleteAccount(), 403, STAFF_ACCOUNT_DELETE_REFUSED, logs);
     expect(deleteUser).not.toHaveBeenCalled();
     expect(signOut).not.toHaveBeenCalled();
   });

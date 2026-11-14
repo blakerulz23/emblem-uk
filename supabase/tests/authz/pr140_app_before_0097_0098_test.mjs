@@ -39,6 +39,18 @@ const ROUTES = [
   'src/app/api/os/moments/verify/route.ts',
 ];
 const SIGNALS = ['account_deletion_review_pending', 'EMDRP', 'Staff accounts cannot be deleted from the app'];
+// Files added for the staff completion page. Every function they call is
+// created by 0097/0098: before the migrations it must be absent, and each
+// caller falls back safely (middleware lets the request continue; the review
+// status reads "not under review"; the staff page shows no counts and
+// offers no completion; the staff routes answer a fixed 500).
+const NEW_FILES = [
+  'src/lib/supabase/middleware.ts',
+  'src/app/api/os/account/deletion-review/route.ts',
+  'src/app/api/staff/account-deletions/[id]/complete/route.ts',
+  'src/app/api/staff/account-deletions/[id]/reject/route.ts',
+  'src/app/staff/account-deletions/page.tsx',
+];
 const COMMIT = 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0';
 
 const results = [];
@@ -69,6 +81,20 @@ for (const rel of ROUTES) {
     calls.push({ route: rel, fn: m[1], args: [...(m[2] ?? '').matchAll(/\b(p_[a-z0-9_]+)\s*:/g)].map((a) => a[1]).sort() });
   }
 }
+// The new files: .rpc('name') / .rpc('name', { … }) / .rpc('name', args) with `const args = { … }`.
+const newCalls = [];
+for (const rel of NEW_FILES) {
+  const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+  const named = /const args = \{([^}]*)\}/.exec(src)?.[1] ?? '';
+  for (const m of src.matchAll(/\.rpc\(\s*'([a-z0-9_]+)'\s*(?:,\s*(\{[\s\S]*?\}|args)\s*)?\)/g)) {
+    const body = m[2] === 'args' ? named : (m[2] ?? '');
+    const argNames = [...body.matchAll(/(p_[a-z0-9_]+)\s*:/g)].map((a) => a[1]).sort();
+    newCalls.push({ route: rel, fn: m[1], args: argNames });
+  }
+}
+check('new files parsed: their six RPC calls are found', JSON.stringify(newCalls.map((c) => c.fn).sort()) ===
+  JSON.stringify(['account_deletion_preview', 'account_is_erased', 'complete_pending_profile_deletion', 'my_account_deletion_review',
+    'reject_pending_profile_deletion', 'restore_coach_access_after_deletion_rejection']), newCalls);
 check('route files parsed: the four RPC calls in the changed PR #140 routes are found', JSON.stringify(calls.map((c) => c.fn).sort()) ===
   JSON.stringify(['approve_coach_team_request', 'delete_own_guardian_account', 'redeem_coach_invite', 'redeem_team_invite']), calls.map((c) => c.fn));
 const teamReq = fs.readFileSync(path.join(ROOT, 'src/app/api/os/team-requests/route.ts'), 'utf8');
@@ -77,6 +103,24 @@ const verify = fs.readFileSync(path.join(ROOT, 'src/app/api/os/moments/verify/ro
 const updateCols = [...(/\.from\('moments'\)\s*\.update\(\{([\s\S]*?)\}\)/.exec(verify)?.[1] ?? '').matchAll(/\b([a-z_]+)\s*:/g)].map((m) => m[1]);
 check('route files parsed: coach_team_requests insert and moments update columns found', insertCols.length === 4 && updateCols.length === 3, { insertCols, updateCols });
 check('moment verify filters on verified_at IS NULL', /\.is\('verified_at',\s*null\)/.test(verify));
+
+async function assessNew(db, label, expectPresent) {
+  for (const c of newCalls) {
+    const overloads = (await db.query(
+      `select coalesce(p.proargnames, '{}') names, p.pronargs n, p.pronargdefaults d
+         from pg_proc p join pg_namespace s on s.oid = p.pronamespace where s.nspname = 'public' and p.proname = $1`, [c.fn])).rows;
+    if (!expectPresent) {
+      check(`${label}: ${c.fn} does not exist yet (its caller falls back safely)`, overloads.length === 0, overloads);
+      continue;
+    }
+    const binds = overloads.some((o) => {
+      const params = o.names.slice(0, o.n);
+      const required = params.slice(0, o.n - o.d);
+      return c.args.every((a) => params.includes(a)) && required.every((p) => c.args.includes(p));
+    });
+    check(`${label}: ${c.fn}(${c.args.join(', ')}) binds (${path.basename(c.route)})`, binds, overloads);
+  }
+}
 
 async function assess(db, label, expectSignals) {
   for (const c of calls) {
@@ -114,12 +158,14 @@ check('0101 present, 0097/0098 absent', (await db.query(`select to_regprocedure(
   exists (select 1 from information_schema.columns where table_name = 'moments' and column_name = 'verifier_account_deleted_at') b,
   to_regclass('public.deletion_review_access_suspensions') is not null c`)).rows.every((r) => r.a && !r.b && !r.c));
 await assess(db, 'before', false);
+await assessNew(db, 'before', false);
 
 console.log('\n=== after 0097 + 0098 (production order) ===');
 for (const f of ['0097_coach_account_deletion_verified_moments.sql', '0098_deletion_review_suspension_and_verifier_identity.sql']) {
   await db.exec(fs.readFileSync(path.resolve(HERE, '../../migrations', f), 'utf8'));
 }
 await assess(db, 'after', true);
+await assessNew(db, 'after', true);
 await db.close();
 
 const failed = results.filter((x) => !x.pass);

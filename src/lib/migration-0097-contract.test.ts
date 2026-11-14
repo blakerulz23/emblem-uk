@@ -101,7 +101,7 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     const reason = at("raise exception 'A reason (up to 500 characters) is required';");
     const lockProfile = at('perform 1 from public.profiles where id = v_uid for update;');
     const lockRequest = at('select * into v_pending from public.pending_profile_deletions where id = p_pending_deletion_id for update;');
-    const already = at("return jsonb_build_object('status', 'already_completed');");
+    const already = at("return jsonb_build_object('status', 'already_completed', 'profileId', v_uid);");
     const notPending = at("raise exception 'Only a pending profile deletion can be completed (it is %)'");
     const staffTarget = at("raise exception 'Staff accounts are removed by the manual staff procedure, not here';");
     const blocked = at("raise exception 'The account still has records that block deletion (%); resolve them first'");
@@ -115,6 +115,28 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(fn.split('erase_account_for_deletion(').length).toBe(2);
     expect(code).toContain('revoke all on function public.complete_pending_profile_deletion(uuid, text) from public, anon, service_role;');
     expect(code).toContain('grant execute on function public.complete_pending_profile_deletion(uuid, text) to authenticated;');
+  });
+
+  it('erased accounts: the erasure records them before deleting the profile; no profile can be recreated; the app can ask for its own uid only', () => {
+    const erase = defOf(sql, ERASE);
+    expect(erase.indexOf('insert into public.erased_accounts')).toBeGreaterThan(erase.indexOf(CLEANUP_END));
+    expect(erase.indexOf('insert into public.erased_accounts')).toBeLessThan(erase.indexOf('  delete from public.profiles where id = v_uid;'));
+    expect(code).toContain("create trigger profiles_refuse_erased_account\n  before insert or update of id on public.profiles");
+    expect(code).toContain("raise exception using errcode = 'EMERA', message = 'account_erased';");
+    expect(code).toContain('select exists (select 1 from public.erased_accounts where profile_id = auth.uid());');
+    expect(code).toContain('revoke all on function public.account_is_erased() from public, anon, service_role;');
+    expect(code).toContain('revoke all on public.erased_accounts from public, anon, authenticated, service_role;');
+  });
+
+  it('staff decisions are audited once: completion writes one row after the erasure; the repeat path writes none', () => {
+    const fn = defOf(sql, COMPLETE);
+    const repeat = fn.slice(fn.indexOf("if v_pending.status = 'resolved' then"), fn.indexOf("if v_pending.status <> 'pending' then"));
+    expect(repeat).not.toContain('account_deletion_staff_actions');
+    const erase = fn.indexOf('v_result := public.erase_account_for_deletion(');
+    const auditDone = fn.indexOf("values (p_pending_deletion_id, v_uid, v_staff, 'complete', btrim(p_reason), 'completed');");
+    expect(auditDone).toBeGreaterThan(erase);
+    expect(fn.split('insert into public.account_deletion_staff_actions').length).toBe(3); // completed + account_already_deleted
+    expect(code).toContain('revoke all on public.account_deletion_staff_actions from public, anon, authenticated, service_role;');
   });
 
   it('every profile delete: refused while parent links or a pending review remain; otherwise marks attribution (the one place)', () => {
@@ -166,6 +188,9 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(code.match(/^\s*grant\b.*$/gim)).toEqual([
       'grant execute on function public.delete_own_guardian_account() to authenticated;',
       'grant execute on function public.complete_pending_profile_deletion(uuid, text) to authenticated;',
+      'grant select on public.erased_accounts to service_role;',
+      'grant execute on function public.account_is_erased() to authenticated;',
+      'grant select on public.account_deletion_staff_actions to service_role;',
     ]);
     // No data change at top level (function bodies and DO blocks excluded).
     const topLevel = code.replace(/\$(\w*)\$[\s\S]*?\$\1\$/g, '');

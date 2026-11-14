@@ -21,6 +21,10 @@
 --     restores has no completion step, and removing such an account's login
 --     would drop its parent links without the child-data clean-up. Complete
 --     (complete_pending_profile_deletion) or reject those first.
+--   - no staff decision on an account deletion has been recorded
+--     (account_deletion_staff_actions is an audit; it is not dropped while
+--     it holds anything), and no erased account still has a sign-in
+--     identity (its erased_accounts record is what keeps it out);
 --   - NO row carries any 0097 marker (moments.verifier_account_deleted_at,
 --     or cancelled_by_account_deleted_at on either deletion-request table).
 --     Once any account deletion has used one, those rows have the actor
@@ -57,6 +61,10 @@ begin
      or to_regprocedure('public.account_deletion_blocking_reason(uuid)') is null
      or to_regprocedure('public.erase_account_for_deletion(uuid, text, uuid)') is null
      or to_regprocedure('public.complete_pending_profile_deletion(uuid, text)') is null
+     or to_regclass('public.erased_accounts') is null
+     or to_regclass('public.account_deletion_staff_actions') is null
+     or to_regprocedure('public.account_is_erased()') is null
+     or not exists (select 1 from pg_trigger where tgname = 'profiles_refuse_erased_account')
      or not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'moments'
                     and policyname = 'moments: only account deletion marks a verifier as deleted')
      or (select count(*) from information_schema.columns where table_schema = 'public' and column_name = 'cancelled_by_account_deleted_at'
@@ -77,6 +85,14 @@ begin
   if v_marked > 0 then
     raise exception '0097 rollback refused: % account deletion(s) are pending staff review with parent links still in place; complete or reject them first.', v_marked;
   end if;
+  select count(*) into v_marked from public.account_deletion_staff_actions;
+  if v_marked > 0 then
+    raise exception '0097 rollback refused: % staff decision(s) on account deletions are recorded; that audit cannot be dropped. Fix forward instead.', v_marked;
+  end if;
+  select count(*) into v_marked from public.erased_accounts e where exists (select 1 from auth.users u where u.id = e.profile_id);
+  if v_marked > 0 then
+    raise exception '0097 rollback refused: % erased account(s) still have a sign-in identity; dropping the erased-account record would let them back in. Remove those identities first.', v_marked;
+  end if;
   select count(*) into v_marked from public.moments where verifier_account_deleted_at is not null;
   if v_marked > 0 then
     raise exception '0097 rollback refused: % moment(s) were verified by a coach whose account has since been deleted; the 0020 rule cannot hold them. Fix forward instead.', v_marked;
@@ -89,6 +105,14 @@ begin
   end if;
 end;
 $$;
+
+-- 9 reversed (the erased-account records left are for identities already
+-- removed, so nothing they protected remains).
+drop trigger profiles_refuse_erased_account on public.profiles;
+drop function public.account_is_erased();
+drop function public.refuse_erased_account_profile();
+drop table public.account_deletion_staff_actions;
+drop table public.erased_accounts;
 
 -- 7, 8, 4b and 4a reversed.
 drop trigger profiles_account_deletion_guard on public.profiles;

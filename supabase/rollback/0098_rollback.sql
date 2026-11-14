@@ -44,6 +44,8 @@ begin
      or to_regprocedure('public.erase_account_for_deletion(uuid, text, uuid)') is null
      or to_regprocedure('public.complete_pending_profile_deletion(uuid, text)') is null
      or to_regprocedure('public.guard_profile_deletion()') is null
+     or to_regclass('public.erased_accounts') is null
+     or to_regclass('public.account_deletion_staff_actions') is null
      or not exists (select 1 from pg_trigger where tgname = 'profiles_account_deletion_guard'
                     and tgrelid = 'public.profiles'::regclass and not tgisinternal and tgenabled <> 'D') then
     raise exception '0098 rollback refused: the 0097 underneath is not the current version (its account-deletion functions or profile-deletion guard are missing); use the rollback files that match the applied migrations';
@@ -335,6 +337,10 @@ $$;
 alter function public.redeem_team_invite(text, uuid, text) owner to postgres;
 revoke all on function public.redeem_team_invite(text, uuid, text) from public, anon, authenticated;
 grant execute on function public.redeem_team_invite(text, uuid, text) to service_role;
+
+-- 6 reversed.
+drop function public.my_account_deletion_review();
+drop function public.account_deletion_preview(uuid);
 
 -- 5 reversed.
 drop trigger profiles_close_deletion_review_suspensions on public.profiles;

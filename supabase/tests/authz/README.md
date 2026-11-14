@@ -933,19 +933,28 @@ trigger, so neither runs over an earlier draft of 0097. A precondition
 refuses unless the 0020 rule, the original cancellation rules and the 0076
 function are in place, and refuses a second application.
 
-**Completing a reviewed deletion (staff).** There is no staff page yet.
-`complete_pending_profile_deletion(request_id, reason)` must run as a
-signed-in staff member (`auth.uid()` is the staff profile; it is not
-executable by `service_role`, because the card lockdown attributes each
-suspension to `auth.uid()`). From the Supabase SQL editor that means running
-it as role `authenticated` impersonating the staff member's own user. Resolve
-the blocking records first, or it refuses and names the reason code. Then
-remove the sign-in identity listed on `/staff/pending-auth-deletions`; until
-then that login can still sign in to an empty account. A request whose
-account was already deleted another way is closed with
-`account_already_deleted`. An account that is both staff and a parent cannot
-be removed by any of these paths until its `staff_accounts` row is removed
-(the manual staff procedure).
+**Completing a reviewed deletion (staff).** Staff use `/staff/account-deletions`
+(signed-in staff only). Each waiting request shows counts only (what completion
+would remove, clear or mark; blocking records; paused coaching), from
+`account_deletion_preview` (0098). With a non-blank reason, staff either
+**Reject & restore access** (0098 reject + restore, as the verified staff
+member) or **Complete deletion permanently** (a second confirmation: type
+DELETE; unavailable while blocking records remain or for a staff account). The
+completion route runs `complete_pending_profile_deletion` in the staff
+member's own session (never an actor id from the browser): the 0076 clean-up
+once, attribution marked, the account recorded in `erased_accounts`, the
+decision audited once in `account_deletion_staff_actions`. The route then
+bans and deletes the Auth user with the service role and resolves the
+`pending_auth_deletions` row; a failure is recorded there and "Retry sign-in
+removal" repeats only that step. An issued access token outlives Auth user
+deletion, so `erased_accounts` is what shuts the account out at once: no
+profile can be created for it again (`profiles_refuse_erased_account`,
+SQLSTATE EMERA), and the middleware asks `account_is_erased()` on every
+`/os` and `/api` request and refuses the session. A request whose account was
+already deleted another way is closed with `account_already_deleted`. A staff
+account (including a staff parent or coach) cannot be deleted here or by
+self-service: another authorised staff member must first remove its staff
+access through the two-person manual procedure.
 
 **Rollback: emergency only.** `supabase/rollback/0097_rollback.sql` breaks
 coach account deletion again. It needs, in the same transaction,

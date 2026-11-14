@@ -508,6 +508,10 @@ export default async function StaffQueuePage({
     .from('pending_auth_deletions')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'pending');
+  const { count: pendingAccountReviewCount } = await createServiceRoleClient()
+    .from('pending_profile_deletions')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending');
 
   const pending = await getPendingOrders(approvalQ, approvalSort);
   const approved = await getRecentlyApprovedSingleCardOrders(approvedQ, approvedSort, approvedPageParam);
@@ -566,6 +570,18 @@ export default async function StaffQueuePage({
           }}
         >
           Stuck account deletions{pendingAuthDeletionCount ? ` — ${pendingAuthDeletionCount} pending` : ' — none pending'}
+        </Link>
+        <Link
+          href="/staff/account-deletions"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 13.5,
+            color: pendingAccountReviewCount ? '#b91c1c' : 'var(--ink-soft)',
+            background: pendingAccountReviewCount ? '#fef2f2' : 'var(--surface)',
+            padding: '9px 14px', borderRadius: 10, textDecoration: 'none',
+          }}
+        >
+          Account deletions under review{pendingAccountReviewCount ? ` — ${pendingAccountReviewCount} waiting` : ' — none waiting'}
         </Link>
       </div>
 

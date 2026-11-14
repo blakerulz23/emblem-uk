@@ -604,11 +604,17 @@ let c96, c97, db9, w9, data96;
   check('9: no existing row changed; every row has the marker NULL', (await momentsRows()) === data96 && await n(db9, `select count(*)::int n from public.moments where verifier_account_deleted_at is not null`) === 0);
   check('9: all three rules are validated', await n(db9, `select count(*)::int n from pg_constraint where convalidated and conname in ('moments_verification_status_consistency', 'player_deletion_requests_cancellation_requires_actor', 'sipdr_cancellation_requires_actor')`) === 3);
   const d = diffCatalog(c96, c97);
+  // The two new tables (erased_accounts, account_deletion_staff_actions) are checked as relations; their
+  // columns, constraints and indexes are part of them.
+  const NEW_TABLES = /^(column|constraint|index):(erased_accounts|account_deletion_staff_actions)[._]/;
+  d.added = d.added.filter((k) => !NEW_TABLES.test(k));
   const expected = {
     added: ['column:moments.verifier_account_deleted_at', 'column:player_deletion_requests.cancelled_by_account_deleted_at', 'column:squad_invite_participation_deletion_requests.cancelled_by_account_deleted_at',
       'function:account_deletion_blocking_reason(p_profile_id uuid)', 'function:complete_pending_profile_deletion(p_pending_deletion_id uuid, p_reason text)',
       'function:erase_account_for_deletion(p_profile_id uuid, p_email text, p_completed_by uuid)', 'function:guard_profile_deletion()',
-      'policy:moments.moments: only account deletion marks a verifier as deleted', 'trigger:profiles.profiles_account_deletion_guard'].sort(),
+      'policy:moments.moments: only account deletion marks a verifier as deleted', 'trigger:profiles.profiles_account_deletion_guard',
+      'relation:erased_accounts', 'relation:account_deletion_staff_actions', 'function:account_is_erased()', 'function:refuse_erased_account_profile()',
+      'trigger:profiles.profiles_refuse_erased_account'].sort(),
     changed: ['constraint:moments.moments_verification_status_consistency', 'constraint:player_deletion_requests.player_deletion_requests_cancellation_requires_actor', 'constraint:squad_invite_participation_deletion_requests.sipdr_cancellation_requires_actor', 'function:delete_own_guardian_account()'].sort(),
   };
   check('9: the catalog change is exactly: three marker columns, one restrictive policy, three rules, the changed function, the blocker helper, the erasure, the staff completion, and the profile-deletion guard trigger with its function',
@@ -616,7 +622,7 @@ let c96, c97, db9, w9, data96;
   check('9: delete_own_guardian_account keeps SECURITY DEFINER, empty search_path, owner postgres, and EXECUTE for authenticated only',
     c97.get('function:delete_own_guardian_account()').split(' | ').slice(0, 5).join(' | ') === c96.get('function:delete_own_guardian_account()').split(' | ').slice(0, 5).join(' | '));
   check('9: the trigger function, the blocker helper and the erasure are executable by no API role', await n(db9, `select count(*)::int n from (values ('anon'), ('authenticated'), ('service_role')) r(role),
-      (values ('public.guard_profile_deletion()'), ('public.account_deletion_blocking_reason(uuid)'), ('public.erase_account_for_deletion(uuid, text, uuid)')) f(fn)
+      (values ('public.guard_profile_deletion()'), ('public.account_deletion_blocking_reason(uuid)'), ('public.erase_account_for_deletion(uuid, text, uuid)'), ('public.refuse_erased_account_profile()')) f(fn)
       where has_function_privilege(r.role, f.fn, 'EXECUTE')`) === 0);
   check('9: the staff completion is executable by authenticated only (it checks staff itself), never anon or service_role',
     JSON.stringify((await db9.query(`select r.role from (values ('anon'), ('authenticated'), ('service_role')) r(role)

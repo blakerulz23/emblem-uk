@@ -100,6 +100,25 @@ describe('migration 0098 — deletion review suspension and verifier identity', 
     expect(rollbackCode).toContain('drop trigger profiles_close_deletion_review_suspensions on public.profiles;\ndrop function public.close_deletion_review_suspensions();');
   });
 
+  it('staff page support: a counts-only preview for signed-in staff, and the own status of the account', () => {
+    const preview = code.slice(code.indexOf('create function public.account_deletion_preview('), code.indexOf('grant execute on function public.account_deletion_preview(uuid) to authenticated;'));
+    expect(preview).toContain("raise exception 'Not authorized: staff only';");
+    expect(preview).toContain('stable');
+    expect(preview).not.toMatch(/\b(insert into|update public\.|delete from)\b/);
+    expect(preview).not.toMatch(/'(name|title|note|email)'/);
+    expect(code).toContain('revoke all on function public.account_deletion_preview(uuid) from public, anon, service_role;');
+    expect(code).toContain("where auth_user_id = auth.uid() and status = 'pending'");
+    expect(code).toContain('revoke all on function public.my_account_deletion_review() from public, anon, service_role;');
+    expect(rollbackCode).toContain('drop function public.my_account_deletion_review();\ndrop function public.account_deletion_preview(uuid);');
+  });
+
+  it('reject and restore are audited once (a repeat that changes nothing writes nothing)', () => {
+    const reject = code.slice(code.indexOf('create function public.reject_pending_profile_deletion('), code.indexOf('alter function public.reject_pending_profile_deletion('));
+    expect(reject.indexOf("return 'already_rejected';")).toBeLessThan(reject.indexOf('insert into public.account_deletion_staff_actions'));
+    const restore = code.slice(code.indexOf('create function public.restore_coach_access_after_deletion_rejection('), code.indexOf('alter function public.restore_coach_access_after_deletion_rejection('));
+    expect(restore).toMatch(/if v_open > 0 then\s+insert into public\.account_deletion_staff_actions/);
+  });
+
   it('the staff functions are definer, staff-checked, and executable by service_role only', () => {
     for (const fn of ['reject_pending_profile_deletion', 'restore_coach_access_after_deletion_rejection']) {
       const body = code.slice(code.indexOf(`create function public.${fn}(`));
