@@ -29,7 +29,8 @@ vi.mock('@/lib/supabase/server', () => ({
         const chain = {
           select: () => chain,
           eq: () => chain,
-          is: async () => ({ data: invites, error: null }),
+          is: () => chain,
+          gt: async () => ({ data: invites, error: null }),
           update: () => ({ in: async (_c: string, ids: unknown[]) => { expired.push(...ids); return { error: null }; } }),
         };
         return chain;

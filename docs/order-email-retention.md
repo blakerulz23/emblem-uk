@@ -1,10 +1,10 @@
 # Order purchaser emails: purpose, access and retention
 
-Decision (Blake, 14 November 2026): an order's purchaser email is kept with the order. Deleting the purchaser's Emblem account doesn't change it. Migration 0097's account erasure never reads or writes `orders`.
+Decision (Blake, 14 November 2026): an order's purchaser email is kept with the order. Deleting the purchaser's Emblem account doesn't change it. Migration 0097's account erasure never changes an order's emails. The only order field it touches is `approved_by`, which is cleared when the approving staff account is erased, as before 0097.
 
 ## What this covers
 - `orders.purchaser_email`: the address the buyer gave at checkout.
-- `orders.intended_guardian_email`: the address the buyer named for the child's parent, when they gave one. It is held on the same order record. **Blake to confirm** that the same rule applies to it.
+- `orders.intended_guardian_email`: the address the buyer named for the child's parent, when they gave one. It is held on the same order record and treated the same way. Open decision: confirm this rule for it.
 
 ## Purpose
 - **Financial:** the order is part of the company's accounting records (payments, refunds and partner commissions are worked out from it).
@@ -14,11 +14,12 @@ Decision (Blake, 14 November 2026): an order's purchaser email is kept with the 
 It isn't used for marketing, and it isn't proof that the buyer is the child's parent or guardian (`0003`: an order is never itself proof of a real player or a guardian).
 
 ## Who can read it
-- **The server,** with the app's `service_role` key (server-side only). That covers two things:
+- **The server,** with the app's `service_role` key (server-side only). That covers:
   - the staff pages, which check for a staff session first;
-  - the order flows themselves: checkout, payment updates and the invites an order sends.
+  - the order flows themselves: checkout, payment webhooks and updates, unpaid-order and duplicate-payment recovery, the purchaser's own order recovery, and the invites and notifications an order sends.
 - **The purchaser,** through the app: the `orders: purchaser can view their own` RLS policy matches `purchaser_email = auth.email()`.
-  - So a later account with the same verified address can see those orders, including after the original account was deleted. This is deliberate: the address proves ownership of the order, not the account.
+  - It is an exact match on the signed-in account's address. The policy itself doesn't check that the address is verified: sign-up and sign-in do that.
+  - A later account with the same address can see those orders, including after the original account was deleted. This is deliberate: the address is what ties a buyer to the order, not the account.
 - **Nobody else.** Anonymous users have no access, and other signed-in users see no order that isn't theirs.
 
 Don't copy order emails into logs, alerts, analytics, or any table or record that isn't the order.
@@ -34,4 +35,5 @@ Don't copy order emails into logs, alerts, analytics, or any table or record tha
 ## When the purchaser deletes their account
 - The order and its emails stay as they are.
 - Invites the order created that were addressed to that account are revoked at erasure, and lose the address (0097, section 10).
-- A later invite or resend for the order goes to the address on the order, and only by a deliberate staff action.
+- A later invite or resend for the order goes only by a deliberate staff action.
+- Automatic order notifications still go to the address on the order. For example, the buyer is told when a guardian responds to a gift order (`/api/builder-authority/guardian-respond`).

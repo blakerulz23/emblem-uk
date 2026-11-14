@@ -1566,8 +1566,11 @@ console.log('\n=== 22. Invites addressed to an erased account are revoked for go
     const allowed = {
       status: await errOf(() => w.service(`update public.player_invites set email_status = 'skipped_no_email' where id = $1`, [A.ids.piUnused])),
       creator: await errOf(() => db.query(`update public.coach_invites set created_by = null where id = $1`, [A.ids.ciUnused])),
+      // A retirement (as the gift-order resend does) sets the expiry to now: still in the past, so harmless.
+      expireNow: await errOf(() => w.service(`update public.player_invites set expires_at = now() where id = $1`, [A.ids.piUnused])),
     };
-    check('22: …while delivery status and clearing the creator still work on a revoked invite', Object.values(allowed).every((e) => e === null), JSON.stringify(allowed));
+    check('22: …while delivery status, clearing the creator and an "expire it now" retirement still work on a revoked invite',
+      Object.values(allowed).every((e) => e === null) && new Date((await inv('player_invites', A.ids.piUnused)).expires_at) <= new Date(), JSON.stringify(allowed));
     const usedOther = await inv('player_invites', A.ids.piUsedByOther), usedX = await inv('coach_invites', ciUsedByX);
     check('22: used invites lose the address and keep the record of the use (addressed to the account: user and code kept; redeemed by the account: user cleared as before)',
       usedOther.invited_email === null && usedOther.used_by === people.coParent && usedOther.used_at !== null && usedOther.code === A.codes.piUsedByOther && usedOther.revoked_at === null
@@ -1614,6 +1617,16 @@ console.log('\n=== 22. Invites addressed to an erased account are revoked for go
     const again = await errOf(() => db.query(`select public.erase_account_for_deletion($1, $2, null)`, [z, ez]));
     check('22: idempotent — retried, it revokes; run again for the same account it is refused (EMERA) and changes nothing',
       rZ.canDeleteIdentity === true && revokedOk(await inv('coach_invites', C.ids.ciUnused), C.codes.ciUnused) && again === 'EMERA:account_erased' && (await inviteRows(db)) === afterZ, again);
+    // --- D. A review whose account was already deleted another way (pre-0097, login and profile removed by hand) ---
+    const d = id();
+    const ed = `S22-gone-${d.slice(0, 8)}@example.test`;
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason) values ($1, $2, 'coach_authored_player_records')`, [d, ed]);
+    const D = await addInvites(ed, 'D');
+    const cD = await complete(w, (await pendingOf(db, d)).id);
+    const rowsD = await Promise.all(UNUSED.map(([k, t]) => inv(t, D.ids[k])));
+    check('22: staff closing a review whose account was already deleted another way (account_already_deleted) revokes the invites addressed to it, from the review\'s address, before clearing it',
+      cD.status === 'account_already_deleted' && UNUSED.every(([k], i) => revokedOk(rowsD[i], D.codes[k])) && (await inv('player_invites', D.ids.piUsedByOther)).invited_email === null
+        && (await pendingOf(db, d)).email === null && (await emailHitsIn(db, ed)).length === 0, JSON.stringify(cD));
     check('22: invite rows hold no address of any erased account in this world',
       (await emailHitsIn(db, ey)).length === 0 && (await emailHitsIn(db, ez)).length === 0, [...await emailHitsIn(db, ey), ...await emailHitsIn(db, ez)].join(', '));
   } catch (e) {
@@ -1699,7 +1712,7 @@ console.log('\n=== 24. R0 legacy-row count and the service_role privilege pre-ch
     const row = (await db.exec(sql)).at(-1).rows[0];
     return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, typeof v === 'bigint' ? Number(v) : v]));
   };
-  const STOP = ['auth_retry_rows_with_email', 'resolved_reviews_with_email', 'closed_child_requests_with_contact', 'closed_participation_requests_with_contact', 'used_invites_redeemer_gone_with_email'];
+  const STOP = ['auth_retry_rows_with_email', 'resolved_reviews_with_email', 'closed_child_requests_with_contact', 'closed_participation_requests_with_contact', 'used_invites_redeemer_gone_with_email', 'invites_to_deleted_accounts'];
   const w = await world({ through: '0096' });
   const { db, people } = w;
   try {
@@ -1718,21 +1731,24 @@ console.log('\n=== 24. R0 legacy-row count and the service_role privilege pre-ch
     await db.query(`insert into public.squad_invite_participation_deletion_requests (participation_id, requested_by, requester_email, status, cancelled_by, cancelled_at) values ($1, $2, 'legacy-c@example.test', 'cancelled', $2, now())`, [part, people.parent]);
     await db.query(`insert into public.player_invites (player_id, code, invited_email, origin, used_at) values ($1, 'S24-USED', 'legacy-d@example.test', 'second_guardian', now())`, [w.player]);
     await db.query(`insert into public.coach_invites (player_id, code, created_by, invited_email) values ($1, 'S24-UNUSED', $2, 'nobody-yet@example.test')`, [w.directPlayer, people.parent]);
+    await db.query(`insert into public.team_invites (team_id, code, invited_email) values ($1, 'S24-TO-GONE', ' Legacy-A@example.test')`, [w.otherTeam]);
     const legacy = await runCheck(db, LEGACY);
     const expected = { auth_retry_rows_with_email: 1, resolved_reviews_with_email: 1, closed_child_requests_with_contact: 1, closed_participation_requests_with_contact: 1, used_invites_redeemer_gone_with_email: 1,
-      pending_reviews_with_email: 1, open_child_requests_with_contact: 1, unused_invites_with_email_no_account: 1 };
+      invites_to_deleted_accounts: 1, pending_reviews_with_email: 1, open_child_requests_with_contact: 1, unused_invites_with_email_no_account: 2 };
     check('24: legacy check counts each kind of pre-0097 row (every STOP figure 1, so R0 stops) and the expected pending ones',
       legacy.read_only_guard === 'on' && Object.entries(expected).every(([k, v]) => legacy[k] === v), JSON.stringify(legacy));
     const snapshot = async () => rowsOf(db, `select (select json_agg(t order by t.auth_user_id) from public.pending_auth_deletions t) a,
         (select json_agg(t order by t.auth_user_id) from public.pending_profile_deletions t) b,
         (select json_agg(t order by t.id) from public.player_deletion_requests t) c,
         (select json_agg(t order by t.id) from public.squad_invite_participation_deletion_requests t) d,
-        (select json_agg(t order by t.id) from public.player_invites t) e`);
+        (select json_agg(t order by t.id) from public.player_invites t) e,
+        (select json_agg(t order by t.id) from public.team_invites t) f`);
     const before = await snapshot();
     const applied97 = await applyMigrations(db, { from: '0097', through: '0097' }).then(() => null).catch((e) => e.message);
     const privs = await runCheck(db, PRIVS);
-    check('24: privilege check before 0098: read-only, the four expected privileges present (expected_four_present true)',
-      applied97 === null && privs.read_only_guard === 'on' && privs.expected_four_present === true && privs.service_role_insert && privs.service_role_update && privs.service_role_delete && privs.service_role_truncate, JSON.stringify(privs) + ' ' + applied97);
+    check('24: privilege check before 0098: read-only, the four expected privileges present and granted directly (expected_four_present true)',
+      applied97 === null && privs.read_only_guard === 'on' && privs.expected_four_present === true && privs.service_role_insert && privs.service_role_update && privs.service_role_delete && privs.service_role_truncate
+        && ['DELETE', 'INSERT', 'TRUNCATE', 'UPDATE'].every((p) => privs.direct_grants.split(',').includes(p)), JSON.stringify(privs) + ' ' + applied97);
     const applied98 = await applyMigrations(db, { from: '0098', through: '0098' }).then(() => null).catch((e) => e.message);
     const after = await runCheck(db, LEGACY);
     const strip = (s) => JSON.parse(s);
@@ -1741,7 +1757,7 @@ console.log('\n=== 24. R0 legacy-row count and the service_role privilege pre-ch
     const pick = (rows, keys) => rows.map((r) => Object.fromEntries(keys.map((k) => [k, r[k]])));
     const unchanged = (t) => JSON.stringify(b[t]) === JSON.stringify(pick(a[t], Object.keys(b[t][0])));
     const addedNull = (t) => a[t].every((r) => Object.keys(r).filter((k) => !(k in b[t][0])).every((k) => r[k] === null));
-    const sameRows = ['a', 'b', 'c', 'd', 'e'].every((t) => unchanged(t) && addedNull(t));
+    const sameRows = ['a', 'b', 'c', 'd', 'e', 'f'].every((t) => unchanged(t) && addedNull(t));
     check('24: 0097 and 0098 apply over the legacy rows without changing any of them (no automatic clean-up); the counts are unchanged',
       applied98 === null && STOP.every((k) => after[k] === legacy[k]) && sameRows, `${applied98} ${JSON.stringify(after)}`);
     const privsAfter = await runCheck(db, PRIVS);
@@ -1755,6 +1771,13 @@ console.log('\n=== 24. R0 legacy-row count and the service_role privilege pre-ch
     check('24: with one of the four missing the check reads false (STOP), and 0098 itself refuses, changing nothing',
       mism.expected_four_present === false && mism.service_role_truncate === false && refused?.includes('unexpected privileges') && (await n(w2.db, `select count(*)::int n from pg_proc where proname = 'account_deletion_preview'`)) === 0, `${JSON.stringify(mism)} ${refused}`);
     await w2.db.close();
+    // Held only through PUBLIC (0098's revoke from service_role would not remove it): STOP too.
+    const w3 = await world({ through: '0097' });
+    await w3.db.exec(`revoke insert, update, delete, truncate on public.pending_profile_deletions from service_role; grant insert, update, delete, truncate on public.pending_profile_deletions to public;`);
+    const viaPublic = await runCheck(w3.db, PRIVS);
+    check('24: privileges held only through PUBLIC read as STOP (has_table_privilege true, but not granted directly)',
+      viaPublic.service_role_insert === true && viaPublic.expected_four_present === false && viaPublic.public_grants > 0, JSON.stringify(viaPublic));
+    await w3.db.close();
   } catch (e) {
     check('24: pre-checks', false, e.stack);
   }

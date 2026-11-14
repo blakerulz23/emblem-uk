@@ -621,7 +621,7 @@ let c96, c97, db9, w9, data96;
       'trigger:erased_accounts.erased_accounts_no_truncate',
       // Section 10: invite revocation; section 11: child-deletion contact redaction.
       ...['player_invites', 'coach_invites', 'team_invites'].flatMap((t) => [`column:${t}.revoked_at`, `column:${t}.revoked_reason`, `constraint:${t}.${t}_revoked_state`, `trigger:${t}.${t}_revoked_guard`]),
-      'function:refuse_revoked_invite_reuse()', 'function:redact_closed_deletion_request_contact()',
+      'function:refuse_revoked_invite_reuse()', 'function:redact_closed_deletion_request_contact()', 'function:revoke_invites_addressed_to(p_profile_id uuid, p_email text)',
       'trigger:player_deletion_requests.player_deletion_requests_redact_closed_contact', 'trigger:squad_invite_participation_deletion_requests.sipdr_redact_closed_contact',
       'constraint:player_deletion_requests.player_deletion_requests_closed_has_no_contact', 'constraint:squad_invite_participation_deletion_requests.sipdr_closed_has_no_contact'].sort(),
     changed: ['constraint:moments.moments_verification_status_consistency', 'constraint:player_deletion_requests.player_deletion_requests_cancellation_requires_actor', 'constraint:squad_invite_participation_deletion_requests.sipdr_cancellation_requires_actor', 'function:delete_own_guardian_account()'].sort(),

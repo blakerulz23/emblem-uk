@@ -41,6 +41,7 @@ function fakeService(tables: Tables, failTables: string[] = []) {
         in: (c: string, vs: unknown[]) => { filters.push((r) => vs.includes(r[c])); return q; },
         is: (c: string, v: unknown) => { filters.push((r) => (r[c] ?? null) === v); return q; },
         not: (c: string, _op: string, v: unknown) => { filters.push((r) => (r[c] ?? null) !== v); return q; },
+        gt: (c: string, v: string) => { filters.push((r) => typeof r[c] === 'string' && (r[c] as string) > v); return q; },
         order: () => q,
         limit: (n: number) => { limit = n; return q; },
         maybeSingle: async () => { const r = run(); return { data: Array.isArray(r.data) ? r.data[0] ?? null : r.data, error: r.error }; },
@@ -53,6 +54,7 @@ function fakeService(tables: Tables, failTables: string[] = []) {
 }
 
 const CONFIRMED = '2026-11-08T00:00:00Z';
+const LIVE = '2999-01-01T00:00:00Z';
 const guardian = { email: 'Guardian@Example.test', email_confirmed_at: CONFIRMED };
 const buyer = { email: 'grandparent@example.test', email_confirmed_at: CONFIRMED };
 
@@ -257,18 +259,29 @@ describe('retireOtherOrderApprovalInvites', () => {
   it('expires unused order-approval invites not sent to the approving guardian, and nothing else', async () => {
     const tables: Tables = {
       player_invites: [
-        { id: 'buyer-invite', order_id: 'order-1', origin: 'order_approval', used_at: null, invited_email: 'grandparent@example.test' },
-        { id: 'guardian-invite', order_id: 'order-1', origin: 'order_approval', used_at: null, invited_email: 'Guardian@example.test' },
-        { id: 'used', order_id: 'order-1', origin: 'order_approval', used_at: '2026-11-01', invited_email: 'grandparent@example.test' },
-        { id: 'other-order', order_id: 'order-2', origin: 'order_approval', used_at: null, invited_email: 'x@example.test' },
-        { id: 'second-guardian', order_id: 'order-1', origin: 'second_guardian', used_at: null, invited_email: 'y@example.test' },
+        { id: 'buyer-invite', order_id: 'order-1', origin: 'order_approval', used_at: null, invited_email: 'grandparent@example.test', expires_at: LIVE },
+        { id: 'guardian-invite', order_id: 'order-1', origin: 'order_approval', used_at: null, invited_email: 'Guardian@example.test', expires_at: LIVE },
+        { id: 'used', order_id: 'order-1', origin: 'order_approval', used_at: '2026-11-01', invited_email: 'grandparent@example.test', expires_at: LIVE },
+        { id: 'other-order', order_id: 'order-2', origin: 'order_approval', used_at: null, invited_email: 'x@example.test', expires_at: LIVE },
+        { id: 'second-guardian', order_id: 'order-1', origin: 'second_guardian', used_at: null, invited_email: 'y@example.test', expires_at: LIVE },
       ],
     };
     const { client, updates } = fakeService(tables);
     expect(await retireOtherOrderApprovalInvites(client, 'order-1', 'guardian@example.test')).toEqual({ ok: true });
     expect(updates).toHaveLength(1);
     expect(updates[0].ids).toEqual(['buyer-invite']);
-    expect(tables.player_invites.find((r) => r.id === 'guardian-invite')?.expires_at).toBeUndefined();
+    expect(tables.player_invites.find((r) => r.id === 'guardian-invite')?.expires_at).toBe(LIVE);
+  });
+
+  it('leaves an already-expired invite alone, including one revoked because its recipient account was erased (the database refuses any change to it)', async () => {
+    const revoked = { id: 'revoked', order_id: 'order-1', origin: 'order_approval', used_at: null, invited_email: null, expires_at: '2026-11-01T00:00:00Z', revoked_at: '2026-11-01T00:00:00Z' };
+    const tables: Tables = {
+      player_invites: [revoked, { id: 'buyer-invite', order_id: 'order-1', origin: 'order_approval', used_at: null, invited_email: 'grandparent@example.test', expires_at: LIVE }],
+    };
+    const { client, updates } = fakeService(tables);
+    expect(await retireOtherOrderApprovalInvites(client, 'order-1', 'guardian@example.test')).toEqual({ ok: true });
+    expect(updates).toEqual([expect.objectContaining({ ids: ['buyer-invite'] })]);
+    expect(revoked.expires_at).toBe('2026-11-01T00:00:00Z');
   });
 });
 

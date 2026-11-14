@@ -114,16 +114,17 @@ begin
   if v_marked > 0 then
     raise exception '0097 rollback refused: % cancelled deletion request(s) were cancelled by an account that has since been deleted; the original cancellation rules cannot hold them. Fix forward instead.', v_marked;
   end if;
+  if to_regprocedure('public.refuse_revoked_invite_reuse()') is null
+     or to_regprocedure('public.revoke_invites_addressed_to(uuid, text)') is null
+     or to_regprocedure('public.redact_closed_deletion_request_contact()') is null then
+    raise exception '0097 rollback refused: 0097 is not applied (invite revocation or contact redaction missing)';
+  end if;
   select (select count(*) from public.player_invites where revoked_at is not null)
        + (select count(*) from public.coach_invites where revoked_at is not null)
        + (select count(*) from public.team_invites where revoked_at is not null)
     into v_marked;
   if v_marked > 0 then
     raise exception '0097 rollback refused: % invite(s) were revoked because their recipient account was erased; dropping the revocation record and its guard is not allowed. Fix forward instead.', v_marked;
-  end if;
-  if to_regprocedure('public.refuse_revoked_invite_reuse()') is null
-     or to_regprocedure('public.redact_closed_deletion_request_contact()') is null then
-    raise exception '0097 rollback refused: 0097 is not applied (invite revocation or contact redaction missing)';
   end if;
 end;
 $$;
@@ -159,6 +160,7 @@ drop trigger profiles_account_deletion_guard on public.profiles;
 drop function public.guard_profile_deletion();
 drop function public.complete_pending_profile_deletion(uuid, text);
 drop function public.erase_account_for_deletion(uuid, text, uuid);
+drop function public.revoke_invites_addressed_to(uuid, text);
 drop function public.account_deletion_blocking_reason(uuid);
 
 -- 4 reversed: the 0076 function body, exactly.

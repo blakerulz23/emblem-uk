@@ -137,8 +137,12 @@ export async function resolveProfileInviteRecipient(service: SupabaseClient, ord
  * Expires every unused order-approval invite for this order that was sent
  * to anyone other than `keepEmail` (the approving guardian). Used when staff
  * resend a gift order's invite, so an invite an earlier version of the app
- * sent to the buyer stops working. Unused invites only; a redeemed invite is
- * history and is left alone (see REPORT.md for those).
+ * sent to the buyer stops working. Unused, still-live invites only: a
+ * redeemed invite is history and is left alone (see REPORT.md for those), and
+ * one already expired needs nothing. That includes an invite revoked because
+ * its recipient's account was erased (migration 0097): its expiry is already
+ * past, and the database refuses any change to it, so touching it would fail
+ * the whole resend.
  */
 export async function retireOtherOrderApprovalInvites(
   service: SupabaseClient,
@@ -150,7 +154,8 @@ export async function retireOtherOrderApprovalInvites(
     .select('id, invited_email')
     .eq('order_id', orderId)
     .eq('origin', 'order_approval')
-    .is('used_at', null);
+    .is('used_at', null)
+    .gt('expires_at', new Date().toISOString());
   if (error) return { ok: false };
   const keep = normaliseEmail(keepEmail);
   const stale = ((data ?? []) as Array<{ id: string; invited_email: string | null }>)

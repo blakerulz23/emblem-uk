@@ -114,10 +114,18 @@ begin
   if not exists (select 1 from pg_proc where oid = to_regprocedure('public.erase_account_for_deletion(uuid, text, uuid)')
                    and prosrc like '%insert into public.erased_accounts%'
                    and prosrc like '%set email = null%' and prosrc like '%''self_deleted''%'
+                   and prosrc like '%public.revoke_invites_addressed_to(v_uid, v_email)%')
+     or not exists (select 1 from pg_proc where oid = to_regprocedure('public.revoke_invites_addressed_to(uuid, text)')
                    and prosrc like '%''recipient_account_erased''%')
-     or (select count(*) from pg_trigger where not tgisinternal and tgenabled <> 'D' and tgname in (
-           'player_invites_revoked_guard', 'coach_invites_revoked_guard', 'team_invites_revoked_guard',
-           'player_deletion_requests_redact_closed_contact', 'sipdr_redact_closed_contact')) <> 5
+     or (select count(*) from pg_trigger t where not t.tgisinternal and t.tgenabled <> 'D' and (t.tgname, t.tgrelid) in (
+           ('player_invites_revoked_guard', 'public.player_invites'::regclass),
+           ('coach_invites_revoked_guard', 'public.coach_invites'::regclass),
+           ('team_invites_revoked_guard', 'public.team_invites'::regclass),
+           ('player_deletion_requests_redact_closed_contact', 'public.player_deletion_requests'::regclass),
+           ('sipdr_redact_closed_contact', 'public.squad_invite_participation_deletion_requests'::regclass))) <> 5
+     or (select count(*) from pg_constraint where conname in (
+           'player_invites_revoked_state', 'coach_invites_revoked_state', 'team_invites_revoked_state',
+           'player_deletion_requests_closed_has_no_contact', 'sipdr_closed_has_no_contact')) <> 5
      or not exists (select 1 from pg_proc where oid = to_regprocedure('public.complete_pending_profile_deletion(uuid, text)')
                    and prosrc like '%account_deletion_staff_actions%' and prosrc like '%''profileId''%')
      or to_regprocedure('public.record_account_sign_in_removal(uuid, text, text)') is null then

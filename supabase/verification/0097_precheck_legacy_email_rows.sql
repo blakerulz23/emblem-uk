@@ -35,8 +35,12 @@ set transaction read only;
 --   STOP used_invites_redeemer_gone_with_email
 --                                          player/coach/team invites used by an account since deleted
 --                                          (used_at set, used_by cleared) that still hold invited_email
+--   STOP invites_to_deleted_accounts       player/coach/team invites, used or not, still holding an address that a
+--                                          deletion record (pending_profile_deletions or pending_auth_deletions)
+--                                          holds for an account whose sign-in no longer exists: invites 0097 would
+--                                          have revoked or cleared at the erasure
 --   info pending_reviews_with_email        pending reviews (they keep the email while pending: expected)
---   info open_child_requests_with_contact  pending child-deletion requests with a contact (expected)
+--   info open_child_requests_with_contact  pending child-deletion requests (both tables) with a contact (expected)
 --   info unused_invites_with_email_no_account
 --                                          unused invites addressed to an address no current sign-in has.
 --                                          Cannot be told apart from a person who has not signed up yet, so
@@ -50,8 +54,19 @@ select
   (select count(*) from public.player_invites where used_at is not null and used_by is null and invited_email is not null)
     + (select count(*) from public.coach_invites where used_at is not null and used_by is null and invited_email is not null)
     + (select count(*) from public.team_invites where used_at is not null and used_by is null and invited_email is not null) as used_invites_redeemer_gone_with_email,
+  (select count(*) from (
+     select invited_email from public.player_invites where invited_email is not null
+     union all select invited_email from public.coach_invites where invited_email is not null
+     union all select invited_email from public.team_invites where invited_email is not null) i
+   where lower(btrim(i.invited_email)) in (
+     select lower(btrim(d.email)) from public.pending_profile_deletions d
+      where d.email is not null and not exists (select 1 from auth.users u where u.id = d.auth_user_id)
+     union
+     select lower(btrim(a.email)) from public.pending_auth_deletions a
+      where a.email is not null and not exists (select 1 from auth.users u where u.id = a.auth_user_id))) as invites_to_deleted_accounts,
   (select count(*) from public.pending_profile_deletions where status = 'pending' and email is not null) as pending_reviews_with_email,
-  (select count(*) from public.player_deletion_requests where status = 'pending' and requester_email is not null) as open_child_requests_with_contact,
+  (select count(*) from public.player_deletion_requests where status = 'pending' and requester_email is not null)
+    + (select count(*) from public.squad_invite_participation_deletion_requests where status = 'pending' and requester_email is not null) as open_child_requests_with_contact,
   (select count(*) from (
      select invited_email from public.player_invites where used_at is null and invited_email is not null
      union all select invited_email from public.coach_invites where used_at is null and invited_email is not null

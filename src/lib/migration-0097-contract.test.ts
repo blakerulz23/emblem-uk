@@ -162,7 +162,7 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     expect(code).toContain('revoke all on function public.guard_profile_deletion() from public, anon, authenticated, service_role;');
     expect(code).toContain('create trigger profiles_account_deletion_guard\n  before delete on public.profiles\n  for each row execute function public.guard_profile_deletion();');
     expect(code).toContain('a 0097 account-deletion function or trigger already exists (0097 already applied)');
-    expect(rollbackCode).toContain('drop trigger profiles_account_deletion_guard on public.profiles;\ndrop function public.guard_profile_deletion();\ndrop function public.complete_pending_profile_deletion(uuid, text);\ndrop function public.erase_account_for_deletion(uuid, text, uuid);\ndrop function public.account_deletion_blocking_reason(uuid);');
+    expect(rollbackCode).toContain('drop trigger profiles_account_deletion_guard on public.profiles;\ndrop function public.guard_profile_deletion();\ndrop function public.complete_pending_profile_deletion(uuid, text);\ndrop function public.erase_account_for_deletion(uuid, text, uuid);\ndrop function public.revoke_invites_addressed_to(uuid, text);\ndrop function public.account_deletion_blocking_reason(uuid);');
   });
 
   it('keeps the moment coach_verified: exactly one of verified_by or the marker, verified_at always required', () => {
@@ -238,8 +238,10 @@ describe('0097 rollback — emergency only', () => {
     expect(erase.indexOf('update public.pending_profile_deletions set email = null')).toBeLessThan(erase.indexOf('delete from public.profiles where id = v_uid'));
     expect(erase).toContain("'self_deleted'");
     const complete = defOf(code, 'create function public.complete_pending_profile_deletion(p_pending_deletion_id uuid, p_reason text)');
-    // The only use of the email: handed to the erasure (for the 0076 child deletion request), which then clears it.
-    expect(complete.match(/v_pending\.email/g)).toEqual(['v_pending.email']);
+    // The only uses of the email: handed to the erasure (for the 0076 child deletion request and the invite
+    // revocation), or, for an account already deleted another way, to the invite revocation; then cleared.
+    expect(complete.match(/v_pending\.email/g)).toEqual(['v_pending.email', 'v_pending.email']);
+    expect(complete).toContain('perform public.revoke_invites_addressed_to(v_uid, v_pending.email);');
     expect(complete).toContain('public.erase_account_for_deletion(v_uid, v_pending.email, v_staff)');
     expect(complete.match(/insert into public\.pending_auth_deletions \(auth_user_id, email, last_error\)\s+values \(v_uid, null,/g)).toHaveLength(2);
     expect(complete).toContain('on conflict (auth_user_id) do update set email = null;');
@@ -259,22 +261,28 @@ describe('0097 rollback — emergency only', () => {
     const defOf = (text: string, header: string, end = '\n$$;') => text.slice(text.indexOf(header), text.indexOf(end, text.indexOf(header)) + end.length);
     const CLEANUP_START = '  select array_agg(player_id) into v_player_ids from public.guardians where profile_id = v_uid;';
     const erase = defOf(code, 'create function public.erase_account_for_deletion(p_profile_id uuid, p_email text, p_completed_by uuid)');
+    const revoke = defOf(code, 'create function public.revoke_invites_addressed_to(p_profile_id uuid, p_email text)');
+    const complete = defOf(code, 'create function public.complete_pending_profile_deletion(p_pending_deletion_id uuid, p_reason text)');
+    // Both final-erasure paths revoke: the erasure (before the 0076 clean-up clears used_by) and staff closing a
+    // review whose account was already deleted another way (before its email is cleared).
+    expect(erase.indexOf('perform public.revoke_invites_addressed_to(v_uid, v_email);')).toBeGreaterThan(erase.indexOf("errcode = 'EMERA'"));
+    expect(erase.indexOf('perform public.revoke_invites_addressed_to(v_uid, v_email);')).toBeLessThan(erase.indexOf(CLEANUP_START));
+    const already = complete.indexOf('perform public.revoke_invites_addressed_to(v_uid, v_pending.email);');
+    expect(already).toBeGreaterThan(0);
+    expect(already).toBeLessThan(complete.indexOf("resolved_at = now(), email = null"));
+    expect(code).toContain('revoke all on function public.revoke_invites_addressed_to(uuid, text) from public, anon, authenticated, service_role;');
     for (const t of ['player_invites', 'coach_invites', 'team_invites']) {
       // Revoked: a new random code, expired, no address, marked; only unused, not already revoked, addressed to the account.
-      expect(erase).toContain(`  update public.${t}
+      expect(revoke).toContain(`  update public.${t}
      set revoked_at = now(), revoked_reason = 'recipient_account_erased', invited_email = null,
          expires_at = least(expires_at, now()), code = 'revoked:' || gen_random_uuid()::text
    where used_at is null and revoked_at is null and lower(btrim(invited_email)) = any(v_emails);`);
-      // Used: the address goes, before used_by is cleared by the 0076 clean-up.
-      const used = erase.indexOf(`  update public.${t} set invited_email = null`);
-      expect(used).toBeGreaterThan(0);
-      expect(used).toBeLessThan(erase.indexOf(CLEANUP_START));
+      // Used: the address goes (addressed to the account, or redeemed by it).
+      expect(revoke).toContain(`  update public.${t} set invited_email = null`);
       expect(code).toContain(`create trigger ${t}_revoked_guard before update on public.${t}`);
       expect(code).toContain(`add constraint ${t}_revoked_state check (`);
       expect(rollbackCode).toContain(`drop trigger ${t}_revoked_guard on public.${t};`);
     }
-    // After the EMERA guard (a repeat changes nothing) and inside the one erasure transaction.
-    expect(erase.indexOf("errcode = 'EMERA'")).toBeLessThan(erase.indexOf('recipient_account_erased'));
     expect(code).toContain("raise exception using errcode = 'EMRVK', message = 'invite_revoked';");
     // Contact cleared whenever the request is not pending, on every write, on both tables; NOT VALID check.
     expect(code).toContain("  if new.status <> 'pending' then\n    new.requester_email := null;");

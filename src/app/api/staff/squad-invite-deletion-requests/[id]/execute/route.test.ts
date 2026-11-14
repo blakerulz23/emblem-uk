@@ -10,10 +10,13 @@ vi.mock('@/lib/s3-client', () => ({ deleteObject: (key: string) => mockDeleteObj
 const mockRpc = vi.fn();
 vi.mock('@/lib/supabase/server', () => ({
   createClient: () => ({ rpc: (...args: unknown[]) => mockRpc(...args) }),
-  createServiceRoleClient: () => {
-    throw new Error('this route must not use the service-role client for storage-attempt writes');
-  },
+  // Read-only: the contact read before closing (0097). It has no rpc, so any
+  // storage-attempt write through it would still fail the test.
+  createServiceRoleClient: () => ({
+    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: mockContactRow, error: null }) }) }) }),
+  }),
 }));
+let mockContactRow: { status: string; requester_email: string | null } | null = { status: 'pending', requester_email: 'guardian@example.test' };
 
 const REQUEST_ID = 'participation-request-1';
 
@@ -84,5 +87,33 @@ describe('POST /api/staff/squad-invite-deletion-requests/[id]/execute — attemp
     expect(res.status).toBe(200);
     expect(mockDeleteObject).not.toHaveBeenCalled();
     expect(mockRpc).not.toHaveBeenCalledWith('record_squad_invite_deletion_storage_attempt', expect.anything());
+    expect(await res.json()).not.toHaveProperty('contactEmail');
+  });
+});
+
+describe('POST /api/staff/squad-invite-deletion-requests/[id]/execute — contact shown once (0097)', () => {
+  const finalizeWith = (outcome: object) =>
+    mockRpc.mockImplementation((name: string) => {
+      if (name === 'confirm_squad_invite_participation_erasure') return Promise.resolve({ data: { alreadyCompleted: false, inventory: [] }, error: null });
+      if (name === 'finalize_squad_invite_participation_erasure') return Promise.resolve({ data: outcome, error: null });
+      throw new Error(`unexpected rpc ${name}`);
+    });
+
+  it('returns the pending request\'s contact address only when this call completed it', async () => {
+    mockContactRow = { status: 'pending', requester_email: 'guardian@example.test' };
+    finalizeWith({ completed: true });
+    expect(await (await execute()).json()).toEqual({ ok: true, completed: true, contactEmail: 'guardian@example.test' });
+  });
+
+  it('a request still pending (storage or supplier step outstanding) returns no address', async () => {
+    mockContactRow = { status: 'pending', requester_email: 'guardian@example.test' };
+    finalizeWith({ completed: false, state: 'awaiting_supplier_action' });
+    expect(await (await execute()).json()).not.toHaveProperty('contactEmail');
+  });
+
+  it('an already-closed request has no address to return', async () => {
+    mockContactRow = { status: 'completed', requester_email: null };
+    finalizeWith({ completed: true });
+    expect((await (await execute()).json()).contactEmail).toBeNull();
   });
 });
