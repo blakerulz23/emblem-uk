@@ -532,7 +532,7 @@ begin
 
   if v_pending.status = 'resolved' then
     if exists (select 1 from public.profiles where id = v_uid) then
-      raise exception 'This profile deletion is marked resolved but the account still exists; it was not completed here';
+      raise exception 'This profile deletion is marked resolved but a profile with this id exists (resolved by hand, or the login signed in again after completion); nothing was changed';
     end if;
     return jsonb_build_object('status', 'already_completed');
   end if;
@@ -549,6 +549,12 @@ begin
        set status = 'resolved', resolved_by = v_staff, resolved_at = now(),
            notes = concat_ws(E'\n', notes, 'Closed by staff (account already deleted): ' || btrim(p_reason))
      where id = p_pending_deletion_id;
+    -- If the sign-in identity is still there, staff still need to remove it.
+    if exists (select 1 from auth.users where id = v_uid) then
+      insert into public.pending_auth_deletions (auth_user_id, email, last_error)
+      values (v_uid, v_pending.email, 'Reviewed account deletion closed by staff (profile already gone); the sign-in identity still needs deleting')
+      on conflict (auth_user_id) do nothing;
+    end if;
     return jsonb_build_object('status', 'account_already_deleted');
   end if;
   v_blocking_reason := public.account_deletion_blocking_reason(v_uid);

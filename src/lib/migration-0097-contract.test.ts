@@ -106,7 +106,8 @@ describe('migration 0097 — coach account deletion keeps coach-verified moments
     const staffTarget = at("raise exception 'Staff accounts are removed by the manual staff procedure, not here';");
     const blocked = at("raise exception 'The account still has records that block deletion (%); resolve them first'");
     const erase = at('v_result := public.erase_account_for_deletion(v_uid, v_pending.email, v_staff);');
-    const authQueue = at('insert into public.pending_auth_deletions (auth_user_id, email, last_error)');
+    at('insert into public.pending_auth_deletions (auth_user_id, email, last_error)');
+    const authQueue = fn.lastIndexOf('insert into public.pending_auth_deletions (auth_user_id, email, last_error)');
     expect(fn).toContain('v_staff uuid := auth.uid();');
     for (const [a, b] of [[staff, reason], [reason, lockProfile], [lockProfile, lockRequest], [lockRequest, already], [already, notPending], [notPending, staffTarget], [staffTarget, blocked], [blocked, erase], [erase, authQueue]]) {
       expect(a).toBeLessThan(b);

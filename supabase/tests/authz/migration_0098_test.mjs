@@ -973,7 +973,18 @@ console.log('\n=== 18. Parent-only under review, staff targets, and completion e
     const handId = (await pendingOf(db, people.coParent)).id;
     const hand = await attempt(() => complete(w, handId));
     check('18: a request marked resolved while the account still exists is refused (not reported as completed)',
-      hand?.includes('marked resolved but the account still exists') && await n(db, `select count(*)::int n from public.profiles where id = $1`, [people.coParent]) === 1, hand);
+      hand?.includes('marked resolved but a profile with this id exists') && await n(db, `select count(*)::int n from public.profiles where id = $1`, [people.coParent]) === 1, hand);
+    // A pending request whose profile was deleted directly (before 0097) while the login remained: closed, and the
+    // login is queued for staff.
+    const orphan = id();
+    await w.person(orphan);
+    await db.query(`delete from public.profiles where id = $1`, [orphan]);
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, email, blocking_reason) values ($1, 'o@example.test', 'coach_authored_player_records')`, [orphan]);
+    const orphanId = (await pendingOf(db, orphan)).id;
+    const oc = await complete(w, orphanId);
+    check('18: a pending request whose profile is gone but whose login remains is closed and the login is queued for staff',
+      oc.status === 'account_already_deleted' && (await pendingOf(db, orphan)).status === 'resolved' &&
+      await n(db, `select count(*)::int n from public.pending_auth_deletions where auth_user_id = $1 and status = 'pending'`, [orphan]) === 1, JSON.stringify(oc));
     const s2 = await attempt(() => complete(w, id()));
     check('18: an unknown request is refused', s2?.includes('Pending profile deletion not found'), s2);
     // A coach-only account that requests while its blocker is already cleared deletes at once (no review).
