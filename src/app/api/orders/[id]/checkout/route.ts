@@ -75,7 +75,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     // fresh approval from the child's parent or guardian.
     if (reason === 'order_held') {
       return NextResponse.json(
-        { error: "This card can't be paid for right now. The child's parent or guardian needs to approve it again from their own email address." },
+        { error: "This card can't be paid for right now: it's on hold until the child's parent or guardian approves it again from their own email address. Please contact Emblem support." },
         { status: 409 }
       );
     }

@@ -21,13 +21,20 @@
 --      guardian" step) restarts a held order: only while it is unpaid
 --      (order_intent or pending_payment; a paid held order must be refunded
 --      or cancelled first, EMHLD 'held_order_paid_refund_or_cancel_first'),
+--      and never once a payment for it was refused (Shopify may hold the
+--      money: EMHLD 'held_order_payment_refused_cancel_instead'; the order is
+--      cancelled instead, so it can never be paid for twice),
 --      and, when its approval was erased (0101 finds no genuine approval),
 --      it returns to guardian_approval_pending (audited:
 --      guardian_request_restarted_after_hold). The hold stays.
 --   4. respond_to_builder_guardian_approval: an approval of a held, unpaid
---      order from a genuine guardian (0101's rule) lifts the hold in the same
---      transaction (audited: hold_released_by_guardian_approval). The 0097
---      trigger re-checks this; nothing else can lift a hold.
+--      order with no refused payment, from a genuine guardian (0101's rule),
+--      lifts the hold in the same transaction (audited:
+--      hold_released_by_guardian_approval). The 0097 trigger re-checks this
+--      and refuses a release written by anyone but this function's owner;
+--      nothing else can lift a hold.
+--   Both approval-request functions take their table lock before any row
+--   lock, the same order as the 0097 erasure, so they cannot deadlock.
 --   5. builder_authority_audit_events accepts those two event types.
 --
 -- Everything else in the four functions is their current body (0101 for
@@ -348,6 +355,9 @@ begin
     raise exception 'a valid token_hash is required';
   end if;
 
+  -- 0102: the table lock comes first, before any row lock, so this can
+  -- never deadlock with an erasure (0097 locks this table, then the order).
+  lock table public.builder_guardian_approval_requests in row exclusive mode;
   select authority_status, payment_status, held_at into v_order_status, v_payment_status, v_held_at
     from public.orders where id = p_order_id for update;
   -- 0102: a held order (its guardian's account was erased, 0097) restarts
@@ -358,6 +368,13 @@ begin
   if v_held_at is not null then
     if v_payment_status is distinct from 'order_intent' and v_payment_status is distinct from 'pending_payment' then
       raise exception using errcode = 'EMHLD', message = 'held_order_paid_refund_or_cancel_first';
+    end if;
+    -- Shopify may have taken money for it already (a refused payment is
+    -- recorded, the order stays unpaid): never restart, so it can never be
+    -- paid for twice. Refund that payment and cancel the order.
+    if exists (select 1 from public.payment_state_events e
+                where e.order_id = p_order_id and e.reason like 'paid\_refused\_%') then
+      raise exception using errcode = 'EMHLD', message = 'held_order_payment_refused_cancel_instead';
     end if;
     if v_order_status = 'guardian_approved' and public.gift_order_checkout_block_reason(p_order_id) is not null then
       update public.orders set authority_status = 'guardian_approval_pending' where id = p_order_id;
@@ -426,6 +443,9 @@ begin
   -- the second call blocks until the first commits, then sees the
   -- already-updated (no longer 'pending') row and returns ok:false, same
   -- as any other already-used token.
+  -- 0102: the table lock comes first, before the row lock, so this can never
+  -- deadlock with an erasure (0097 locks this table, then its rows).
+  lock table public.builder_guardian_approval_requests in row exclusive mode;
   select * into v_request
   from public.builder_guardian_approval_requests
   where token_hash = p_token_hash
@@ -468,6 +488,8 @@ begin
        set held_at = null, held_reason = null
      where o.id = v_request.order_id and o.held_at is not null
        and o.payment_status in ('order_intent', 'pending_payment')
+       and not exists (select 1 from public.payment_state_events e
+                        where e.order_id = o.id and e.reason like 'paid\_refused\_%')
        and public.gift_order_checkout_block_reason(o.id) is null;
     if found then
       insert into public.builder_authority_audit_events (order_id, event_type)

@@ -123,7 +123,7 @@ begin
      or not exists (select 1 from pg_proc where oid = to_regprocedure('public.revoke_invites_addressed_to(uuid, text)')
                    and prosrc like '%in share row exclusive mode%')
      or not exists (select 1 from pg_proc where oid = to_regprocedure('public.refuse_held_order_progress()')
-                   and prosrc like '%hold_release_requires_fresh_guardian_approval%')
+                   and prosrc like '%hold_release_requires_fresh_guardian_approval%' and prosrc like '%hold_release_only_by_guardian_approval%')
      or (select count(*) from pg_trigger t where not t.tgisinternal and t.tgenabled <> 'D' and (t.tgname, t.tgrelid) in (
            ('player_invites_revoked_guard', 'public.player_invites'::regclass),
            ('coach_invites_revoked_guard', 'public.coach_invites'::regclass),
@@ -132,7 +132,8 @@ begin
            ('sipdr_redact_closed_contact', 'public.squad_invite_participation_deletion_requests'::regclass),
            ('orders_held_guard', 'public.orders'::regclass),
            ('builder_guardian_approval_requests_redacted_guard', 'public.builder_guardian_approval_requests'::regclass),
-           ('player_invites_order_recipient_guard', 'public.player_invites'::regclass))) <> 8
+           ('player_invites_order_recipient_guard', 'public.player_invites'::regclass),
+           ('builder_guardian_approval_requests_approval_guard', 'public.builder_guardian_approval_requests'::regclass))) <> 9
      or (select count(*) from pg_constraint where conname in (
            'player_invites_revoked_state', 'coach_invites_revoked_state', 'team_invites_revoked_state',
            'player_deletion_requests_closed_has_no_contact', 'sipdr_closed_has_no_contact',

@@ -35,7 +35,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
     .single();
 
   if (error || !order) {
-    return NextResponse.json({ error: error?.message ?? 'Order not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 });
   }
 
   if (isOrderHeld(order)) {
@@ -95,7 +95,12 @@ export async function POST(_request: Request, { params }: { params: { id: string
     }
   }
 
-  await createGuardianInvite(serviceRole, playerId, null, recipient.email, 'order_approval', order.id);
+  // The database refuses an order invite to anyone but the order's
+  // confirmed recipient (0097, EMINV). Never report a refused resend as sent.
+  const invite = await createGuardianInvite(serviceRole, playerId, null, recipient.email, 'order_approval', order.id);
+  if (!invite.ok) {
+    return NextResponse.json({ error: 'The invite could not be sent to this order’s recipient. Check the order before trying again.' }, { status: 409 });
+  }
 
   return NextResponse.json({ ok: true, resent: 1 });
 }

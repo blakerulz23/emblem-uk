@@ -107,7 +107,7 @@ export type ProfileInviteOrder = {
 
 /** Staff-facing refusal for an order held because the guardian it depends on erased their account (0097). */
 export const ORDER_HELD_MESSAGE =
-  "This order is held: the parent or guardian it names deleted their Emblem account. It can't be approved or have an invite sent until staff confirm a guardian and release the hold.";
+  "This order is held: the parent or guardian it depends on deleted their Emblem account. It can't be approved, paid for or have an invite sent. Staff can't release it: it lifts only when the child's parent or guardian approves a gift order again through the normal approval step, while it is unpaid. Otherwise cancel it, or refund it if it was paid.";
 
 /** Whether an order row (read with select('*'), so this also works before 0097) is held. */
 export function isOrderHeld(order: { held_at?: string | null } | null | undefined): boolean {
@@ -122,8 +122,8 @@ export type ProfileInviteRecipient =
  * Pure choice of who receives a single-card order's profile (guardian)
  * invite. Non-gift orders: the intended guardian, else the purchaser, unless
  * the order named a guardian whose account was since erased (0097): then
- * nobody, until staff record a guardian again — the buyer is not a fallback
- * for someone else's child. Gift orders: only the approving guardian, and
+ * nobody, ever — the buyer is not a fallback for someone else's child, and
+ * such an order is cancelled or refunded. Gift orders: only the approving guardian, and
  * only once approved — the buyer is never a fallback.
  */
 export function chooseProfileInviteRecipient(
@@ -135,9 +135,11 @@ export function chooseProfileInviteRecipient(
     const email = normaliseEmail(approvedGuardianEmail);
     return email ? { ok: true, email, source: 'approved_guardian' } : { ok: false, reason: 'approved_guardian_missing' };
   }
+  // The database refuses any new named-guardian address once one was erased
+  // (0097), and any order invite for such an order; never invite anyone.
+  if (order.intended_guardian_erased_at) return { ok: false, reason: 'intended_guardian_erased' };
   const intended = order.intended_guardian_email?.trim();
   if (intended) return { ok: true, email: intended, source: 'intended_guardian' };
-  if (order.intended_guardian_erased_at) return { ok: false, reason: 'intended_guardian_erased' };
   const purchaser = order.purchaser_email?.trim();
   if (purchaser) return { ok: true, email: purchaser, source: 'purchaser' };
   return { ok: false, reason: 'no_recipient' };

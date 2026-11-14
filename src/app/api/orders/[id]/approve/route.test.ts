@@ -193,7 +193,7 @@ function approve() {
 
 beforeEach(() => {
   mockRequireStaff.mockReset();
-  mockCreateGuardianInvite.mockReset();
+  mockCreateGuardianInvite.mockReset().mockResolvedValue({ ok: true, code: 'INVITE', reused: false, emailStatus: 'sent' });
   mockCreateTeamInvite.mockReset();
   mockRpc.mockReset();
   mockSendEarlyPreviewEmail.mockReset();
@@ -256,7 +256,7 @@ describe('POST /api/orders/[id]/approve — normal orders (unchanged)', () => {
     expect(mockCreateTeamInvite).not.toHaveBeenCalled();
   });
 
-  it('0097: once staff release the hold, the order approves but the profile invite never falls back to the buyer', async () => {
+  it('0097: an unheld order whose named guardian was erased (e.g. it was already paid before the erasure and approved after a fresh approval elsewhere) approves, but the profile invite never falls back to the buyer', async () => {
     fixture = {
       orderSource: 'standalone_order',
       orderAuthorityStatus: 'confirmed',
@@ -272,7 +272,7 @@ describe('POST /api/orders/[id]/approve — normal orders (unchanged)', () => {
     expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
   });
 
-  it('0097: a guardian address recorded again after the erasure is used as before', async () => {
+  it('0097: no address is ever used once the named guardian was erased (the database also refuses writing one)', async () => {
     fixture = {
       orderSource: 'standalone_order',
       orderAuthorityStatus: 'confirmed',
@@ -282,7 +282,23 @@ describe('POST /api/orders/[id]/approve — normal orders (unchanged)', () => {
     };
     const res = await approve();
     expect(res.status).toBe(200);
-    expect(mockCreateGuardianInvite).toHaveBeenCalledWith(expect.anything(), 'player-1', null, 'new-guardian@example.test', 'order_approval', ORDER_ID);
+    expect((await res.json()).inviteSkippedReason).toBe('intended_guardian_erased');
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
+  it('0097: an invite the database refuses (EMINV, e.g. the guardian was erased a moment ago) is reported as not sent, never as triggered', async () => {
+    fixture = {
+      orderSource: 'standalone_order',
+      orderAuthorityStatus: 'confirmed',
+      cards: [{ player_id: 'player-1' }],
+      orderRow: { id: ORDER_ID, purchaser_email: 'buyer@example.test', intended_guardian_email: 'named@example.test' },
+    };
+    mockCreateGuardianInvite.mockResolvedValue({ ok: false, status: 500, error: 'Could not create the invitation. Please try again.' });
+    const res = await approve();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.inviteTriggered).toBe(false);
+    expect(body.inviteSkippedReason).toBe('invite_not_created');
   });
 
   it('a standalone-source order is treated identically to a team_order (normal path, not squad_invite)', async () => {

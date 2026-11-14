@@ -146,7 +146,10 @@ type PrintFileRef = { playerId?: string | null; playerName?: string | null; key:
 async function getHeldOrderIds(supabase: ReturnType<typeof createServiceRoleClient>, orderIds: string[]): Promise<Set<string>> {
   if (orderIds.length === 0) return new Set();
   const { data, error } = await supabase.from('orders').select('id').in('id', orderIds).not('held_at', 'is', null);
-  if (error) return new Set();
+  // Before 0097 the column doesn't exist (42703): nothing can be held. Any
+  // other failure fails closed: every order is shown as held, with no
+  // approve button (the server refuses a held order anyway).
+  if (error) return error.code === '42703' ? new Set() : new Set(orderIds);
   return new Set(((data ?? []) as Array<{ id: string }>).map((o) => o.id));
 }
 
@@ -304,7 +307,7 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
   if (giftOrderIds.length) {
     const { data: approvals } = await supabase
       .from('builder_guardian_approval_requests')
-      .select('order_id, guardian_email')
+      .select('order_id, guardian_email, responded_at, created_at')
       .eq('status', 'approved')
       .in('order_id', giftOrderIds);
     // An approval from the buyer's own address doesn't count (same rule as
@@ -319,10 +322,21 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
     for (const d of (declarations ?? []) as Array<{ order_id: string; adult_email: string | null }>) {
       buyerEmails.get(d.order_id)?.add(normaliseEmail(d.adult_email));
     }
-    for (const a of (approvals ?? []) as Array<{ order_id: string; guardian_email: string }>) {
-      if (buyerEmails.get(a.order_id)?.has(normaliseEmail(a.guardian_email))) continue;
-      approvedGuardianByOrder.set(a.order_id, a.guardian_email);
+    // Only the latest approval counts (responded_at descending, a missing
+    // time first, then created_at descending: the same order as
+    // loadApprovedGuardianEmail), so a redacted earlier approval left by a
+    // restart (0102) never hides, or stands in for, the current one.
+    const time = (v: string | null | undefined) => (v ? Date.parse(v) : Number.POSITIVE_INFINITY);
+    const latest = new Map<string, { guardian_email: string | null; responded_at: string | null; created_at: string | null }>();
+    for (const a of (approvals ?? []) as Array<{ order_id: string; guardian_email: string | null; responded_at: string | null; created_at: string | null }>) {
+      const cur = latest.get(a.order_id);
+      if (!cur || time(a.responded_at) > time(cur.responded_at)
+        || (time(a.responded_at) === time(cur.responded_at) && time(a.created_at) > time(cur.created_at))) latest.set(a.order_id, a);
     }
+    latest.forEach((a, orderId) => {
+      if (!a.guardian_email || buyerEmails.get(orderId)?.has(normaliseEmail(a.guardian_email))) return;
+      approvedGuardianByOrder.set(orderId, a.guardian_email);
+    });
   }
 
   return {
@@ -728,7 +742,7 @@ export default async function StaffQueuePage({
             </div>
             {order.held && (
               <p role="status" style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>
-                Held: the parent or guardian this order names deleted their Emblem account. Confirm a guardian before approving.
+                Held: the parent or guardian this order depends on deleted their Emblem account. Don&apos;t approve or produce it. It can&apos;t be released by staff: only a fresh approval from the child&apos;s parent or guardian (gift orders, while unpaid) lifts it. Otherwise cancel it, or refund it in Shopify if it was paid.
               </p>
             )}
             {order.designPreview?.photoStatus !== 'rejected' && !order.held && (

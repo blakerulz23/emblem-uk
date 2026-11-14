@@ -264,7 +264,7 @@ describe('POST /api/orders/[id]/checkout — gift order without a genuine guardi
     const res = await post();
     expect(res.status).toBe(409);
     const body = await res.json();
-    expect(body.error).toMatch(/needs to approve it again from their own email address/);
+    expect(body.error).toMatch(/on hold until the child's parent or guardian approves it again from their own email address/);
     expect(body.error).not.toMatch(/already been paid/i);
     expect(body.checkoutUrl).toBeUndefined();
     expect(mockBuildUkCardCartUrl).not.toHaveBeenCalled();

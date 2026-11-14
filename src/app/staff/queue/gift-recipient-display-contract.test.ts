@@ -11,7 +11,9 @@ const source = fs.readFileSync(path.join(__dirname, 'page.tsx'), 'utf8');
 describe('staff queue: gift order invite recipient display', () => {
   it('reads the buyer declarations and skips an approval from a buyer address', () => {
     expect(source).toContain(".from('builder_order_authority_declarations')");
-    expect(source).toMatch(/buyerEmails\.get\(a\.order_id\)\?\.has\(normaliseEmail\(a\.guardian_email\)\)\) continue;/);
+    expect(source).toMatch(/if \(!a\.guardian_email \|\| buyerEmails\.get\(orderId\)\?\.has\(normaliseEmail\(a\.guardian_email\)\)\) return;/);
+    // Only the latest approval per order counts (a restart leaves an earlier, redacted one behind).
+    expect(source).toContain(".select('order_id, guardian_email, responded_at, created_at')");
     expect(source).toContain('No approving guardian on record — invite withheld');
   });
 });

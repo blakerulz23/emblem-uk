@@ -138,6 +138,7 @@ begin
      or to_regprocedure('public.refuse_held_order_progress()') is null
      or to_regprocedure('public.refuse_redacted_approval_change()') is null
      or to_regprocedure('public.refuse_unconfirmed_order_invite()') is null
+     or to_regprocedure('public.refuse_unattested_guardian_approval()') is null
      or to_regprocedure('public.email_match_key(text)') is null
      or to_regprocedure('public.erased_account_addresses(uuid, text)') is null then
     raise exception '0097 rollback refused: 0097 is not applied (order guardian redaction missing)';
@@ -154,6 +155,8 @@ $$;
 -- 12 reversed (no row carries a section 12 marker: checked above).
 drop trigger player_invites_order_recipient_guard on public.player_invites;
 drop function public.refuse_unconfirmed_order_invite();
+drop trigger builder_guardian_approval_requests_approval_guard on public.builder_guardian_approval_requests;
+drop function public.refuse_unattested_guardian_approval();
 drop trigger builder_guardian_approval_requests_redacted_guard on public.builder_guardian_approval_requests;
 drop function public.refuse_redacted_approval_change();
 drop trigger orders_held_guard on public.orders;

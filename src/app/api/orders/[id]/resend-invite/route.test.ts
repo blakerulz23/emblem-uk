@@ -81,6 +81,13 @@ describe('POST /api/orders/[id]/resend-invite', () => {
     expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
   });
 
+  it('0097: a resend the database refuses (EMINV) is a 409, never reported as sent', async () => {
+    mockCreateGuardianInvite.mockResolvedValue({ ok: false, status: 500, error: 'Could not create the invitation. Please try again.' });
+    const res = await resend();
+    expect(res.status).toBe(409);
+    expect((await res.json()).ok).toBeUndefined();
+  });
+
   it('two different children is still a multi-card order: 400, nothing sent', async () => {
     cardRows = [{ player_id: 'player-1' }, { player_id: 'player-2' }];
     const res = await resend();

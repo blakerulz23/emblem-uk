@@ -150,7 +150,10 @@
 --          order_intent, pending_payment or paid, and not guardian_declined)
 --          is held: held_at / held_reason 'named_guardian_account_erased'.
 --          A trigger refuses approving or fulfilling a held order, for every
---          role, until staff release the hold.
+--          role; there is no release by staff (see below).
+--        - a gift order whose live approval came from someone else (still
+--          genuine) is not held just because its named-guardian address
+--          matched: its profile invite goes to the approving guardian.
 --      Nothing on an order changes because its buyer erased their account,
 --      unless the named guardian's address is the same address. A trigger
 --      refuses putting an address back on a redacted approval request.
@@ -231,7 +234,8 @@ begin
      or to_regprocedure('public.refuse_redacted_approval_change()') is not null
      or to_regprocedure('public.email_match_key(text)') is not null
      or to_regprocedure('public.erased_account_addresses(uuid, text)') is not null
-     or to_regprocedure('public.refuse_unconfirmed_order_invite()') is not null then
+     or to_regprocedure('public.refuse_unconfirmed_order_invite()') is not null
+     or to_regprocedure('public.refuse_unattested_guardian_approval()') is not null then
     raise exception '0097 refused: the 0097 order guardian redaction already exists (0097 already applied)';
   end if;
   -- Address matching places rows in time (4a1): every table it reads must
@@ -488,10 +492,15 @@ alter function public.erased_account_addresses(uuid, text) owner to postgres;
 -- It first locks the three invite tables and the guardian approval requests
 -- against concurrent writes (SHARE ROW EXCLUSIVE) until the erasure commits:
 -- an invite or approval request being created at the same moment either
--- commits first (and is then matched here) or waits and is then checked
--- against the erased state (section 12's guards). Plain reads are not
--- blocked. A deadlock with a concurrent writer aborts one of them, never
--- both half-done.
+-- commits first (and is then matched here) or waits until the erasure has
+-- committed. After that, an order's invite is checked against the erased
+-- state (section 12's invite guard); a new approval request to the same
+-- address is simply a new request to a mailbox that no account holds (the
+-- address is not kept, so it cannot be recognised), and only a genuine
+-- response through its emailed token can approve it. Plain reads are not
+-- blocked. 0102's approval-request functions take their table lock first,
+-- so they cannot deadlock with this; any other deadlock aborts one
+-- transaction, never leaving either half-done.
 create function public.revoke_invites_addressed_to(p_profile_id uuid, p_email text)
 returns void
 language plpgsql
@@ -603,10 +612,16 @@ begin
      returning o.id)
   select coalesce(array_agg(id), '{}') into v_named_orders from redacted;
 
-  -- Every affected order not yet finished is held for staff.
+  -- Every affected order not yet finished is held. A gift order is held
+  -- only through its live approval request: its profile invite goes to the
+  -- approving guardian, so a matching named-guardian address alone does not
+  -- hold it.
   update public.orders o
      set held_at = now(), held_reason = 'named_guardian_account_erased'
-   where o.id = any(v_live_orders || v_named_orders)
+   where (o.id = any(v_live_orders)
+          or (o.id = any(v_named_orders)
+              and (o.authority_status is null
+                   or o.authority_status not in ('guardian_approval_pending', 'guardian_approved', 'guardian_declined'))))
      and o.held_at is null
      and o.payment_status in ('order_intent', 'pending_payment', 'paid')
      and o.authority_status is distinct from 'guardian_declined';
@@ -1288,8 +1303,9 @@ alter table public.squad_invite_participation_deletion_requests
 -- ---------------------------------------------------------------------------
 -- 12. A named guardian's address on an order goes with their account
 -- ---------------------------------------------------------------------------
--- Written by redact_order_guardian_addresses (section 4a3); staff release a
--- hold by clearing held_at and held_reason together (service role). Every
+-- Written by redact_order_guardian_addresses (section 4a3). A hold is
+-- lifted only by a fresh, genuine guardian approval (0102's
+-- respond_to_builder_guardian_approval); staff cannot release it. Every
 -- existing row gets NULL in the new columns.
 alter table public.orders
   add column intended_guardian_erased_at timestamptz,
@@ -1301,7 +1317,7 @@ alter table public.orders
 comment on column public.orders.intended_guardian_erased_at is
   'Set (permanently) when the account of the guardian this order named was erased and intended_guardian_email was cleared (0097). The profile invite then never falls back to the buyer.';
 comment on column public.orders.held_at is
-  'Set when the guardian this order depends on (intended guardian or approving guardian) had their account erased before the order finished (0097). A held order cannot be approved or fulfilled until staff release the hold.';
+  'Set when the guardian this order depends on (intended guardian or approving guardian) had their account erased before the order finished (0097). A held order cannot be approved, fulfilled, checked out or paid for (0102). It is lifted only by a fresh, genuine guardian approval through the token flow while unpaid and with no refused payment; otherwise it is cancelled or refunded.';
 
 -- Existing rows all hold an address (the column was NOT NULL), so the CHECK
 -- is validated, and the NOT NULL is relaxed only for redacted rows.
@@ -1319,19 +1335,23 @@ comment on column public.builder_guardian_approval_requests.guardian_distinct_fr
 
 -- A held order cannot be approved or fulfilled, by any role (payment events
 -- that close it, refunded / cancelled / failed, still apply; a 'paid' event
--- is refused by 0102). There is no release override: a hold is lifted only
--- in the write that follows a fresh, genuine guardian approval of the still
--- unpaid order (an approved request with an address, answered after the
--- hold, from an address that is neither the purchaser's nor a declaring
--- adult's: the 0101 rule). A paid held order must be refunded or cancelled;
--- it is never released. The hold cannot be rewritten (a new time could
--- otherwise make an older approval look fresh), and the record that a named
--- guardian was erased is permanent. Security definer: it reads the approval
--- tables whatever the writing role.
+-- is refused by 0102). There is no release override:
+--   - a hold is lifted only inside respond_to_builder_guardian_approval (the
+--     emailed-token flow): the release must be written by that function's
+--     owner (this trigger runs as the writing role, so a direct write by
+--     service_role or any other role is refused);
+--   - and only after a fresh, genuine approval of the still unpaid order:
+--     guardian_approved, an approved request with an address answered after
+--     the hold, from an address that is neither the purchaser's nor a
+--     declaring adult's (0101 rule), and no refused payment ever recorded
+--     for the order (money may have been taken: cancel, never restart).
+-- A paid held order is refunded or cancelled, never released. The hold
+-- cannot be rewritten (a new time could make an older approval look
+-- fresh). Once a named guardian's account was erased, that record is
+-- permanent and no new named-guardian address can be written.
 create function public.refuse_held_order_progress()
 returns trigger
 language plpgsql
-security definer
 set search_path = ''
 as $fn$
 begin
@@ -1339,22 +1359,31 @@ begin
      and new.intended_guardian_erased_at is distinct from old.intended_guardian_erased_at then
     raise exception using errcode = 'EMHLD', message = 'intended_guardian_erasure_is_permanent';
   end if;
+  if old.intended_guardian_erased_at is not null and new.intended_guardian_email is not null
+     and new.intended_guardian_email is distinct from old.intended_guardian_email then
+    raise exception using errcode = 'EMHLD', message = 'intended_guardian_erasure_is_permanent';
+  end if;
   if old.held_at is not null and new.held_at is not null
      and (new.held_at is distinct from old.held_at or new.held_reason is distinct from old.held_reason) then
     raise exception using errcode = 'EMHLD', message = 'hold_cannot_be_rewritten';
   end if;
   if old.held_at is not null and new.held_at is null then
-    if not (new.payment_status in ('order_intent', 'pending_payment')
-            and new.authority_status = 'guardian_approved'
-            and exists (
-              select 1 from public.builder_guardian_approval_requests r
-               where r.order_id = new.id and r.status = 'approved'
-                 and public.email_match_key(r.guardian_email) is not null
-                 and r.responded_at > old.held_at
-                 and public.email_match_key(r.guardian_email) is distinct from public.email_match_key(new.purchaser_email)
-                 and not exists (select 1 from public.builder_order_authority_declarations d
-                                  where d.order_id = new.id
-                                    and public.email_match_key(d.adult_email) = public.email_match_key(r.guardian_email)))) then
+    if current_user::text is distinct from (select pg_get_userbyid(p.proowner)::text from pg_proc p where p.oid = to_regprocedure('public.respond_to_builder_guardian_approval(text, text)')) then
+      raise exception using errcode = 'EMHLD', message = 'hold_release_only_by_guardian_approval';
+    end if;
+    if (new.payment_status in ('order_intent', 'pending_payment')
+        and new.authority_status = 'guardian_approved'
+        and not exists (select 1 from public.payment_state_events e
+                         where e.order_id = new.id and e.reason like 'paid\_refused\_%')
+        and exists (
+          select 1 from public.builder_guardian_approval_requests r
+           where r.order_id = new.id and r.status = 'approved'
+             and public.email_match_key(r.guardian_email) is not null
+             and r.responded_at > old.held_at
+             and public.email_match_key(r.guardian_email) is distinct from public.email_match_key(new.purchaser_email)
+             and not exists (select 1 from public.builder_order_authority_declarations d
+                              where d.order_id = new.id
+                                and public.email_match_key(d.adult_email) = public.email_match_key(r.guardian_email)))) is not true then
       raise exception using errcode = 'EMHLD', message = 'hold_release_requires_fresh_guardian_approval';
     end if;
   end if;
@@ -1397,6 +1426,30 @@ revoke all on function public.refuse_redacted_approval_change() from public, ano
 create trigger builder_guardian_approval_requests_redacted_guard before update on public.builder_guardian_approval_requests
   for each row execute function public.refuse_redacted_approval_change();
 
+-- A guardian approval is recorded only by the emailed-token flow
+-- (respond_to_builder_guardian_approval, owner-run): a request written as
+-- 'approved', or changed to 'approved', by any other role is refused. This
+-- keeps the hold release above from being satisfied by a forged approval.
+-- Revoking, expiring and declining are unaffected.
+create function public.refuse_unattested_guardian_approval()
+returns trigger
+language plpgsql
+set search_path = ''
+as $fn$
+begin
+  if new.status = 'approved' and (tg_op = 'INSERT' or old.status is distinct from 'approved')
+     and current_user::text is distinct from (select pg_get_userbyid(p.proowner)::text from pg_proc p where p.oid = to_regprocedure('public.respond_to_builder_guardian_approval(text, text)')) then
+    raise exception using errcode = 'EMAPR', message = 'guardian_approval_only_by_token';
+  end if;
+  return new;
+end;
+$fn$;
+alter function public.refuse_unattested_guardian_approval() owner to postgres;
+revoke all on function public.refuse_unattested_guardian_approval() from public, anon, authenticated, service_role;
+create trigger builder_guardian_approval_requests_approval_guard
+  before insert or update of status on public.builder_guardian_approval_requests
+  for each row execute function public.refuse_unattested_guardian_approval();
+
 -- An order's profile invite (player_invites, origin order_approval) may only
 -- go to the order's confirmed recipient, decided in the same transaction as
 -- the write, by the same rule as the app (gift-order-guardian.ts):
@@ -1407,7 +1460,10 @@ create trigger builder_guardian_approval_requests_redacted_guard before update o
 --     was erased (intended_guardian_erased_at), nobody; if none was ever
 --     named, the purchaser.
 -- Never while the order is held, never without an address, and fail closed
--- when the order cannot be read. The order row and the approval rows are
+-- when the order cannot be read. Any other guardian invite that carries an
+-- order (a purchaser-recovery handoff, origin second_guardian) is refused
+-- when the order names a separate guardian, or its named guardian's account
+-- was erased: the named guardian sets the profile up, not the buyer. The order row and the approval rows are
 -- read FOR SHARE, so a concurrent erasure (which updates them) either
 -- commits first and is seen here, or waits for this write and then revokes
 -- the invite it created (section 4a2 locks the table first). Clearing the
@@ -1423,7 +1479,7 @@ declare
   v_key text := public.email_match_key(new.invited_email);
   v_expected text;
 begin
-  if new.origin is distinct from 'order_approval' or new.order_id is null then
+  if new.order_id is null then
     return new;
   end if;
   if tg_op = 'UPDATE' and new.invited_email is null then
@@ -1432,6 +1488,15 @@ begin
   select o.id, o.held_at, o.authority_status, o.purchaser_email, o.intended_guardian_email, o.intended_guardian_erased_at
     into v_order
     from public.orders o where o.id = new.order_id for share;
+  if new.origin is distinct from 'order_approval' then
+    if v_order.id is not null
+       and (v_order.intended_guardian_erased_at is not null
+            or (public.email_match_key(v_order.intended_guardian_email) is not null
+                and public.email_match_key(v_order.intended_guardian_email) is distinct from public.email_match_key(v_order.purchaser_email))) then
+      raise exception using errcode = 'EMINV', message = 'order_invite_recipient_unconfirmed';
+    end if;
+    return new;
+  end if;
   if v_order.id is null or v_order.held_at is not null or v_key is null then
     raise exception using errcode = 'EMINV', message = 'order_invite_recipient_unconfirmed';
   end if;
@@ -1451,10 +1516,10 @@ begin
                    where d.order_id = new.order_id and public.email_match_key(d.adult_email) = v_expected) then
       raise exception using errcode = 'EMINV', message = 'order_invite_recipient_unconfirmed';
     end if;
-  elsif v_order.intended_guardian_email is not null then
-    v_expected := public.email_match_key(v_order.intended_guardian_email);
   elsif v_order.intended_guardian_erased_at is not null then
     raise exception using errcode = 'EMINV', message = 'order_invite_recipient_unconfirmed';
+  elsif v_order.intended_guardian_email is not null then
+    v_expected := public.email_match_key(v_order.intended_guardian_email);
   else
     v_expected := public.email_match_key(v_order.purchaser_email);
   end if;

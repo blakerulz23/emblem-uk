@@ -389,7 +389,11 @@ export async function POST(request: Request, { params }: { params: { id: string 
     .single();
 
   if (error || !order) {
-    return NextResponse.json({ error: error?.message ?? 'Order not found' }, { status: 500 });
+    // The database refuses a held order (0097, EMHLD) even if it was held
+    // after the check above. Never pass raw database text to the client.
+    if (error?.code === 'EMHLD') return NextResponse.json({ error: ORDER_HELD_MESSAGE }, { status: 409 });
+    console.error('orders/approve: could not mark the order approved', { code: error?.code });
+    return NextResponse.json({ error: 'Could not approve this order. Please try again.' }, { status: 500 });
   }
 
   let inviteTriggered = false;
@@ -409,8 +413,16 @@ export async function POST(request: Request, { params }: { params: { id: string 
       intended_guardian_erased_at: sourceRow.intended_guardian_erased_at ?? null,
     });
     if (playerId && recipient.ok) {
-      await createGuardianInvite(serviceRole, playerId, null, recipient.email, 'order_approval', order.id);
-      inviteTriggered = true;
+      // The database refuses an order invite to anyone but the order's
+      // confirmed recipient (0097, EMINV: e.g. its guardian's account was
+      // erased a moment ago). Report what actually happened.
+      const invite = await createGuardianInvite(serviceRole, playerId, null, recipient.email, 'order_approval', order.id);
+      if (invite.ok) {
+        inviteTriggered = true;
+      } else {
+        console.error('orders/approve: profile invite not created', invite.status);
+        inviteSkippedReason = 'invite_not_created';
+      }
     } else if (!recipient.ok && recipient.reason !== 'no_recipient') {
       // Fail closed: production is approved, but no profile invite goes to
       // anyone until the approving guardian is resolved (never the buyer).

@@ -222,12 +222,82 @@ try {
       first.canDeleteIdentity === true && waited && e !== null && o.held_at !== null
         && Number((await mig.query(`select count(*) n from public.erased_accounts where profile_id = $1`, [x.uid])).rows[0].n) === 1, { waited, e });
   }
+  // 9. A guardian answering their approval link while their account is erased: no deadlock, one waits for the other.
+  {
+    const x = await person('s9');
+    const oid = await order({ authority: 'guardian_approval_pending' });
+    const h = crypto.randomBytes(32).toString('hex');
+    await mig.query(`select public.create_builder_guardian_approval_request($1, $2, $3, 'v1')`, [oid, x.email, h]);
+    await A.query('begin');
+    const r = (await A.query(`select public.respond_to_builder_guardian_approval($1, 'approved') r`, [h])).rows[0].r;
+    const p = err(erase(B, x));
+    const waited = await waitsOnLock(O, B);
+    await A.query('commit');
+    const e = await p;
+    const req = (await mig.query(`select status, guardian_email from public.builder_guardian_approval_requests where order_id = $1`, [oid])).rows[0];
+    const o = await ord(oid);
+    check('9. approval response first: the erasure waits (no deadlock), then clears the approving address and holds the order',
+      r.ok === true && waited && e === null && req.status === 'approved' && req.guardian_email === null && o.held_at !== null, { waited, e, req });
+  }
+  // 10. The erasure first, then the guardian's response: the response waits (no deadlock), then finds the request revoked.
+  {
+    const x = await person('s10');
+    const oid = await order({ authority: 'guardian_approval_pending' });
+    const h = crypto.randomBytes(32).toString('hex');
+    await mig.query(`select public.create_builder_guardian_approval_request($1, $2, $3, 'v1')`, [oid, x.email, h]);
+    await B.query('begin'); await erase(B, x);
+    const p = A.query(`select public.respond_to_builder_guardian_approval($1, 'approved') r`, [h]).then((q) => q.rows[0].r, (e2) => ({ error: `${e2.code}:${e2.message}` }));
+    const waited = await waitsOnLock(O, A);
+    await B.query('commit');
+    const r = await p;
+    check('10. erasure first: the response waits (no deadlock), then does nothing (request revoked); the order stays held and unapproved',
+      waited && r.ok === false && (await ord(oid)).authority_status === 'guardian_approval_pending' && (await ord(oid)).held_at !== null, { waited, r });
+  }
+  // 11. A new approval request racing the erasure of the guardian named on the same order: no deadlock.
+  {
+    const x = await person('s11');
+    const oid = await order({ authority: 'guardian_approval_pending' });
+    await mig.query(`select public.create_builder_guardian_approval_request($1, $2, $3, 'v1')`, [oid, x.email, crypto.randomBytes(32).toString('hex')]);
+    await B.query('begin'); await erase(B, x);
+    const p = err(A.query(`select public.create_builder_guardian_approval_request($1, 'c-other@example.test', $2, 'v1')`, [oid, crypto.randomBytes(32).toString('hex')]));
+    const waited = await waitsOnLock(O, A);
+    await B.query('commit');
+    const e = await p;
+    const pending = Number((await mig.query(`select count(*) n from public.builder_guardian_approval_requests where order_id = $1 and status = 'pending'`, [oid])).rows[0].n);
+    check('11. erasure first, then a new approval request for the same order: it waits (no deadlock), then creates one pending request to the new address',
+      waited && e === null && pending === 1, { waited, e, pending });
+  }
+  // 12. Lock order, statement by statement (the response function's own steps, replayed): taking the request row
+  //     first and the table lock last deadlocks with an erasure (the 0071 order); taking the table lock first (0102)
+  //     makes the erasure simply wait.
+  {
+    const replay = async (tableLockFirst) => {
+      const x = await person(tableLockFirst ? 's12b' : 's12a');
+      const oid = await order({ authority: 'guardian_approval_pending' });
+      const h = crypto.randomBytes(32).toString('hex');
+      await mig.query(`select public.create_builder_guardian_approval_request($1, $2, $3, 'v1')`, [oid, x.email, h]);
+      await A.query('begin');
+      if (tableLockFirst) await A.query('lock table public.builder_guardian_approval_requests in row exclusive mode');
+      await A.query(`select id from public.builder_guardian_approval_requests where token_hash = $1 for update`, [h]);
+      const pB = err(erase(B, x));
+      const bWaited = await waitsOnLock(O, B);
+      const pA = err(A.query(`update public.builder_guardian_approval_requests set status = 'declined', responded_at = now() where token_hash = $1`, [h]).then(() => A.query('commit')));
+      const [eA, eB] = await Promise.all([pA, pB]);
+      await A.query('rollback').catch(() => {});
+      return { bWaited, eA, eB, deadlock: [eA, eB].some((e) => e?.startsWith('40P01')) };
+    };
+    const oldOrder = await replay(false);
+    const newOrder = await replay(true);
+    check('12. lock order: row first, table lock last (0071) deadlocks with the erasure; table lock first (0102) does not — the erasure waits, then both finish',
+      oldOrder.deadlock && newOrder.bWaited && !newOrder.deadlock && newOrder.eA === null && newOrder.eB === null, { oldOrder, newOrder });
+  }
 } catch (e) {
   check('concurrency suite', false, e.stack);
 } finally {
   for (const c of [A, B, O, mig]) await c?.end().catch(() => {});
   await server.stop().catch(() => {});
-  fs.rmSync(DATA_DIR, { recursive: true, force: true });
+  // Windows may still hold the stopped server's files for a moment: retry, and never fail the run over temp clean-up.
+  try { fs.rmSync(DATA_DIR, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }); } catch (e) { console.log(`note: temporary data directory not removed (${e.code})`); }
 }
 const failed = results.filter((p) => !p).length;
 console.log(`\n${results.length - failed}/${results.length} concurrency checks passed`);
