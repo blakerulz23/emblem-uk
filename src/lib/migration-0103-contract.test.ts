@@ -14,7 +14,7 @@ function auditEventList(sql: string): string[] {
   if (idx < 0) return [];
   // Lists end with `]))` (array form) or `))` (`in (...)` form): stop at the first.
   const body = sql.slice(idx, sql.indexOf('))', idx));
-  return [...body.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  return Array.from(body.matchAll(/'([a-z_]+)'/g)).map((m) => m[1]);
 }
 
 const sql0103 = read('0103_');
@@ -27,7 +27,7 @@ describe('migration 0103 — restore Squad Invite audit event types', () => {
       for (const e of auditEventList(read(prefix))) everAllowed.add(e);
     }
     expect(everAllowed.size).toBeGreaterThan(20);
-    for (const e of everAllowed) expect(restored).toContain(e);
+    for (const e of Array.from(everAllowed)) expect(restored).toContain(e);
   });
 
   it('restores the five values 0081 dropped and that functions still write', () => {
@@ -42,13 +42,13 @@ describe('migration 0103 — restore Squad Invite audit event types', () => {
     const written = new Set<string>();
     for (const f of files) {
       const sql = readFileSync(`${DIR}/${f}`, 'utf8');
-      for (const m of sql.matchAll(/insert into public\.squad_invite_audit_events[^;]*?values\s*\(([^;]*?)\);/gs)) {
-        for (const v of m[1].matchAll(/'([a-z]+_[a-z_]+)'/g)) {
+      for (const m of Array.from(sql.matchAll(/insert into public\.squad_invite_audit_events[^;]*?values\s*\(([^;]*?)\);/g))) {
+        for (const v of Array.from(m[1].matchAll(/'([a-z]+_[a-z_]+)'/g))) {
           if (!['public', 'parent', 'organiser', 'staff', 'system'].includes(v[1])) written.add(v[1]);
         }
       }
     }
-    for (const e of written) {
+    for (const e of Array.from(written)) {
       if (/^(campaign|builder|commitment|pricing|payment|coach|fulfilment|organiser|support|staff|delivery|approval|notification|photo|invitation)_/.test(e)) {
         expect(restored, `event ${e}`).toContain(e);
       }
