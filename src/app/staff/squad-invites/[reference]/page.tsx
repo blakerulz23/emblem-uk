@@ -9,7 +9,7 @@ import ReviewActions from './ReviewActions';
 import FinalisePricingButton from './FinalisePricingButton';
 import CoachCardReviewActions from './CoachCardReviewActions';
 import PhotoDayPanel, { type PhotoDaySummary } from './PhotoDayPanel';
-import { countPhotoDayPhotos, loadConsentedParticipationIds, loadPhotoDay } from '@/lib/photo-day-staff';
+import { countPhotoDayPhotos, loadConsentedParticipationIds, loadEffectiveDeleteAfter, loadPhotoDay } from '@/lib/photo-day-staff';
 
 // Staff-facing labels for the stored declaration `purpose` values (see
 // submit_squad_invite_request in 0054_squad_invite_concurrent_submission_idempotency.sql).
@@ -61,8 +61,8 @@ export default async function ReviewSquadInvite({params}:{params:{reference:stri
   const photoDayRow=r.campaign_id?await loadPhotoDay(service,r.campaign_id):null;
   let photoDay:PhotoDaySummary|null=null;
   if(r.campaign_id&&photoDayRow){
-    const [counts,consented]=await Promise.all([countPhotoDayPhotos(service,photoDayRow.id),loadConsentedParticipationIds(service,r.campaign_id)]);
-    photoDay={status:photoDayRow.status,scheduledFor:photoDayRow.scheduled_for,venueLabel:photoDayRow.venue_label,photographerName:photoDayRow.photographer_name,maxPhotos:photoDayRow.max_photos,linkExpiresAt:photoDayRow.photographer_token_expires_at,coachPermissionsConfirmedAt:photoDayRow.coach_permissions_confirmed_at,coachPermissionsNote:photoDayRow.coach_permissions_note,photosDeleteAfter:photoDayRow.photos_delete_after,uploaded:counts.uploaded,matched:counts.matched,consentedChildren:consented.length};
+    const [counts,consented,deleteAfter]=await Promise.all([countPhotoDayPhotos(service,photoDayRow.id),loadConsentedParticipationIds(service,r.campaign_id),loadEffectiveDeleteAfter(service,photoDayRow)]);
+    photoDay={status:photoDayRow.status,scheduledFor:photoDayRow.scheduled_for,venueLabel:photoDayRow.venue_label,photographerName:photoDayRow.photographer_name,maxPhotos:photoDayRow.max_photos,linkExpiresAt:photoDayRow.photographer_token_expires_at,coachPermissionsConfirmedAt:photoDayRow.coach_permissions_confirmed_at,coachPermissionsNote:photoDayRow.coach_permissions_note,photosDeleteAfter:deleteAfter,photosDeletedAt:photoDayRow.photos_deleted_at,uploaded:counts.uploaded,matched:counts.matched,consentedChildren:consented.length};
   }
 
   return <div className="mx-auto max-w-3xl px-5 py-12 pb-28">

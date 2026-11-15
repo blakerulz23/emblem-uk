@@ -359,3 +359,100 @@ check('withdrawing releases both matched photos', withdrawn.decision === 'withdr
   check('withdraw audit event records how many photos were released', (await auditFor(c3, 'photo_day_consent_withdrawn'))[0]?.metadata?.photosReleased === 2);
 }
 check('re-granting after the shoot is refused', (await consent(p1, true)).reason === 'photo_day_already_taken');
+
+// =============================================================================
+// Phase 4 (0107): retention and erasure
+// =============================================================================
+check('0107 applied', files.some((f) => f.startsWith('0107')));
+for (const f of ['photo_day_effective_delete_after(uuid)', 'list_photo_days_due_for_deletion(integer)', 'mark_photo_day_photo_storage_deleted(uuid)', 'close_photo_day_after_deletion(uuid)']) {
+  for (const role of ['anon', 'authenticated']) {
+    check(`${role} cannot execute ${f.split('(')[0]}`, (await val(`select has_function_privilege($1, $2, 'execute')`, [role, `public.${f}`])) === false);
+  }
+  check(`service_role can execute ${f.split('(')[0]}`, (await val(`select has_function_privilege('service_role', $1, 'execute')`, [`public.${f}`])) === true);
+}
+const effective = (dayId) => val(`select public.photo_day_effective_delete_after($1)`, [dayId]);
+const dueIds = async () => (await db.query(`select photo_day_id from public.list_photo_days_due_for_deletion(100)`)).rows.map((r) => r.photo_day_id);
+const markDeleted = (photoId) => val(`select public.mark_photo_day_photo_storage_deleted($1)`, [photoId]);
+const closeDay = (dayId) => val(`select public.close_photo_day_after_deletion($1)`, [dayId]);
+
+// Retention date: the earlier of shoot + 60 days and campaign close + 30 days.
+const c4 = await seedCampaign('active', 21);
+const day4 = (await create(c4, STAFF, isoDate(5))).photoDayId;
+{
+  const eff = new Date(await effective(day4));
+  const deadline = new Date((await one(`select deadline_at from public.squad_invites where id = $1`, [c4])).deadline_at);
+  check('delete-by is deadline + 30 days when that is sooner than shoot + 60', Math.abs(eff - (deadline.getTime() + 30 * 86400000)) < 1000);
+}
+await db.query(`update public.squad_invites set closed_at = now() + interval '2 days' where id = $1`, [c4]);
+{
+  const eff = new Date(await effective(day4));
+  const expected = Date.now() + 32 * 86400000;
+  check('pricing finalisation before the deadline brings the delete-by date forward', Math.abs(eff - expected) < 60000);
+}
+
+await confirm(day4, STAFF, 'Both managers agreed by email');
+const TOKEN_D4 = sha('day4-token');
+await issue(day4, STAFF, TOKEN_D4, 24);
+const d4p1 = await record(day4, TOKEN_D4, keyFor(day4));
+const d4p2 = await record(day4, TOKEN_D4, keyFor(day4));
+check('a day not yet due is not listed', !(await dueIds()).includes(day4));
+check('a photo on a day not yet due cannot be marked deleted', (await markDeleted(d4p1)) === false);
+check('a day not yet due cannot be closed', (await closeDay(day4)).reason === 'not_due');
+
+await db.query(`update public.squad_invite_photo_days set photos_delete_after = now() - interval '1 minute' where id = $1`, [day4]);
+check('a due day is listed', (await dueIds()).includes(day4));
+check('marking a due photo deleted succeeds', (await markDeleted(d4p1)) === true);
+{
+  const row = await one(`select * from public.squad_invite_photo_day_photos where id = $1`, [d4p1]);
+  check('a deleted photo row is unmatched and stamped', row.deleted_at !== null && row.participation_id === null);
+}
+check('marking twice is harmless', (await markDeleted(d4p1)) === true);
+check('the day will not close while a photo row remains', (await closeDay(day4)).reason === 'photos_remaining');
+await markDeleted(d4p2);
+const closed4 = await closeDay(day4);
+check('the day closes once every row is deleted', closed4.ok === true && closed4.photosDeleted === 2, closed4);
+{
+  const d = await dayRow(day4);
+  check('a closed day is stamped, status closed, link removed', d.photos_deleted_at !== null && d.status === 'closed' && d.photographer_token_hash === null);
+  const audit = await auditFor(c4, 'photo_day_photos_deleted');
+  check('the deletion audit records the count and reason', audit.length === 1 && audit[0].metadata.photosDeleted === 2 && audit[0].metadata.reason === 'retention');
+}
+check('closing again reports already closed', (await closeDay(day4)).alreadyClosed === true);
+check('a closed day is no longer listed', !(await dueIds()).includes(day4));
+check('uploads are refused after deletion', (await record(day4, TOKEN_D4, keyFor(day4))) === null);
+
+// A day that never got coach permission and is due closes as cancelled.
+const c5 = await seedCampaign('active', 21);
+const day5 = (await create(c5, STAFF, isoDate(5))).photoDayId;
+await db.query(`update public.squad_invites set cancelled_at = now() - interval '31 days', campaign_status = 'cancelled' where id = $1`, [c5]);
+check('cancellation + 30 days makes a day due', (await dueIds()).includes(day5));
+const closed5 = await closeDay(day5);
+check('a due day with no photos and no coach permission closes as cancelled', closed5.ok === true && closed5.photosDeleted === 0 && (await dayRow(day5)).status === 'cancelled');
+
+// Erasure: photos matched to the child go into the erasure's storage inventory.
+const c6 = await seedCampaign('active', 21);
+const day6 = (await create(c6, STAFF, isoDate(5))).photoDayId;
+const child6 = await seedOwned(c6);
+await consent(child6, true, 'Ava', 'm', 4);
+await confirm(day6, STAFF, 'Both managers agreed by email');
+const TOKEN_D6 = sha('day6-token');
+await issue(day6, STAFF, TOKEN_D6, 24);
+const key6a = keyFor(day6);
+const d6p1 = await record(day6, TOKEN_D6, key6a);
+const d6p2 = await record(day6, TOKEN_D6, keyFor(day6));
+await match(d6p1, child6.id);
+const request6 = await val(`insert into public.squad_invite_participation_deletion_requests(participation_id, requested_by) values ($1, $2) returning id`, [child6.id, child6.guardian]);
+await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [STAFF]);
+const erasure = await val(`select public.confirm_squad_invite_participation_erasure($1, 'Parent asked for deletion')`, [request6]);
+await db.query(`select set_config('request.jwt.claim.sub', '', false)`);
+{
+  const inv = erasure.inventory ?? [];
+  check('erasure inventory includes the matched Photo Day photo', inv.some((o) => o.s3Key === key6a && o.kind === 'photo_day_photo'), inv);
+  check('erasure inventory does not include an unmatched photo', inv.filter((o) => o.kind === 'photo_day_photo').length === 1);
+  const r1 = await one(`select * from public.squad_invite_photo_day_photos where id = $1`, [d6p1]);
+  const r2 = await one(`select * from public.squad_invite_photo_day_photos where id = $1`, [d6p2]);
+  check('the matched photo row is unmatched and marked deleted in the same transaction', r1.deleted_at !== null && r1.participation_id === null);
+  check('the unmatched photo is left for the retention sweep', r2.deleted_at === null);
+  const p = await participation(child6.id);
+  check('erasure still clears the child details (0076 behaviour kept)', p.display_first_name === null && p.child_data_erased_at !== null);
+}

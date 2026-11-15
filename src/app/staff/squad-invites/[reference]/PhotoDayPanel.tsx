@@ -14,6 +14,7 @@ export type PhotoDaySummary = {
   coachPermissionsConfirmedAt: string | null;
   coachPermissionsNote: string | null;
   photosDeleteAfter: string;
+  photosDeletedAt: string | null;
   uploaded: number;
   matched: number;
   consentedChildren: number;
@@ -141,7 +142,9 @@ export default function PhotoDayPanel({ campaignId, reference, deadlineAt, photo
             <div><dt className="text-sky-900/70">Photographer</dt><dd className="font-semibold">{photoDay.photographerName}</dd></div>
             <div><dt className="text-sky-900/70">Status</dt><dd className="font-semibold capitalize">{photoDay.status}</dd></div>
           </dl>
-          <p className="text-xs text-sky-900">Every photo is deleted by {formatDate(photoDay.photosDeleteAfter)} at the latest.</p>
+          {photoDay.photosDeletedAt
+            ? <p className="text-xs font-semibold text-sky-900">All photos were deleted on {formatDate(photoDay.photosDeletedAt)}.</p>
+            : <p className="text-xs text-sky-900">Every photo is deleted automatically on {formatDate(photoDay.photosDeleteAfter)} (30 days after the campaign closes, never more than 60 days after the shoot).</p>}
 
           <section aria-labelledby="photo-day-coaches">
             <h3 id="photo-day-coaches" className="font-bold">1. Both coaches&apos; permission</h3>

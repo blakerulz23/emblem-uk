@@ -60,7 +60,7 @@ where conname = 'squad_invite_audit_events_event_type_check';
 | 1 | Design (this doc), DPIA note, migration 0104 and contract test | **Written, tested in in-memory Postgres, not applied** |
 | 2 | Staff: create photo day, issue/revoke photographer link, confirm coach permission. Photographer upload route (S3 London, `photo-day/` prefix). Staff matching page | **Written, tested, not applied or deployed** |
 | 3 | Parent: consent step in join flow, own-child photo picker in builder, card prefilled. Also writes the child's first name, surname initial and squad number (phase 2 note 4). Adds staff publishing | **Written, tested, not applied or deployed** |
-| 4 | Retention: cron deletes S3 objects and marks rows after `photos_delete_after` (proposed: 30 days after the campaign closes, never more than 60 days after the shoot); **erasure flow unmatches and deletes Photo Day photos** (phase 3 note 6); **sweep `photo-day/` for objects with no row** (phase 2 note 6); staging rehearsal; release | Next. **Release blocker** |
+| 4 | Retention: cron deletes S3 objects and marks rows after `photos_delete_after` (proposed: 30 days after the campaign closes, never more than 60 days after the shoot); **erasure flow unmatches and deletes Photo Day photos** (phase 3 note 6); **sweep `photo-day/` for objects with no row** (phase 2 note 6); staging rehearsal; release | **Code written and tested. Staging rehearsal prepared, not run** (`docs/operations/photo-day-staging-rehearsal.md`) |
 
 ## Phase 2 (15 November 2026)
 
@@ -111,9 +111,30 @@ Behind `SQUAD_INVITE_MVP_ENABLED`, like the rest of Squad Invite (middleware pat
 7. **Shoot list.** Blake shoots, and he is staff, so the permission list on the matching page is the shoot list. A hired photographer would need a printable list. Not built.
 8. **Not auto-placed.** The card isn't silently made from the first photo: the parent taps the one they want. Doing it automatically would race the restore of a saved draft and could overwrite a photo the parent already chose.
 
+## Phase 4 (15 November 2026)
+
+**Migration 0107:**
+- **Retention functions.** `photo_day_effective_delete_after` gives the earlier of the stored 60-days-after-shoot ceiling and campaign close + 30 days. "Close" is the earliest of pricing finalisation (`closed_at`), cancellation and the deadline. The organiser's early close (0066) is not used: it can be reopened and records no time. `list_photo_days_due_for_deletion`, `mark_photo_day_photo_storage_deleted` and `close_photo_day_after_deletion` each refuse anything not yet due.
+- **Erasure.** `confirm_squad_invite_participation_erasure` is replaced with 0076's body plus one block, and a contract test proves nothing else changed. The block puts every Photo Day photo matched to the child into the erasure's own storage inventory (new kind `photo_day_photo`), and unmatches and marks those rows deleted in the same transaction. The erasure still reports completed only once S3 confirms the deletes.
+
+**Cron** `GET/POST /api/internal/cron/sweep-photo-day-retention`, daily at 03:30. For each due day it runs three steps:
+1. Delete each row's object, then mark the row. A failed delete leaves the row for the next run.
+2. List and empty the whole `photo-day/{dayId}/` prefix, which also removes objects that never got a row.
+3. Close the day, and only if steps 1 and 2 fully succeeded.
+
+It never deletes outside `photo-day/{uuid}/`, and the new `listObjectKeys` refuses unscoped prefixes. The staff panel shows the real deletion date and, afterwards, when the photos were deleted.
+
+**Found while building (outside Photo Day, for Blake to decide):**
+1. **Crons.** Vercel Cron calls with GET, but the five existing sweeps export only POST, so they probably never run in production.
+2. **S3 versioning.** The bucket setup doc says versioning is on with no expiry of old versions, so `deleteObject` across the app (including child-data erasure) only hides objects.
+
+Both are step 0 of the rehearsal runbook. Neither was changed here.
+
+**Staging rehearsal:** `docs/operations/photo-day-staging-rehearsal.md` covers preconditions, applying the migrations, the read-only verification script `supabase/tests/photo_day_staging_verify.mjs`, an 18-step end-to-end checklist with real S3 on a preview, and release. Prepared, **not run**.
+
 ## Verification limits
 
-- Migrations 0103–0106 apply in order, and their behaviour is checked against real Postgres in an in-memory PGlite database (`supabase/tests/0104_0105_photo_day_pglite_test.mjs`, 121 checks). Covered: privileges, create rules, coach-permission gate, link issue/replace/revoke/expiry, upload cap and prefix, consent-gated matching, and withdrawal release. Phase 3 adds: ownership by guardian and builder credential, child-detail validation, grant only before the shoot, decline and withdraw, publish rules, and withdrawal clearing details and matches. PGlite isn't Supabase, so the migrations must still be applied and exercised on staging before production.
+- Migrations 0103–0107 apply in order, and their behaviour is checked against real Postgres in an in-memory PGlite database (`supabase/tests/0104_0105_photo_day_pglite_test.mjs`, 157 checks; phase 4 adds retention dates, due/not-due refusals, close rules and erasure inventory). The repo's final-schema authorization suites (`supabase/tests/authz`, 10 suites) also pass with 0107 applied. Covered: privileges, create rules, coach-permission gate, link issue/replace/revoke/expiry, upload cap and prefix, consent-gated matching, and withdrawal release. Phase 3 adds: ownership by guardian and builder credential, child-detail validation, grant only before the shoot, decline and withdraw, publish rules, and withdrawal clearing details and matches. PGlite isn't Supabase, so the migrations must still be applied and exercised on staging before production.
 - Real S3 upload/delete can't be tested locally (no AWS credentials). The upload route is tested with storage mocked and real sharp re-encoding. Phase 2 and 4 storage paths need the staging rehearsal.
 - No page was driven in a browser: the staff pages need a staff login and a database, and the only database `.env.local` points at is production. `next build` passes.
 

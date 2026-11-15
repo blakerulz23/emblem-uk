@@ -1087,7 +1087,11 @@ independently reviewed as part of this task and remains open.
   - **Asking parents.** The parent is asked separately, before the shoot. The page says what happens, who sees what, when photos are deleted and how to withdraw, and offers yes or no; "no" is as easy as "yes". Permission can't be given after the shoot.
   - **Publishing.** Parents see nothing until an Approver publishes the matches. After that, each parent sees only their own child's matched photos, through an ownership-checked proxy that refuses other photos with an identical "not found".
   - **Withdrawal.** It takes effect at once: matches are released, the name and shirt number given for matching are cleared, and a Photo Day photo already placed on the card is removed.
-  - **Open item (release blocker, phase 4).** The child-data erasure flow does not yet unmatch or delete Photo Day photos.
+  - ~~Open item (release blocker, phase 4).~~ Closed in code by phase 4, see below.
+- **Phase 4 build (15 Nov 2026, migration 0107):**
+  - **Retention.** A daily job deletes every Photo Day photo 30 days after the campaign closes, never later than 60 days after the shoot, including files that never got a database row.
+  - **Erasure.** Child-data erasure now deletes the photos matched to that child as part of the same tracked erasure. Photos never matched to the child fall to the retention job.
+  - **RISK, open, release blocker, affects the whole app.** The S3 bucket setup doc records versioning **on** and no rule expiring old versions. If the real bucket matches, deletes across the app (erasure, retention, Photo Day) only hide objects behind delete markers; the bytes remain. Fix: a lifecycle rule permanently deleting noncurrent versions after 1 day. Not verified against the real bucket (no AWS access in the build environment). See `docs/operations/photo-day-staging-rehearsal.md` step 0.2.
 
 **REQUIRES DECISION / SPECIALIST REVIEW before any real shoot:**
 
