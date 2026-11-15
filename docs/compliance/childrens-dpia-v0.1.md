@@ -1077,6 +1077,12 @@ independently reviewed as part of this task and remains open.
 - **Parents see only their own child's photos.** The US "browse the whole shoot" feature was deliberately not ported.
 - **Deletion by date:** every photo day carries `photos_delete_after`, and photo rows cascade when a participation is erased. Storage-object deletion is still to build (Phase 4) and is a **release blocker**.
 - **Locked-down tables:** RLS is on, and anon/authenticated have no access, the same as the other Squad Invite tables.
+- **Phase 2 build (15 Nov 2026, migration 0105):**
+  - **Metadata.** Every uploaded photo is re-encoded on the server, which drops all metadata (EXIF, GPS location, camera serial) before storage.
+  - **The link.** The photographer link lasts at most 7 days and carries its token only in the URL fragment and an `Authorization` header, never in a URL the server receives or a Referer header.
+  - **Coach confirmation.** It needs a note saying how both coaches agreed, recorded with the staff member in the audit trail.
+  - **Matching.** Staff match only from a list of children whose parent currently holds `photo_day_photography`.
+  - **Child identity.** Staff identify children by first name, surname initial and squad number, held in the existing participation columns that the erasure flow already clears. No new copy of a child's name is kept.
 
 **REQUIRES DECISION / SPECIALIST REVIEW before any real shoot:**
 

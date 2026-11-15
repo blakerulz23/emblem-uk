@@ -8,6 +8,8 @@ import StaffIdentityPanel from '../StaffIdentityPanel';
 import ReviewActions from './ReviewActions';
 import FinalisePricingButton from './FinalisePricingButton';
 import CoachCardReviewActions from './CoachCardReviewActions';
+import PhotoDayPanel, { type PhotoDaySummary } from './PhotoDayPanel';
+import { countPhotoDayPhotos, loadConsentedParticipationIds, loadPhotoDay } from '@/lib/photo-day-staff';
 
 // Staff-facing labels for the stored declaration `purpose` values (see
 // submit_squad_invite_request in 0054_squad_invite_concurrent_submission_idempotency.sql).
@@ -55,6 +57,13 @@ export default async function ReviewSquadInvite({params}:{params:{reference:stri
   const paidCount=paymentRows.filter(p=>p.payment_request_status==='paid').length;
   const eligibleCommitments=paymentRows.filter(p=>p.status==='commitment_completed').length;
   const totalPrintQuantity=paymentRows.reduce((sum,p)=>sum+(p.print_quantity??0),0);
+  // Photo Day (0104/0105): state and counts only, never a child's name or photo.
+  const photoDayRow=r.campaign_id?await loadPhotoDay(service,r.campaign_id):null;
+  let photoDay:PhotoDaySummary|null=null;
+  if(r.campaign_id&&photoDayRow){
+    const [counts,consented]=await Promise.all([countPhotoDayPhotos(service,photoDayRow.id),loadConsentedParticipationIds(service,r.campaign_id)]);
+    photoDay={status:photoDayRow.status,scheduledFor:photoDayRow.scheduled_for,venueLabel:photoDayRow.venue_label,photographerName:photoDayRow.photographer_name,maxPhotos:photoDayRow.max_photos,linkExpiresAt:photoDayRow.photographer_token_expires_at,coachPermissionsConfirmedAt:photoDayRow.coach_permissions_confirmed_at,coachPermissionsNote:photoDayRow.coach_permissions_note,photosDeleteAfter:photoDayRow.photos_delete_after,uploaded:counts.uploaded,matched:counts.matched,consentedChildren:consented.length};
+  }
 
   return <div className="mx-auto max-w-3xl px-5 py-12 pb-28">
     <Link href="/staff/squad-invites" className="text-sm font-bold text-orange-600 hover:text-orange-700">← Back to Squad Invite queue</Link>
@@ -117,6 +126,7 @@ export default async function ReviewSquadInvite({params}:{params:{reference:stri
         {coachCard&&<p className="mt-1 text-sm">{coachCard.full_name}, {coachCard.role_title} — <span className="font-semibold">{coachCard.configuration_status}</span></p>}
         {coachCard&&coachCard.configuration_status==='submitted'&&<CoachCardReviewActions campaignId={r.campaign_id}/>}
       </div>
+      <PhotoDayPanel campaignId={r.campaign_id} reference={r.public_reference} deadlineAt={campaign?.deadline_at??null} photoDay={photoDay}/>
     </section>}
 
     <details className="mt-6 rounded-2xl border bg-neutral-50">

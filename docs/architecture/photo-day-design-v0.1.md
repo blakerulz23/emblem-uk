@@ -1,6 +1,6 @@
 # Photo Day — design v0.1
 
-**Status:** draft for Blake's review. Phase 1 (schema) written; nothing applied to any database.
+**Status:** draft for Blake's review. Phases 1 (schema) and 2 (staff, photographer upload, matching) written; nothing applied to any real database.
 **Date:** 15 November 2026
 **Branch:** `feat/photo-day` (worktree `emblem-uk-photo-day`, based on production `794d183`)
 
@@ -57,15 +57,39 @@ where conname = 'squad_invite_audit_events_event_type_check';
 
 | Phase | Scope | State |
 |---|---|---|
-| 1 | Design (this doc), DPIA note, migration 0104 and contract test | **Written, static tests pass, not applied** |
-| 2 | Staff: create photo day, issue/revoke photographer link, confirm coach permission. Photographer upload route (S3 London, `photo-day/` prefix). Staff matching page | Next |
-| 3 | Parent: consent step in join flow, own-child photo picker in builder, card prefilled | |
-| 4 | Retention: cron deletes S3 objects and marks rows after `photos_delete_after` (proposed: 30 days after the campaign closes, never more than 60 days after the shoot); erasure flow deletes the objects; staging rehearsal; release | |
+| 1 | Design (this doc), DPIA note, migration 0104 and contract test | **Written, tested in in-memory Postgres, not applied** |
+| 2 | Staff: create photo day, issue/revoke photographer link, confirm coach permission. Photographer upload route (S3 London, `photo-day/` prefix). Staff matching page | **Written, tested, not applied or deployed** |
+| 3 | Parent: consent step in join flow, own-child photo picker in builder, card prefilled. **Must also write the child's first name, surname initial and squad number** (see phase 2 note 4) | Next |
+| 4 | Retention: cron deletes S3 objects and marks rows after `photos_delete_after` (proposed: 30 days after the campaign closes, never more than 60 days after the shoot); erasure flow deletes the objects; **sweep `photo-day/` for objects with no row** (phase 2 note 6); staging rehearsal; release | |
+
+## Phase 2 (15 November 2026)
+
+**Migration 0105** adds four staff functions. Each one checks the staff member, locks the photo day row and writes its own audit event in the same transaction: `create_squad_invite_photo_day`, `confirm_photo_day_coach_permissions`, `issue_photo_day_photographer_link` and `revoke_photo_day_photographer_link`. Two audit event types are added.
+
+| Where | What |
+|---|---|
+| `/staff/squad-invites/[reference]` | New Photo Day panel: add the day, record how both coaches agreed, issue/replace/revoke the link (shown once, with a copy button), counts, link to matching |
+| `/staff/squad-invites/[reference]/photo-day` | Matching: 48 photos per page (unmatched / matched / all), 15-minute signed previews, a "Who is this?" list of children with permission, and a photo count per child |
+| `/photo-day/upload/[id]#token` | Photographer page: link check, reminders (cull, no changing rooms, wipe after), multi-file upload two at a time, retry failed |
+| `POST /api/staff/squad-invites/[id]/photo-day` (+ `/coach-permission`, `/photographer-link`, `/photos/[photoId]/match`) | Staff routes. Same-origin check; Approver for create, coach permission and link; Reviewer for matching |
+| `GET/POST /api/photo-day/[id]/upload` | Bearer token in the `Authorization` header (never in a URL); rate-limited by IP and photo day; one photo per request |
+
+Behind `SQUAD_INVITE_MVP_ENABLED`, like the rest of Squad Invite (middleware path families `/photo-day` and `/api/photo-day`).
+
+**Notes and decisions made while building:**
+
+1. **Upload size.** Vercel caps a function's request body at about 4.5 MB. Camera JPEGs are often bigger, so the photographer page resizes each photo in the browser (longest edge 3,200 px, at most 4 MB). The server then re-encodes it with sharp: it applies orientation, caps the size, and **drops all metadata (EXIF, GPS, camera serial)**. Every stored photo is a `.jpg`. A printed card needs about 1,100 px, so nothing useful is lost. Direct-to-S3 presigned uploads would avoid the limit, but they need bucket CORS changes that can't be tested without AWS credentials.
+2. **The link** is a fresh 32-byte token. Only its SHA-256 is stored, and the audit event never contains it. It lasts 24 h, 48 h, 3 days or 7 days (the database refuses more than 7 days). It is refused until coach permission is confirmed. Issuing a new link kills the old one at once. A wrong token and an unknown photo day get the same answer.
+3. **Matching the first photo closes uploads** (0104 moves the day from `shooting` to `matching`, and only `scheduled`/`shooting` accept uploads). The panel and the matching page warn about this. If Blake wants uploads and matching to overlap, it's a one-line change in `record_photo_day_photo`.
+4. **How staff tell children apart.** Before commitment, a participation has no child name: `display_first_name`, `display_surname_initial` and `squad_number` are only written at commitment, but matching only accepts `started` participations. The matching page labels children from those same three columns, which the 0076 erasure flow already clears, so no new copy of a child's name is created. Until phase 3 fills them in, a child shows as "Child 2 (name not given yet)". **Phase 3's consent step must write them.** Squad number is the practical key, because shirt numbers are visible in photos.
+5. **One photo day per campaign, with no edit.** A wrong date or venue needs a correction function (not built). Staff can still revoke the link.
+6. **Orphans.** If the database refuses an upload after the object is stored (link revoked mid-upload, cap reached), the route deletes the object. If that delete also fails, an object is left with no row. The phase 4 cron should sweep `photo-day/{dayId}/` for keys with no row.
 
 ## Verification limits
 
-- No local Postgres is available in this environment, so migrations 0103 and 0104 are **statically checked only** (contract tests). They must be applied and exercised on staging before production.
-- Real S3 upload/delete can't be tested locally (no AWS credentials). Phase 2 and 4 storage paths need the staging rehearsal.
+- Migrations 0103, 0104 and 0105 apply in order, and their behaviour is checked against real Postgres in an in-memory PGlite database (`supabase/tests/0104_0105_photo_day_pglite_test.mjs`, 79 checks: privileges, create rules, coach-permission gate, link issue/replace/revoke/expiry, upload cap and prefix, consent-gated matching, withdrawal release). PGlite isn't Supabase, so they must still be applied and exercised on staging before production.
+- Real S3 upload/delete can't be tested locally (no AWS credentials). The upload route is tested with storage mocked and real sharp re-encoding. Phase 2 and 4 storage paths need the staging rehearsal.
+- No page was driven in a browser: the staff pages need a staff login and a database, and the only database `.env.local` points at is production. `next build` passes.
 
 ## Decisions recorded 15 November 2026 (Blake approved)
 
