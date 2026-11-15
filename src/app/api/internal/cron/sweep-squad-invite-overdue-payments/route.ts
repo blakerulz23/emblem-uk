@@ -64,3 +64,9 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ ok: true, campaignsWithOverduePayments: overdueCountByCampaign.size, campaignsNotified });
 }
+
+// Vercel Cron invokes the scheduled path with GET (vercel.json "crons"),
+// never POST. Without this export the nightly call got 405 and the sweep
+// never ran. Same handler, same CRON_SECRET check; POST stays for manual
+// runs.
+export const GET = POST;

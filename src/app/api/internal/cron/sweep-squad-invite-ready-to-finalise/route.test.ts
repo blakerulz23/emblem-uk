@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { POST } from './route';
+import { GET, POST } from './route';
 
 const mockEnqueueStaffNotification = vi.fn();
 vi.mock('@/lib/dispatch-staff-notification', () => ({
@@ -168,5 +168,24 @@ describe('POST /api/internal/cron/sweep-squad-invite-ready-to-finalise', () => {
     const body = await res.json();
     expect(mockEnqueueStaffNotification).toHaveBeenCalledTimes(2);
     expect(body).toEqual({ ok: true, campaignsReady: 2, campaignsNotified: 2 });
+  });
+});
+
+describe('GET /api/internal/cron/sweep-squad-invite-ready-to-finalise (Vercel Cron)', () => {
+  it('is the same handler as POST, so the scheduled GET actually runs the sweep', () => {
+    expect(GET).toBe(POST);
+  });
+
+  it('still rejects a GET without the correct CRON_SECRET', async () => {
+    const res = await GET(new NextRequest('http://localhost/api/internal/cron/sweep-squad-invite-ready-to-finalise', { method: 'GET' }));
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects a GET with the wrong CRON_SECRET', async () => {
+    const res = await GET(new NextRequest('http://localhost/api/internal/cron/sweep-squad-invite-ready-to-finalise', {
+      method: 'GET',
+      headers: { authorization: 'Bearer wrong-secret' },
+    }));
+    expect(res.status).toBe(401);
   });
 });
