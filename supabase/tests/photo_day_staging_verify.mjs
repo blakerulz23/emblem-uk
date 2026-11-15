@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 // REQUIRES (not a project dependency — install ad hoc before running):
 //   npm install --no-save pg
 // REQUIRES: a populated, git-ignored .env.staging.local at the repo root
-// with STAGING_DB_URL (same file hosted_staging_verify.mjs uses).
+// with STAGING_SUPABASE_DB_URL (same file hosted_staging_verify.mjs uses).
 //
 // Read-only: one transaction, SET TRANSACTION READ ONLY, rolled back.
 // SAFETY GUARD (same as hosted_staging_verify.mjs): refuses to run unless
@@ -28,13 +28,13 @@ for (const line of envText.split(/\r?\n/)) {
   const m = line.match(/^([A-Z_]+)=(.*)$/);
   if (m) env[m[1]] = m[2];
 }
-const dbUrl = env.STAGING_DB_URL;
+const dbUrl = env.STAGING_SUPABASE_DB_URL ?? env.STAGING_DB_URL;
 if (!dbUrl || !dbUrl.includes(STAGING_REF)) {
-  console.error(`SAFETY ABORT: STAGING_DB_URL does not resolve to staging ref ${STAGING_REF}.`);
+  console.error(`SAFETY ABORT: STAGING_SUPABASE_DB_URL does not resolve to staging ref ${STAGING_REF}.`);
   process.exit(1);
 }
 if (dbUrl.includes(PRODUCTION_REF)) {
-  console.error(`SAFETY ABORT: STAGING_DB_URL contains the PRODUCTION ref ${PRODUCTION_REF}.`);
+  console.error(`SAFETY ABORT: STAGING_SUPABASE_DB_URL contains the PRODUCTION ref ${PRODUCTION_REF}.`);
   process.exit(1);
 }
 

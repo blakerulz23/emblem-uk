@@ -1,30 +1,31 @@
 # Photo Day — staging rehearsal and release checklist
 
 **For:** Blake (or whoever runs the release). **Branch:** `feat/photo-day`.
-**Status:** prepared 15 November 2026, **not run**. Nothing here has touched staging or production.
+**Status (15 November 2026):** step 0.1 done in production; step 0.3 partly done (PR #143); **steps 1 and 2 done on staging**. Step 0.2 is waiting on Matt (the bucket is in his AWS account). Step 3 is not started.
 
 Run the steps in order. Stop at the first failure.
 
 ## 0. Before anything
 
-1. **Ship 0103 on its own first** (`fix/restore-squad-invite-audit-events`, now `73a4167`). To confirm production needs it, run read-only in the production SQL editor:
-   ```sql
-   select pg_get_constraintdef(oid) from pg_constraint
-   where conname = 'squad_invite_audit_events_event_type_check';
-   ```
-   If `coach_card_submitted` is missing, coach card submit/lock, photo rejection and campaign reopen are failing in production today.
+1. **0103: DONE in production, 15 Nov 2026.** Production was missing `coach_card_submitted` (confirmed read-only). A read-only pre-check found no allowed value or existing row outside 0103's list. The 0103 SQL was then applied by hand in the production SQL editor; verification returned `fix_applied = true` and `convalidated = true`. Code: PR #144 (`fix/restore-squad-invite-audit-events`). 0103 is idempotent, so re-running it on staging is safe.
 2. **S3 versioning (release blocker; affects the whole app, not only Photo Day).** `docs/infra/s3-london-bucket-setup.md` says the bucket has versioning **on** and no expiry rule. On a versioned bucket, `deleteObject` only adds a delete marker; the bytes stay as a hidden old version. So retention and child-data erasure would hide photos, not delete them. In the AWS console, check the bucket, then add this lifecycle rule:
    - "Permanently delete noncurrent versions of objects": **1 day** after they become noncurrent.
    - "Delete expired object delete markers": **on**.
    - Scope: whole bucket. That also fixes the existing erasure and artwork-retention paths.
-3. **Vercel crons don't run today (separate fix, your call).** Vercel Cron calls with **GET**, but the five existing sweeps in `vercel.json` only export POST, so they likely return 405 and never run. Check Vercel → project → Cron Jobs / logs. The new `sweep-photo-day-retention` accepts GET. Fixing the old five would suddenly start real deletions (for example 90-day artwork), so decide that separately.
-4. **`CRON_SECRET`** must be set in Vercel. Without it, every cron returns 401.
+3. **Vercel crons (partly done, 15 Nov 2026).** Confirmed live: all five old sweeps returned 405 to Vercel's GET, so they never ran. PR #143 fixed overdue-payments, ready-to-finalise and abandoned-uploads. `sweep-expired-artwork` and `sweep-expired-card-share-public-pages` are still POST-only (step 2 needs a backlog count first). The new `sweep-photo-day-retention` accepts GET.
+   - **Production bucket owner:** `emblem-uk-moments-prod` (eu-west-2) is in **Matt's** AWS account, not Emblem UK 191178643043. The lifecycle rule in 0.2 has to be added by him.
+   - **Previews share the production bucket.** `AWS_S3_BUCKET`, `AWS_REGION` and the keys are set for All Environments / Production. Step 3 must override them for the preview, for example to `emblem-squad-invite-disposable-20260816-uk` in account 191178643043.
+4. **`CRON_SECRET`: set in Vercel Production on 15 Nov 2026.** A preview needs its own value.
 
 ## 1. Apply the migrations to staging
 
 Prove the target first. It must be staging ref `rqgrpaprfxxhcvqtwhgj`, never production `ksszgbcditlfimnfnzla` (see `supabase/verification/hosted_staging_runbook.md`).
 
 Apply, in order: `0103` → `0104` → `0105` → `0106` → `0107`. Use the same method as the existing staging runbook (`supabase db push` against the linked staging project, or the staging SQL editor).
+
+**DONE 15 Nov 2026.**
+- Before applying, staging tracked migrations up to `0101`, plus `0097_coach_account_deletion_verified_moments` and `0098_deletion_review_suspension_and_verifier_identity`, which come from the coach-deletion work and aren't on this branch. Neither one changes any object that 0103–0107 replace, and Photo Day's foreign keys point only at `staff_accounts`.
+- Each file was applied in its own transaction, and a `supabase_migrations.schema_migrations` row (version and name) was added in the same transaction. All five applied cleanly.
 
 ## 2. Read-only check of staging
 
@@ -33,13 +34,15 @@ npm install --no-save pg
 node supabase/tests/photo_day_staging_verify.mjs
 ```
 
-The script needs `.env.staging.local` with `STAGING_DB_URL`. It aborts unless the URL is staging, and runs in one read-only transaction that is rolled back. Expect every line to be `PASS`. It checks:
+The script needs `.env.staging.local` with `STAGING_SUPABASE_DB_URL`. It aborts unless the URL is staging, and runs in one read-only transaction that is rolled back. Expect every line to be `PASS`. It checks:
 - the audit and consent lists;
 - RLS and no anon/authenticated access;
 - each of the 14 functions: definer, empty `search_path`, service_role only;
 - that the erasure function has the Photo Day block.
 
 The same SQL was dry-run against the in-memory database on the branch (89 PASS).
+
+**DONE 15 Nov 2026: 89 PASS, 0 FAIL on hosted staging.**
 
 ## 3. End-to-end on a staging preview (real S3)
 
