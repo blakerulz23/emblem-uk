@@ -1086,6 +1086,15 @@ independently reviewed as part of this task and remains open.
 4. Social-media use of pilot photos (e.g. a free Saddleworth 3Ds pilot) needs separate, explicit written parental consent. It is **not** covered by `photo_day_photography`.
 5. Safeguarding: the photographer's DBS check and the club welfare officer being informed, per the clubs' own safeguarding policies.
 
+**Founder decisions, 15 November 2026 (Blake, on behalf of Lauda Cartoons Studio Ltd), on points 1–4 above:**
+
+1. **Photographer:** Blake is the photographer, so no third-party processor is used for now. He follows the same rules: no retained copies, cards and camera wiped after upload, club welfare officer informed. A processing agreement is required before any hired photographer. A DBS check is recommended.
+2. **Children without consent:** their frames are not uploaded; they are culled before upload.
+3. **Retention:** 30 days after campaign close, never more than 60 days after the shoot.
+4. **Social media:** separate written parental consent per child, per use.
+
+Point 5 (safeguarding and the club welfare officer) is folded into decision 1. This records founder decisions only; it is not specialist sign-off.
+
 The manual Saddleworth pilot (no software; families upload through the existing Squad Invite) relies on the club's and parents' own photo consent and is outside this addendum. Points 1, 2, 4 and 5 still apply to it in practice.
 
 ## 14. Sign-off

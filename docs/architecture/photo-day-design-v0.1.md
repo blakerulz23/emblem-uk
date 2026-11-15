@@ -67,9 +67,11 @@ where conname = 'squad_invite_audit_events_event_type_check';
 - No local Postgres is available in this environment, so migrations 0103 and 0104 are **statically checked only** (contract tests). They must be applied and exercised on staging before production.
 - Real S3 upload/delete can't be tested locally (no AWS credentials). Phase 2 and 4 storage paths need the staging rehearsal.
 
-## Open questions for Blake
+## Decisions recorded 15 November 2026 (Blake approved)
 
-1. **Retention period** for unmatched and matched photos (proposed above).
-2. **Photographer contract:** a data-processing agreement with the photographer, who must not keep copies and must delete from their camera or cards after upload.
-3. **Price:** whether Photo Day cards cost the same as Squad Invite (£18.99 / £21.99 / £24.99), or the Saddleworth pilot is free in exchange for social content (needs separate written parent consent for social use; not covered by `photo_day_photography`).
-4. **Children without consent** on the pitch: the photographer brief, and whether to blur them or simply not upload those frames.
+1. **Retention:** every photo, matched or not, is deleted 30 days after the campaign closes, and never later than 60 days after the shoot. Phase 4 enforces this.
+2. **Photographer:** Blake is the photographer for the first photo days, as Emblem itself, so no third-party processing agreement is needed yet. Rules for whoever shoots: no copies kept outside Emblem storage; memory cards and camera wiped after upload; the club welfare officer told before the shoot. A data-processing agreement is required before any hired photographer is used. A DBS check for Blake is recommended, since clubs commonly ask for one.
+3. **Children without consent:** frames showing a child without `photo_day_photography` consent are **not uploaded**. They are culled on the camera or laptop before upload. No blurring tool is built.
+4. **Social media:** any social post of pilot photos, including a free Saddleworth 3Ds pilot, needs separate written consent from each parent, per child, per use. `photo_day_photography` covers card manufacture only.
+
+Still open: Photo Day card pricing (same as Squad Invite, or a free pilot).
