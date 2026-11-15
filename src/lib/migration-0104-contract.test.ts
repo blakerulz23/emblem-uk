@@ -9,7 +9,7 @@ const read = (prefix: string) => {
 };
 const listAfter = (sql: string, marker: string) => {
   const idx = sql.lastIndexOf(marker);
-  return [...sql.slice(idx, sql.indexOf('))', idx)).matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+  return Array.from(sql.slice(idx, sql.indexOf('))', idx)).matchAll(/'([a-z_]+)'/g)).map((m) => m[1]);
 };
 
 const sql = read('0104_');
@@ -40,10 +40,10 @@ describe('migration 0104 — Photo Day foundation', () => {
 
   it('every audit event the new functions write is allowed', () => {
     const allowed = listAfter(sql, 'add constraint squad_invite_audit_events_event_type_check');
-    const inserts = [...sql.matchAll(/insert into public\.squad_invite_audit_events[^;]*?values\s*\(([^;]*?)\);/gs)];
+    const inserts = Array.from(sql.matchAll(/insert into public\.squad_invite_audit_events[^;]*?values\s*\(([^;]*?)\);/g));
     expect(inserts.length).toBe(3);
     for (const m of inserts) {
-      const events = [...m[1].matchAll(/'(photo_day_[a-z_]+)'/g)].map((x) => x[1]);
+      const events = Array.from(m[1].matchAll(/'(photo_day_[a-z_]+)'/g)).map((x) => x[1]);
       expect(events.length).toBe(1);
       expect(allowed).toContain(events[0]);
     }
