@@ -49,6 +49,20 @@ set transaction read only;
 --                                          address such a deletion record holds (as above): addresses 0097
 --                                          would have cleared at the erasure (section 12). Buyer addresses
 --                                          (purchaser_email, declaring adults) are kept by design and not counted
+--   STOP unused_unexpired_order_invites_to_purchaser
+--                                          unused, unexpired guardian invites (player_invites) linked to an
+--                                          order (order_id) and addressed to that order's own purchaser address.
+--                                          Accepting one makes the buyer the child's guardian; on an order that
+--                                          names (or named) a separate guardian, that skips the named-guardian
+--                                          check purchaser recovery and the card's claim code apply.
+--                                          NOT every such invite is wrong: an ordinary order that names no
+--                                          guardian sends its profile invite to the buyer by design (0097 still
+--                                          allows that; it refuses buyer-addressed invites only on gift orders
+--                                          and orders that name or named a separate guardian). So a non-zero
+--                                          figure is triaged, by a separately reviewed counts-only diagnosis,
+--                                          before any clean-up; never revoke these invites blindly.
+--                                          A revoked invite has its expiry cut to now, so it is not counted.
+--                                          Used, expired, unlinked and other-address invites are not counted.
 --   info pending_reviews_with_email        pending reviews (they keep the email while pending: expected)
 --   info open_child_requests_with_contact  pending child-deletion requests (both tables) with a contact (expected)
 --   info unused_invites_with_email_no_account
@@ -83,6 +97,11 @@ select
      union
      select lower(regexp_replace(a.email, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g')) from public.pending_auth_deletions a
       where a.email is not null and not exists (select 1 from auth.users u where u.id = a.auth_user_id))) as order_guardian_addresses_of_deleted_accounts,
+  (select count(*) from public.player_invites pi join public.orders o on o.id = pi.order_id
+    where pi.used_at is null and pi.expires_at > now()
+      and pi.invited_email is not null and o.purchaser_email is not null
+      and lower(regexp_replace(pi.invited_email, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g'))
+        = lower(regexp_replace(o.purchaser_email, '^[\s\u00a0\ufeff]+|[\s\u00a0\ufeff]+$', '', 'g'))) as unused_unexpired_order_invites_to_purchaser,
   (select count(*) from public.pending_profile_deletions where status = 'pending' and email is not null) as pending_reviews_with_email,
   (select count(*) from public.player_deletion_requests where status = 'pending' and requester_email is not null)
     + (select count(*) from public.squad_invite_participation_deletion_requests where status = 'pending' and requester_email is not null) as open_child_requests_with_contact,

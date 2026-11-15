@@ -1720,7 +1720,7 @@ console.log('\n=== 24. R0 legacy-row count and the service_role privilege pre-ch
     return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, typeof v === 'bigint' ? Number(v) : v]));
   };
   const STOP = ['auth_retry_rows_with_email', 'resolved_reviews_with_email', 'closed_child_requests_with_contact', 'closed_participation_requests_with_contact', 'used_invites_redeemer_gone_with_email', 'invites_to_deleted_accounts',
-    'order_guardian_addresses_of_deleted_accounts'];
+    'order_guardian_addresses_of_deleted_accounts', 'unused_unexpired_order_invites_to_purchaser'];
   const w = await world({ through: '0096' });
   const { db, people } = w;
   try {
@@ -1743,11 +1743,15 @@ console.log('\n=== 24. R0 legacy-row count and the service_role privilege pre-ch
     // An order naming the deleted account as guardian, and an approval request addressed to it (the buyer's address is never counted).
     const legacyOrder = (await db.query(`insert into public.orders (order_ref, purchaser_email, intended_guardian_email, source) values ('S24-ORDER', 'legacy-a@example.test', 'LEGACY-A@example.test', 'standalone_order') returning id`)).rows[0].id;
     await db.query(`insert into public.builder_guardian_approval_requests (order_id, guardian_email, token_hash, status, declaration_version, expires_at) values ($1, ' legacy-a@example.test', repeat('e', 64), 'approved', 'v1', now())`, [legacyOrder]);
+    // An unused, unexpired order invite addressed to that order's own buyer (written before 0097 refused them).
+    const buyerOrder = (await db.query(`insert into public.orders (order_ref, purchaser_email, source) values ('S24-ORDER2', 'legacy-e@example.test', 'standalone_order') returning id`)).rows[0].id;
+    await db.query(`insert into public.player_invites (player_id, code, invited_email, origin, order_id) values ($1, 'S24-TO-BUYER', 'Legacy-E@example.test ', 'order_approval', $2)`, [w.directPlayer, buyerOrder]);
     const legacy = await runCheck(db, LEGACY);
     const expected = { auth_retry_rows_with_email: 1, resolved_reviews_with_email: 1, closed_child_requests_with_contact: 1, closed_participation_requests_with_contact: 1, used_invites_redeemer_gone_with_email: 1,
-      invites_to_deleted_accounts: 1, order_guardian_addresses_of_deleted_accounts: 2, pending_reviews_with_email: 1, open_child_requests_with_contact: 1, unused_invites_with_email_no_account: 2 };
+      invites_to_deleted_accounts: 1, order_guardian_addresses_of_deleted_accounts: 2, unused_unexpired_order_invites_to_purchaser: 1, pending_reviews_with_email: 1, open_child_requests_with_contact: 1,
+      unused_invites_with_email_no_account: 3 };
     check('24: legacy check counts each kind of pre-0097 row (every STOP figure non-zero, so R0 stops) and the expected pending ones',
-      legacy.read_only_guard === 'on' && Object.entries(expected).every(([k, v]) => legacy[k] === v), JSON.stringify(legacy));
+      legacy.read_only_guard === 'on' && STOP.every((k) => legacy[k] > 0) && Object.entries(expected).every(([k, v]) => legacy[k] === v), JSON.stringify(legacy));
     const snapshot = async () => rowsOf(db, `select (select json_agg(t order by t.auth_user_id) from public.pending_auth_deletions t) a,
         (select json_agg(t order by t.auth_user_id) from public.pending_profile_deletions t) b,
         (select json_agg(t order by t.id) from public.player_deletion_requests t) c,
@@ -1793,6 +1797,70 @@ console.log('\n=== 24. R0 legacy-row count and the service_role privilege pre-ch
     await w3.db.close();
   } catch (e) {
     check('24: pre-checks', false, e.stack);
+  }
+  await db.close();
+}
+
+console.log('\n=== 24b. R0 STOP figure: unused, unexpired order invites addressed to the order\'s own buyer ===');
+{
+  // Production's schema before 0097: 0096 plus 0101 (0101 was applied first in production).
+  const LEGACY = fs.readFileSync(path.resolve(HERE, '../../verification/0097_precheck_legacy_email_rows.sql'), 'utf8');
+  const FIG = 'unused_unexpired_order_invites_to_purchaser';
+  const runCheck = async (db) => {
+    const row = (await db.exec(LEGACY)).at(-1).rows[0];
+    return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, typeof v === 'bigint' ? Number(v) : v]));
+  };
+  const w = await world({ through: '0096' });
+  const { db } = w;
+  try {
+    await applyMigrations(db, { from: '0101', through: '0101' });
+    const pre0097 = (await db.query(`select to_regprocedure('public.gift_order_checkout_block_reason(uuid)') is not null g,
+      exists (select 1 from information_schema.columns where table_name = 'player_invites' and column_name = 'revoked_at') r,
+      exists (select 1 from information_schema.columns where table_name = 'orders' and column_name = 'intended_guardian_erased_at') e`)).rows[0];
+    const empty = await runCheck(db);
+    check('24b: on the pre-0097 production schema (0096 + 0101, no 0097 columns) the check runs read-only and reads 0',
+      pre0097.g === true && pre0097.r === false && pre0097.e === false && empty.read_only_guard === 'on' && empty[FIG] === 0, JSON.stringify({ pre0097, v: empty[FIG] }));
+    let k = 0;
+    const order = async (purchaser, intended = null) => (await db.query(`insert into public.orders (order_ref, purchaser_email, intended_guardian_email, source) values ($1, $2, $3, 'standalone_order') returning id`,
+      [`S24B-${++k}`, purchaser, intended])).rows[0].id;
+    const invite = async (email, orderId, extra = {}) => db.query(`insert into public.player_invites (player_id, code, invited_email, origin, order_id, used_at, expires_at)
+      values ($1, $2, $3, 'order_approval', $4, $5, coalesce($6::timestamptz, now() + interval '7 days'))`, [w.player, `S24B-INV-${++k}`, email, orderId, extra.used ?? null, extra.expires ?? null]);
+    const count = async () => (await runCheck(db))[FIG];
+    const A = await order('buyer@example.test', 'guardian@example.test');
+    const B = await order('someone-else@example.test');
+    // Each kind that must NOT count, added one at a time; the figure must stay 0 after every one.
+    const cases = [
+      ['used', () => invite('buyer@example.test', A, { used: new Date().toISOString() })],
+      ['expired', () => invite('buyer@example.test', A, { expires: '2020-01-01T00:00:00Z' })],
+      ['addressed to an unrelated adult', () => invite('stranger@example.test', A)],
+      ['addressed to the genuine named guardian', () => invite('guardian@example.test', A)],
+      ['not linked to an order', () => invite('buyer@example.test', null)],
+      ['linked to another order (its buyer is someone else)', () => invite('buyer@example.test', B)],
+      ['no address', () => invite(null, A)],
+      ['inner whitespace is not normalised away', () => invite('buyer @example.test', A)],
+    ];
+    const counted = [];
+    for (const [name, add] of cases) { await add(); if ((await count()) !== 0) counted.push(name); }
+    check('24b: used, expired, unrelated-adult, genuine-guardian, unlinked, other-order, address-less and inner-whitespace invites do not count', counted.length === 0, counted.join('; '));
+    await invite('buyer@example.test', A);
+    check('24b: a live (unused, unexpired) order invite addressed to that order\'s buyer counts: 1, a STOP', (await count()) === 1);
+    // Case and permitted outer whitespace (space, tab, newline, no-break, zero-width no-break), on either side.
+    const C = await order(' Buyer2@Example.TEST\n');
+    await invite('\t\u00a0BUYER2@example.test\ufeff ', C);
+    const D = await order('\u00a0buyer3@example.test');
+    await invite('BUYER3@EXAMPLE.TEST\r\n', D);
+    check('24b: case and permitted outer whitespace normalise the same way on the invite and the purchaser address (0101 rule)', (await count()) === 3);
+    const result = await runCheck(db);
+    check('24b: the check returns counts only: no column holds an address, code or order reference',
+      Object.values(result).every((v) => typeof v === 'number' || v === 'on') && !/@|S24B-/.test(JSON.stringify(result)), JSON.stringify(result));
+    // After the final 0097: revoking the buyer-addressed invites (as an erasure does) takes them out of the count.
+    await applyMigrations(db, { from: '0097', through: '0097' });
+    check('24b: the same check runs unchanged after 0097 (count unchanged)', (await count()) === 3);
+    await db.query(`select public.revoke_invites_addressed_to($1, 'buyer@example.test')`, [id()]);
+    const revoked = (await db.query(`select count(*)::int n from public.player_invites where revoked_at is not null and order_id = $1`, [A])).rows[0].n;
+    check('24b: revoked invites do not count (revocation cuts the expiry to now and clears the address)', revoked > 0 && (await count()) === 2, `revoked ${revoked}`);
+  } catch (e) {
+    check('24b: order invites to the buyer', false, e.stack);
   }
   await db.close();
 }

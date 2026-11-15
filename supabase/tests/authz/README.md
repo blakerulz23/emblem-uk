@@ -988,7 +988,7 @@ revoked any invite.
 - **Order emails** are never touched (`docs/order-email-retention.md`).
 
 Read-only pre-checks, both proven in the 0098 suite (section 24):
-- `supabase/verification/0097_precheck_legacy_email_rows.sql` (R0): counts rows written under the old rules. Any non-zero STOP figure stops the release until a separately reviewed one-off clean-up has run. The migrations leave those rows unchanged.
+- `supabase/verification/0097_precheck_legacy_email_rows.sql` (R0): counts rows written under the old rules. Any non-zero STOP figure stops the release until a separately reviewed one-off clean-up has run. The migrations leave those rows unchanged. It also stops on unused, unexpired order-linked invites addressed to that order's own purchaser (`unused_unexpired_order_invites_to_purchaser`, `migration_0098_test.mjs` section 24b). On an order that names a separate guardian, accepting one would bypass the named-guardian rule; an ordinary order that names no guardian sends its invite to the buyer by design, so a non-zero figure is triaged by a reviewed counts-only diagnosis before any clean-up.
 - `supabase/verification/0098_precheck_service_role_privileges.sql`: run before 0098. STOP unless `expected_four_present` is true (all four held and granted to `service_role` directly, not only through PUBLIC).
 
 ## Migration 0098 (deletion review suspension and verifier identity)
