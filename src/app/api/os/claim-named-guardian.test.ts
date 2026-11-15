@@ -27,6 +27,7 @@ let orderRow: Record<string, unknown> | null;
 // Fails matching reads after `skip` of them have succeeded (the gift check runs the same card read first).
 let failTable: { table: string; columns?: string; skip?: number } | null;
 let childCards: Array<{ id: string; order_id: string | null }>;
+let otherOrders: Array<Record<string, unknown>>;
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: () => ({ auth: { getUser: async () => ({ data: { user } }) } }),
@@ -53,6 +54,7 @@ beforeEach(() => {
   orderRow = { id: 'order-1', authority_status: 'confirmed', purchaser_email: 'buyer@example.test', intended_guardian_email: 'parent@example.test' };
   failTable = null;
   childCards = [{ id: CARD, order_id: 'order-1' }];
+  otherOrders = [];
   service = createFakeSupabase({
     respond: (c) => {
       if (fails(c)) return { error: { message: 'internal database detail' } };
@@ -61,7 +63,7 @@ beforeEach(() => {
         if (c.filters.some(([, col]) => col === 'order_id')) return { data: [{ player_id: PLAYER }] };
         return { data: childCards };
       }
-      if (c.table === 'orders') return { data: orderRow ? [orderRow] : [] };
+      if (c.table === 'orders') return { data: [...(orderRow ? [orderRow] : []), ...otherOrders] };
       return {};
     },
   });
@@ -149,6 +151,24 @@ describe('POST /api/os/claim — an order that names, or named, a separate guard
     expect((await claim()).status).toBe(200);
     orderRow = { ...orderRow, intended_guardian_email: 'Buyer@example.test' };
     expect((await claim()).status).toBe(200);
+  });
+
+  it('a child with cards from two orders: refused if the claimant is the buyer of either restricted order, even when they are the named guardian on the other', async () => {
+    childCards = [{ id: CARD, order_id: 'order-1' }, { id: REPLACEMENT_CARD, order_id: 'order-2' }];
+    // order-2: bought by the named guardian of order-1, naming yet another adult.
+    otherOrders = [{ id: 'order-2', authority_status: 'confirmed', purchaser_email: 'parent@example.test', intended_guardian_email: 'other-parent@example.test' }];
+    user = GUARDIAN;
+    await expectRefused();
+    user = BUYER;
+    await expectRefused();
+    user = STRANGER;
+    expect((await claim()).status).toBe(200);
+    // order-2 naming nobody: the named guardian of order-1 may claim; the buyer of order-1 still may not.
+    otherOrders = [{ id: 'order-2', authority_status: 'confirmed', purchaser_email: 'parent@example.test', intended_guardian_email: null }];
+    user = GUARDIAN;
+    expect((await claim()).status).toBe(200);
+    user = BUYER;
+    await expectRefused();
   });
 
   it('a card with no order at all is unchanged', async () => {
