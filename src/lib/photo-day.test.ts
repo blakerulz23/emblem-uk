@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  createPhotographerToken, hashPhotographerToken, parseLinkHours, parsePhotoDayCreateInput, photoDayChildLabel,
+  createPhotographerToken, hashPhotographerToken, parseLinkHours, parsePhotoDayConsentInput, parsePhotoDayCreateInput, photoDayChildLabel, photoDayParentReasonMessage,
   photoDayReasonMessage, photoDayStorageKey, photographerUploadUrl, readBearerToken, readRpcOutcome,
 } from './photo-day';
 
@@ -73,5 +73,18 @@ describe('photo day helpers', () => {
   it('labels a child from the participation display columns only', () => {
     expect(photoDayChildLabel({ display_first_name: 'Sam', display_surname_initial: 'T', squad_number: 7 }, 0)).toBe('Sam T. · #7');
     expect(photoDayChildLabel({ display_first_name: null, display_surname_initial: null, squad_number: null }, 2)).toBe('Child 3 (name not given yet)');
+  });
+
+  it('parses a parent’s Photo Day choice with the same limits as the database', () => {
+    expect(parsePhotoDayConsentInput({ granted: false, firstName: 'ignored' })).toEqual({ granted: false });
+    expect(parsePhotoDayConsentInput({ granted: true, firstName: ' Zoë ', surnameInitial: 'k', squadNumber: '' }))
+      .toEqual({ granted: true, firstName: 'Zoë', surnameInitial: 'K', squadNumber: null });
+    expect(parsePhotoDayConsentInput({ granted: true, firstName: 'Sam', surnameInitial: 'T', squadNumber: 7 })).toMatchObject({ squadNumber: 7 });
+    expect(parsePhotoDayConsentInput({ granted: true, firstName: 'Sam', surnameInitial: 'TH' })).toBeNull();
+    expect(parsePhotoDayConsentInput({ granted: true, firstName: '', surnameInitial: 'T' })).toBeNull();
+    expect(parsePhotoDayConsentInput({ granted: true, firstName: 'A'.repeat(25), surnameInitial: 'T' })).toBeNull();
+    expect(parsePhotoDayConsentInput({ granted: true, firstName: 'Sam', surnameInitial: 'T', squadNumber: 1000 })).toBeNull();
+    expect(parsePhotoDayConsentInput({ granted: 'true' })).toBeNull();
+    expect(photoDayParentReasonMessage('photo_day_already_taken')).toMatch(/already been taken/);
   });
 });

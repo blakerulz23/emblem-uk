@@ -111,7 +111,7 @@ const REASON_COPY: Record<string, string> = {
   coach_permissions_unconfirmed: 'Confirm both coaches’ permission before issuing the photographer link.',
   no_active_link: 'There is no active photographer link.',
   photo_not_found: 'That photo no longer exists.',
-  photo_day_not_matching: 'This photo day is not open for matching.',
+  photo_day_not_matching: 'This photo day is not open for matching (already published, or nothing matched yet).',
   participation_not_in_campaign: 'That child is not part of this campaign.',
   participation_not_open: 'That child’s card is already committed, so the photo cannot be changed here.',
   no_photo_day_consent: 'That parent has not given (or has withdrawn) Photo Day permission.',
@@ -120,6 +120,43 @@ const REASON_COPY: Record<string, string> = {
 
 export function photoDayReasonMessage(reason: unknown): string {
   return (typeof reason === 'string' && REASON_COPY[reason]) || 'That did not work. Refresh and try again.';
+}
+
+export type PhotoDayConsentInput =
+  | { granted: true; firstName: string; surnameInitial: string; squadNumber: number | null }
+  | { granted: false };
+
+/**
+ * Parent's Photo Day choice. Granting needs the details staff use to tell
+ * children apart when matching; declining or withdrawing needs nothing.
+ * Same limits as record_photo_day_consent (0106) and the printed name (24).
+ */
+export function parsePhotoDayConsentInput(body: unknown): PhotoDayConsentInput | null {
+  if (!body || typeof body !== 'object') return null;
+  const b = body as Record<string, unknown>;
+  if (b.granted === false) return { granted: false };
+  if (b.granted !== true) return null;
+  const firstName = typeof b.firstName === 'string' ? b.firstName.normalize('NFC').trim() : '';
+  const surnameInitial = typeof b.surnameInitial === 'string' ? b.surnameInitial.trim().toUpperCase() : '';
+  const rawNumber = b.squadNumber;
+  const squadNumber = rawNumber === undefined || rawNumber === null || rawNumber === '' ? null : Number(rawNumber);
+  if (!firstName || Array.from(firstName).length > 24) return null;
+  if (!/^[A-Z]$/.test(surnameInitial)) return null;
+  if (squadNumber !== null && (!Number.isInteger(squadNumber) || squadNumber < 0 || squadNumber > 999)) return null;
+  return { granted: true, firstName, surnameInitial, squadNumber };
+}
+
+const PARENT_REASON_COPY: Record<string, string> = {
+  invalid_choice: 'Choose yes or no.',
+  invalid_child_details: 'Check your child’s first name (up to 24 characters), surname initial (one letter) and squad number (0 to 999).',
+  participation_not_found: 'This team card session has expired. Open your team link again.',
+  participation_not_open: 'Your card is already sent, so Photo Day permission can’t be changed here. Contact Emblem.',
+  no_photo_day: 'This team has no Photo Day.',
+  photo_day_already_taken: 'The photos have already been taken, so permission can no longer be given.',
+};
+
+export function photoDayParentReasonMessage(reason: unknown): string {
+  return (typeof reason === 'string' && PARENT_REASON_COPY[reason]) || 'That did not work. Try again.';
 }
 
 /** Shape every Photo Day RPC that returns jsonb uses. */

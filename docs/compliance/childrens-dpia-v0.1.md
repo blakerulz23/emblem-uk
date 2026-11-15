@@ -1083,6 +1083,11 @@ independently reviewed as part of this task and remains open.
   - **Coach confirmation.** It needs a note saying how both coaches agreed, recorded with the staff member in the audit trail.
   - **Matching.** Staff match only from a list of children whose parent currently holds `photo_day_photography`.
   - **Child identity.** Staff identify children by first name, surname initial and squad number, held in the existing participation columns that the erasure flow already clears. No new copy of a child's name is kept.
+- **Phase 3 build (15 Nov 2026, migration 0106):**
+  - **Asking parents.** The parent is asked separately, before the shoot. The page says what happens, who sees what, when photos are deleted and how to withdraw, and offers yes or no; "no" is as easy as "yes". Permission can't be given after the shoot.
+  - **Publishing.** Parents see nothing until an Approver publishes the matches. After that, each parent sees only their own child's matched photos, through an ownership-checked proxy that refuses other photos with an identical "not found".
+  - **Withdrawal.** It takes effect at once: matches are released, the name and shirt number given for matching are cleared, and a Photo Day photo already placed on the card is removed.
+  - **Open item (release blocker, phase 4).** The child-data erasure flow does not yet unmatch or delete Photo Day photos.
 
 **REQUIRES DECISION / SPECIALIST REVIEW before any real shoot:**
 

@@ -4,6 +4,7 @@ import { POST as createDay } from './route';
 import { POST as coachPermission } from './coach-permission/route';
 import { POST as photographerLink } from './photographer-link/route';
 import { POST as matchPhoto } from './photos/[photoId]/match/route';
+import { POST as publishDay } from './publish/route';
 
 const mockMvp = vi.fn();
 vi.mock('@/lib/squad-invite-mvp', () => ({ isSquadInviteMvpEnabled: () => mockMvp() }));
@@ -199,5 +200,29 @@ describe('match', () => {
     const res = await call({ action: 'match', participationId: CHILD });
     expect(res.status).toBe(409);
     expect((await res.json()).error).toMatch(/Photo Day permission/);
+  });
+});
+
+describe('publish', () => {
+  const call = (origin = 'http://localhost') => publishDay(req(`${base}/publish`, {}, origin), { params: { id: CAMPAIGN } });
+
+  it('needs Approver and the same origin', async () => {
+    await call();
+    expect(mockPermission).toHaveBeenLastCalledWith('squad_invite_approver');
+    mockPermission.mockClear();
+    expect((await call('https://evil.example')).status).toBe(403);
+    expect(mockPermission).not.toHaveBeenCalled();
+  });
+
+  it('publishes the campaign’s photo day with the staff id', async () => {
+    expect((await call()).status).toBe(200);
+    expect(mockRpc).toHaveBeenCalledWith('publish_photo_day', { p_photo_day_id: DAY, p_staff_profile_id: 'staff-1' });
+  });
+
+  it('explains a refusal', async () => {
+    mockRpc.mockResolvedValue({ data: { ok: false, reason: 'photo_day_not_matching' }, error: null });
+    const res = await call();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/not open for matching/);
   });
 });

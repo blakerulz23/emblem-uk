@@ -7,6 +7,7 @@ import { getSignedDownloadUrl } from '@/lib/s3-client';
 import { PHOTO_DAY_STAFF_PREVIEW_TTL_SEC, photoDayChildLabel } from '@/lib/photo-day';
 import { countPhotoDayPhotos, loadConsentedParticipationIds, loadPhotoDay } from '@/lib/photo-day-staff';
 import MatchControl from './MatchControl';
+import PublishPhotoDay from './PublishPhotoDay';
 
 const PAGE_SIZE = 48;
 type Filter = 'unmatched' | 'matched' | 'all';
@@ -84,9 +85,12 @@ export default async function PhotoDayMatching({ params, searchParams }: { param
     <p className="mt-1 text-sm">{counts.uploaded} uploaded · {counts.matched} matched · {offerable.length} child{offerable.length === 1 ? '' : 'ren'} can be matched</p>
     {day.status === 'shooting' && <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm font-semibold text-amber-900">Matching the first photo closes uploads. Check the photographer has finished first.</p>}
     {!canMatch && day.status === 'scheduled' && <p className="mt-2 rounded-lg bg-neutral-100 p-2 text-sm">No photos yet.</p>}
+    {day.status === 'published' && <p className="mt-2 rounded-lg bg-emerald-50 p-2 text-sm font-semibold text-emerald-900">Published: each parent can see their own child&apos;s matched photos. You can still unmatch a photo to correct a mistake.</p>}
+    {day.status === 'matching' && <PublishPhotoDay campaignId={campaignId} matched={counts.matched} childrenWithoutPhotos={offerable.filter((c) => !perChild.get(c.id)).length} />}
 
     <section aria-labelledby="children-heading" className="mt-6 rounded-2xl border bg-white p-4">
       <h2 id="children-heading" className="font-bold">Children with Photo Day permission</h2>
+      {day.status === 'scheduled' && <p className="mt-1 text-sm text-neutral-700">This is the photographer&apos;s shoot list: photograph only these children, and cull any frame showing anyone else before upload.</p>}
       {offerable.length === 0
         ? <p className="mt-1 text-sm text-neutral-600">None yet. Parents give Photo Day permission when they join; children without it are not photographed and cannot be matched.</p>
         : <ul className="mt-2 flex flex-wrap gap-2 text-sm">{offerable.map((c) => {

@@ -20,12 +20,13 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   // Club-mediated verification only — the organiser already knows their real
   // squad, so a bounded identifier (the same first-name + last-initial shown
   // on the card itself, nothing more) lets them notice a name that doesn't
-  // belong. Never the photo, full surname, DOB or any other field; excludes
-  // 'started' participations since display_first_name is only ever set once
-  // a parent actually reaches commit.
+  // belong. Never the photo, full surname, DOB or any other field. Excludes
+  // 'started' participations explicitly: Photo Day permission (0106) now
+  // writes a child's first name before commitment, so a name alone no
+  // longer means the parent has committed.
   const { data: joined } = await service.from('squad_invite_participations')
     .select('display_first_name,display_surname_initial')
-    .eq('campaign_id', campaign.id).not('display_first_name', 'is', null);
+    .eq('campaign_id', campaign.id).neq('status', 'started').not('display_first_name', 'is', null);
   const joinedPlayers = (joined ?? []).map((p) => ({ firstName: p.display_first_name, surnameInitial: p.display_surname_initial }));
   // Never photo_key — this is the organiser's own submission, but the
   // dashboard response only ever needs enough to show status, same

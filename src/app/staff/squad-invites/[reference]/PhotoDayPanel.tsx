@@ -190,9 +190,9 @@ export default function PhotoDayPanel({ campaignId, reference, deadlineAt, photo
           </section>
 
           <section aria-labelledby="photo-day-matching">
-            <h3 id="photo-day-matching" className="font-bold">3. Match photos</h3>
+            <h3 id="photo-day-matching" className="font-bold">3. Match photos, then publish to parents</h3>
             <p className="mt-1">{photoDay.uploaded} of {photoDay.maxPhotos} uploaded · {photoDay.matched} matched · {photoDay.consentedChildren} child{photoDay.consentedChildren === 1 ? '' : 'ren'} with Photo Day permission</p>
-            <p className="mt-1 text-xs text-sky-900">Matching the first photo closes uploads, so wait until the photographer has finished.</p>
+            <p className="mt-1 text-xs text-sky-900">Matching the first photo closes uploads, so wait until the photographer has finished. Parents see nothing until you publish from the matching page.</p>
             <Link href={`/staff/squad-invites/${encodeURIComponent(reference)}/photo-day`} className="mt-2 inline-block font-bold text-orange-600 hover:text-orange-700">Open matching →</Link>
           </section>
         </div>
