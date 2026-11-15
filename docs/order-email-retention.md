@@ -50,9 +50,10 @@ At the final erasure (0097, section 12, in the same transaction), wherever the o
   - A held order can't be approved or fulfilled (the database refuses it, for every role), checked out (including a checkout opened before the hold), or marked paid (migration 0102). A payment Shopify takes anyway is recorded and staff are alerted to refund it.
   - The staff queue shows "Held" and no approve button.
   - **There is no release override.** A hold lifts only when the child's parent or guardian approves the order again through the normal approval flow, from an address that isn't the buyer's, while the order is still unpaid and no payment for it was refused. The database supports that restart from the existing "name the guardian" step.
-  - **Not built yet:** a buyer can only reach that step during the original builder session. There is no page to reopen an older order, and the buyer isn't told the order is held. Until that exists, a held order is in practice cancelled (or refunded), and the buyer places a new order.
+  - **Not built yet (accepted for the pilot, 15 November 2026):** a buyer can only reach that step during the original builder session. There is no page to reopen an older order, and the buyer isn't told the order is held. For the pilot a held order is cancelled (or refunded), and the buyer places a new order. A buyer restart flow is a follow-up (below).
   - **A paid held order** is refunded or cancelled. It is never released or restarted; the buyer can place a new order. The same applies when Shopify took a payment that Emblem refused for a held order: the order can only be cancelled after the refund, never restarted, so the buyer is never charged twice.
   - An ordinary order (no gift approval) has no approval flow, so a held one is cancelled or refunded.
+  - **Cancelling an unpaid held order** has no staff button yet (accepted for the pilot): staff record it with the audited manual procedure, `apply_gate3_payment_event` with `cancelled`. A staff cancel action is a follow-up (below).
 - **No fallback to the buyer:** an order whose named guardian was erased never sends the profile invite to the buyer, and the buyer can't recover the card themselves (below). The database also refuses any order profile invite to anyone but the order's confirmed recipient.
 - **Matching:** addresses are compared lower-cased with leading and trailing whitespace removed (including tabs, newlines and no-break spaces). If another sign-in now holds the same address, only records created before that sign-in are treated as the erased account's.
 - Nothing changes on an order because its buyer erased their account, unless the guardian's address is the same address.
@@ -64,10 +65,22 @@ At the final erasure (0097, section 12, in the same transaction), wherever the o
 - A later invite or resend for the order goes only by a deliberate staff action.
 - Automatic order notifications still go to the address on the order. For example, the buyer is told when a guardian responds to a gift order (`/api/builder-authority/guardian-respond`).
 
-## Purchaser recovery
+## Purchaser recovery and the card's claim code
 The buyer of a fulfilled, single-card order can normally recover the card themselves (`/api/os/recover`). That is refused, for both choices (claim it, or send it to an address of their choosing), whenever the order names a separate parent or guardian, or once did and that guardian's account was erased. The named guardian is the one who sets the profile up. If the order can't be read, recovery fails closed.
 
-## Follow-up (recorded 14 November 2026, not built)
+The same rule applies to the claim code printed on the card (`/api/os/claim`), for every order behind any of the child's cards, gift or not:
+- the buyer (their confirmed email is the order's purchaser address) is refused, including after the named guardian's account was erased;
+- the named guardian (confirmed email is the named address, still recorded) claims as before;
+- refused when identity is uncertain: no confirmed email, or the purchaser address is no longer recorded;
+- anyone else holding the code is unchanged;
+- a card or order that can't be read fails closed, with nothing written.
+The buyer signing in with a second account under a different address can't be detected.
+
+## Follow-ups (not built)
+- **Buyer restart flow** (recorded 15 November 2026): a page for the buyer to reopen an older held gift order and name the guardian again. The database and route already support the restart.
+- **Staff cancel action** (recorded 15 November 2026): a staff button that cancels an unpaid held order, replacing the manual procedure.
+
+### Email-only order access (recorded 14 November 2026)
 Order history is reached by email alone: the `orders: purchaser can view their own` policy matches `purchaser_email = auth.email()`. Anyone who later holds an account with that address sees every past order on it.
 - **Follow-up:** replace that with account-bound access, or access after an extra recovery check.
   - Account-bound: orders linked to the buying account when placed or first claimed.
