@@ -74,4 +74,4 @@ where conname = 'squad_invite_audit_events_event_type_check';
 3. **Children without consent:** frames showing a child without `photo_day_photography` consent are **not uploaded**. They are culled on the camera or laptop before upload. No blurring tool is built.
 4. **Social media:** any social post of pilot photos, including a free Saddleworth 3Ds pilot, needs separate written consent from each parent, per child, per use. `photo_day_photography` covers card manufacture only.
 
-Still open: Photo Day card pricing (same as Squad Invite, or a free pilot).
+5. **Pricing:** Photo Day uses Squad Invite pricing unchanged (£18.99 at 10+ commitments, £21.99 at 2–9, £24.99 for 1; free coach card after 10 paid). No pricing code changes.
