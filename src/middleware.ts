@@ -136,7 +136,10 @@ export async function middleware(request: NextRequest) {
   if (reviewMode && realSquadInviteSurface) {
     return new NextResponse('Not Found', { status: 404, headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow, noarchive' } });
   }
-  if (path === '/squad-invite/access') {
+  // Photo Day photographer page: the bearer token lives in the #fragment,
+  // which is never sent anywhere, but keep the page itself out of caches,
+  // search engines and Referer headers all the same.
+  if (path === '/squad-invite/access' || path.startsWith('/photo-day/')) {
     const response = NextResponse.next();
     response.headers.set('Cache-Control', 'no-store, max-age=0');
     response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');

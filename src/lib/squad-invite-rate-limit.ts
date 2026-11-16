@@ -3,7 +3,7 @@ import { createServiceRoleClient } from './supabase/server';
 
 export async function consumeSquadInviteRateLimit(
   headersLike: { get(name: string): string | null },
-  action: 'resolve' | 'participate' | 'otp-request' | 'otp-verify' | 'link-replace' | 'concern-flag' | 'coach-card-submit' | 'campaign-close' | 'campaign-reopen' | 'payment-preview-resolve',
+  action: 'resolve' | 'participate' | 'otp-request' | 'otp-verify' | 'link-replace' | 'concern-flag' | 'coach-card-submit' | 'campaign-close' | 'campaign-reopen' | 'payment-preview-resolve' | 'photo-day-consent' | 'photo-day-photo',
   subject?: string,
 ): Promise<boolean> {
   const secret = process.env.SQUAD_INVITE_RATE_LIMIT_SECRET;
@@ -37,6 +37,10 @@ export async function consumeSquadInviteRateLimit(
     // times within its 72-hour window — generous like 'resolve', still
     // bounded against token-guessing.
     'payment-preview-resolve': { ip: 30, subject: 30 },
+    // Photo Day (0106): a parent's yes/no/withdraw, a handful of times at most.
+    'photo-day-consent': { ip: 10, subject: 6 },
+    // Own matched photos, loaded as thumbnails then once more when chosen.
+    'photo-day-photo': { ip: 120, subject: 120 },
   }[action];
   const opaqueBucket = (scope: 'ip' | 'subject', value: string) =>
     createHmac('sha256', secret).update(`${action}:${scope}:${value}`).digest('hex');

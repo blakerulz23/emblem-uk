@@ -44,15 +44,15 @@ describe('disposable Squad Invite MVP preview boundary', () => {
   });
 
   it('scopes every real UI and API family without covering unrelated routes', () => {
-    for (const path of ['/squad-invite/start', '/squad-invite/manage/SI-TEST', '/squad-invite/access', '/staff/squad-invites', '/staff/squad-invites/SI-TEST', '/staff/queue']) {
+    for (const path of ['/squad-invite/start', '/squad-invite/manage/SI-TEST', '/squad-invite/access', '/staff/squad-invites', '/staff/squad-invites/SI-TEST', '/staff/queue', '/photo-day/upload/00000000-0000-4000-8000-000000000001']) {
       expect(isRealSquadInviteUiPath(path), path).toBe(true);
       expect(isRealSquadInviteSurfacePath(path), path).toBe(true);
     }
-    for (const path of ['/api/squad-invite-auth/request-code', '/api/squad-invite-links/participation', '/api/squad-invite-participations/id/commit', '/api/staff/squad-invites/id/review']) {
+    for (const path of ['/api/squad-invite-auth/request-code', '/api/squad-invite-links/participation', '/api/squad-invite-participations/id/commit', '/api/staff/squad-invites/id/review', '/api/photo-day/id/upload']) {
       expect(isRealSquadInviteApiPath(path), path).toBe(true);
       expect(isRealSquadInviteSurfacePath(path), path).toBe(true);
     }
-    for (const path of ['/', '/pricing', '/builder', '/api/orders/intent', '/staff/login', '/review/squad-invite']) {
+    for (const path of ['/', '/pricing', '/builder', '/api/orders/intent', '/staff/login', '/review/squad-invite', '/photo-days', '/api/photo-days']) {
       expect(isRealSquadInviteSurfacePath(path), path).toBe(false);
     }
   });

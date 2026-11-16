@@ -40,6 +40,7 @@ import AdultPermissionStep from './builder-steps/AdultPermissionStep';
 import GuardianPendingScreen from './builder-steps/GuardianPendingScreen';
 import ShareCardSheet from './ShareCardSheet';
 import SquadInviteShareSheet from './SquadInviteShareSheet';
+import PhotoDayPicker, { PHOTO_DAY_FILE_PREFIX, type PhotoDayBuilderState } from './PhotoDayPicker';
 import CoachCardSection from './CoachCardSection';
 import PricingSummaryCard from './PricingSummaryCard';
 import { useOrderPricingQuote } from './useOrderPricingQuote';
@@ -80,6 +81,11 @@ import { clearAllBuilderDrafts, clearBuilderDraft, draftScopeFor, isBuilderDevic
 export type SquadInviteBuilderContext = {
   participationId: string;
   campaignClubName: string;
+  /**
+   * Photo Day (migration 0106), resolved server-side by builder/page.tsx for
+   * this participation only. Null when the team has no photo day.
+   */
+  photoDay?: PhotoDayBuilderState | null;
 };
 
 const SQUAD_INVITE_STEP_ORDER: StepId[] = ['upload', 'bg-removal', 'personalise', 'review'];
@@ -303,7 +309,14 @@ export default function ProductionBuilder({
       // campaign's own club/team — never the curated EMJFL official-league
       // picker (a Squad Invite campaign's club is organiser-typed free
       // text, not necessarily one of that curated list).
-      return { ...draft, type: 'single', collectionType: 'custom', collectionName: 'Custom Collection', club: squadInviteContext.campaignClubName };
+      const base: OrderDraft = { ...draft, type: 'single', collectionType: 'custom', collectionName: 'Custom Collection', club: squadInviteContext.campaignClubName };
+      // Photo Day: the shirt number the parent gave with their permission
+      // pre-fills the card. A restored draft still wins (applied later).
+      const squadNumber = squadInviteContext.photoDay?.squadNumber;
+      if (typeof squadNumber === 'number' && base.players[0] && !base.players[0].kitNo) {
+        return { ...base, players: [{ ...base.players[0], kitNo: String(squadNumber) }, ...base.players.slice(1)] };
+      }
+      return base;
     }
     const mode = searchParams.get('mode');
     if (mode === 'set' || mode === 'friend-set' || mode === 'siblings') {
@@ -2234,6 +2247,28 @@ export default function ProductionBuilder({
               </div>
               <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('personalise')}>Continue</button>
             </section>
+          )}
+
+          {/* Photo Day (0106): its own block, so the shared upload step below
+              stays byte-identical in both modes (see
+              squad-invite-builder-integration-contract.test.ts). */}
+          {activeStepId === 'upload' && squadInviteContext?.photoDay && selectedPlayer && (
+            <PhotoDayPicker
+              participationId={squadInviteContext.participationId}
+              photoDay={squadInviteContext.photoDay}
+              onChoose={(file) => assignPhoto(selectedPlayer.id, file)}
+              onWithdrawn={() => {
+                // Permission withdrawn: a Photo Day photo already on the
+                // card must not be sent. Own uploads are left alone.
+                setOrder((current) => ({
+                  ...current,
+                  players: current.players.map((player) =>
+                    player.photo?.fileName?.startsWith(PHOTO_DAY_FILE_PREFIX)
+                      ? { ...player, photo: undefined, approvedAt: undefined, updatedAt: nowIso() }
+                      : player),
+                }));
+              }}
+            />
           )}
 
           {activeStepId === 'upload' && (
