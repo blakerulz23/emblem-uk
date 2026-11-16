@@ -10,9 +10,9 @@ const mockRateLimit = vi.fn();
 vi.mock('@/lib/anonymous-request-rate-limit', () => ({ consumeAnonymousRequestRateLimit: (...a: unknown[]) => mockRateLimit(...a) }));
 const mockUpload = vi.fn();
 const mockDelete = vi.fn();
-vi.mock('@/lib/s3-client', () => ({
-  uploadObject: (...a: unknown[]) => mockUpload(...a),
-  deleteObject: (...a: unknown[]) => mockDelete(...a),
+vi.mock('@/lib/photo-day-storage', () => ({
+  uploadPhotoDayObject: (...a: unknown[]) => mockUpload(...a),
+  deletePhotoDayObject: (...a: unknown[]) => mockDelete(...a),
 }));
 
 const DAY_ID = '0b6c4d2e-5f6a-4b7c-8d9e-0f1a2b3c4d5e';
