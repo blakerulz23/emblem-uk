@@ -26,7 +26,7 @@ export const metadata: Metadata = {
 const tiers = [
   {
     name: 'Single card',
-    who: 'One personalised card for one player. The perfect gift.',
+    who: 'One card, one player. The perfect gift.',
     price: PRICES.single,
     points: ['Premium printed football card', 'Built-in NFC chip', 'Private digital player profile', 'No subscription'],
     cta: 'Build one card',
@@ -38,7 +38,7 @@ const tiers = [
     who: 'Two to nine cards in one order.',
     price: `From ${PRICES.multi}`,
     priceSuffix: 'per card',
-    points: ['Everything in a single card', 'One order for several players', 'Each child’s profile is linked with their own family'],
+    points: ['Everything in a single card', 'One order for several players', 'Each profile linked with that child’s family'],
     cta: 'Build a set',
     href: '/builder?mode=set',
   },
@@ -61,10 +61,10 @@ const steps = [
 ];
 
 const trustItems = [
-  { title: 'Private by default', body: 'Player profiles are private by default and managed through guardian-controlled access.' },
-  { title: 'Guardian controlled', body: 'Parents and guardians decide what is added, who can see it and when it is deleted.' },
-  { title: 'Approved before printing', body: 'If you are not the parent, their parent or guardian approves the card first.' },
-  { title: 'Secure checkout', body: 'Pay through Shopify’s secure checkout. UK delivery is shown before you pay.' },
+  { title: 'Private by default', body: 'Every player profile is private by default.' },
+  { title: 'Guardian controlled', body: 'Parents and guardians decide what’s added, who sees it and when it’s deleted.' },
+  { title: 'Approved before printing', body: 'Not the parent? Their parent or guardian approves the card first.' },
+  { title: 'Secure checkout', body: 'Shopify’s secure checkout, with UK delivery shown before you pay.' },
 ];
 
 export default function Home() {
@@ -85,7 +85,7 @@ export default function Home() {
               Their season brought to life.
             </h1>
             <p className="emh-home-hero-desc">
-              Make your own football card in minutes. Put your young footballer on a premium personalised card, and a phone tap opens their private profile, where their family can collect season memories and celebrate achievements.
+              Make your own football card in minutes. Your young footballer on a premium personalised card. A phone tap opens their private profile for season memories and achievements.
             </p>
           </div>
 
@@ -140,7 +140,7 @@ export default function Home() {
       <section id="pricing" className="emh-section emh-pricing">
         <p className="emh-eyebrow">Pricing</p>
         <h2>Choose how you want to collect.</h2>
-        <p>Start with one custom football card, order a set for brothers and sisters, or bring the whole squad together. Every card is designed in our online football card maker and includes premium printing, built-in NFC and its digital profile. Buying the cards does not make you each child’s guardian: for a card set, Emblem arranges with each child’s family how that child’s profile is linked.</p>
+        <p>One custom football card, a set for brothers and sisters, or the whole squad. Design every card in our football card maker. Buying the cards does not make you each child’s guardian: for a set, Emblem arranges with each family how their child’s profile is linked.</p>
         <div className="emh-tier-grid">
           {tiers.map((tier) => (
             <article key={tier.name} className={tier.featured ? 'emh-tier-featured' : ''}>
@@ -165,7 +165,7 @@ export default function Home() {
         </div>
         <div className="emh-pricing-note">
           <p className="emh-pricing-reassurance">Digital profile access included. No annual subscription.</p>
-          <p className="emh-pricing-delivery">UK delivery is calculated at checkout and shown before you pay.</p>
+          <p className="emh-pricing-delivery">UK delivery is calculated at checkout, before you pay.</p>
         </div>
       </section>
 
