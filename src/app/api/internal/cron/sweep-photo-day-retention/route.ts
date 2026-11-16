@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { deleteObject, listObjectKeys } from '@/lib/s3-client';
+import { deletePhotoDayObject, listPhotoDayObjectKeys } from '@/lib/photo-day-storage';
 import { isUuid } from '@/lib/photo-day';
 
 export const runtime = 'nodejs';
@@ -63,7 +63,7 @@ async function sweep(request: NextRequest) {
         continue;
       }
       try {
-        await deleteObject(photo.storage_key);
+        await deletePhotoDayObject(photo.storage_key);
         const { data: marked, error: markError } = await service.rpc('mark_photo_day_photo_storage_deleted', { p_photo_id: photo.id });
         if (markError || marked !== true) {
           result.errors.push(`day ${dayId}: photo ${photo.id} deleted from storage but not marked`);
@@ -80,9 +80,9 @@ async function sweep(request: NextRequest) {
 
     // 2. Everything left under the prefix (objects with no row).
     try {
-      for (const key of await listObjectKeys(prefix)) {
+      for (const key of await listPhotoDayObjectKeys(prefix)) {
         if (!key.startsWith(prefix)) continue;
-        await deleteObject(key);
+        await deletePhotoDayObject(key);
         result.strayObjectsDeleted += 1;
       }
     } catch {

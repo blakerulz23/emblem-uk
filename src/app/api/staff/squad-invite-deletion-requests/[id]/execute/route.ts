@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { deleteObject } from '@/lib/s3-client';
+import { deletePhotoDayObject } from '@/lib/photo-day-storage';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -48,7 +49,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
   // client-supplied count.
   for (const object of result.inventory) {
     try {
-      await deleteObject(object.s3Key);
+      // Photo Day photos live in their own bucket (see photo-day-storage.ts).
+      if (object.kind === 'photo_day_photo') await deletePhotoDayObject(object.s3Key);
+      else await deleteObject(object.s3Key);
       await supabase.rpc('record_squad_invite_deletion_storage_attempt', {
         p_object_id: object.id,
         p_deleted: true,

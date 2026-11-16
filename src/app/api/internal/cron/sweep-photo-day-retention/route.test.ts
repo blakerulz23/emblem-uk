@@ -11,9 +11,9 @@ const STRAY = `${PREFIX}cccccccc-cccc-4ccc-8ccc-cccccccccccc.jpg`;
 const calls: string[] = [];
 const mockDelete = vi.fn();
 const mockList = vi.fn();
-vi.mock('@/lib/s3-client', () => ({
-  deleteObject: (key: string) => { calls.push(`s3.delete ${key}`); return mockDelete(key); },
-  listObjectKeys: (prefix: string) => { calls.push(`s3.list ${prefix}`); return mockList(prefix); },
+vi.mock('@/lib/photo-day-storage', () => ({
+  deletePhotoDayObject: (key: string) => { calls.push(`s3.delete ${key}`); return mockDelete(key); },
+  listPhotoDayObjectKeys: (prefix: string) => { calls.push(`s3.list ${prefix}`); return mockList(prefix); },
 }));
 
 let dueDays: unknown[];

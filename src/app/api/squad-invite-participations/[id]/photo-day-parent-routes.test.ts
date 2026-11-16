@@ -14,7 +14,7 @@ vi.mock('@/lib/squad-invite-mvp', () => ({ isSquadInviteMvpEnabled: () => mockMv
 const mockRateLimit = vi.fn();
 vi.mock('@/lib/squad-invite-rate-limit', () => ({ consumeSquadInviteRateLimit: (...a: unknown[]) => mockRateLimit(...a) }));
 const mockGetObject = vi.fn();
-vi.mock('@/lib/s3-client', () => ({ getObjectBytes: (...a: unknown[]) => mockGetObject(...a) }));
+vi.mock('@/lib/photo-day-storage', () => ({ getPhotoDayObjectBytes: (...a: unknown[]) => mockGetObject(...a) }));
 const mockBuilderCookie = vi.fn();
 vi.mock('next/headers', () => ({
   cookies: () => ({ get: (name: string) => (name === 'emblem_squad_builder' ? mockBuilderCookie() : undefined) }),
