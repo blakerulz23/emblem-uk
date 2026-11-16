@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { onActivateKey } from '../a11y';
 import { useOsPhotoUpload } from '../useOsPhotoUpload';
+import { deletionReviewResponse } from '@/lib/account-deletion-copy';
+import DeletionReviewStatus from './DeletionReviewStatus';
 
 const COLORS = {
   card: 'var(--os-card)',
@@ -204,6 +206,26 @@ export default function AccountSettings({
   // sign-in revocation still finishing (see the route's own doc comment).
   // Must never be papered over as a flat "deleted" success.
   const [deleteAccountPartial, setDeleteAccountPartial] = useState(false);
+  // Set when the deletion went to staff review (migration 0097): nothing has
+  // been deleted yet, so this must never read as "removed" either.
+  const [deleteAccountUnderReview, setDeleteAccountUnderReview] = useState(false);
+  const [deleteAccountCoachPaused, setDeleteAccountCoachPaused] = useState(false);
+  // The account's own deletion review, if one is pending (migration 0098).
+  const [reviewStatus, setReviewStatus] = useState<{ underReview: boolean; coachAccessPaused: boolean } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/os/account/deletion-review')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        if (!cancelled && body && typeof body.underReview === 'boolean') {
+          setReviewStatus({ underReview: body.underReview, coachAccessPaused: body.coachAccessPaused === true });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const sendReauthCode = async () => {
     if (!email || reauthStatus === 'sending') return;
@@ -256,8 +278,10 @@ export default function AccountSettings({
       }
       const body = await res.json().catch(() => null);
       setDeleteAccountPartial(!!body?.partial);
+      setDeleteAccountUnderReview(!!body?.identityRetained);
+      setDeleteAccountCoachPaused(Number(body?.coachAccessSuspended) > 0);
       setDeleteStep('done');
-      setTimeout(() => window.location.assign('/os'), body?.partial ? 3200 : 2200);
+      setTimeout(() => window.location.assign('/os'), body?.identityRetained ? 6000 : body?.partial ? 3200 : 2200);
     } catch {
       setDeleteAccountStatus('error');
       setDeleteAccountError('Could not reach the server — check your connection and try again.');
@@ -406,6 +430,7 @@ export default function AccountSettings({
         </SectionCard>
 
         <SectionCard title="Delete account">
+          {deleteStep !== 'done' && reviewStatus?.underReview && <DeletionReviewStatus coachAccessPaused={reviewStatus.coachAccessPaused} />}
           {deleteStep === 'idle' && (
             <>
               <p style={{ fontSize: 12.5, lineHeight: 1.55, color: COLORS.muted, margin: '0 0 12px' }}>
@@ -598,7 +623,9 @@ export default function AccountSettings({
 
           {deleteStep === 'done' && (
             <p style={{ fontSize: 13.5, fontWeight: 700, color: '#2E9E5B', textAlign: 'center', padding: '10px 0', lineHeight: 1.5 }}>
-              {deleteAccountPartial
+              {deleteAccountUnderReview
+                ? `${deletionReviewResponse(deleteAccountCoachPaused)} Signing you out…`
+                : deleteAccountPartial
                 ? "Your account data has been removed. We're still finishing the revocation of your sign-in — this happens automatically, no action needed. Signing you out…"
                 : 'Your account has been deleted. Signing you out…'}
             </p>

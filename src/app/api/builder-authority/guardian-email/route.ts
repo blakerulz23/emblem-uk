@@ -83,6 +83,14 @@ export async function POST(request: NextRequest) {
     p_declaration_version: BUILDER_AUTHORITY_DECLARATION_VERSION,
   });
 
+  // Migration 0102: a held order that has been paid restarts only after a
+  // refund or cancellation.
+  if (error && /held_order_paid_refund_or_cancel_first|held_order_payment_refused_cancel_instead/.test(error.message ?? '')) {
+    return NextResponse.json(
+      { error: 'This order is on hold and a payment was taken for it, so a new approval can’t be requested. Emblem will refund it; please place a new order.' },
+      { status: 409 }
+    );
+  }
   if (error) {
     console.error('builder-authority/guardian-email:rpc', error.message);
     return NextResponse.json({ error: 'We could not send that request. Please check the order and try again.' }, { status: 400 });

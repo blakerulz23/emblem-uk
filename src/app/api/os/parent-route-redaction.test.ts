@@ -6,6 +6,12 @@ import { captureLogs, expectCodeOnlyLogs, expectRedacted, sentinelError } from '
 import { POST as claim } from './claim/route';
 import { POST as redeemGuardianInvite } from './invites/redeem/route';
 import { GET as listRecoverable } from './recover/route';
+vi.mock('@/lib/order-named-guardian', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/order-named-guardian')>();
+  // Neutral here: the named-guardian recovery and card-claim rules are pinned in order-named-guardian.test.ts and claim-named-guardian.test.ts.
+  return { ...actual, checkOrderNamesSeparateGuardian: async () => ({ outcome: 'allowed' }), ordersNamingSeparateGuardian: async () => ({ ok: true, refused: new Set() }), checkPurchaserCardClaim: async () => ({ outcome: 'allowed' }) };
+});
+
 
 /**
  * Parent routes: card claim, guardian-invite redemption and recovery. A

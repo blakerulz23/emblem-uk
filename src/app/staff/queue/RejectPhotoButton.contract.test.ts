@@ -27,7 +27,7 @@ describe('RejectPhotoButton — two-step confirm, Squad Invite orders only, gone
   });
 
   it('hides the approve button(s) once the photo is rejected — never approvable from a stale row', () => {
-    const approveGate = pageSource.match(/\{order\.designPreview\?\.photoStatus !== 'rejected' && \(\s*order\.cardCount > 1 \? \(/);
+    const approveGate = pageSource.match(/\{order\.designPreview\?\.photoStatus !== 'rejected' && !order\.held && \(\s*order\.cardCount > 1 \? \(/);
     expect(approveGate).not.toBeNull();
   });
 

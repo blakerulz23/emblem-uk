@@ -4,7 +4,10 @@ import {
   checkGiftFirstGuardianClaim,
   checkGiftOrderInviteRedemption,
   chooseProfileInviteRecipient,
+  heldOrderIdsFromRead,
   isGiftAuthorityStatus,
+  isOrderHeld,
+  latestApprovalByOrder,
   resolveProfileInviteRecipient,
   retireOtherOrderApprovalInvites,
 } from './gift-order-guardian';
@@ -41,6 +44,7 @@ function fakeService(tables: Tables, failTables: string[] = []) {
         in: (c: string, vs: unknown[]) => { filters.push((r) => vs.includes(r[c])); return q; },
         is: (c: string, v: unknown) => { filters.push((r) => (r[c] ?? null) === v); return q; },
         not: (c: string, _op: string, v: unknown) => { filters.push((r) => (r[c] ?? null) !== v); return q; },
+        gt: (c: string, v: string) => { filters.push((r) => typeof r[c] === 'string' && (r[c] as string) > v); return q; },
         order: () => q,
         limit: (n: number) => { limit = n; return q; },
         maybeSingle: async () => { const r = run(); return { data: Array.isArray(r.data) ? r.data[0] ?? null : r.data, error: r.error }; },
@@ -53,6 +57,7 @@ function fakeService(tables: Tables, failTables: string[] = []) {
 }
 
 const CONFIRMED = '2026-11-08T00:00:00Z';
+const LIVE = '2999-01-01T00:00:00Z';
 const guardian = { email: 'Guardian@Example.test', email_confirmed_at: CONFIRMED };
 const buyer = { email: 'grandparent@example.test', email_confirmed_at: CONFIRMED };
 
@@ -91,6 +96,47 @@ describe('chooseProfileInviteRecipient', () => {
     expect(chooseProfileInviteRecipient({ ...base, authority_status: null, intended_guardian_email: 'p@example.test' }, null)).toEqual({
       ok: true, email: 'p@example.test', source: 'intended_guardian',
     });
+  });
+
+  it('0097: an order whose named guardian was erased never invites anyone: no fallback to the buyer, and no later address either', () => {
+    const erased = { ...base, intended_guardian_erased_at: '2026-11-14T00:00:00Z' };
+    expect(chooseProfileInviteRecipient({ ...erased, authority_status: 'confirmed' }, null)).toEqual({ ok: false, reason: 'intended_guardian_erased' });
+    expect(chooseProfileInviteRecipient({ ...erased, authority_status: null }, null)).toEqual({ ok: false, reason: 'intended_guardian_erased' });
+    expect(chooseProfileInviteRecipient({ ...erased, authority_status: 'confirmed', intended_guardian_email: 'new@example.test' }, null)).toEqual({ ok: false, reason: 'intended_guardian_erased' });
+    // Before 0097 the field is absent: unchanged behaviour.
+    expect(chooseProfileInviteRecipient({ ...base, authority_status: 'confirmed', intended_guardian_erased_at: undefined }, null)).toEqual({ ok: true, email: 'buyer@example.test', source: 'purchaser' });
+  });
+
+  it('latestApprovalByOrder: the latest response wins (missing time first, then created_at), so a redacted earlier approval never stands in for the current one', () => {
+    const rows = [
+      { order_id: 'o1', guardian_email: 'new@example.test', responded_at: '2026-11-14T10:00:00.123456+00:00', created_at: '2026-11-14T09:00:00Z' },
+      { order_id: 'o1', guardian_email: null, responded_at: '2026-11-01T10:00:00Z', created_at: '2026-11-01T09:00:00Z' },
+      { order_id: 'o2', guardian_email: null, responded_at: '2026-11-14T10:00:00Z', created_at: '2026-11-14T09:00:00Z' },
+      { order_id: 'o2', guardian_email: 'old@example.test', responded_at: '2026-11-01T10:00:00Z', created_at: '2026-11-01T09:00:00Z' },
+      { order_id: 'o3', guardian_email: 'a@example.test', responded_at: '2026-11-14T10:00:00Z', created_at: '2026-11-14T09:00:00Z' },
+      { order_id: 'o3', guardian_email: 'b@example.test', responded_at: null, created_at: '2026-11-01T09:00:00Z' },
+    ];
+    // Same rows, reversed: the order they arrive in doesn't matter.
+    for (const input of [rows, [...rows].reverse()]) {
+      const latest = latestApprovalByOrder(input);
+      expect(latest.get('o1')?.guardian_email).toBe('new@example.test');
+      expect(latest.get('o2')?.guardian_email).toBeNull();
+      expect(latest.get('o3')?.guardian_email).toBe('b@example.test');
+    }
+  });
+
+  it('heldOrderIdsFromRead: before 0097 (42703) nothing is held; any other read error fails closed (every order held)', () => {
+    expect(heldOrderIdsFromRead(['a', 'b'], { data: [{ id: 'b' }], error: null })).toEqual(new Set(['b']));
+    expect(heldOrderIdsFromRead(['a', 'b'], { data: null, error: { code: '42703' } })).toEqual(new Set());
+    expect(heldOrderIdsFromRead(['a', 'b'], { data: null, error: { code: '57014' } })).toEqual(new Set(['a', 'b']));
+    expect(heldOrderIdsFromRead(['a', 'b'], { data: null, error: {} })).toEqual(new Set(['a', 'b']));
+  });
+
+  it('0097: isOrderHeld reads held_at, and an order read before 0097 (no column) is never held', () => {
+    expect(isOrderHeld({ held_at: '2026-11-14T00:00:00Z' })).toBe(true);
+    expect(isOrderHeld({ held_at: null })).toBe(false);
+    expect(isOrderHeld({})).toBe(false);
+    expect(isOrderHeld(null)).toBe(false);
   });
 
   it('guardian_approved: only the approving guardian, normalised', () => {
@@ -257,18 +303,29 @@ describe('retireOtherOrderApprovalInvites', () => {
   it('expires unused order-approval invites not sent to the approving guardian, and nothing else', async () => {
     const tables: Tables = {
       player_invites: [
-        { id: 'buyer-invite', order_id: 'order-1', origin: 'order_approval', used_at: null, invited_email: 'grandparent@example.test' },
-        { id: 'guardian-invite', order_id: 'order-1', origin: 'order_approval', used_at: null, invited_email: 'Guardian@example.test' },
-        { id: 'used', order_id: 'order-1', origin: 'order_approval', used_at: '2026-11-01', invited_email: 'grandparent@example.test' },
-        { id: 'other-order', order_id: 'order-2', origin: 'order_approval', used_at: null, invited_email: 'x@example.test' },
-        { id: 'second-guardian', order_id: 'order-1', origin: 'second_guardian', used_at: null, invited_email: 'y@example.test' },
+        { id: 'buyer-invite', order_id: 'order-1', origin: 'order_approval', used_at: null, invited_email: 'grandparent@example.test', expires_at: LIVE },
+        { id: 'guardian-invite', order_id: 'order-1', origin: 'order_approval', used_at: null, invited_email: 'Guardian@example.test', expires_at: LIVE },
+        { id: 'used', order_id: 'order-1', origin: 'order_approval', used_at: '2026-11-01', invited_email: 'grandparent@example.test', expires_at: LIVE },
+        { id: 'other-order', order_id: 'order-2', origin: 'order_approval', used_at: null, invited_email: 'x@example.test', expires_at: LIVE },
+        { id: 'second-guardian', order_id: 'order-1', origin: 'second_guardian', used_at: null, invited_email: 'y@example.test', expires_at: LIVE },
       ],
     };
     const { client, updates } = fakeService(tables);
     expect(await retireOtherOrderApprovalInvites(client, 'order-1', 'guardian@example.test')).toEqual({ ok: true });
     expect(updates).toHaveLength(1);
     expect(updates[0].ids).toEqual(['buyer-invite']);
-    expect(tables.player_invites.find((r) => r.id === 'guardian-invite')?.expires_at).toBeUndefined();
+    expect(tables.player_invites.find((r) => r.id === 'guardian-invite')?.expires_at).toBe(LIVE);
+  });
+
+  it('leaves an already-expired invite alone, including one revoked because its recipient account was erased (the database refuses any change to it)', async () => {
+    const revoked = { id: 'revoked', order_id: 'order-1', origin: 'order_approval', used_at: null, invited_email: null, expires_at: '2026-11-01T00:00:00Z', revoked_at: '2026-11-01T00:00:00Z' };
+    const tables: Tables = {
+      player_invites: [revoked, { id: 'buyer-invite', order_id: 'order-1', origin: 'order_approval', used_at: null, invited_email: 'grandparent@example.test', expires_at: LIVE }],
+    };
+    const { client, updates } = fakeService(tables);
+    expect(await retireOtherOrderApprovalInvites(client, 'order-1', 'guardian@example.test')).toEqual({ ok: true });
+    expect(updates).toEqual([expect.objectContaining({ ids: ['buyer-invite'] })]);
+    expect(revoked.expires_at).toBe('2026-11-01T00:00:00Z');
   });
 });
 

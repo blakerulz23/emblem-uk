@@ -40,10 +40,17 @@ export async function PATCH(request: NextRequest) {
   }
 
   if (decision === 'approve') {
+    // .is('verified_at', null): only an unverified moment can be approved,
+    // matching reject below and this route's own 403 wording ("may already
+    // be verified"). Without it a coach could re-approve an already-verified
+    // moment and overwrite who verified it, and for a moment whose verifier
+    // has since deleted their account (migration 0097) the update would hit
+    // moments_verification_status_consistency and return a raw 500.
     const { data: moment, error } = await supabase
       .from('moments')
       .update({ verified_by: user.id, verified_at: new Date().toISOString(), verification_status: 'coach_verified' })
       .eq('id', momentId)
+      .is('verified_at', null)
       .select('id, player_id, title')
       .maybeSingle();
     if (error) {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { POST } from './route';
-import { GIFT_APPROVAL_MISSING_MESSAGE } from '@/lib/gift-order-guardian';
+import { GIFT_APPROVAL_MISSING_MESSAGE, ORDER_HELD_MESSAGE } from '@/lib/gift-order-guardian';
 
 /**
  * Same deviation-from-DI reasoning as every other route.test.ts in this
@@ -61,6 +61,11 @@ type Fixture = {
   approvalLookupFails?: boolean;
   // R3a: the linked-cards read fails
   cardsReadFails?: boolean;
+  // migration 0097: held_at / intended_guardian_erased_at on the order
+  orderHeld?: boolean;
+  intendedGuardianErased?: boolean;
+  // the approval update itself fails (e.g. the database refuses a hold that landed after the read)
+  orderUpdateError?: { code?: string; message: string };
 };
 
 let fixture: Fixture;
@@ -89,8 +94,10 @@ vi.mock('@/lib/supabase/server', () => ({
           select: (cols: string) => ({
             eq: () => ({
               maybeSingle: async () => ({
-                data: cols.startsWith('source')
+                // The route reads the order with select('*') (works before and after 0097).
+                data: cols === '*'
                   ? {
+                      id: ORDER_ID,
                       source: fixture.orderSource,
                       authority_status: fixture.orderAuthorityStatus,
                       pricing_tier: fixture.orderPricingTier ?? null,
@@ -98,6 +105,8 @@ vi.mock('@/lib/supabase/server', () => ({
                       order_ref: 'EMB-APPROVE-1',
                       purchaser_email: fixture.orderRow?.purchaser_email ?? null,
                       intended_guardian_email: fixture.orderRow?.intended_guardian_email ?? null,
+                      held_at: fixture.orderHeld ? '2026-11-14T00:00:00Z' : null,
+                      intended_guardian_erased_at: fixture.intendedGuardianErased ? '2026-11-14T00:00:00Z' : null,
                     }
                   : fixture.orderRow,
               }),
@@ -108,7 +117,7 @@ vi.mock('@/lib/supabase/server', () => ({
             return {
               eq: () => ({
                 select: () => ({
-                  single: async () => (fixture.orderRow ? { data: fixture.orderRow, error: null } : { data: null, error: { message: 'not found' } }),
+                  single: async () => (fixture.orderUpdateError ? { data: null, error: fixture.orderUpdateError } : fixture.orderRow ? { data: fixture.orderRow, error: null } : { data: null, error: { message: 'not found' } }),
                   maybeSingle: async () => (fixture.orderRow ? { data: { id: fixture.orderRow.id }, error: null } : { data: null, error: null }),
                 }),
               }),
@@ -186,7 +195,7 @@ function approve() {
 
 beforeEach(() => {
   mockRequireStaff.mockReset();
-  mockCreateGuardianInvite.mockReset();
+  mockCreateGuardianInvite.mockReset().mockResolvedValue({ ok: true, code: 'INVITE', reused: false, emailStatus: 'sent' });
   mockCreateTeamInvite.mockReset();
   mockRpc.mockReset();
   mockSendEarlyPreviewEmail.mockReset();
@@ -230,6 +239,86 @@ describe('POST /api/orders/[id]/approve — normal orders (unchanged)', () => {
     expect(auditInserts).toHaveLength(0);
     expect(mockRpc).not.toHaveBeenCalled();
     expect(mockSendEarlyPreviewEmail).not.toHaveBeenCalled();
+  });
+
+  it('0097: a held order (its named guardian deleted their account) is refused with 409 before anything is written or sent', async () => {
+    fixture = {
+      orderSource: 'standalone_order',
+      orderAuthorityStatus: 'confirmed',
+      orderHeld: true,
+      intendedGuardianErased: true,
+      cards: [{ player_id: 'player-1' }],
+      orderRow: { id: ORDER_ID, purchaser_email: 'buyer@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe(ORDER_HELD_MESSAGE);
+    expect(orderUpdates).toHaveLength(0);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+    expect(mockCreateTeamInvite).not.toHaveBeenCalled();
+  });
+
+  it('0097: an unheld order whose named guardian was erased (e.g. a gift order whose approving guardian is someone else) approves, but the profile invite never falls back to the buyer', async () => {
+    fixture = {
+      orderSource: 'standalone_order',
+      orderAuthorityStatus: 'confirmed',
+      intendedGuardianErased: true,
+      cards: [{ player_id: 'player-1' }],
+      orderRow: { id: ORDER_ID, purchaser_email: 'buyer@example.test', intended_guardian_email: null },
+    };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.inviteTriggered).toBe(false);
+    expect(body.inviteSkippedReason).toBe('intended_guardian_erased');
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
+  it('0097: no address is ever used once the named guardian was erased (the database also refuses writing one)', async () => {
+    fixture = {
+      orderSource: 'standalone_order',
+      orderAuthorityStatus: 'confirmed',
+      intendedGuardianErased: true,
+      cards: [{ player_id: 'player-1' }],
+      orderRow: { id: ORDER_ID, purchaser_email: 'buyer@example.test', intended_guardian_email: 'new-guardian@example.test' },
+    };
+    const res = await approve();
+    expect(res.status).toBe(200);
+    expect((await res.json()).inviteSkippedReason).toBe('intended_guardian_erased');
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+  });
+
+  it('0097: the database refusing the approval because the order was held a moment ago (EMHLD) is a 409 with the held message, never raw database text; any other failure is a generic 500', async () => {
+    fixture = {
+      orderSource: 'standalone_order',
+      orderAuthorityStatus: 'confirmed',
+      cards: [{ player_id: 'player-1' }],
+      orderRow: { id: ORDER_ID, purchaser_email: 'buyer@example.test', intended_guardian_email: null },
+      orderUpdateError: { code: 'EMHLD', message: 'order_held' },
+    };
+    let res = await approve();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe(ORDER_HELD_MESSAGE);
+    expect(mockCreateGuardianInvite).not.toHaveBeenCalled();
+    fixture.orderUpdateError = { code: 'XX000', message: 'some internal database detail' };
+    res = await approve();
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(await res.json())).not.toContain('internal database detail');
+  });
+
+  it('0097: an invite the database refuses (EMINV, e.g. the guardian was erased a moment ago) is reported as not sent, never as triggered', async () => {
+    fixture = {
+      orderSource: 'standalone_order',
+      orderAuthorityStatus: 'confirmed',
+      cards: [{ player_id: 'player-1' }],
+      orderRow: { id: ORDER_ID, purchaser_email: 'buyer@example.test', intended_guardian_email: 'named@example.test' },
+    };
+    mockCreateGuardianInvite.mockResolvedValue({ ok: false, status: 500, error: 'Could not create the invitation. Please try again.' });
+    const res = await approve();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.inviteTriggered).toBe(false);
+    expect(body.inviteSkippedReason).toBe('invite_not_created');
   });
 
   it('a standalone-source order is treated identically to a team_order (normal path, not squad_invite)', async () => {

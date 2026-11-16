@@ -12,8 +12,9 @@ describe('Staff queue — Squad Invite orders are clearly labeled, never silentl
     for (const select of selects) expect(select).toContain('source');
   });
 
-  it('selects orders.source for the recently-approved section too', () => {
-    expect(page).toMatch(/\.select\('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name, source, authority_status'\)/);
+  it('selects orders.source for the recently-approved section too (select * since 0097: every column, including source)', () => {
+    const section = page.slice(page.indexOf('async function getRecentlyApprovedSingleCardOrders'), page.indexOf("    .eq('payment_status', 'fulfilled')\n    .order('approved_at'"));
+    expect(section).toMatch(/\.from\('orders'\)\s*\n\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*\.select\('\*'\)/);
   });
 
   it('renders a visible "Squad Invite · consolidated delivery" badge in every section, including the Profile Setup Queue', () => {

@@ -70,6 +70,15 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         { status: 409 }
       );
     }
+    // Migration 0102: the order is held because the parent or guardian it
+    // depends on deleted their Emblem account. Checkout stays closed until a
+    // fresh approval from the child's parent or guardian.
+    if (reason === 'order_held') {
+      return NextResponse.json(
+        { error: "This card can't be paid for right now: it's on hold until the child's parent or guardian approves it again from their own email address. Please contact Emblem support." },
+        { status: 409 }
+      );
+    }
     // The approval check itself failed: checkout stays closed (fail closed).
     if (reason === 'gift_approval_unverified') {
       return NextResponse.json({ error: 'Checkout is temporarily unavailable. Please try again shortly.' }, { status: 503 });

@@ -1,0 +1,254 @@
+import { readFileSync } from 'fs';
+import { describe, expect, it } from 'vitest';
+
+const sql = readFileSync('supabase/migrations/0098_deletion_review_suspension_and_verifier_identity.sql', 'utf8');
+const rollback = readFileSync('supabase/rollback/0098_rollback.sql', 'utf8');
+const rollback0097 = readFileSync('supabase/rollback/0097_rollback.sql', 'utf8');
+const m0097 = readFileSync('supabase/migrations/0097_coach_account_deletion_verified_moments.sql', 'utf8');
+const m0088 = readFileSync('supabase/migrations/0088_relationship_authorization_foundation.sql', 'utf8');
+const code = sql.replace(/^\s*--.*$/gm, '');
+const rollbackCode = rollback.replace(/^\s*--.*$/gm, '');
+
+const FN_START = 'create or replace function public.delete_own_guardian_account()';
+const FN_END = 'grant execute on function public.delete_own_guardian_account() to authenticated;';
+const fnOf = (text: string) => text.slice(text.indexOf(FN_START), text.indexOf(FN_END) + FN_END.length);
+const squash = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+/**
+ * 0098 suspends coach access while an account deletion awaits staff review
+ * (with an explicit staff restore), refuses staff self-deletion, and stops a
+ * signed-in user naming anyone else as a moment's verifier. Its behaviour is
+ * proven against a production-matched PostgreSQL in
+ * supabase/tests/authz/migration_0098_test.mjs. This file is the structural
+ * half that runs with npm test.
+ */
+describe('migration 0098 — deletion review suspension and verifier identity', () => {
+  it('runs in one transaction, with the 0097 precondition before any change', () => {
+    expect(code.trim().startsWith('begin;')).toBe(true);
+    expect(code.trim().endsWith('commit;')).toBe(true);
+    const precondition = code.indexOf('do $$');
+    const firstChange = code.search(/^(alter|create)\b/im);
+    expect(precondition).toBeGreaterThan(0);
+    expect(precondition).toBeLessThan(firstChange);
+    expect(code).toContain('0098 refused: the expected 0097 state is not in place');
+    expect(code).toContain('(0098 already applied)');
+  });
+
+  it('requires the current 0097 (its erasure, staff completion and enabled profile-deletion guard), in the precondition and in the rollback', () => {
+    const TRIGGER_CHECK = "not exists (select 1 from pg_trigger where tgname = 'profiles_account_deletion_guard'";
+    for (const fn of ['account_deletion_blocking_reason(uuid)', 'erase_account_for_deletion(uuid, text, uuid)', 'complete_pending_profile_deletion(uuid, text)', 'guard_profile_deletion()']) {
+      expect(code).toContain(`to_regprocedure('public.${fn}') is null`);
+      expect(rollbackCode).toContain(`to_regprocedure('public.${fn}') is null`);
+    }
+    expect(code).toContain(TRIGGER_CHECK);
+    expect(code).toContain("and tgrelid = 'public.profiles'::regclass and not tgisinternal and tgenabled <> 'D'");
+    expect(code).toContain('the 0097 account-deletion functions or profile-deletion guard are missing (0097 not applied, or an earlier 0097)');
+    expect(code.indexOf(TRIGGER_CHECK)).toBeLessThan(code.search(/^(alter|create)\b/im));
+    const refusal = rollbackCode.indexOf('0098 rollback refused: the 0097 underneath is not the current version');
+    expect(rollbackCode).toContain(TRIGGER_CHECK);
+    expect(refusal).toBeGreaterThan(0);
+    expect(refusal).toBeLessThan(rollbackCode.indexOf(FN_START));
+  });
+
+  it('keeps the 0097 function and only adds the staff refusal, the review suspension and one result field', () => {
+    const before = fnOf(m0097);
+    const after = fnOf(sql);
+    // Every line of the 0097 body is still there, in order, apart from the
+    // pending_profile_deletions upsert (now reopening a decided request) and
+    // the two result lines (each gains coachAccessSuspended).
+    const changed = new Set([
+      '          resolved_by = null, resolved_at = null,',
+      '    returning first_detected_at into v_review_opened_at;',
+      "      'reviewOpenedAt', v_review_opened_at",
+      "    || jsonb_build_object('canDeleteIdentity', true);",
+    ]);
+    let at = 0;
+    for (const line of before.split('\n')) {
+      if (changed.has(line)) continue;
+      const found = after.indexOf(line, at);
+      expect(found, line).toBeGreaterThanOrEqual(at);
+      at = found + line.length;
+    }
+    expect(after).toMatch(/if exists \(select 1 from public\.staff_accounts where profile_id = v_uid\) then\s+raise exception 'Staff accounts cannot be deleted from the app';/);
+    // The staff refusal comes before any change.
+    expect(after.indexOf('Staff accounts cannot be deleted from the app')).toBeLessThan(after.indexOf('insert into public.pending_profile_deletions'));
+    expect(after.indexOf('Staff accounts cannot be deleted from the app')).toBeLessThan(after.indexOf('public.erase_account_for_deletion('));
+    expect(after).toContain("end_reason = 'account_deletion_review'");
+    expect(after).toContain("perform set_config('emblem.trusted_operation', 'account_deletion_review', true);");
+    expect(after).toContain('delete from public.coach_players where player_id = v_row.player_id and profile_id = v_uid;');
+    expect(after).toContain("'coachAccessSuspended', v_suspended");
+    expect(after).toContain("|| jsonb_build_object('canDeleteIdentity', true, 'coachAccessSuspended', 0);");
+  });
+
+  it('a deletion sent to staff review writes only the request, the suspension snapshot and the suspended relationships', () => {
+    const after = fnOf(sql).replace(/^\s*--.*\n/gm, '');
+    const review = after.slice(after.indexOf('  if v_blocking_reason is not null then'), after.indexOf('  end if;\n\n  return public.erase_account_for_deletion'));
+    const written = Array.from(review.matchAll(/(?:insert into|update|delete from) public\.(\w+)/g)).map((m) => m[1]);
+    expect(Array.from(new Set(written)).sort()).toEqual(['coach_players', 'coach_team', 'deletion_review_access_suspensions', 'pending_profile_deletions']);
+    expect(review).not.toMatch(/guardians|lockdown|uploaded_by|verified_by|erase_account_for_deletion|profiles/);
+    expect(after.split('public.erase_account_for_deletion(').length).toBe(2);
+  });
+
+  it('closes any open suspension as account_deleted when the profile is actually deleted (after the 0097 guard)', () => {
+    expect(code).toMatch(/create function public\.close_deletion_review_suspensions\(\)\s+returns trigger\s+language plpgsql\s+security definer\s+set search_path = ''/);
+    expect(code).toContain("set resolved_at = now(), resolution = 'account_deleted', resolution_note = 'the account was deleted'\n   where profile_id = old.id and resolved_at is null;");
+    expect(code).toContain('revoke all on function public.close_deletion_review_suspensions() from public, anon, authenticated, service_role;');
+    expect(code).toContain('create trigger profiles_close_deletion_review_suspensions\n  before delete on public.profiles');
+    // Same-event triggers fire in name order: the 0097 guard first.
+    expect('profiles_account_deletion_guard' < 'profiles_close_deletion_review_suspensions').toBe(true);
+    expect(code).toContain("resolution text check (resolution in ('restored', 'not_restorable', 'superseded', 'account_deleted')),");
+    expect(rollbackCode).toContain('drop trigger profiles_close_deletion_review_suspensions on public.profiles;\ndrop function public.close_deletion_review_suspensions();');
+  });
+
+  it('staff page support: a counts-only preview for signed-in staff, and the own status of the account', () => {
+    const preview = code.slice(code.indexOf('create function public.account_deletion_preview('), code.indexOf('grant execute on function public.account_deletion_preview(uuid) to authenticated;'));
+    expect(preview).toContain("raise exception 'Not authorized: staff only';");
+    expect(preview).toContain('stable');
+    expect(preview).not.toMatch(/\b(insert into|update public\.|delete from)\b/);
+    expect(preview).not.toMatch(/'(name|title|note|email)'/);
+    expect(code).toContain('revoke all on function public.account_deletion_preview(uuid) from public, anon, service_role;');
+    expect(code).toContain("where auth_user_id = auth.uid() and status = 'pending'");
+    expect(code).toContain('revoke all on function public.my_account_deletion_review() from public, anon, service_role;');
+    expect(rollbackCode).toContain('drop function public.my_account_deletion_review();\ndrop function public.account_deletion_preview(uuid);');
+  });
+
+  it('reject and restore are audited once (a repeat that changes nothing writes nothing)', () => {
+    const reject = code.slice(code.indexOf('create function public.reject_pending_profile_deletion('), code.indexOf('alter function public.reject_pending_profile_deletion('));
+    expect(reject.indexOf("return 'already_rejected';")).toBeLessThan(reject.indexOf('insert into public.account_deletion_staff_actions'));
+    const restore = code.slice(code.indexOf('create function public.restore_coach_access_after_deletion_rejection('), code.indexOf('alter function public.restore_coach_access_after_deletion_rejection('));
+    expect(restore).toMatch(/if v_open > 0 then\s+insert into public\.account_deletion_staff_actions/);
+    // The account is locked before the request: the order the deletion functions use, so they never deadlock.
+    expect(restore.indexOf('perform 1 from public.profiles')).toBeGreaterThan(0);
+    expect(restore.indexOf('perform 1 from public.profiles')).toBeLessThan(restore.indexOf('from public.pending_profile_deletions where id = p_pending_deletion_id for update'));
+  });
+
+  it('service_role can only read review records; the earlier draft rollback cannot run (renamed policy)', () => {
+    expect(code).toContain('revoke insert, update, delete, truncate on public.pending_profile_deletions from service_role;');
+    expect(rollbackCode).toContain('grant insert, update, delete, truncate on public.pending_profile_deletions to service_role;');
+    expect(code).not.toContain('a verifier change can only name the caller as coach');
+  });
+
+  it('the staff functions are definer, staff-checked, and executable by service_role only', () => {
+    for (const fn of ['reject_pending_profile_deletion', 'restore_coach_access_after_deletion_rejection']) {
+      const body = code.slice(code.indexOf(`create function public.${fn}(`));
+      expect(body.slice(0, 600)).toContain('security definer');
+      expect(body.slice(0, 1200)).toContain("raise exception 'Not authorized: staff only'");
+      expect(code).toContain(`revoke all on function public.${fn}(uuid, uuid, text) from public, anon, authenticated;`);
+      expect(code).toContain(`grant execute on function public.${fn}(uuid, uuid, text) to service_role;`);
+    }
+    expect(code).toContain("raise exception 'Coach access can be restored only after the deletion is rejected (it is %)'");
+  });
+
+  it('the snapshot table is staff/server read-only and never blocks a later deletion', () => {
+    expect(code).toContain('revoke all on public.deletion_review_access_suspensions from public, anon, authenticated, service_role;');
+    expect(code).toContain('grant select on public.deletion_review_access_suspensions to service_role;');
+    const table = code.slice(code.indexOf('create table public.deletion_review_access_suspensions'), code.indexOf('comment on table public.deletion_review_access_suspensions'));
+    expect(table.match(/references/g)).toHaveLength(1); // only pending_deletion_id
+  });
+
+  it('adds the two restrictive verifier policies for authenticated', () => {
+    expect(squash(code)).toContain(squash(`create policy "moments: a signed-in user can only name themselves as verifier"
+      on public.moments as restrictive for insert to authenticated
+      with check (verified_by is null or verified_by = auth.uid());`));
+    expect(squash(code)).toContain(squash(`create policy "moments: a verifier change names only the calling coach"
+      on public.moments as restrictive for update to authenticated using (true)
+      with check ( public.moment_verifier_unchanged(id, verified_by) or verified_by is null
+      or (verified_by = auth.uid() and public.moment_verifier_unchanged(id, null) and (`));
+    expect(code).toMatch(/create function public\.moment_verifier_unchanged[\s\S]*?security invoker/);
+  });
+});
+
+const GRANTING = [
+  ['approve_coach_team_request', 'uuid, uuid, uuid, timestamptz, uuid'],
+  ['redeem_coach_invite', 'text, uuid, text'],
+  ['redeem_team_invite', 'text, uuid, text'],
+] as const;
+/** A granting function's definition, from its create through its service_role grant, as 'create or replace'. */
+const grantingFnOf = (text: string, name: string, sig: string) => {
+  const start = text.search(new RegExp(String.raw`create (or replace )?function public\.${name}\(`));
+  const endMarker = `grant execute on function public.${name}(${sig}) to service_role;`;
+  return text.slice(start, text.indexOf(endMarker, start) + endMarker.length).replace(/^create function/, 'create or replace function');
+};
+
+describe('migration 0098 — no new coach access while a deletion is under review', () => {
+  it('a definer helper, executable by its owner only, reads only pending reviews', () => {
+    expect(squash(code)).toContain(squash(`create function public.profile_has_pending_deletion_review(p_profile_id uuid)
+      returns boolean language sql stable security definer set search_path = ''`));
+    expect(code).toContain("where auth_user_id = p_profile_id and status = 'pending'");
+    expect(code).toContain('revoke all on function public.profile_has_pending_deletion_review(uuid) from public, anon, authenticated, service_role;');
+    expect(code).toContain('revoke all on function public.refuse_coach_access_during_deletion_review() from public, anon, authenticated, service_role;');
+    expect(code).not.toMatch(/grant execute on function public\.(profile_has_pending_deletion_review|refuse_coach_access_during_deletion_review)/);
+  });
+
+  it('guards coach_team and coach_players inserts and updates, and team-request inserts, with SQLSTATE EMDRP', () => {
+    for (const [when, table] of [
+      ['before insert or update', 'coach_team'],
+      ['before insert or update', 'coach_players'],
+      ['before insert', 'coach_team_requests'],
+    ]) {
+      expect(squash(code)).toContain(
+        squash(`create trigger deletion_review_access_guard ${when} on public.${table} for each row execute function public.refuse_coach_access_during_deletion_review();`)
+      );
+    }
+    expect(code).toContain("raise exception using errcode = 'EMDRP', message = 'account_deletion_review_pending';");
+  });
+
+  it('each granting function is its 0088 body plus one early refusal, before anything changes', () => {
+    for (const [name, sig] of GRANTING) {
+      const before = grantingFnOf(m0088, name, sig);
+      const after = grantingFnOf(sql, name, sig);
+      const guard = after.indexOf(`public.profile_has_pending_deletion_review(`);
+      expect(guard, name).toBeGreaterThan(0);
+      // Removing the guard block gives back the 0088 definition exactly.
+      const guardBlock = /(?<=\n)\n?  -- 0098:[\s\S]*?end if;\n/.exec(after)?.[0] ?? '';
+      expect(guardBlock, name).toContain('profile_has_pending_deletion_review');
+      expect(after.replace(guardBlock, ''), name).toBe(before);
+      const firstWrite = after.search(/^\s*(update|insert into|perform public\.ensure_profile_role|select ti\.id)\b/m);
+      expect(guard, name).toBeLessThan(firstWrite);
+    }
+  });
+
+  it('delete_own_guardian_account locks the account first, so a racing grant is serialised', () => {
+    const fn = fnOf(sql);
+    expect(fn).toContain('perform 1 from public.profiles where id = v_uid for update;');
+    expect(fn.indexOf('for update;')).toBeLessThan(fn.indexOf('public.account_deletion_blocking_reason(v_uid)'));
+    expect(fn.indexOf('for update;')).toBeLessThan(fn.indexOf('insert into public.pending_profile_deletions'));
+  });
+});
+
+describe('0098 rollback — emergency only', () => {
+  it('warns prominently and refuses before any change unless acknowledged and unused', () => {
+    expect(rollback.split('\n').slice(0, 5).join('\n')).toContain('EMERGENCY ONLY');
+    expect(rollbackCode.trim().startsWith('begin;')).toBe(true);
+    expect(rollbackCode.trim().endsWith('commit;')).toBe(true);
+    const guard = rollbackCode.indexOf("current_setting('emblem.acknowledge_0098_rollback', true) is distinct from 'REOPEN-DELETION-REVIEW-ACCESS-AND-VERIFIER-NOMINATION'");
+    const used = rollbackCode.indexOf('select count(*) into v_n from public.deletion_review_access_suspensions;');
+    const rejected = rollbackCode.indexOf("where status = 'rejected' or rejection_reason is not null");
+    const firstChange = rollbackCode.indexOf(FN_START);
+    expect(guard).toBeGreaterThan(0);
+    expect(used).toBeGreaterThan(guard);
+    expect(rejected).toBeGreaterThan(used);
+    expect(firstChange).toBeGreaterThan(rejected);
+    expect(rollbackCode).toContain("select set_config('emblem.acknowledge_0098_rollback', '', false);");
+  });
+
+  it('restores the 0097 function body exactly', () => {
+    expect(fnOf(rollback)).toBe(fnOf(m0097));
+  });
+
+  it('removes the access guards and restores the three 0088 granting functions exactly', () => {
+    const drops = ['coach_team_requests', 'coach_players', 'coach_team'].map((t) => rollbackCode.indexOf(`drop trigger deletion_review_access_guard on public.${t};`));
+    const dropFn = rollbackCode.indexOf('drop function public.refuse_coach_access_during_deletion_review();');
+    const dropHelper = rollbackCode.indexOf('drop function public.profile_has_pending_deletion_review(uuid);');
+    for (const d of drops) {
+      expect(d).toBeGreaterThan(rollbackCode.indexOf("where status = 'rejected' or rejection_reason is not null"));
+      expect(d).toBeLessThan(dropFn);
+    }
+    expect(dropFn).toBeLessThan(dropHelper);
+    for (const [name, sig] of GRANTING) expect(grantingFnOf(rollback, name, sig), name).toBe(grantingFnOf(m0088, name, sig));
+  });
+
+  it('the 0097 rollback refuses while 0098 is applied', () => {
+    expect(rollback0097).toContain("raise exception '0097 rollback refused: 0098 is still applied; roll back 0098 first';");
+  });
+});

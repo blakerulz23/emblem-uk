@@ -41,7 +41,8 @@ type RequestRow = {
   // player row is gone, since the request row is deliberately kept as the
   // erasure's own audit trail.
   player_id: string | null;
-  requester_email: string | null;
+  // Pending rows only (0097: cleared when a request closes; not fetched for closed lists).
+  requester_email?: string | null;
   requested_at: string;
   status: string;
   notes: string | null;
@@ -70,7 +71,7 @@ export default async function StaffDeletionRequestsPage() {
     .order('requested_at', { ascending: true });
   const { data: completedRowsRaw } = await serviceRole
     .from('player_deletion_requests')
-    .select('id, player_id, requester_email, requested_at, status, notes, completed_by, completed_at, completion_note, players ( name )')
+    .select('id, player_id, requested_at, status, notes, completed_by, completed_at, completion_note, players ( name )')
     .eq('status', 'completed')
     .order('completed_at', { ascending: false })
     .limit(20);
@@ -79,7 +80,7 @@ export default async function StaffDeletionRequestsPage() {
   // per "keep rejected/cancelled distinct from completed" (0041).
   const { data: historyRowsRaw } = await serviceRole
     .from('player_deletion_requests')
-    .select('id, player_id, requester_email, requested_at, status, notes, handled_by, handled_at, rejection_reason, cancelled_at, players ( name )')
+    .select('id, player_id, requested_at, status, notes, handled_by, handled_at, rejection_reason, cancelled_at, players ( name )')
     .in('status', ['rejected', 'cancelled'])
     .order('requested_at', { ascending: false })
     .limit(20);
@@ -129,8 +130,9 @@ export default async function StaffDeletionRequestsPage() {
       </h1>
       <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 15, color: 'var(--ink-soft)', margin: '0 0 8px' }}>
         A guardian has asked for a player&rsquo;s profile, moments and photos to be permanently removed. Verify the request, then
-        confirm erasure below — this deletes the player&rsquo;s data, revokes their cards, and removes stored media for real. After
-        confirming, reply to the guardian&rsquo;s email confirming what was removed.
+        confirm erasure below — this deletes the player&rsquo;s data, revokes their cards, and removes stored media for real. The
+        guardian&rsquo;s contact address is kept only while a request is pending: when you complete or reject one, it is shown once
+        more so you can reply, then removed from the request.
       </p>
 
       <h2 style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 18, color: 'var(--ink)', margin: '32px 0 12px' }}>
@@ -155,8 +157,8 @@ export default async function StaffDeletionRequestsPage() {
                 {r.notes && <div style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 12.5, color: 'var(--ink-soft)', marginTop: 3 }}>{r.notes}</div>}
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <MarkCompletedButton requestId={r.id} />
-                <RejectButton requestId={r.id} />
+                <MarkCompletedButton requestId={r.id} contactEmail={r.requester_email ?? null} />
+                <RejectButton requestId={r.id} contactEmail={r.requester_email ?? null} />
               </div>
             </div>
           ))}

@@ -8,7 +8,7 @@ import { resolveOrCreateSeason } from '@/lib/resolve-season';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
 import { sendSquadInviteEarlyPreviewEmail } from '@/lib/send-squad-invite-early-preview-email';
 import { gate3PaymentGateEnabled } from '@/lib/shopify';
-import { GIFT_APPROVAL_MISSING_MESSAGE, isGiftAuthorityStatus, resolveProfileInviteRecipient, type ProfileInviteRecipient } from '@/lib/gift-order-guardian';
+import { GIFT_APPROVAL_MISSING_MESSAGE, ORDER_HELD_MESSAGE, isGiftAuthorityStatus, isOrderHeld, resolveProfileInviteRecipient, type ProfileInviteRecipient } from '@/lib/gift-order-guardian';
 
 export const runtime = 'nodejs';
 
@@ -170,9 +170,16 @@ export async function POST(request: Request, { params }: { params: { id: string 
 
   const serviceRole = createServiceRoleClient();
 
-  const { data: sourceRow } = await serviceRole.from('orders').select('source, authority_status, pricing_tier, payment_status, order_ref, purchaser_email, intended_guardian_email').eq('id', params.id).maybeSingle();
+  // select('*'): held_at / intended_guardian_erased_at exist only from
+  // migration 0097, and this route must work before and after it.
+  const { data: sourceRow } = await serviceRole.from('orders').select('*').eq('id', params.id).maybeSingle();
   if (!sourceRow) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  }
+  // Held (0097): the guardian this order depends on deleted their account.
+  // The database refuses the approval too; this gives staff the reason.
+  if (isOrderHeld(sourceRow)) {
+    return NextResponse.json({ error: ORDER_HELD_MESSAGE }, { status: 409 });
   }
   // Shopify cancelled this order. A paid order stays 'paid' in Emblem when
   // that happens (the money is still taken), so the cancellation delivery
@@ -260,6 +267,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       authority_status: sourceRow.authority_status ?? null,
       purchaser_email: sourceRow.purchaser_email ?? null,
       intended_guardian_email: sourceRow.intended_guardian_email ?? null,
+      intended_guardian_erased_at: sourceRow.intended_guardian_erased_at ?? null,
     });
     if (!giftRecipient.ok && giftRecipient.reason === 'lookup_failed') {
       return NextResponse.json({ error: 'Could not check the guardian approval for this order. Please try again.' }, { status: 500 });
@@ -381,7 +389,11 @@ export async function POST(request: Request, { params }: { params: { id: string 
     .single();
 
   if (error || !order) {
-    return NextResponse.json({ error: error?.message ?? 'Order not found' }, { status: 500 });
+    // The database refuses a held order (0097, EMHLD) even if it was held
+    // after the check above. Never pass raw database text to the client.
+    if (error?.code === 'EMHLD') return NextResponse.json({ error: ORDER_HELD_MESSAGE }, { status: 409 });
+    console.error('orders/approve: could not mark the order approved', { code: error?.code });
+    return NextResponse.json({ error: 'Could not approve this order. Please try again.' }, { status: 500 });
   }
 
   let inviteTriggered = false;
@@ -398,10 +410,19 @@ export async function POST(request: Request, { params }: { params: { id: string 
       authority_status: sourceRow.authority_status ?? null,
       purchaser_email: order.purchaser_email ?? null,
       intended_guardian_email: order.intended_guardian_email ?? null,
+      intended_guardian_erased_at: sourceRow.intended_guardian_erased_at ?? null,
     });
     if (playerId && recipient.ok) {
-      await createGuardianInvite(serviceRole, playerId, null, recipient.email, 'order_approval', order.id);
-      inviteTriggered = true;
+      // The database refuses an order invite to anyone but the order's
+      // confirmed recipient (0097, EMINV: e.g. its guardian's account was
+      // erased a moment ago). Report what actually happened.
+      const invite = await createGuardianInvite(serviceRole, playerId, null, recipient.email, 'order_approval', order.id);
+      if (invite.ok) {
+        inviteTriggered = true;
+      } else {
+        console.error('orders/approve: profile invite not created', invite.status);
+        inviteSkippedReason = 'invite_not_created';
+      }
     } else if (!recipient.ok && recipient.reason !== 'no_recipient') {
       // Fail closed: production is approved, but no profile invite goes to
       // anyone until the approving guardian is resolved (never the buyer).

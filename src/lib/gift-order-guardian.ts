@@ -98,20 +98,67 @@ export type ProfileInviteOrder = {
   authority_status: string | null;
   purchaser_email: string | null;
   intended_guardian_email: string | null;
+  /**
+   * Set when the guardian this order named had their account erased and the
+   * address was cleared (migration 0097). Absent before 0097.
+   */
+  intended_guardian_erased_at?: string | null;
 };
+
+/** Staff-facing refusal for an order held because the guardian it depends on erased their account (0097). */
+export const ORDER_HELD_MESSAGE =
+  "This order is held: the parent or guardian it depends on deleted their Emblem account. It can't be approved, paid for or have an invite sent. Staff can't release it: it lifts only when the child's parent or guardian approves a gift order again through the normal approval step, while it is unpaid. Otherwise cancel it, or refund it if it was paid.";
+
+export type ApprovalRow = { order_id: string; guardian_email: string | null; responded_at: string | null; created_at: string | null };
+
+/**
+ * The latest approved request per order: responded_at descending (a missing
+ * time counts as latest), then created_at descending — the same order as
+ * loadApprovedGuardianEmail and the 0097 invite trigger. A restart (0102)
+ * leaves an earlier, redacted approval behind; it must never hide, or stand
+ * in for, the current one.
+ */
+export function latestApprovalByOrder(rows: ApprovalRow[]): Map<string, ApprovalRow> {
+  const time = (v: string | null | undefined) => (v ? Date.parse(v) : Number.POSITIVE_INFINITY);
+  const latest = new Map<string, ApprovalRow>();
+  for (const a of rows) {
+    const cur = latest.get(a.order_id);
+    if (!cur || time(a.responded_at) > time(cur.responded_at)
+      || (time(a.responded_at) === time(cur.responded_at) && time(a.created_at) > time(cur.created_at))) latest.set(a.order_id, a);
+  }
+  return latest;
+}
+
+/**
+ * Which orders to show as held, from the read of held_at. Before 0097 the
+ * column doesn't exist (PostgREST error 42703): nothing can be held. Any
+ * other failure fails closed: every order is shown as held (no approve
+ * button; the server refuses a held order anyway).
+ */
+export function heldOrderIdsFromRead(orderIds: string[], result: { data: Array<{ id: string }> | null; error: { code?: string } | null }): Set<string> {
+  if (result.error) return result.error.code === '42703' ? new Set() : new Set(orderIds);
+  return new Set((result.data ?? []).map((o) => o.id));
+}
+
+/** Whether an order row (read with select('*'), so this also works before 0097) is held. */
+export function isOrderHeld(order: { held_at?: string | null } | null | undefined): boolean {
+  return !!order?.held_at;
+}
 
 export type ProfileInviteRecipient =
   | { ok: true; email: string; source: 'approved_guardian' | 'intended_guardian' | 'purchaser' }
-  | { ok: false; reason: 'guardian_not_approved' | 'approved_guardian_missing' | 'no_recipient' | 'lookup_failed' };
+  | { ok: false; reason: 'guardian_not_approved' | 'approved_guardian_missing' | 'intended_guardian_erased' | 'no_recipient' | 'lookup_failed' };
 
 /**
  * Pure choice of who receives a single-card order's profile (guardian)
- * invite. Non-gift orders: unchanged (intended guardian, else purchaser).
- * Gift orders: only the approving guardian, and only once approved — the
- * buyer is never a fallback.
+ * invite. Non-gift orders: the intended guardian, else the purchaser, unless
+ * the order named a guardian whose account was since erased (0097): then
+ * nobody, ever — the buyer is not a fallback for someone else's child, and
+ * such an order is cancelled or refunded. Gift orders: only the approving guardian, and
+ * only once approved — the buyer is never a fallback.
  */
 export function chooseProfileInviteRecipient(
-  order: Pick<ProfileInviteOrder, 'authority_status' | 'purchaser_email' | 'intended_guardian_email'>,
+  order: Pick<ProfileInviteOrder, 'authority_status' | 'purchaser_email' | 'intended_guardian_email' | 'intended_guardian_erased_at'>,
   approvedGuardianEmail: string | null
 ): ProfileInviteRecipient {
   if (isGiftAuthorityStatus(order.authority_status)) {
@@ -119,6 +166,9 @@ export function chooseProfileInviteRecipient(
     const email = normaliseEmail(approvedGuardianEmail);
     return email ? { ok: true, email, source: 'approved_guardian' } : { ok: false, reason: 'approved_guardian_missing' };
   }
+  // The database refuses any new named-guardian address once one was erased
+  // (0097), and any order invite for such an order; never invite anyone.
+  if (order.intended_guardian_erased_at) return { ok: false, reason: 'intended_guardian_erased' };
   const intended = order.intended_guardian_email?.trim();
   if (intended) return { ok: true, email: intended, source: 'intended_guardian' };
   const purchaser = order.purchaser_email?.trim();
@@ -137,8 +187,12 @@ export async function resolveProfileInviteRecipient(service: SupabaseClient, ord
  * Expires every unused order-approval invite for this order that was sent
  * to anyone other than `keepEmail` (the approving guardian). Used when staff
  * resend a gift order's invite, so an invite an earlier version of the app
- * sent to the buyer stops working. Unused invites only; a redeemed invite is
- * history and is left alone (see REPORT.md for those).
+ * sent to the buyer stops working. Unused, still-live invites only: a
+ * redeemed invite is history and is left alone (see REPORT.md for those), and
+ * one already expired needs nothing. That includes an invite revoked because
+ * its recipient's account was erased (migration 0097): its expiry is already
+ * past, and the database refuses any change to it, so touching it would fail
+ * the whole resend.
  */
 export async function retireOtherOrderApprovalInvites(
   service: SupabaseClient,
@@ -150,7 +204,8 @@ export async function retireOtherOrderApprovalInvites(
     .select('id, invited_email')
     .eq('order_id', orderId)
     .eq('origin', 'order_approval')
-    .is('used_at', null);
+    .is('used_at', null)
+    .gt('expires_at', new Date().toISOString());
   if (error) return { ok: false };
   const keep = normaliseEmail(keepEmail);
   const stale = ((data ?? []) as Array<{ id: string; invited_email: string | null }>)
