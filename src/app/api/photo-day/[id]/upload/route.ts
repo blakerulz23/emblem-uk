@@ -5,7 +5,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { hasSafeRequestOrigin } from '@/lib/squad-invite-request-security';
 import { consumeAnonymousRequestRateLimit } from '@/lib/anonymous-request-rate-limit';
-import { deleteObject, uploadObject } from '@/lib/s3-client';
+import { deletePhotoDayObject, uploadPhotoDayObject } from '@/lib/photo-day-storage';
 import { sniffImageMimeType } from '@/lib/file-signature';
 import {
   PHOTO_DAY_MAX_EDGE_PX, PHOTO_DAY_UPLOAD_MAX_BYTES, PHOTO_DAY_UPLOAD_MAX_REQUEST_BYTES,
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   const key = photoDayStorageKey(params.id);
   try {
-    await uploadObject(key, jpeg, 'image/jpeg');
+    await uploadPhotoDayObject(key, jpeg, 'image/jpeg');
   } catch {
     return NextResponse.json({ error: 'Storage is unavailable. Retry this photo.' }, { status: 503, headers: NO_STORE });
   }
@@ -147,7 +147,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   if (error || !photoId) {
     // Refused (link revoked/expired meanwhile, uploads closed, or cap hit)
     // or failed: the stored object must not outlive the refusal.
-    await deleteObject(key).catch(() => undefined);
+    await deletePhotoDayObject(key).catch(() => undefined);
     return error
       ? NextResponse.json({ error: 'The photo could not be saved. Retry this photo.' }, { status: 500, headers: NO_STORE })
       : NextResponse.json({ error: 'Uploads for this photo day are closed or full.' }, { status: 409, headers: NO_STORE });

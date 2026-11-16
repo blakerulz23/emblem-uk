@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireSquadInvitePermission } from '@/lib/require-squad-invite-permission';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
-import { getSignedDownloadUrl } from '@/lib/s3-client';
+import { getPhotoDaySignedUrl } from '@/lib/photo-day-storage';
 import { PHOTO_DAY_STAFF_PREVIEW_TTL_SEC, photoDayChildLabel } from '@/lib/photo-day';
 import { countPhotoDayPhotos, loadConsentedParticipationIds, loadPhotoDay } from '@/lib/photo-day-staff';
 import MatchControl from './MatchControl';
@@ -70,7 +70,7 @@ export default async function PhotoDayMatching({ params, searchParams }: { param
   for (const m of (matchedAll ?? []) as { participation_id: string }[]) perChild.set(m.participation_id, (perChild.get(m.participation_id) ?? 0) + 1);
 
   const previews = await Promise.all(photoRows.map(async (p) => {
-    try { return await getSignedDownloadUrl(p.storage_key, PHOTO_DAY_STAFF_PREVIEW_TTL_SEC); } catch { return null; }
+    try { return await getPhotoDaySignedUrl(p.storage_key, PHOTO_DAY_STAFF_PREVIEW_TTL_SEC); } catch { return null; }
   }));
 
   const canMatch = ['shooting', 'matching'].includes(day.status);

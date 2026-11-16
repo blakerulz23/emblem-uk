@@ -4,7 +4,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { hashBuilderToken } from '@/lib/squad-invite';
 import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { consumeSquadInviteRateLimit } from '@/lib/squad-invite-rate-limit';
-import { getObjectBytes } from '@/lib/s3-client';
+import { getPhotoDayObjectBytes } from '@/lib/photo-day-storage';
 import { isUuid } from '@/lib/photo-day';
 import { loadOwnMatchedPhotoIds } from '@/lib/photo-day-parent';
 
@@ -47,7 +47,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     .maybeSingle<{ storage_key: string }>();
   if (!photo) return notFound();
   try {
-    const { bytes } = await getObjectBytes(photo.storage_key);
+    const { bytes } = await getPhotoDayObjectBytes(photo.storage_key);
     return new NextResponse(new Uint8Array(bytes), { status: 200, headers: { ...PRIVATE, 'Content-Type': 'image/jpeg' } });
   } catch {
     return NextResponse.json({ error: 'Photo unavailable' }, { status: 503, headers: PRIVATE });
