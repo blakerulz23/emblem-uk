@@ -1,7 +1,7 @@
 # Photo Day — staging rehearsal and release checklist
 
 **For:** Blake (or whoever runs the release). **Branch:** `feat/photo-day`.
-**Status (15 November 2026):** step 0.1 done in production; step 0.3 partly done (PR #143); **steps 1 and 2 done on staging**. Step 0.2 is waiting on Matt (the bucket is in his AWS account). Step 3 is not started.
+**Status (15 November 2026):** step 0.1 done in production; step 0.3 partly done (PR #143); **steps 1 and 2 done on staging**. Step 0.2 is waiting on Matt (the bucket is in his AWS account). Step 3 is not started (staging frozen for PR #140). **16 Nov:** release without step 3, decided by Blake (see section 4).
 
 Run the steps in order. Stop at the first failure.
 
@@ -79,7 +79,17 @@ Clean up the synthetic campaign afterwards, as in the existing staging runbook.
 
 ## 4. Release
 
-Only after steps 0–3 all pass:
+**16 Nov 2026: founder decision to release without step 3.** Staging was frozen for PR #140, and Blake chose to ship the code without the preview walkthrough. To make up for that:
+- **Photo processing** was checked locally with the exact `sharp` call from the upload route. Input: a 21 MB, 6000×4000 JPEG with GPS, make/model, a serial number and EXIF orientation 6. Output: 2133×3200, upright, no EXIF/ICC/XMP/IPTC, and none of those strings in the bytes.
+- **The production SQL** is in three files: a read-only pre-check, a single all-or-nothing transaction for 0104–0107, and a read-only verify with 90 checks. Both read-only files were dry-run read-only on staging; the verify returned 90/0.
+- **An independent review** checked that merging changes nothing for campaigns without a Photo Day.
+
+Conditions that still apply:
+- **No real Photo Day is scheduled until step 0.2 is done.** Matt's lifecycle rule is needed; without it, deletion only hides photos.
+- **The first real shoot is small**, with a team Blake knows, and staff check the photos before publishing.
+- **Step 3 runs once staging is unfrozen**, even after release.
+
+Original rule, for later releases: only after steps 0–3 all pass:
 - merge `feat/photo-day`;
 - apply 0104–0107 to production (0103 already shipped);
 - run `photo_day_staging_verify.mjs`'s checks read-only against production by hand. The script itself refuses production on purpose.
