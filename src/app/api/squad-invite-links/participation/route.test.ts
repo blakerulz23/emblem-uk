@@ -13,9 +13,21 @@ import { POST } from './route';
 const mockGetUser = vi.fn();
 vi.mock('@/lib/supabase/server', () => ({
   createClient: () => ({ auth: { getUser: mockGetUser } }),
-  createServiceRoleClient: () => ({ rpc: (...args: unknown[]) => mockRpc(...args) }),
+  createServiceRoleClient: () => ({
+    rpc: (...args: unknown[]) => mockRpc(...args),
+    // Photo Day state lookups (0106). Each table returns its configured row;
+    // filters are recorded so the guardian scoping can be asserted.
+    from: (table: string) => {
+      const c: Record<string, unknown> = {};
+      for (const m of ['select', 'eq', 'is']) c[m] = (...args: unknown[]) => { fromFilters.push([table, m, ...args]); return c; };
+      c.maybeSingle = async () => ({ data: tableRows[table] ?? null });
+      return c;
+    },
+  }),
 }));
 const mockRpc = vi.fn();
+let tableRows: Record<string, unknown> = {};
+const fromFilters: unknown[][] = [];
 
 const mockCookieGet = vi.fn();
 vi.mock('next/headers', () => ({
@@ -53,6 +65,8 @@ beforeEach(() => {
   mockRateLimit.mockReset();
   mockRateLimit.mockResolvedValue(true);
   mockCookieGet.mockReturnValue({ value: LINK_TOKEN });
+  tableRows = {};
+  fromFilters.length = 0;
 });
 
 describe('POST /api/squad-invite-links/participation — creation, retry, and guardian isolation', () => {
@@ -62,7 +76,7 @@ describe('POST /api/squad-invite-links/participation — creation, retry, and gu
     const res = await post();
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ participationId: 'p-1', created: true });
+    expect(body).toEqual({ participationId: 'p-1', created: true, photoDay: null });
     expect(mockRpc).toHaveBeenCalledWith('start_squad_invite_participation', expect.objectContaining({ p_guardian_profile_id: GUARDIAN_A }));
   });
 
@@ -71,7 +85,7 @@ describe('POST /api/squad-invite-links/participation — creation, retry, and gu
     mockRpc.mockResolvedValue({ data: { participationId: 'p-1', created: false }, error: null });
     const res = await post();
     const body = await res.json();
-    expect(body).toEqual({ participationId: 'p-1', created: false });
+    expect(body).toEqual({ participationId: 'p-1', created: false, photoDay: null });
   });
 
   it('a different guardian on the same link gets their own participation, not the first guardian’s', async () => {
@@ -102,9 +116,42 @@ describe('POST /api/squad-invite-links/participation — creation, retry, and gu
     mockRpc.mockResolvedValue({ data: { participationId: 'p-1', created: true } });
     const res = await post();
     const body = await res.json();
-    expect(Object.keys(body)).toEqual(['participationId', 'created']);
+    expect(Object.keys(body)).toEqual(['participationId', 'created', 'photoDay']);
     const setCookie = res.headers.get('set-cookie') ?? '';
     expect(setCookie).toContain('emblem_squad_builder=');
     expect(setCookie.toLowerCase()).toContain('httponly');
+  });
+});
+
+describe('POST /api/squad-invite-links/participation — Photo Day state (0106)', () => {
+  beforeEach(() => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: GUARDIAN_A } } });
+    mockRpc.mockResolvedValue({ data: { participationId: 'p-1', created: true }, error: null });
+  });
+
+  it('asks for permission when the team has a scheduled photo day and no choice is recorded', async () => {
+    tableRows = {
+      squad_invite_participations: { id: 'p-1', campaign_id: 'c-1', status: 'started' },
+      squad_invite_photo_days: { id: 'd-1', status: 'scheduled', scheduled_for: '2026-11-22', venue_label: 'Astley', photos_deleted_at: null },
+    };
+    const body = await (await post()).json();
+    expect(body.photoDay).toEqual({ scheduledFor: '2026-11-22', venueLabel: 'Astley', canGrant: true, decision: null, published: false });
+  });
+
+  it('reads only the signed-in guardian’s own participation', async () => {
+    tableRows = { squad_invite_participations: { id: 'p-1', campaign_id: 'c-1', status: 'started' } };
+    await post();
+    expect(fromFilters).toContainEqual(['squad_invite_participations', 'eq', 'guardian_profile_id', GUARDIAN_A]);
+  });
+
+  it('reports a recorded decline, and no photo day once the card is committed', async () => {
+    tableRows = {
+      squad_invite_participations: { id: 'p-1', campaign_id: 'c-1', status: 'started' },
+      squad_invite_photo_days: { id: 'd-1', status: 'shooting', scheduled_for: '2026-11-22', venue_label: 'Astley', photos_deleted_at: null },
+      squad_invite_permissions: { granted: false, withdrawn_at: null },
+    };
+    expect((await (await post()).json()).photoDay).toMatchObject({ canGrant: false, decision: 'declined' });
+    tableRows.squad_invite_participations = { id: 'p-1', campaign_id: 'c-1', status: 'commitment_completed' };
+    expect((await (await post()).json()).photoDay).toBeNull();
   });
 });

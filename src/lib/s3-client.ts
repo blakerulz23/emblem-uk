@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand, CopyObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 
@@ -65,6 +65,26 @@ export async function copyObject(sourceKey: string, destinationKey: string): Pro
 export async function deleteObject(key: string): Promise<void> {
   if (!bucket) throw new Error('AWS_S3_BUCKET is not set');
   await s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
+}
+
+/**
+ * Lists object keys under one prefix (paginated, capped at `maxKeys`).
+ * Refuses anything that isn't a specific folder-style prefix (non-empty,
+ * ending in '/', at least two path segments), so a bug can never turn a
+ * sweep into "list the whole bucket". Used by the Photo Day retention sweep
+ * to empty `photo-day/{dayId}/`, including objects that never got a row.
+ */
+export async function listObjectKeys(prefix: string, maxKeys = 2000): Promise<string[]> {
+  if (!bucket) throw new Error('AWS_S3_BUCKET is not set');
+  if (!/^[a-z0-9-]+\/[A-Za-z0-9_.-]+\/$/.test(prefix)) throw new Error('Refusing to list an unscoped prefix');
+  const keys: string[] = [];
+  let token: string | undefined;
+  do {
+    const result = await s3.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }));
+    for (const item of result.Contents ?? []) if (item.Key) keys.push(item.Key);
+    token = result.IsTruncated ? result.NextContinuationToken : undefined;
+  } while (token && keys.length < maxKeys);
+  return keys.slice(0, maxKeys);
 }
 
 export interface ObjectMetadata {

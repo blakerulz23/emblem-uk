@@ -75,7 +75,11 @@ export type AnonymousRequestAction =
   // A signed-in person asking staff for a team (migration 0088). The
   // database already allows only one pending request per person; this
   // keeps submit/cancel/resubmit loops from flooding staff notifications.
-  | 'coach-team-request';
+  | 'coach-team-request'
+  // Photo Day photographer link (migrations 0104/0105): a bearer token,
+  // no session. IP plus the photo day id as subject.
+  | 'photo-day-status'
+  | 'photo-day-upload';
 
 const LIMITS: Record<
   | 'builder-submission-status'
@@ -95,7 +99,9 @@ const LIMITS: Record<
   | 'card-share-public-page-create'
   | 'card-share-public-page-view'
   | 'partner-application'
-  | 'coach-team-request',
+  | 'coach-team-request'
+  | 'photo-day-status'
+  | 'photo-day-upload',
   { ip: number; subject?: number }
 > = {
   // One check per restored, interrupted submit, plus "Check again" taps.
@@ -107,6 +113,12 @@ const LIMITS: Record<
   // categories each) spread across a realistic builder session, tight
   // enough that one capability can't be used to spam S3 writes.
   'order-asset-upload': { ip: 60, subject: 50 },
+  // Per 5-minute window. A photographer uploading a whole shoot sends two
+  // photos at a time, roughly one every one or two seconds: about 150-300
+  // per window at most. The database cap (max_photos) bounds the total.
+  'photo-day-upload': { ip: 300, subject: 300 },
+  // The upload page checks the link once on open and after each batch.
+  'photo-day-status': { ip: 30, subject: 30 },
   // Same shape as Squad Invite's own otp-request/otp-verify budgets
   // (squad-invite-rate-limit.ts) — deliberately not reused directly, see
   // this file's own header comment on why this module stays separate.

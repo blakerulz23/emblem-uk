@@ -1059,6 +1059,59 @@ webhook's own payload may include as line-item properties depending on
 what the customer entered at Shopify's checkout) — this was not
 independently reviewed as part of this task and remains open.
 
+## Photo Day addendum — matchday photography by a hired photographer — 15 November 2026
+
+**Status: design and schema only; unreleased; not applied to any database. This is a material change ("AI/photo processing", "suppliers") under this DPIA's review trigger and needs its own sign-off before any real shoot uses the software.** Design: `docs/architecture/photo-day-design-v0.1.md`.
+
+**What changes.** Today parents supply their own child's photo. In Photo Day, Emblem engages a photographer who photographs children on matchday, and Emblem staff match photos to children. That introduces:
+
+- **New processing:** Emblem-initiated photography of children, including frames that may show children whose parents have not consented.
+- **A new processor:** the hired photographer.
+- **A new store:** a team-level photo store that staff can see before matching.
+
+**Mitigations designed in (VERIFIED IN LOCAL SOURCE, statically only: migration 0104 plus its contract test, not executed against Postgres):**
+
+- **Separate consent:** a new, purpose-separated permission, `photo_day_photography`, independent of `photograph_manufacture`. A photo can only be matched to a child whose guardian has granted it and not withdrawn it. The check sits inside `match_photo_day_photo` in the same locked transaction. Withdrawal unmatches that child's photos (`release_photo_day_photos_for_withdrawn_consent`).
+- **Coach permission:** uploads are blocked until staff record that both coaches gave matchday permission (`coach_permissions_confirmed_at`).
+- **Limited photographer access:** an upload-only, expiring, hashed token scoped to one photo day and capped in count. The photographer cannot list, view or match photos and holds no staff account.
+- **Parents see only their own child's photos.** The US "browse the whole shoot" feature was deliberately not ported.
+- **Deletion by date:** every photo day carries `photos_delete_after`, and photo rows cascade when a participation is erased. Storage-object deletion is still to build (Phase 4) and is a **release blocker**.
+- **Locked-down tables:** RLS is on, and anon/authenticated have no access, the same as the other Squad Invite tables.
+- **Phase 2 build (15 Nov 2026, migration 0105):**
+  - **Metadata.** Every uploaded photo is re-encoded on the server, which drops all metadata (EXIF, GPS location, camera serial) before storage.
+  - **The link.** The photographer link lasts at most 7 days and carries its token only in the URL fragment and an `Authorization` header, never in a URL the server receives or a Referer header.
+  - **Coach confirmation.** It needs a note saying how both coaches agreed, recorded with the staff member in the audit trail.
+  - **Matching.** Staff match only from a list of children whose parent currently holds `photo_day_photography`.
+  - **Child identity.** Staff identify children by first name, surname initial and squad number, held in the existing participation columns that the erasure flow already clears. No new copy of a child's name is kept.
+- **Phase 3 build (15 Nov 2026, migration 0106):**
+  - **Asking parents.** The parent is asked separately, before the shoot. The page says what happens, who sees what, when photos are deleted and how to withdraw, and offers yes or no; "no" is as easy as "yes". Permission can't be given after the shoot.
+  - **Publishing.** Parents see nothing until an Approver publishes the matches. After that, each parent sees only their own child's matched photos, through an ownership-checked proxy that refuses other photos with an identical "not found".
+  - **Withdrawal.** It takes effect at once: matches are released, the name and shirt number given for matching are cleared, and a Photo Day photo already placed on the card is removed.
+  - ~~Open item (release blocker, phase 4).~~ Closed in code by phase 4, see below.
+- **Phase 4 build (15 Nov 2026, migration 0107):**
+  - **Retention.** A daily job deletes every Photo Day photo 30 days after the campaign closes, never later than 60 days after the shoot, including files that never got a database row.
+  - **Erasure.** Child-data erasure now deletes the photos matched to that child as part of the same tracked erasure. Photos never matched to the child fall to the retention job.
+  - **RISK, open, release blocker, affects the whole app.** The S3 bucket setup doc records versioning **on** and no rule expiring old versions. If the real bucket matches, deletes across the app (erasure, retention, Photo Day) only hide objects behind delete markers; the bytes remain. Fix: a lifecycle rule permanently deleting noncurrent versions after 1 day. Not verified against the real bucket (no AWS access in the build environment). See `docs/operations/photo-day-staging-rehearsal.md` step 0.2.
+
+**REQUIRES DECISION / SPECIALIST REVIEW before any real shoot:**
+
+1. A data-processing agreement with the photographer: no retained copies, and deletion from camera and cards after upload.
+2. How children without consent are handled in frame: don't upload those frames, or blur them.
+3. The retention period (proposed: 30 days after campaign close, never more than 60 days after the shoot).
+4. Social-media use of pilot photos (e.g. a free Saddleworth 3Ds pilot) needs separate, explicit written parental consent. It is **not** covered by `photo_day_photography`.
+5. Safeguarding: the photographer's DBS check and the club welfare officer being informed, per the clubs' own safeguarding policies.
+
+**Founder decisions, 15 November 2026 (Blake, on behalf of Lauda Cartoons Studio Ltd), on points 1–4 above:**
+
+1. **Photographer:** Blake is the photographer, so no third-party processor is used for now. He follows the same rules: no retained copies, cards and camera wiped after upload, club welfare officer informed. A processing agreement is required before any hired photographer. A DBS check is recommended.
+2. **Children without consent:** their frames are not uploaded; they are culled before upload.
+3. **Retention:** 30 days after campaign close, never more than 60 days after the shoot.
+4. **Social media:** separate written parental consent per child, per use.
+
+Point 5 (safeguarding and the club welfare officer) is folded into decision 1. This records founder decisions only; it is not specialist sign-off.
+
+The manual Saddleworth pilot (no software; families upload through the existing Squad Invite) relies on the club's and parents' own photo consent and is outside this addendum. Points 1, 2, 4 and 5 still apply to it in practice.
+
 ## 14. Sign-off
 
 ### Decision

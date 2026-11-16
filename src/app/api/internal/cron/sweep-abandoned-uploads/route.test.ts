@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { POST } from './route';
+import { GET, POST } from './route';
 
 const mockDeleteObject = vi.fn();
 vi.mock('@/lib/s3-client', () => ({
@@ -265,5 +265,24 @@ describe('POST /api/internal/cron/sweep-abandoned-uploads', () => {
     await sweep();
 
     expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/internal/cron/sweep-abandoned-uploads (Vercel Cron)', () => {
+  it('is the same handler as POST, so the scheduled GET actually runs the sweep', () => {
+    expect(GET).toBe(POST);
+  });
+
+  it('still rejects a GET without the correct CRON_SECRET', async () => {
+    const res = await GET(new NextRequest('http://localhost/api/internal/cron/sweep-abandoned-uploads', { method: 'GET' }));
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects a GET with the wrong CRON_SECRET', async () => {
+    const res = await GET(new NextRequest('http://localhost/api/internal/cron/sweep-abandoned-uploads', {
+      method: 'GET',
+      headers: { authorization: 'Bearer wrong-secret' },
+    }));
+    expect(res.status).toBe(401);
   });
 });

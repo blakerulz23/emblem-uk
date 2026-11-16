@@ -25,12 +25,14 @@ export function isRealSquadInviteUiPath(path: string) {
   return (
     isPathFamily(path, '/squad-invite') ||
     isPathFamily(path, '/staff/squad-invites') ||
-    path === '/staff/queue'
+    path === '/staff/queue' ||
+    // Photo Day photographer upload page (part of Squad Invite).
+    isPathFamily(path, '/photo-day')
   );
 }
 
 export function isRealSquadInviteApiPath(path: string) {
-  return path.startsWith('/api/squad-invite') || isPathFamily(path, '/api/staff/squad-invites');
+  return path.startsWith('/api/squad-invite') || isPathFamily(path, '/api/staff/squad-invites') || isPathFamily(path, '/api/photo-day');
 }
 
 export function isRealSquadInviteSurfacePath(path: string) {
