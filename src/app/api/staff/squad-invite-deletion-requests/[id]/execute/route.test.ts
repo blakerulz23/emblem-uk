@@ -33,6 +33,7 @@ beforeEach(() => {
   mockDeleteObject.mockReset();
   mockDeletePhotoDayObject.mockReset();
   mockRpc.mockReset();
+  mockContactRow = { status: 'pending', requester_email: 'guardian@example.test' };
   mockRequireStaff.mockResolvedValue({ ok: true, userId: 'staff-1' });
 });
 
@@ -159,5 +160,65 @@ describe('POST /api/staff/squad-invite-deletion-requests/[id]/execute — Photo 
     await execute();
     expect(mockDeleteObject).not.toHaveBeenCalled();
     expect(mockRpc).toHaveBeenCalledWith('record_squad_invite_deletion_storage_attempt', { p_object_id: 'obj-2', p_deleted: false, p_error: 'PHOTO_DAY_S3_BUCKET is not set' });
+  });
+});
+
+// PR #140 (contact shown once, 0097) combined with PR #146 (Photo Day bucket).
+describe('POST /api/staff/squad-invite-deletion-requests/[id]/execute — erasure with Photo Day photos (combined)', () => {
+  const MAIN_ITEM = { id: 'obj-1', s3Key: 'order-assets/p1/photo.jpg', kind: 'participation_photo' };
+  const PHOTO_DAY_ITEM = { id: 'obj-2', s3Key: 'photo-day/d1/x.jpg', kind: 'photo_day_photo' };
+
+  it('refuses a non-staff caller before touching storage or calling any RPC', async () => {
+    mockRequireStaff.mockResolvedValue({ ok: false, error: 'Staff access required', status: 403 });
+    const res = await execute();
+    expect(res.status).toBe(403);
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockDeleteObject).not.toHaveBeenCalled();
+    expect(mockDeletePhotoDayObject).not.toHaveBeenCalled();
+  });
+
+  it('maps a database staff refusal to 403 and deletes nothing from either bucket', async () => {
+    mockRpc.mockImplementation((name: string) => {
+      if (name === 'confirm_squad_invite_participation_erasure') return Promise.resolve({ data: null, error: { message: 'Staff access required' } });
+      throw new Error(`unexpected rpc ${name}`);
+    });
+    const res = await execute();
+    expect(res.status).toBe(403);
+    expect(mockDeleteObject).not.toHaveBeenCalled();
+    expect(mockDeletePhotoDayObject).not.toHaveBeenCalled();
+  });
+
+  it('a partial failure keeps the request open with no address; the retry deletes the photo from the Photo Day bucket and returns the address once', async () => {
+    mockContactRow = { status: 'pending', requester_email: 'guardian@example.test' };
+    let call = 0;
+    mockRpc.mockImplementation((name: string) => {
+      if (name === 'confirm_squad_invite_participation_erasure') {
+        call += 1;
+        // 0107's confirm returns the request's whole inventory on every call
+        // (no status filter), so the retry sees both objects again.
+        return Promise.resolve({ data: { alreadyCompleted: false, inventory: [MAIN_ITEM, PHOTO_DAY_ITEM] }, error: null });
+      }
+      if (name === 'record_squad_invite_deletion_storage_attempt') return Promise.resolve({ data: {}, error: null });
+      if (name === 'finalize_squad_invite_participation_erasure') {
+        return Promise.resolve({ data: call === 1 ? { completed: false, state: 'storage_failed' } : { completed: true }, error: null });
+      }
+      throw new Error(`unexpected rpc ${name}`);
+    });
+    mockDeleteObject.mockResolvedValue(undefined);
+    mockDeletePhotoDayObject.mockRejectedValueOnce(new Error('Photo Day bucket unavailable')).mockResolvedValueOnce(undefined);
+
+    const first = await (await execute()).json();
+    expect(first).toEqual({ ok: true, completed: false, state: 'storage_failed' });
+    expect(mockRpc).toHaveBeenCalledWith('record_squad_invite_deletion_storage_attempt', { p_object_id: 'obj-1', p_deleted: true, p_error: null });
+    expect(mockRpc).toHaveBeenCalledWith('record_squad_invite_deletion_storage_attempt', { p_object_id: 'obj-2', p_deleted: false, p_error: 'Photo Day bucket unavailable' });
+
+    const second = await (await execute()).json();
+    expect(second).toEqual({ ok: true, completed: true, contactEmail: 'guardian@example.test' });
+    expect(mockRpc).toHaveBeenLastCalledWith('finalize_squad_invite_participation_erasure', { p_request_id: REQUEST_ID });
+    expect(mockRpc).toHaveBeenCalledWith('record_squad_invite_deletion_storage_attempt', { p_object_id: 'obj-2', p_deleted: true, p_error: null });
+
+    // On both calls the Photo Day key went only to the Photo Day bucket and the main key only to the main bucket.
+    expect(mockDeletePhotoDayObject.mock.calls).toEqual([['photo-day/d1/x.jpg'], ['photo-day/d1/x.jpg']]);
+    expect(mockDeleteObject.mock.calls).toEqual([['order-assets/p1/photo.jpg'], ['order-assets/p1/photo.jpg']]);
   });
 });
