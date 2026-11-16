@@ -37,7 +37,7 @@ const SQUAD_INVITE_JOURNEY_DEMO = {
   eyebrow: 'FOR COACHES & TEAMS',
   headline: 'One invite. A whole squad connected.',
   supporting:
-    'Request a Squad Invite and, once it’s approved, share one private link with your team’s families. Each family creates and approves their own child’s card, and you follow the squad’s progress in one place.',
+    'One private link for your team’s families. Each family makes their own child’s card; you follow the squad’s progress in one place.',
   ctaLabel: 'REQUEST A SQUAD INVITE',
   offerPill: `${PRICES.squad} per card when 10 or more families commit. Free coach card once 10 families have paid.`,
   exampleTag: 'Illustrative example',
@@ -67,14 +67,13 @@ const SQUAD_INVITE_JOURNEY_DEMO = {
       id: 'start',
       number: '1',
       heading: 'REQUEST YOUR INVITE',
-      description: 'Tell us about your team. Once your Squad Invite is approved, share the private link with your team’s families.',
+      description: 'Tell us about your team. Once your invite is approved, share the private link with families.',
     },
     {
       id: 'families',
       number: '2',
       heading: 'FAMILIES MAKE THEIR OWN',
       description: 'Each family creates and approves their own child’s card, at their own pace.',
-      supporting: 'At the deadline, the price is set by the number of families committed, and each family pays individually.',
     },
     {
       id: 'delivered',

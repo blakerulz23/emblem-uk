@@ -26,10 +26,10 @@ export const metadata: Metadata = {
 // One section for why families and clubs choose Emblem. Detailed privacy and
 // organiser rules live in the club FAQ and on /trust-and-safeguarding.
 const benefits = [
-  { title: 'Their card. Their club.', body: 'Their photo, name, number and club on a personalised football card they can proudly keep.' },
-  { title: 'More than a printed card', body: 'A phone tap opens their private player profile, bringing their season’s moments and achievements together.' },
-  { title: 'Celebrate effort as well as goals', body: 'Coach recognition gives teamwork, commitment and progress a place alongside match-day achievements.' },
-  { title: 'Parents stay in control', body: 'Parents create and approve their child’s card. Player profiles are private during the pilot.' },
+  { title: 'Their card. Their club.', body: 'Their photo, name, number and club on a personalised football card they keep.' },
+  { title: 'More than a printed card', body: 'A phone tap opens their private profile: their season’s moments and achievements.' },
+  { title: 'Celebrate effort as well as goals', body: 'Coaches can recognise teamwork, commitment and progress too.' },
+  { title: 'Parents stay in control', body: 'Parents create and approve their child’s card. Profiles stay private during the pilot.' },
 ];
 
 // Quantity tiers of the same card, priced from PRICES. The fanned artwork
@@ -65,7 +65,7 @@ export default function FootballCardsForClubsPage() {
               Their own football cards.
             </h1>
             <p className="emh-clubs-hero-desc">
-              Give every player a personalised card to keep and a private digital profile to celebrate their season.
+              A personalised card for every player, and a private profile that keeps their season.
             </p>
           </div>
           <div className="emh-clubs-hero-card">
@@ -86,7 +86,7 @@ export default function FootballCardsForClubsPage() {
       <section id="pricing" className="emh-section emh-clubs-shop" aria-labelledby="emh-clubs-pricing-heading">
         <div className="emh-clubs-shop-intro">
           <h2 id="emh-clubs-pricing-heading">Their season. Worth keeping.</h2>
-          <p>Personalised football cards for your squad, with a private digital profile included.</p>
+          <p>Personalised football cards for your squad. Private profile included.</p>
           <Link className="emh-btn emh-btn-primary" href={startHref} data-track="clubs_pricing_start">
             Start a Squad Invite
             <span aria-hidden="true" className="emh-hero-cta-icon">
@@ -153,11 +153,11 @@ export default function FootballCardsForClubsPage() {
             </li>
           </ul>
           <p className="emh-clubs-shop-rule">
-            Your team’s price is set at your deadline by the number of families who have committed. Each family then pays for their own card.
+            Your price is set at your deadline by how many families have committed. Each family then pays for their own card.
           </p>
           <div className="emh-pricing-note">
             <p className="emh-pricing-reassurance">Digital profile included. No annual subscription.</p>
-            <p className="emh-pricing-delivery">Cards are delivered together to your club’s chosen contact. Delivery details are confirmed with you during setup.</p>
+            <p className="emh-pricing-delivery">Cards are delivered together to your club’s chosen contact, with details confirmed at setup.</p>
           </div>
         </div>
       </section>
@@ -190,7 +190,7 @@ export default function FootballCardsForClubsPage() {
         <div>
           <p className="emh-eyebrow">For coaches</p>
           <h2 id="emh-clubs-coach-heading">Recognise your players all season.</h2>
-          <p>See your squad, verify the moments families share and award recognition from one place. Try the demo and switch to the coach view at the top.</p>
+          <p>See your squad, verify moments families share and recognise players in one place. In the demo, pick coach view at the top.</p>
         </div>
         <Link className="emh-btn emh-btn-primary" href="/os/demo" data-track="clubs_coach_demo">
           See the coach view
