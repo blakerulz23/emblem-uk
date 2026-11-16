@@ -85,7 +85,7 @@ export default function Home() {
               Their season brought to life.
             </h1>
             <p className="emh-home-hero-desc">
-              Put your young footballer on a premium personalised card. A phone tap opens their private profile, where their family can collect season memories and celebrate achievements.
+              Make your own football card in minutes. Put your young footballer on a premium personalised card, and a phone tap opens their private profile, where their family can collect season memories and celebrate achievements.
             </p>
           </div>
 
@@ -140,7 +140,7 @@ export default function Home() {
       <section id="pricing" className="emh-section emh-pricing">
         <p className="emh-eyebrow">Pricing</p>
         <h2>Choose how you want to collect.</h2>
-        <p>Start with one card, order a set for brothers and sisters, or bring the whole squad together. Every card includes premium printing, built-in NFC and its digital profile. Buying the cards does not make you each child’s guardian: for a card set, Emblem arranges with each child’s family how that child’s profile is linked.</p>
+        <p>Start with one custom football card, order a set for brothers and sisters, or bring the whole squad together. Every card is designed in our online football card maker and includes premium printing, built-in NFC and its digital profile. Buying the cards does not make you each child’s guardian: for a card set, Emblem arranges with each child’s family how that child’s profile is linked.</p>
         <div className="emh-tier-grid">
           {tiers.map((tier) => (
             <article key={tier.name} className={tier.featured ? 'emh-tier-featured' : ''}>
