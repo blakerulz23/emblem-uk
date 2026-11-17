@@ -40,11 +40,13 @@ import AdultPermissionStep from './builder-steps/AdultPermissionStep';
 import GuardianPendingScreen from './builder-steps/GuardianPendingScreen';
 import ShareCardSheet from './ShareCardSheet';
 import SquadInviteShareSheet from './SquadInviteShareSheet';
+import PhotoDayPicker, { PHOTO_DAY_FILE_PREFIX, type PhotoDayBuilderState } from './PhotoDayPicker';
 import CoachCardSection from './CoachCardSection';
 import PricingSummaryCard from './PricingSummaryCard';
 import { useOrderPricingQuote } from './useOrderPricingQuote';
 import { isQuoteFreshForCounts, type OrderPricingQuoteState } from '@/lib/pricing-quote-controller';
 import { formatPence } from '@/lib/pricing-quote';
+import { PRICES } from '@/lib/marketing/site';
 import {
   buildCoachCardPayload,
   coachCardTeamOptions,
@@ -80,6 +82,11 @@ import { clearAllBuilderDrafts, clearBuilderDraft, draftScopeFor, isBuilderDevic
 export type SquadInviteBuilderContext = {
   participationId: string;
   campaignClubName: string;
+  /**
+   * Photo Day (migration 0106), resolved server-side by builder/page.tsx for
+   * this participation only. Null when the team has no photo day.
+   */
+  photoDay?: PhotoDayBuilderState | null;
 };
 
 const SQUAD_INVITE_STEP_ORDER: StepId[] = ['upload', 'bg-removal', 'personalise', 'review'];
@@ -303,7 +310,14 @@ export default function ProductionBuilder({
       // campaign's own club/team — never the curated EMJFL official-league
       // picker (a Squad Invite campaign's club is organiser-typed free
       // text, not necessarily one of that curated list).
-      return { ...draft, type: 'single', collectionType: 'custom', collectionName: 'Custom Collection', club: squadInviteContext.campaignClubName };
+      const base: OrderDraft = { ...draft, type: 'single', collectionType: 'custom', collectionName: 'Custom Collection', club: squadInviteContext.campaignClubName };
+      // Photo Day: the shirt number the parent gave with their permission
+      // pre-fills the card. A restored draft still wins (applied later).
+      const squadNumber = squadInviteContext.photoDay?.squadNumber;
+      if (typeof squadNumber === 'number' && base.players[0] && !base.players[0].kitNo) {
+        return { ...base, players: [{ ...base.players[0], kitNo: String(squadNumber) }, ...base.players.slice(1)] };
+      }
+      return base;
     }
     const mode = searchParams.get('mode');
     if (mode === 'set' || mode === 'friend-set' || mode === 'siblings') {
@@ -1886,6 +1900,13 @@ export default function ProductionBuilder({
   const progressLabel = activeStepId === 'approve' || activeStepId === 'review'
     ? `${order.players.length} player${order.players.length === 1 ? '' : 's'} - ${summary.counts.approved} approved`
     : STEP_LABEL[activeStepId];
+  // The direct single-card builder (not set/squad, not Squad Invite). Its
+  // first screen is trimmed for phones: price and sample card up front, no
+  // decorative step pill, no one-row player queue, a short device-save line.
+  // Squad Invite also runs as order.type 'single', so it is excluded here and
+  // keeps its upload step exactly as before.
+  const directSingle = order.type === 'single' && !squadInviteContext;
+  const hideUploadStepPill = directSingle && activeStepId === 'upload' && !summary.checkoutEligible;
   const goBack = () => {
     const previous = stepOrder[Math.max(0, activeIndex - 1)];
     setActiveStepId(previous);
@@ -2159,15 +2180,19 @@ export default function ProductionBuilder({
             <button type="button" className="uk-wizard-brand" onClick={() => (draftDone ? router.push('/') : setExitPrompt(true))} aria-label="Leave the builder">
               <img src="/builder-emblem-logo.png" alt="Emblem" />
             </button>
-            <button
-              type="button"
-              className="uk-progress-pill"
-              aria-label={progressLabel}
-              onClick={() => setActiveStepId(summary.checkoutEligible ? 'review' : approveOrReviewStep)}
-              disabled={prePersonaliseSteps.includes(activeStepId) && !summary.checkoutEligible}
-            >
-              {progressLabel}
-            </button>
+            {/* On the direct single-card photo step the pill is disabled and
+                only repeats the heading, so it is left out there. */}
+            {!hideUploadStepPill && (
+              <button
+                type="button"
+                className="uk-progress-pill"
+                aria-label={progressLabel}
+                onClick={() => setActiveStepId(summary.checkoutEligible ? 'review' : approveOrReviewStep)}
+                disabled={prePersonaliseSteps.includes(activeStepId) && !summary.checkoutEligible}
+              >
+                {progressLabel}
+              </button>
+            )}
           </div>
           <div className="uk-wizard-progress">
             <div><span style={{ width: `${progress}%` }} /></div>
@@ -2236,6 +2261,28 @@ export default function ProductionBuilder({
             </section>
           )}
 
+          {/* Photo Day (0106): its own block, so the shared upload step below
+              stays byte-identical in both modes (see
+              squad-invite-builder-integration-contract.test.ts). */}
+          {activeStepId === 'upload' && squadInviteContext?.photoDay && selectedPlayer && (
+            <PhotoDayPicker
+              participationId={squadInviteContext.participationId}
+              photoDay={squadInviteContext.photoDay}
+              onChoose={(file) => assignPhoto(selectedPlayer.id, file)}
+              onWithdrawn={() => {
+                // Permission withdrawn: a Photo Day photo already on the
+                // card must not be sent. Own uploads are left alone.
+                setOrder((current) => ({
+                  ...current,
+                  players: current.players.map((player) =>
+                    player.photo?.fileName?.startsWith(PHOTO_DAY_FILE_PREFIX)
+                      ? { ...player, photo: undefined, approvedAt: undefined, updatedAt: nowIso() }
+                      : player),
+                }));
+              }}
+            />
+          )}
+
           {activeStepId === 'upload' && (
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Upload photos</p>
@@ -2243,6 +2290,17 @@ export default function ProductionBuilder({
               <p className="uk-wizard-copy">
                 {order.type !== 'single' ? 'Drop in every player photo together, then complete each card in the queue.' : 'Pick the football photo you want to turn into a card.'}
               </p>
+              {directSingle && !selectedHasPhoto && (
+                <div className="uk-first-screen-intro">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- small fixed-size sample card */}
+                  <img src="/assets/home/gallery/custom-royal.webp" alt="A finished Emblem card" width={52} height={73} />
+                  <div>
+                    <strong>{PRICES.single} &middot; free UK delivery &middot; profile included</strong>
+                    <span>Any clear phone photo works. You&apos;ll see the card before you pay.</span>
+                    <a href="/football-gifts-for-kids#cards" data-track="builder_see_designs">No photo handy? See the designs first</a>
+                  </div>
+                </div>
+              )}
               {order.type === 'single' && selectedPlayer && !selectedHasPhoto && (
                 <div className="uk-photo-carousel single">
                   <label className="uk-upload-card active">
@@ -2330,15 +2388,26 @@ export default function ProductionBuilder({
                   onDuplicate={duplicatePlayer}
                   onAdd={() => addPlayer()}
                 />
-              ) : order.type === 'single' ? (
+              ) : order.type === 'single' && (!directSingle || order.players.length > 1) ? (
+                // Direct single-card orders hold one player, so the one-row
+                // queue is hidden there; it comes back if players were carried
+                // over from a team order, so each one can still be picked.
                 <PlayerStrip order={order} selectedId={selectedId} onSelect={setSelectedId} />
               ) : null}
               <div className="uk-draft-notice">
                 <p>
                   {deviceSaveOff
                     ? <>Your card isn&apos;t being saved on this device. If you leave or reload the page, you&apos;ll need to start again. Nothing is uploaded until you send your card.</>
-                    : <>While you build, your card&apos;s details and photo are saved on this device only, for up to 3 days, so you can carry on later. Nothing is uploaded until you send your card, and you can delete it at any time with &ldquo;Discard&rdquo; (tap the Emblem logo).</>}
+                    : directSingle
+                      ? <>Saved on this device for up to 3 days, so you can come back. Nothing is uploaded until you send your card.</>
+                      : <>While you build, your card&apos;s details and photo are saved on this device only, for up to 3 days, so you can carry on later. Nothing is uploaded until you send your card, and you can delete it at any time with &ldquo;Discard&rdquo; (tap the Emblem logo).</>}
                 </p>
+                {directSingle && !deviceSaveOff && (
+                  <details className="uk-draft-more">
+                    <summary>More</summary>
+                    <p>While you build, your card&apos;s details and photo are saved on this device only, for up to 3 days, so you can carry on later. Nothing is uploaded until you send your card, and you can delete it at any time with &ldquo;Discard&rdquo; (tap the Emblem logo).</p>
+                  </details>
+                )}
                 <label className="uk-draft-optout">
                   <input type="checkbox" checked={deviceSaveOff} onChange={(event) => { void changeDeviceSave(event.target.checked); }} />
                   <span>Don&apos;t save on this device <small>(best on a shared or public device; deletes anything already saved here)</small></span>
@@ -2368,15 +2437,27 @@ export default function ProductionBuilder({
           {activeStepId === 'upload' && !squadInviteContext && (
             <section className="uk-wizard-entry-options" aria-label="Other ways to order">
               {order.type === 'single' ? (
-                <button type="button" className="uk-entry-link" onClick={() => patchOrder({ type: 'squad' })}>
-                  Making cards for a whole team yourself? &rarr;
-                </button>
+                // One quiet line, so the photo stays the focus. Both team
+                // routes are still here: make every card yourself, or
+                // (when Squad Invite is on) invite parents to make their own.
+                <p className="uk-entry-team-line">
+                  Ordering for a team?{' '}
+                  <button type="button" onClick={() => patchOrder({ type: 'squad' })} data-track="builder_team_self">
+                    Make them yourself
+                  </button>
+                  {squadInviteEnabled && (
+                    <>
+                      {' '}or{' '}
+                      <a href="/squad-invite/start" data-track="builder_team_invite">invite parents</a>
+                    </>
+                  )}
+                </p>
               ) : (
                 <button type="button" className="uk-entry-link" onClick={() => patchOrder({ type: 'single' })}>
                   Just one player? &larr;
                 </button>
               )}
-              {squadInviteEnabled && (
+              {squadInviteEnabled && order.type !== 'single' && (
                 <>
                   <div className="uk-choice-divider" role="separator">
                     <span>Want parents to create their own?</span>

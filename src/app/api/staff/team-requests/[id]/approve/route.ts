@@ -4,6 +4,7 @@ import { requireStaff } from '@/lib/require-staff';
 import { currentUkFootballSeason } from '@/lib/season';
 import { resolveOrCreateSeason } from '@/lib/resolve-season';
 import { logRouteFailure, raised } from '@/lib/route-failure';
+import { STAFF_COACH_ACCESS_PAUSED_MESSAGE, isDeletionReviewPending } from '@/lib/deletion-review';
 
 export const runtime = 'nodejs';
 
@@ -87,6 +88,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
   // approve_coach_team_request's refusals map to fixed messages; its text
   // is never returned.
   if (error) {
+    // 0098: the requester's account deletion is under staff review. The
+    // request is unchanged and stays pending.
+    if (isDeletionReviewPending(error)) return NextResponse.json({ error: STAFF_COACH_ACCESS_PAUSED_MESSAGE }, { status: 409 });
     if (raised(error, 'Not authorized')) return NextResponse.json({ error: 'Staff access required' }, { status: 403 });
     if (raised(error, 'Team request not found')) return NextResponse.json({ error: 'Team request not found' }, { status: 404 });
     if (raised(error, 'Team not found')) return NextResponse.json({ error: 'Team not found' }, { status: 404 });

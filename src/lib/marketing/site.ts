@@ -78,7 +78,7 @@ export const OG_IMAGE = { url: '/og/emblem-share.jpg', width: 1200, height: 630 
  * null until production confirms a real date — pages then say the date is
  * being confirmed rather than inventing one.
  */
-export const CHRISTMAS_ORDER_BY: string | null = null;
+export const CHRISTMAS_ORDER_BY: string | null = '19 December';
 
 /** Public marketing pages that belong in the sitemap. Private app surfaces never do. */
 /**

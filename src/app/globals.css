@@ -10869,6 +10869,64 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   cursor: pointer;
 }
 .uk-entry-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* Direct single-card builder: one quiet line for team orders. */
+.uk-entry-team-line {
+  margin: 0;
+  text-align: center;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--wizard-soft);
+}
+.uk-entry-team-line button,
+.uk-entry-team-line a {
+  border: 0;
+  background: none;
+  padding: 4px 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--wizard-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* Direct single-card builder: price and a sample card above the upload box. */
+.uk-first-screen-intro {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 14px;
+  background: var(--wizard-surface);
+}
+.uk-first-screen-intro img {
+  flex: none;
+  width: 52px;
+  height: 73px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.uk-first-screen-intro div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--wizard-soft);
+}
+.uk-first-screen-intro strong {
+  color: var(--wizard-ink);
+  font-size: 14px;
+  font-weight: 800;
+}
+.uk-first-screen-intro a {
+  color: var(--wizard-accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 
 /* Background removal: optional, with progress (slow-connection opt-in). */
 .uk-bgremove-offer {
@@ -10911,6 +10969,18 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   color: var(--wizard-soft);
 }
 .uk-draft-notice p { margin: 0; }
+.uk-draft-more { margin-top: 4px; }
+.uk-draft-more summary {
+  display: inline-block;
+  padding: 4px 0;
+  color: var(--wizard-accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.uk-draft-more summary::-webkit-details-marker { display: none; }
+.uk-draft-more p { margin-top: 4px; }
 .uk-draft-optout {
   display: flex;
   align-items: center;

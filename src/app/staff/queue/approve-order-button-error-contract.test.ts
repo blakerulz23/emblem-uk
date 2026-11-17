@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
+import { GIFT_APPROVAL_MISSING_MESSAGE } from '@/lib/gift-order-guardian';
 
 const source = readFileSync('src/app/staff/queue/ApproveOrderButton.tsx', 'utf8');
 
@@ -37,5 +38,20 @@ describe('ApproveOrderButton — a rejected approval is now visible, not silent'
 
   it('never touches the approval endpoint itself — same path, same method', () => {
     expect(source).toContain("fetch(`/api/orders/${orderId}/approve`, { method: 'POST' })");
+  });
+
+  // F-2 (C6 review): the approve route now refuses a gift order with no
+  // genuine guardian approval with a 409 whose `error` is a staff-facing
+  // explanation. This button already shows any non-OK response's `error`,
+  // so staff see that message at approve time instead of nothing.
+  it('shows the gift-order 409 refusal text the approve route returns', () => {
+    const route = readFileSync('src/app/api/orders/[id]/approve/route.ts', 'utf8');
+    expect(route).toContain('{ error: GIFT_APPROVAL_MISSING_MESSAGE }, { status: 409 }');
+    expect(source).toContain('setError(body?.error');
+    expect(GIFT_APPROVAL_MISSING_MESSAGE).toMatch(/guardian approval/);
+  });
+
+  it('the error text has room to be read (the gift refusal is longer than the old messages)', () => {
+    expect(source).toContain('maxWidth: 280');
   });
 });

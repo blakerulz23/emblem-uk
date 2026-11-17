@@ -14,6 +14,19 @@ import { POST as redeemCoachInvite } from './coach-invites/redeem/route';
  */
 let session: ReturnType<typeof createFakeSupabase>;
 let service: ReturnType<typeof createFakeSupabase>;
+// The gift-order guardian gate (fix/gift-guardian-handoff) is pinned in
+// gift-order-profile-gate.test.ts; here it is neutral so this file tests
+// the relationship authorization checks on their own.
+vi.mock('@/lib/gift-order-guardian', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/gift-order-guardian')>();
+  return { ...actual, checkGiftFirstGuardianClaim: vi.fn(async () => ({ outcome: 'not_gift' })) };
+});
+// The purchaser card-claim rule (an order naming a separate guardian) is tested with the real rule in
+// src/app/api/os/claim-named-guardian.test.ts; these fakes don't model orders.
+vi.mock('@/lib/order-named-guardian', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/order-named-guardian')>();
+  return { ...actual, checkPurchaserCardClaim: vi.fn(async () => ({ outcome: 'allowed' })) };
+});
 vi.mock('@/lib/supabase/server', () => ({
   createClient: () => session.client,
   createServiceRoleClient: () => service.client,

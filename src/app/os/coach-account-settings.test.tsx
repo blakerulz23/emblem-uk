@@ -10,6 +10,7 @@ import CoachProfile from './screens/CoachProfile';
 import AccountSettings from './overlays/AccountSettings';
 import { OsDataProvider } from './OsDataContext';
 import { DEMO_OS_DATA, type OsData } from './osData';
+import { COACH_DELETE_CONFIRM, COACH_DELETE_REVIEW_NOTE } from '@/lib/account-deletion-copy';
 
 const REAL_COACH: OsData = { ...DEMO_OS_DATA, mode: 'real', coachDisplayName: 'Test Coach', coachClub: { name: 'Fictional FC', location: null }, coachTeamsManaged: [{ id: 't1', name: 'U10 Blues', playerCount: 3 }] as OsData['coachTeamsManaged'] };
 
@@ -63,6 +64,17 @@ describe('Account Settings for a coach-only account', () => {
     expect(html).not.toContain('Media and privacy');
     expect(html).not.toContain('Request player-data deletion');
     expect(html).not.toContain('guardian login');
+  });
+
+  it('deletion copy matches 0097/0098: staff review pauses coaching access, nothing deleted, no promised email', () => {
+    expect(COACH_DELETE_REVIEW_NOTE).toContain('goes to Emblem staff for review');
+    expect(COACH_DELETE_REVIEW_NOTE).toContain('Nothing is deleted while they review it');
+    expect(COACH_DELETE_REVIEW_NOTE).toContain('your coaching access is paused');
+    expect(COACH_DELETE_REVIEW_NOTE).toContain('your coaching access is restored');
+    expect(COACH_DELETE_CONFIRM).toContain('nothing is deleted until staff decide');
+    for (const text of [COACH_DELETE_REVIEW_NOTE, COACH_DELETE_CONFIRM]) {
+      expect(text).not.toMatch(/in touch|by hand|email us|hello@/i);
+    }
   });
 
   it('the parent version is unchanged (player sections and guardian copy present)', () => {

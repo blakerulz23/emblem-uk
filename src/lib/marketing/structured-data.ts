@@ -34,6 +34,22 @@ export function personalisedCardProductJsonLd() {
       price: (SINGLE_UNIT_PRICE_PENCE / 100).toFixed(2),
       availability: 'https://schema.org/InStock',
       itemCondition: 'https://schema.org/NewCondition',
+      // Free UK delivery (Shopify charges UK customers nothing). Handling +
+      // transit match the Terms' "3–5 business days" and the Merchant Center
+      // shipping settings; change all three together.
+      shippingDetails: {
+        '@type': 'OfferShippingDetails',
+        shippingRate: { '@type': 'MonetaryAmount', value: '0', currency: 'GBP' },
+        shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'GB' },
+        deliveryTime: {
+          '@type': 'ShippingDeliveryTime',
+          handlingTime: { '@type': 'QuantitativeValue', minValue: 1, maxValue: 2, unitCode: 'DAY' },
+          transitTime: { '@type': 'QuantitativeValue', minValue: 2, maxValue: 3, unitCode: 'DAY' },
+        },
+      },
+      // No return policy here on purpose: returns are accepted for defective
+      // items only (Terms → "Returns and reprints"), which schema.org can't
+      // express cleanly. Merchant Center holds the policy and takes precedence.
     },
   };
 }

@@ -5,6 +5,7 @@ import { enqueueAndDispatchStaffNotification } from '@/lib/dispatch-staff-notifi
 import { validateTeamRequestInput } from '@/lib/os-view';
 import { logRouteFailure } from '@/lib/route-failure';
 import { isPermissionDenied } from '@/lib/permission-denied';
+import { COACH_ACCESS_PAUSED_MESSAGE, isDeletionReviewPending } from '@/lib/deletion-review';
 
 export const runtime = 'nodejs';
 
@@ -74,6 +75,11 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error || !created) {
+    // 0098: no new team request while this account's deletion request is
+    // under staff review (staff could not approve it). Nothing was saved.
+    if (isDeletionReviewPending(error)) {
+      return NextResponse.json({ error: COACH_ACCESS_PAUSED_MESSAGE }, { status: 409 });
+    }
     if (error?.code === '23505') {
       return NextResponse.json({ error: 'You already have a team request waiting for review' }, { status: 409 });
     }

@@ -7,6 +7,12 @@ import { ensurePublicPlayerId } from '@/lib/public-player-id';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { POST as claim } from './claim/route';
 import { POST as recover } from './recover/route';
+vi.mock('@/lib/order-named-guardian', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/order-named-guardian')>();
+  // Neutral here: the named-guardian recovery and card-claim rules are pinned in order-named-guardian.test.ts and claim-named-guardian.test.ts.
+  return { ...actual, checkOrderNamesSeparateGuardian: async () => ({ outcome: 'allowed' }), ordersNamingSeparateGuardian: async () => ({ ok: true, refused: new Set() }), checkPurchaserCardClaim: async () => ({ outcome: 'allowed' }) };
+});
+
 
 // Gate 3.12: a current or former coach cannot use a child's card (claim code
 // or purchaser recovery) to link their own coach account as its guardian, and
@@ -15,6 +21,13 @@ import { POST as recover } from './recover/route';
 
 let session: ReturnType<typeof createFakeSupabase>;
 let service: ReturnType<typeof createFakeSupabase>;
+// The gift-order guardian gate (fix/gift-guardian-handoff) is pinned in
+// gift-order-profile-gate.test.ts; here it is neutral so this file tests
+// the relationship authorization checks on their own.
+vi.mock('@/lib/gift-order-guardian', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/gift-order-guardian')>();
+  return { ...actual, checkGiftFirstGuardianClaim: vi.fn(async () => ({ outcome: 'not_gift' })) };
+});
 vi.mock('@/lib/supabase/server', () => ({ createClient: () => session.client, createServiceRoleClient: () => service.client }));
 vi.mock('@/lib/story-updates', () => ({ generateStoryUpdate: vi.fn(async () => undefined) }));
 vi.mock('@/lib/public-player-id', () => ({ ensurePublicPlayerId: vi.fn(async () => undefined) }));

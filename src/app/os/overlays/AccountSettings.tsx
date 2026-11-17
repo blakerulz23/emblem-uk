@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { onActivateKey } from '../a11y';
 import { useOsPhotoUpload } from '../useOsPhotoUpload';
+import { COACH_DELETE_CONFIRM, COACH_DELETE_REVIEW_NOTE, deletionReviewResponse } from '@/lib/account-deletion-copy';
+import DeletionReviewStatus from './DeletionReviewStatus';
 
 const COLORS = {
   card: 'var(--os-card)',
@@ -34,8 +36,13 @@ function SectionCard({ title, children }: { title: string; children: React.React
  * per the explicit MVP scope.
  *
  * Delete account is the same flow for everyone: OTP re-auth, then
- * /api/os/account/delete (delete_own_guardian_account, which also removes a
- * coach's own coach_team rows, direct links and team requests by cascade).
+ * /api/os/account/delete (delete_own_guardian_account). From migrations
+ * 0097/0098 it either erases the account at once (a coach's coach_team rows,
+ * direct links and team requests go with it; moments they verified stay
+ * coach-verified) or, when the account wrote records that must be kept
+ * (player assessments, goals, strengths, season focus, Squad Invite
+ * history), files a staff review: nothing is deleted, and any coach access
+ * is paused until staff reject (restoring it) or complete the deletion.
  */
 type PlayerScope = {
   playerId: string;
@@ -106,7 +113,26 @@ export default function AccountSettings(props: AccountSettingsProps) {
   // sign-in revocation still finishing (see the route's own doc comment).
   // Must never be papered over as a flat "deleted" success.
   const [deleteAccountPartial, setDeleteAccountPartial] = useState(false);
-  const [deleteAccountPartialMessage, setDeleteAccountPartialMessage] = useState<string | null>(null);
+  // Set when the deletion went to staff review (migration 0097): nothing has
+  // been deleted yet, so this must never read as "removed" either.
+  const [deleteAccountUnderReview, setDeleteAccountUnderReview] = useState(false);
+  const [deleteAccountCoachPaused, setDeleteAccountCoachPaused] = useState(false);
+  // The account's own deletion review, if one is pending (migration 0098).
+  const [reviewStatus, setReviewStatus] = useState<{ underReview: boolean; coachAccessPaused: boolean } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/os/account/deletion-review')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => {
+        if (!cancelled && body && typeof body.underReview === 'boolean') {
+          setReviewStatus({ underReview: body.underReview, coachAccessPaused: body.coachAccessPaused === true });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const sendReauthCode = async () => {
     if (!email || reauthStatus === 'sending') return;
@@ -154,27 +180,15 @@ export default function AccountSettings(props: AccountSettingsProps) {
           return;
         }
         setDeleteAccountStatus('error');
-        const message = (body && typeof body.error === 'string' && body.error) || 'Could not delete your account — try again.';
-        // Coach accounts: a deletion that keeps failing is currently a known
-        // database-side limit for coaches who have verified moments or sent
-        // recognitions (see supabase/tests/authz/coach_account_deletion_test.mjs,
-        // scenario D) — give them a way that always works.
-        setDeleteAccountError(player ? message : `${message} If it keeps failing, email hello@emblem.cards and we'll delete it for you.`);
+        setDeleteAccountError((body && typeof body.error === 'string' && body.error) || 'Could not delete your account — try again.');
         return;
       }
       const body = await res.json().catch(() => null);
       setDeleteAccountPartial(!!body?.partial);
-      // identityRetained: delete_own_guardian_account stopped before removing
-      // the profile (coach-authored player records or squad-invite history
-      // must be kept), so staff finish it by hand — say exactly that rather
-      // than claiming the account or its access is already gone.
-      setDeleteAccountPartialMessage(
-        body?.partial && body?.identityRetained
-          ? "We've signed you out and started deleting your account. Because it's linked to records we have to keep (such as player assessments you wrote), our team needs to finish the removal by hand — we'll be in touch."
-          : null
-      );
+      setDeleteAccountUnderReview(!!body?.identityRetained);
+      setDeleteAccountCoachPaused(Number(body?.coachAccessSuspended) > 0);
       setDeleteStep('done');
-      setTimeout(() => window.location.assign('/os'), body?.partial ? 3200 : 2200);
+      setTimeout(() => window.location.assign('/os'), body?.identityRetained ? 6000 : body?.partial ? 3200 : 2200);
     } catch {
       setDeleteAccountStatus('error');
       setDeleteAccountError('Could not reach the server — check your connection and try again.');
@@ -222,6 +236,7 @@ export default function AccountSettings(props: AccountSettingsProps) {
         {player && <PlayerPublicAndMediaSections player={player} />}
 
         <SectionCard title="Delete account">
+          {deleteStep !== 'done' && reviewStatus?.underReview && <DeletionReviewStatus coachAccessPaused={reviewStatus.coachAccessPaused} />}
           {deleteStep === 'idle' && (
             <>
               <p style={{ fontSize: 12.5, lineHeight: 1.55, color: COLORS.muted, margin: '0 0 12px' }}>
@@ -258,12 +273,12 @@ export default function AccountSettings(props: AccountSettingsProps) {
               ) : (
                 <ul style={{ fontSize: 12.5, lineHeight: 1.6, color: COLORS.muted, margin: '0 0 14px', paddingLeft: 18 }}>
                   <li>This deletes <b>your own login</b> — the email you sign in with — and your coach access to every team and player.</li>
-                  <li>Players&apos; cards, moments and the recognitions you gave stay with their families.</li>
+                  <li>Players&apos; cards, moments and the recognitions you gave stay with their families, still marked as coach-verified.</li>
                   <li>Any team request you sent is withdrawn.</li>
                   {alsoGuardian && (
                     <li>You&apos;re also a parent or guardian on Emblem: your guardian access goes too. Another guardian keeps full access; if you&apos;re a child&apos;s only guardian, we file a request to delete their data, which our team reviews by hand.</li>
                   )}
-                  <li>If you&apos;ve written player assessments, goals, strengths or season focus, those records are kept for the player, so our team finishes deleting your account by hand and will be in touch.</li>
+                  <li>{COACH_DELETE_REVIEW_NOTE}</li>
                 </ul>
               )}
               {deleteAccountError && <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 12 }}>{deleteAccountError}</p>}
@@ -310,7 +325,7 @@ export default function AccountSettings(props: AccountSettingsProps) {
               <p style={{ fontSize: 12.5, lineHeight: 1.55, color: COLORS.muted, margin: '0 0 14px' }}>
                 {player
                   ? 'This cannot be undone. Your sign-in and guardian access are removed immediately.'
-                  : 'This cannot be undone.'}
+                  : COACH_DELETE_CONFIRM}
               </p>
               {deleteAccountError && <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 12 }}>{deleteAccountError}</p>}
               <div style={{ display: 'flex', gap: 9 }}>
@@ -326,10 +341,10 @@ export default function AccountSettings(props: AccountSettingsProps) {
 
           {deleteStep === 'done' && (
             <p style={{ fontSize: 13.5, fontWeight: 700, color: '#2E9E5B', textAlign: 'center', padding: '10px 0', lineHeight: 1.5 }}>
-              {deleteAccountPartial
-                ? deleteAccountPartialMessage
-                  ? `${deleteAccountPartialMessage} Signing you out…`
-                  : "Your account data has been removed. We're still finishing the revocation of your sign-in — this happens automatically, no action needed. Signing you out…"
+              {deleteAccountUnderReview
+                ? `${deletionReviewResponse(deleteAccountCoachPaused)} Signing you out…`
+                : deleteAccountPartial
+                ? "Your account data has been removed. We're still finishing the revocation of your sign-in — this happens automatically, no action needed. Signing you out…"
                 : 'Your account has been deleted. Signing you out…'}
             </p>
           )}

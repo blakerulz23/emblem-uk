@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
-import { POST } from './route';
+import { GET, POST } from './route';
 
 const mockEnqueueStaffNotification = vi.fn();
 vi.mock('@/lib/dispatch-staff-notification', () => ({
@@ -117,5 +117,33 @@ describe('POST /api/internal/cron/sweep-squad-invite-overdue-payments', () => {
     const res = await sweep();
     expect(res.status).toBe(200);
     expect(mockEnqueueStaffNotification).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/internal/cron/sweep-squad-invite-overdue-payments (Vercel Cron)', () => {
+  it('is the same handler as POST, so the scheduled GET actually runs the sweep', () => {
+    expect(GET).toBe(POST);
+  });
+
+  it('still rejects a GET without the correct CRON_SECRET', async () => {
+    const res = await GET(new NextRequest('http://localhost/api/internal/cron/sweep-squad-invite-overdue-payments', { method: 'GET' }));
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects a GET with the wrong CRON_SECRET', async () => {
+    const res = await GET(new NextRequest('http://localhost/api/internal/cron/sweep-squad-invite-overdue-payments', {
+      method: 'GET',
+      headers: { authorization: 'Bearer wrong-secret' },
+    }));
+    expect(res.status).toBe(401);
+  });
+
+  it('runs the sweep on a GET carrying the correct CRON_SECRET', async () => {
+    const res = await GET(new NextRequest('http://localhost/api/internal/cron/sweep-squad-invite-overdue-payments', {
+      method: 'GET',
+      headers: { authorization: 'Bearer test-cron-secret' },
+    }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, campaignsWithOverduePayments: 0, campaignsNotified: 0 });
   });
 });

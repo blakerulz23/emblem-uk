@@ -13,7 +13,15 @@ import { fileURLToPath } from 'url';
 const MIGRATION_FILE = /^(\d{4})_[a-z0-9_]+\.sql$/;
 
 // Reserved numbers: the authorization security release owns 0088–0091; the
-// archive-test-cards and achievement-reveal features move to 0092 and 0093.
+// archive-test-cards and achievement-reveal features move to 0092 and 0093;
+// 0097 is the coach account-deletion fix (an unmerged branch's
+// 0097_erase_print_pdfs_on_player_deletion.sql must take another number);
+// 0098 is the deletion-review safeguarding fix, 0099 the Season feature
+// states, acquisition samples move to 0100, and 0101 is the R5 gift-order
+// checkout and payment gate, and 0102 closes checkout and payment for orders
+// held by 0097. 0103 restores the Squad Invite audit event types, and
+// 0104–0107 are Photo Day (both released from main before 0097, 0098 and
+// 0102 reached production). New work starts at 0108.
 export const RESERVED_NUMBERS = {
   '0088': 'relationship_authorization_foundation',
   '0089': 'relationship_authorization_lockdown',
@@ -21,6 +29,17 @@ export const RESERVED_NUMBERS = {
   '0091': 'guardian_invite_code_confidentiality',
   '0092': 'test_card_archive',
   '0093': 'achievement_card_reveals',
+  '0097': 'coach_account_deletion_verified_moments',
+  '0098': 'deletion_review_suspension_and_verifier_identity',
+  '0099': 'season_feature_states',
+  '0100': 'acquisition_samples',
+  '0101': 'gift_checkout_requires_guardian_approval',
+  '0102': 'held_orders_checkout_payment_and_fresh_approval',
+  '0103': 'restore_squad_invite_audit_event_types',
+  '0104': 'squad_invite_photo_day_foundation',
+  '0105': 'squad_invite_photo_day_staff_controls',
+  '0106': 'squad_invite_photo_day_parent_consent',
+  '0107': 'squad_invite_photo_day_retention',
 };
 
 /** Files that use a reserved number for a different migration. */

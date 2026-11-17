@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import ResolveButton from './ResolveButton';
+import { redactEmails } from '@/lib/redact-email';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,10 +25,11 @@ function formatAt(iso: string, withTime: boolean) {
   });
 }
 
+// No email: every row here is an account whose data was already erased, and
+// the auth user id is all staff need to finish it (migration 0097).
 type Row = {
   id: string;
   auth_user_id: string;
-  email: string | null;
   first_attempted_at: string;
   last_attempted_at: string;
   attempts: number;
@@ -47,12 +49,12 @@ export default async function PendingAuthDeletionsPage() {
   const serviceRole = createServiceRoleClient();
   const { data: pendingRows } = await serviceRole
     .from('pending_auth_deletions')
-    .select('id, auth_user_id, email, first_attempted_at, last_attempted_at, attempts, last_error, status, notes, resolved_at')
+    .select('id, auth_user_id, first_attempted_at, last_attempted_at, attempts, last_error, status, notes, resolved_at')
     .eq('status', 'pending')
     .order('first_attempted_at', { ascending: true });
   const { data: resolvedRows } = await serviceRole
     .from('pending_auth_deletions')
-    .select('id, auth_user_id, email, first_attempted_at, last_attempted_at, attempts, last_error, status, notes, resolved_at')
+    .select('id, auth_user_id, first_attempted_at, last_attempted_at, attempts, last_error, status, notes, resolved_at')
     .eq('status', 'resolved')
     .order('resolved_at', { ascending: false })
     .limit(20);
@@ -92,14 +94,14 @@ export default async function PendingAuthDeletionsPage() {
             <div key={r.id} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
               <div>
                 <div style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>
-                  user {r.auth_user_id.slice(0, 8)}… {r.email ? `· ${r.email}` : ''}
+                  user {r.auth_user_id.slice(0, 8)}…
                 </div>
                 <div style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 12.5, color: 'var(--ink-soft)', marginTop: 3 }}>
                   First attempt {formatAt(r.first_attempted_at, true)} UTC · last {formatAt(r.last_attempted_at, true)} UTC · {r.attempts} attempt{r.attempts === 1 ? '' : 's'}
                 </div>
                 {r.last_error && (
                   <div style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 12, color: '#b91c1c', marginTop: 3 }}>
-                    Last error: {r.last_error}
+                    Last error: {redactEmails(r.last_error)}
                   </div>
                 )}
               </div>
@@ -119,7 +121,7 @@ export default async function PendingAuthDeletionsPage() {
           {resolved.map((r) => (
             <div key={r.id} style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 13, color: 'var(--ink-soft)' }}>
               user {r.auth_user_id.slice(0, 8)}… — resolved {r.resolved_at ? formatAt(r.resolved_at, true) + ' UTC' : '—'}
-              {r.notes ? ` — "${r.notes}"` : ''}
+              {r.notes ? ` — "${redactEmails(r.notes)}"` : ''}
             </div>
           ))}
         </div>
