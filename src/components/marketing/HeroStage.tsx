@@ -9,10 +9,11 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
  * hero), rebuilt light: Canada renders every card live from full print
  * templates (~30 MB); here each design is one pre-rendered WebP (40–80 KB).
  *
- * The phone shows the real app: a capture of the /os/demo Collection screen
- * (fictional sample player, demo banner hidden, 390 × 751 at 2x, the phone
- * screen's own ratio) as a 15–25 KB WebP, so no app code or backend request
- * ships with the homepage. The app has no per-design theme, so the phone
+ * The phone shows the real app: a capture of the /os/demo Collection screen,
+ * scrolled to the season albums so four photo memories show (fictional sample
+ * player, demo banner hidden, status-bar strip cleared under the notch,
+ * 390 × 751 at 2x, the phone screen's own ratio) as a 23–45 KB WebP, so no
+ * app code or backend request ships with the homepage. The app has no per-design theme, so the phone
  * keeps its colours when the card design changes.
  *
  * - Only the first design is in the server HTML. The others mount after the
@@ -143,7 +144,7 @@ export default function HeroStage() {
               sizes="(max-width: 760px) 34vw, 224px"
               width={480}
               height={924}
-              alt={`The Emblem app on a phone, showing ${PLAYER.name}'s collection: eight memories across three seasons, with coach-verified season albums.`}
+              alt={`The Emblem app on a phone, showing ${PLAYER.name}'s collection: season albums of photo memories, from his first goal and team photos to a Player of the Match award.`}
               loading="eager"
               fetchPriority="low"
               decoding="async"
