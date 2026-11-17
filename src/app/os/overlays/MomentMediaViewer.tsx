@@ -114,7 +114,7 @@ export default function MomentMediaViewer({
       style={{ position: 'fixed', inset: 0, zIndex: 45, background: '#0B0A09', display: 'flex', flexDirection: 'column', fontFamily: 'Roboto' }}
       role="dialog"
       aria-modal="true"
-      aria-label={`${item.title} — ${item.playerName}`}
+      aria-label={`${item.title}, ${item.playerName}`}
     >
       <div
         style={{

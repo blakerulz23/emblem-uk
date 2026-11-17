@@ -17,12 +17,13 @@ export type TemplateId = 'emjfl-official' | HollinwoodTemplateId | CustomCollect
 // (migration 0071) is the last step for every order type — the short Adult
 // Permission confirmation shown after Review, immediately before the order
 // is actually created.
-export type StepId = 'collection' | 'upload' | 'bg-removal' | 'personalise' | 'approve' | 'review' | 'adult-permission';
+export type StepId = 'collection' | 'upload' | 'bg-removal' | 'design' | 'personalise' | 'approve' | 'review' | 'adult-permission';
 
 export const STEP_LABEL: Record<StepId, string> = {
   collection: 'Choose collection',
   upload: 'Add the photo',
   'bg-removal': 'Remove background',
+  design: 'Pick their card',
   personalise: 'Personalise cards',
   approve: 'Approve cards',
   review: 'Review order',
@@ -32,14 +33,16 @@ export const STEP_LABEL: Record<StepId, string> = {
 /**
  * Photo first (adapted from Emblem Canada): the direct builder opens on the
  * photo, then the background, then the collection (chosen with the player
- * already on the card), then personalise. The old "who are you building
+ * already on the card), then the design (adapted from Emblem Canada: the
+ * card is picked on its own screen, shown with their photo), then their
+ * details on the next screen (personalise). The old "who are you building
  * for?" screen is gone: one player is the default, and "a whole team" /
  * "invite your squad" sit under the photo step instead. Squad Invite keeps
  * its own fixed four steps (SQUAD_INVITE_STEP_ORDER in ProductionBuilder).
  * Review and the adult-permission step (email verification) are unchanged.
  */
 export function stepsFor(orderType: OrderType): StepId[] {
-  const base: StepId[] = ['upload', 'bg-removal', 'collection', 'personalise'];
+  const base: StepId[] = ['upload', 'bg-removal', 'collection', 'design', 'personalise'];
   return orderType === 'single' ? [...base, 'review', 'adult-permission'] : [...base, 'approve', 'review', 'adult-permission'];
 }
 
@@ -99,6 +102,10 @@ export type PlayerDraft = {
   stats: Record<string, string>;
   photo?: PhotoAsset;
   templateId?: TemplateId;
+  // Set when the design was picked by hand (draft only, never sent with the
+  // order): the kit-colour "Best match" may pre-select a design, but never
+  // over one someone chose, including after the draft is reopened.
+  designChosen?: boolean;
   prints: number;
   approvedAt?: string;
   updatedAt: string;

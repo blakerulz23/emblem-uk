@@ -90,7 +90,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
     try {
       await deleteObject(media.s3_key);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not delete this moment’s media — try again.';
+      const message = error instanceof Error ? error.message : 'Could not delete this moment’s media. Try again.';
       return NextResponse.json(
         { error: message.includes('AWS_S3_BUCKET') ? 'Media storage is not configured' : message },
         { status: 500 }

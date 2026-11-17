@@ -21,7 +21,7 @@ export default function PlayerMomentSection({ ctaTrack }: { ctaTrack?: string })
             Every player deserves their moment.
           </h2>
           <p style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 'clamp(16px, 1.5vw, 18.5px)', lineHeight: 1.5, color: 'rgba(255,255,255,.72)', margin: 0, maxWidth: '46ch', textWrap: 'pretty' as const }}>
-            The moments that matter aren&rsquo;t reserved for packed stadiums. Emblem turns personal milestones, proud achievements and unforgettable performances into collectibles that celebrate how far they&rsquo;ve come.
+            The moments that matter don&rsquo;t need a packed stadium. Their milestones and proudest days, on a card that shows how far they&rsquo;ve come.
           </p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <Link href="/builder?mode=single" data-track={ctaTrack} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 9, fontFamily: 'var(--font-manrope), system-ui', fontWeight: 700, borderRadius: 14, height: 52, padding: '0 22px', fontSize: 16, background: 'var(--accent)', color: '#fff', boxShadow: '0 8px 24px var(--accent-glow)' }}>

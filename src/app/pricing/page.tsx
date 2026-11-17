@@ -63,7 +63,7 @@ export default function PricingPage() {
             <div className="rounded-2xl p-5" style={{ background: '#fff', boxShadow: 'inset 0 0 0 1px var(--line)' }}>
               <h3 style={{ fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 18, color: 'var(--ink)', margin: 0 }}>Sports Card Size</h3>
               <p className="mt-2" style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 14, color: 'var(--ink-soft)' }}>
-                Collector size — 2.5&quot; × 3.5&quot;, just like the cards you grew up trading.
+                Collector size: 2.5&quot; × 3.5&quot;, just like the cards you grew up trading.
               </p>
             </div>
           </div>
@@ -74,7 +74,7 @@ export default function PricingPage() {
             Bulk order or a custom ask?
           </h2>
           <p className="mt-4" style={{ fontFamily: 'var(--font-manrope), system-ui', fontSize: 16, lineHeight: 1.55, color: 'rgba(255,255,255,0.78)' }}>
-            League packs, sponsor co-brands, larger team rosters — we&apos;ll quote anything. We usually reply within a few hours.
+            League packs, sponsor co-brands, larger team rosters: we&apos;ll quote anything. We usually reply within a few hours.
           </p>
           <a href="mailto:hello@emblem.cards" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 24, padding: '14px 22px', borderRadius: 999, background: 'var(--accent)', color: '#fff', fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 15, textDecoration: 'none' }}>
             Contact us

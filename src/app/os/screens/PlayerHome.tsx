@@ -167,13 +167,13 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
       // the success it actually is rather than surfacing a scary error.
       if (!res.ok && res.status !== 404) {
         const body = await res.json().catch(() => null);
-        setDeleteMomentError((body && typeof body.error === 'string' && body.error) || 'Could not delete this moment — try again.');
+        setDeleteMomentError((body && typeof body.error === 'string' && body.error) || 'Could not delete this moment. Try again.');
         return;
       }
       closeMediaViewer();
       await refreshOsData();
     } catch {
-      setDeleteMomentError('Could not delete this moment — check your connection and try again.');
+      setDeleteMomentError('Could not delete this moment. Check your connection and try again.');
     } finally {
       setIsDeletingMoment(false);
     }
@@ -211,9 +211,9 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--os-border)', marginTop: 16, paddingTop: 12 }}>
-            <div><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)', textTransform: 'uppercase' }}>Member Since</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.memberSinceYear ?? '—'}</div></div>
-            <div style={{ textAlign: 'center' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)', textTransform: 'uppercase' }}>Squad Number</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.squadNumber ?? '—'}</div></div>
-            <div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)', textTransform: 'uppercase' }}>Season</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.season ?? '—'}</div></div>
+            <div><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)', textTransform: 'uppercase' }}>Member Since</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.memberSinceYear ?? '-'}</div></div>
+            <div style={{ textAlign: 'center' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)', textTransform: 'uppercase' }}>Squad Number</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.squadNumber ?? '-'}</div></div>
+            <div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)', textTransform: 'uppercase' }}>Season</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.season ?? '-'}</div></div>
           </div>
         </div>
       )}
@@ -385,7 +385,7 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
             </div>
           ) : (
             <div style={{ fontFamily: 'Roboto', fontSize: 14.5, color: 'var(--os-muted)', lineHeight: 1.5 }}>
-              <b style={{ color: 'var(--os-ink)' }}>{currentSeason}</b> — this season is just getting started.
+              <b style={{ color: 'var(--os-ink)' }}>{currentSeason}</b>: this season is just getting started.
             </div>
           )}
         {!isSeasonOpen && currentSeason && momentsThisSeason.length > 0 && (

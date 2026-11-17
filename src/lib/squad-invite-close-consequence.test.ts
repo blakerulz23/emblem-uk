@@ -15,7 +15,7 @@ describe('computeCloseConsequence', () => {
   it('multi tier one away from squad (N=9): bold leading total-saving line, computed as N × per-card gap', () => {
     const result = computeCloseConsequence(9);
     expect(result.leadBold).toBe(true);
-    expect(result.leadLine).toBe('1 more player would save the team £27.00 — the price drops to £18.99 per card once you reach 10 players.');
+    expect(result.leadLine).toBe('1 more player would save the team £27.00. The price drops to £18.99 per card once you reach 10 players.');
     expect(result.consequenceLine).toBe(
       '9 children have joined so far. Closing now locks everyone in at £21.99 per card, and stops anyone else from joining or finishing their card. You can reopen this yourself later if you need to.'
     );
@@ -25,7 +25,7 @@ describe('computeCloseConsequence', () => {
     const result = computeCloseConsequence(10);
     expect(result.leadLine).toBeNull();
     expect(result.consequenceLine).toBe(
-      '10 children have joined so far. Closing now locks everyone in at £18.99 per card — your best available rate — and stops anyone else from joining or finishing their card. You can reopen this yourself later if you need to.'
+      '10 children have joined so far. Closing now locks everyone in at £18.99 per card (your best available rate) and stops anyone else from joining or finishing their card. You can reopen this yourself later if you need to.'
     );
   });
 
@@ -43,7 +43,7 @@ describe('computeCloseConsequence', () => {
   it('multi tier further from squad (N=2): gap and total scale correctly, not hardcoded to the N=9 case', () => {
     const result = computeCloseConsequence(2);
     // 8 more needed; saving £3.00/card × 2 committed = £6.00.
-    expect(result.leadLine).toBe('8 more players would save the team £6.00 — the price drops to £18.99 per card once you reach 10 players.');
+    expect(result.leadLine).toBe('8 more players would save the team £6.00. The price drops to £18.99 per card once you reach 10 players.');
   });
 
   it('well past squad tier (N=15): still the no-gap squad-tier message, not an error', () => {

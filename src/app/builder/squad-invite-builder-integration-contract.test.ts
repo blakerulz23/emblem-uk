@@ -48,10 +48,13 @@ describe('Squad Invite / ProductionBuilder reuse — no duplicate builder, real 
     expect(builder).not.toMatch(/function PlayerCard\b[\s\S]*function PlayerCard\b/); // only one definition
     // Upload / bg-removal / personalise steps have no squadInviteContext
     // branch in their JSX bodies at all (only the one club-field readOnly
-    // tweak, checked separately below) — proving they run byte-identical
-    // in both modes.
+    // tweak, checked separately below). The upload step's only mode switch is
+    // `directSingle` (the trimmed direct single-card first screen), which is
+    // pinned below to exclude Squad Invite, so Squad Invite still renders
+    // the upload step exactly as before.
     const uploadBlock = builder.match(/\{activeStepId === 'upload' && \(([\s\S]*?)\n {10}\)\}/)?.[1] ?? '';
     expect(uploadBlock).not.toContain('squadInviteContext');
+    expect(builder).toContain("const directSingle = order.type === 'single' && !squadInviteContext;");
   });
 
   it('locks the custom-collection club field read-only in Squad Invite mode, everywhere else unchanged', () => {
@@ -82,7 +85,7 @@ describe('Squad Invite / ProductionBuilder reuse — no duplicate builder, real 
     // The success screen's own payment line (0067): states a payment
     // request will follow by email once pricing is confirmed, now that
     // squad_invite_payment_mode_enabled() is genuinely true.
-    expect(squadInviteReview).toContain("A payment request will be emailed to you once your team&apos;s price is confirmed — nothing is charged today.");
+    expect(squadInviteReview).toContain("A payment request will be emailed to you once your team&apos;s price is confirmed. Nothing is charged today.");
   });
 
   it('requires every declaration accepted separately before submit is possible, matching the commit route contract', () => {

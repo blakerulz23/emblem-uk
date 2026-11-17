@@ -1,5 +1,6 @@
 'use client';
 
+import { rankByJersey, sampleJerseyColours, type JerseyColour } from '@/lib/jersey-colour-match';
 import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -40,11 +41,13 @@ import AdultPermissionStep from './builder-steps/AdultPermissionStep';
 import GuardianPendingScreen from './builder-steps/GuardianPendingScreen';
 import ShareCardSheet from './ShareCardSheet';
 import SquadInviteShareSheet from './SquadInviteShareSheet';
+import PhotoDayPicker, { PHOTO_DAY_FILE_PREFIX, type PhotoDayBuilderState } from './PhotoDayPicker';
 import CoachCardSection from './CoachCardSection';
 import PricingSummaryCard from './PricingSummaryCard';
 import { useOrderPricingQuote } from './useOrderPricingQuote';
 import { isQuoteFreshForCounts, type OrderPricingQuoteState } from '@/lib/pricing-quote-controller';
 import { formatPence } from '@/lib/pricing-quote';
+import { PRICES } from '@/lib/marketing/site';
 import {
   buildCoachCardPayload,
   coachCardTeamOptions,
@@ -80,6 +83,11 @@ import { clearAllBuilderDrafts, clearBuilderDraft, draftScopeFor, isBuilderDevic
 export type SquadInviteBuilderContext = {
   participationId: string;
   campaignClubName: string;
+  /**
+   * Photo Day (migration 0106), resolved server-side by builder/page.tsx for
+   * this participation only. Null when the team has no photo day.
+   */
+  photoDay?: PhotoDayBuilderState | null;
 };
 
 const SQUAD_INVITE_STEP_ORDER: StepId[] = ['upload', 'bg-removal', 'personalise', 'review'];
@@ -109,14 +117,45 @@ const collections = [
     title: 'Custom Collection',
     proof: 'Build Your Own',
     points: ['Any club or school', 'One-off events', 'Emblem badge included'],
+    comingSoon: false,
   },
   {
+    // Shown greyed out and not selectable until official partner
+    // collections launch. Its code paths stay (types, payload fallbacks,
+    // coach-card grouping), so turning it back on is this one flag.
     id: 'official',
     title: 'Official Collection',
     proof: 'Official Partner',
     points: ['Licensed badges', 'Official templates', 'League approved'],
+    comingSoon: true,
   },
 ] as const;
+
+const OFFICIAL_COLLECTION_AVAILABLE = !collections.find((collection) => collection.id === 'official')?.comingSoon;
+
+/** Moves an order onto the Custom Collection, keeping any custom design and club already chosen. */
+function toCustomCollection(current: OrderDraft): OrderDraft {
+  const customClub = current.collectionType === 'custom' ? current.club : '';
+  const customTemplate = isCustomCollectionTemplateId(current.templateDefault) ? current.templateDefault : DEFAULT_CUSTOM_TEMPLATE_ID;
+  return {
+    ...current,
+    collectionType: 'custom',
+    collectionName: 'Custom Collection',
+    league: undefined,
+    emjflClubId: undefined,
+    club: customClub,
+    templateDefault: customTemplate,
+    players: current.players.map((player) => ({
+      ...player,
+      club: current.collectionType === 'custom' ? player.club || customClub : '',
+      emjflClubId: undefined,
+      badgeUrl: player.badgeUrl || current.badgeUrl,
+      clubEdited: true,
+      templateId: player.templateId && isCustomCollectionTemplateId(player.templateId) ? player.templateId : customTemplate,
+      updatedAt: nowIso(),
+    })),
+  };
+}
 
 // squad's maxPlayers matches DIRECT_BUILDER_MAX_PAID_PLAYERS exactly — the
 // same server-enforced pilot cap (order-enquiry-validation.ts), not a
@@ -153,7 +192,7 @@ function quoteSubtotalLabel(state: OrderPricingQuoteState): string {
     case 'error':
       return 'Unavailable';
     default:
-      return '—';
+      return '-';
   }
 }
 
@@ -303,7 +342,14 @@ export default function ProductionBuilder({
       // campaign's own club/team — never the curated EMJFL official-league
       // picker (a Squad Invite campaign's club is organiser-typed free
       // text, not necessarily one of that curated list).
-      return { ...draft, type: 'single', collectionType: 'custom', collectionName: 'Custom Collection', club: squadInviteContext.campaignClubName };
+      const base: OrderDraft = { ...draft, type: 'single', collectionType: 'custom', collectionName: 'Custom Collection', club: squadInviteContext.campaignClubName };
+      // Photo Day: the shirt number the parent gave with their permission
+      // pre-fills the card. A restored draft still wins (applied later).
+      const squadNumber = squadInviteContext.photoDay?.squadNumber;
+      if (typeof squadNumber === 'number' && base.players[0] && !base.players[0].kitNo) {
+        return { ...base, players: [{ ...base.players[0], kitNo: String(squadNumber) }, ...base.players.slice(1)] };
+      }
+      return base;
     }
     const mode = searchParams.get('mode');
     if (mode === 'set' || mode === 'friend-set' || mode === 'siblings') {
@@ -721,7 +767,11 @@ export default function ProductionBuilder({
           // A Squad Invite card stays locked to one child, the Custom
           // Collection and the campaign's own club, whatever the draft says.
           ? { ...restored.order, players, type: 'single', collectionType: 'custom', collectionName: 'Custom Collection', club: squadInviteContext.campaignClubName }
-          : { ...restored.order, players };
+          // A draft saved on the Official Collection while it was open
+          // reopens on Custom, since Official can't be chosen right now.
+          : !OFFICIAL_COLLECTION_AVAILABLE && restored.order.collectionType === 'official'
+            ? toCustomCollection({ ...restored.order, players })
+            : { ...restored.order, players };
         const steps = squadInviteContext ? SQUAD_INVITE_STEP_ORDER : stepsFor(nextOrder.type);
         // Never resume on (or past) the permission step: the adult
         // permission and its email verification are always done again.
@@ -811,32 +861,12 @@ export default function ProductionBuilder({
 
   const selectCollection = (collectionType: OrderDraft['collectionType']) => {
     if (collectionType === 'official') {
+      if (!OFFICIAL_COLLECTION_AVAILABLE) return;
       selectOrderClub(order.emjflClubId || DEFAULT_EMJFL_CLUB.id);
       return;
     }
 
-    setOrder((current) => {
-      const customClub = current.collectionType === 'custom' ? current.club : '';
-      const customTemplate = isCustomCollectionTemplateId(current.templateDefault) ? current.templateDefault : DEFAULT_CUSTOM_TEMPLATE_ID;
-      return {
-        ...current,
-        collectionType: 'custom',
-        collectionName: 'Custom Collection',
-        league: undefined,
-        emjflClubId: undefined,
-        club: customClub,
-        templateDefault: customTemplate,
-        players: current.players.map((player) => ({
-          ...player,
-          club: current.collectionType === 'custom' ? player.club || customClub : '',
-          emjflClubId: undefined,
-          badgeUrl: player.badgeUrl || current.badgeUrl,
-          clubEdited: true,
-          templateId: player.templateId && isCustomCollectionTemplateId(player.templateId) ? player.templateId : customTemplate,
-          updatedAt: nowIso(),
-        })),
-      };
-    });
+    setOrder(toCustomCollection);
   };
 
   const updateCustomClub = (club: string) => {
@@ -1670,7 +1700,7 @@ export default function ProductionBuilder({
       if (!response.ok || !result?.ok || typeof result.checkoutUrl !== 'string') {
         checkoutTab?.close();
         setCheckoutStage('error');
-        setCheckoutError(result?.error || 'Could not start secure checkout — please try again');
+        setCheckoutError(result?.error || 'Could not start secure checkout. Please try again');
         return;
       }
       setCheckoutUrl(result.checkoutUrl);
@@ -1682,7 +1712,7 @@ export default function ProductionBuilder({
     } catch {
       checkoutTab?.close();
       setCheckoutStage('error');
-      setCheckoutError('Could not start secure checkout — please try again');
+      setCheckoutError('Could not start secure checkout. Please try again');
     }
   };
 
@@ -1883,9 +1913,19 @@ export default function ProductionBuilder({
   };
 
   const progress = ((activeIndex + 1) / stepOrder.length) * 100;
+  // The direct builder picks the card on its own step first, so its details
+  // step is "Add their details"; Squad Invite keeps "Personalise cards".
+  const stepLabel = (step: StepId) => (step === 'personalise' && !squadInviteContext ? 'Add their details' : STEP_LABEL[step]);
   const progressLabel = activeStepId === 'approve' || activeStepId === 'review'
     ? `${order.players.length} player${order.players.length === 1 ? '' : 's'} - ${summary.counts.approved} approved`
-    : STEP_LABEL[activeStepId];
+    : stepLabel(activeStepId);
+  // The direct single-card builder (not set/squad, not Squad Invite). Its
+  // first screen is trimmed for phones: price and sample card up front, no
+  // decorative step pill, no one-row player queue, a short device-save line.
+  // Squad Invite also runs as order.type 'single', so it is excluded here and
+  // keeps its upload step exactly as before.
+  const directSingle = order.type === 'single' && !squadInviteContext;
+  const hideUploadStepPill = directSingle && activeStepId === 'upload' && !summary.checkoutEligible;
   const goBack = () => {
     const previous = stepOrder[Math.max(0, activeIndex - 1)];
     setActiveStepId(previous);
@@ -1910,7 +1950,7 @@ export default function ProductionBuilder({
     submitEnquiry(event);
   };
   const approveOrReviewStep: StepId = stepOrder.includes('approve') ? 'approve' : 'review';
-  const prePersonaliseSteps: StepId[] = ['upload', 'bg-removal', 'collection'];
+  const prePersonaliseSteps: StepId[] = ['upload', 'bg-removal', 'collection', 'design'];
   const selectedIndex = selectedPlayer ? order.players.findIndex((player) => player.id === selectedPlayer.id) : -1;
   const selectAdjacentPlayer = (direction: -1 | 1) => {
     if (selectedIndex < 0) return;
@@ -1919,26 +1959,62 @@ export default function ProductionBuilder({
   };
   const chooseTemplate = (templateId: TemplateId) => {
     patchOrder({ templateDefault: templateId });
-    if (selectedPlayer) patchPlayer(selectedPlayer.id, { templateId });
+    if (selectedPlayer) patchPlayer(selectedPlayer.id, { templateId, designChosen: true });
   };
   const styleRailRef = useRef<HTMLDivElement>(null);
   const scrollStyleRail = (direction: -1 | 1) => {
     styleRailRef.current?.scrollBy({ left: direction * 140, behavior: 'smooth' });
   };
+  // Kit colours read from each player's background-removed cut-out, on the
+  // device (adapted from Emblem Canada). Direct builder only: Squad Invite's
+  // carousel keeps its fixed order. null while reading.
+  const [kitColours, setKitColours] = useState<Record<string, { url: string; colours: JerseyColour[] | null }>>({});
+  const kitPhotoUrl = !squadInviteContext && order.collectionType === 'custom' && selectedPlayer?.photo?.bgRemoved ? selectedPlayer.photo.srcUrl : '';
+  const selectedKit = selectedPlayer && kitPhotoUrl && kitColours[selectedPlayer.id]?.url === kitPhotoUrl ? kitColours[selectedPlayer.id].colours : undefined;
+  useEffect(() => {
+    if (!selectedPlayer || !kitPhotoUrl || kitColours[selectedPlayer.id]?.url === kitPhotoUrl) return;
+    const playerId = selectedPlayer.id;
+    setKitColours((current) => ({ ...current, [playerId]: { url: kitPhotoUrl, colours: null } }));
+    sampleJerseyColours(kitPhotoUrl)
+      .catch(() => [] as JerseyColour[])
+      .then((colours) => setKitColours((current) => (current[playerId]?.url === kitPhotoUrl ? { ...current, [playerId]: { url: kitPhotoUrl, colours } } : current)));
+    // Read once per player photo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlayer?.id, kitPhotoUrl]);
+
+  const kitRanking = useMemo(() => {
+    if (!selectedKit?.length) return null;
+    const collectionTemplates = templates.filter((template) => isCustomCollectionTemplateId(template.id));
+    return rankByJersey(collectionTemplates, (template) => template.accent, selectedKit);
+  }, [selectedKit]);
+  // As in the Canada builder, the top-ranked design is the best match
+  // whenever the kit could be read (a plain white or black kit gives no
+  // colours, so no ranking and no badge).
+  const kitBestMatchId = kitRanking ? kitRanking[0].item.id : null;
+  // Start them on the best match, as the Canada builder does: once the kit
+  // has been read, and never over a design they picked by hand.
+  useEffect(() => {
+    if (activeStepId !== 'design' || !kitBestMatchId || !selectedPlayer || selectedPlayer.designChosen) return;
+    if (selectedPlayer.templateId === kitBestMatchId) return;
+    patchPlayer(selectedPlayer.id, { templateId: kitBestMatchId });
+    if (order.type === 'single') patchOrder({ templateDefault: kitBestMatchId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStepId, kitBestMatchId, selectedPlayer?.id]);
+
   const orderedTemplates = useMemo(() => {
     const collectionTemplates = templates.filter((template) =>
       order.collectionType === 'custom'
         ? isCustomCollectionTemplateId(template.id)
         : !isCustomCollectionTemplateId(template.id),
     );
-    if (order.collectionType === 'custom') return collectionTemplates;
+    if (order.collectionType === 'custom') return kitRanking ? kitRanking.map((ranked) => ranked.item) : collectionTemplates;
     const preferred = preferredTemplateForClub(playerClubId(order, selectedPlayer));
     return [...collectionTemplates].sort((a, b) => {
       if (a.id === preferred) return -1;
       if (b.id === preferred) return 1;
       return 0;
     });
-  }, [order, selectedPlayer]);
+  }, [order, selectedPlayer, kitRanking]);
 
   // Desktop split layout (>=1180px, adapted from Emblem Canada's "ukd"
   // builder): the same steps, state and handlers; on desktop the phone column
@@ -1965,7 +2041,61 @@ export default function ProductionBuilder({
   const photoEditable = Boolean(
     activeStepId === 'personalise' && cardSide === 'front' && selectedPlayer?.photo?.srcUrl && cardPositionsPhoto(order, selectedPlayer),
   );
+  // On a touch phone the card fills most of the screen, so a finger meant to
+  // scroll the page kept moving the photo, and the sliders below it caught
+  // scrolls too. There the photo is locked until "Adjust photo" is tapped:
+  // then one finger drags, a pinch zooms and the sliders show; "Done" locks
+  // it again. Desktop and large tablets (the >=1180px layout) are unchanged.
+  const [touchPhone, setTouchPhone] = useState(false);
+  useEffect(() => {
+    let query: MediaQueryList;
+    try {
+      query = window.matchMedia('(pointer: coarse) and (max-width: 1179px)');
+    } catch {
+      return undefined;
+    }
+    const update = () => setTouchPhone(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  const [photoAdjusting, setPhotoAdjusting] = useState(false);
+  // Locked again whenever they move on: another step, side or card.
+  useEffect(() => { setPhotoAdjusting(false); }, [activeStepId, cardSide, selectedPlayer?.id]);
+  const photoLocked = touchPhone && !photoAdjusting;
+  const photoMovable = photoEditable && !photoLocked;
   const [previewFrameEl, setPreviewFrameEl] = useState<HTMLDivElement | null>(null);
+  // Phone "Add their details" step (direct builder): once the card preview has
+  // scrolled up under the header, a small copy of the card stays pinned at the
+  // top right (adapted from Emblem Canada). Desktop always shows the card in
+  // the stage, so CSS hides the mini card there.
+  const [miniCard, setMiniCard] = useState<{ show: boolean; top: number }>({ show: false, top: 0 });
+  useEffect(() => {
+    if (squadInviteContext || activeStepId !== 'personalise' || !previewFrameEl) {
+      setMiniCard((current) => (current.show ? { ...current, show: false } : current));
+      return;
+    }
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const header = document.querySelector('.uk-wizard-header');
+      // The header is only pinned while its own block is on screen, so it can
+      // scroll away on a phone; then the mini card pins to the top edge.
+      const top = Math.max(0, Math.round(header ? header.getBoundingClientRect().bottom : 0));
+      const box = previewFrameEl.getBoundingClientRect();
+      const show = box.height > 0 && box.bottom < top + 48;
+      setMiniCard((current) => (current.show === show && current.top === top ? current : { show, top }));
+    };
+    const schedule = () => { if (!frame) frame = window.requestAnimationFrame(update); };
+    update();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+    };
+  }, [squadInviteContext, activeStepId, previewFrameEl]);
   const [stageFrameEl, setStageFrameEl] = useState<HTMLDivElement | null>(null);
 
   // The coach mark ("Drag to move / Pinch to zoom") over the card the first
@@ -1991,7 +2121,7 @@ export default function ProductionBuilder({
 
   const photoGestures = usePhotoGestures({
     frames: [previewFrameEl, stageFrameEl],
-    enabled: photoEditable,
+    enabled: photoMovable,
     photo: selectedPlayer?.photo,
     onChange: (crop) => {
       const photo = selectedPlayer?.photo;
@@ -2010,12 +2140,12 @@ export default function ProductionBuilder({
     const timer = setTimeout(() => setPhotoBlockedHint(false), 3500);
     return () => clearTimeout(timer);
   }, [photoBlockedHint]);
-  const photoHint = photoEditable && photoBlockedHint ? (
+  const photoHint = photoMovable && photoBlockedHint ? (
     <div className="uk-photo-hint" role="status">The whole photo is showing. Zoom in to move it.</div>
   ) : null;
   /** Arrow keys move, +/- zoom, 0 restores the suggested framing, when the card has focus. */
   const onPhotoKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (!photoEditable || !selectedPlayer) return;
+    if (!photoMovable || !selectedPlayer) return;
     const step = event.shiftKey ? 0.05 : 0.01;
     const keys: Record<string, () => void> = {
       ArrowLeft: () => photoGestures.panBy(-step, 0),
@@ -2033,7 +2163,7 @@ export default function ProductionBuilder({
     dismissPhotoCoach();
     action();
   };
-  const photoFrameProps = photoEditable
+  const photoFrameProps = photoMovable
     ? {
         tabIndex: 0,
         role: 'group' as const,
@@ -2042,7 +2172,7 @@ export default function ProductionBuilder({
         onDoubleClick: () => selectedPlayer && resetPlayerPhotoToSuggested(selectedPlayer.id),
       }
     : {};
-  const photoTools = photoEditable && selectedPlayer?.photo ? (
+  const photoTools = photoMovable && selectedPlayer?.photo ? (
     <div className="uk-photo-tools" role="group" aria-label="Photo zoom">
       <button type="button" onClick={() => photoGestures.zoomBy(1 / 1.12)} aria-label="Zoom out">−</button>
       <span aria-live="polite">{Math.round(selectedPlayer.photo.crop.scale * 100)}%</span>
@@ -2052,7 +2182,7 @@ export default function ProductionBuilder({
       )}
     </div>
   ) : null;
-  const photoCoach = photoEditable && showPhotoCoach ? (
+  const photoCoach = photoMovable && showPhotoCoach ? (
     // No handler of its own: pointer-events:none lets the first touch reach
     // the card, whose own touchstart clears it, so one touch both dismisses
     // it and starts the drag.
@@ -2136,12 +2266,12 @@ export default function ProductionBuilder({
         </button>
         <span className="ukd-divider" aria-hidden="true" />
         <div className="ukd-title">
-          <small>{String(activeIndex + 1).padStart(2, '0')} / {String(stepOrder.length).padStart(2, '0')} &middot; {STEP_LABEL[activeStepId]}</small>
+          <small>{String(activeIndex + 1).padStart(2, '0')} / {String(stepOrder.length).padStart(2, '0')} &middot; {stepLabel(activeStepId)}</small>
           <strong>{deskTitle}</strong>
         </div>
         <div className="ukd-total">
           <small>{order.players.length} card{order.players.length === 1 ? '' : 's'}</small>
-          <strong>{quoteState.status === 'ready' && summary.approvedPlayers.length > 0 ? quoteSubtotalLabel(quoteState) : '—'}</strong>
+          <strong>{quoteState.status === 'ready' && summary.approvedPlayers.length > 0 ? quoteSubtotalLabel(quoteState) : '-'}</strong>
         </div>
         <button type="button" className="ukd-exit" onClick={exitBuilder}>{deviceSaveOff || draftDone ? 'Exit' : 'Save & exit'}</button>
       </header>
@@ -2159,19 +2289,23 @@ export default function ProductionBuilder({
             <button type="button" className="uk-wizard-brand" onClick={() => (draftDone ? router.push('/') : setExitPrompt(true))} aria-label="Leave the builder">
               <img src="/builder-emblem-logo.png" alt="Emblem" />
             </button>
-            <button
-              type="button"
-              className="uk-progress-pill"
-              aria-label={progressLabel}
-              onClick={() => setActiveStepId(summary.checkoutEligible ? 'review' : approveOrReviewStep)}
-              disabled={prePersonaliseSteps.includes(activeStepId) && !summary.checkoutEligible}
-            >
-              {progressLabel}
-            </button>
+            {/* On the direct single-card photo step the pill is disabled and
+                only repeats the heading, so it is left out there. */}
+            {!hideUploadStepPill && (
+              <button
+                type="button"
+                className="uk-progress-pill"
+                aria-label={progressLabel}
+                onClick={() => setActiveStepId(summary.checkoutEligible ? 'review' : approveOrReviewStep)}
+                disabled={prePersonaliseSteps.includes(activeStepId) && !summary.checkoutEligible}
+              >
+                {progressLabel}
+              </button>
+            )}
           </div>
           <div className="uk-wizard-progress">
             <div><span style={{ width: `${progress}%` }} /></div>
-            <b>{String(activeIndex + 1).padStart(2, '0')} / {String(stepOrder.length).padStart(2, '0')} &middot; {STEP_LABEL[activeStepId]}</b>
+            <b>{String(activeIndex + 1).padStart(2, '0')} / {String(stepOrder.length).padStart(2, '0')} &middot; {stepLabel(activeStepId)}</b>
           </div>
         </header>
 
@@ -2218,13 +2352,16 @@ export default function ProductionBuilder({
                     <button
                       key={collection.id}
                       type="button"
-                      className={order.collectionType === collection.id ? 'active' : ''}
+                      className={collection.comingSoon ? 'coming-soon' : order.collectionType === collection.id ? 'active' : ''}
                       onClick={() => selectCollection(collection.id)}
+                      disabled={collection.comingSoon}
+                      aria-describedby={collection.comingSoon ? `collection-${collection.id}-soon` : undefined}
                     >
                       <span>
                         <strong>{collection.title}</strong>
                         <em>{collection.proof}</em>
                       </span>
+                      {collection.comingSoon && <small id={`collection-${collection.id}-soon`} className="uk-collection-soon">Coming soon</small>}
                       <ul>
                         {collection.points.map((point) => <li key={point}>{point}</li>)}
                       </ul>
@@ -2232,8 +2369,30 @@ export default function ProductionBuilder({
                   ))}
                 </div>
               </div>
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('personalise')}>Continue</button>
+              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('design')}>Continue</button>
             </section>
+          )}
+
+          {/* Photo Day (0106): its own block, so the shared upload step below
+              stays byte-identical in both modes (see
+              squad-invite-builder-integration-contract.test.ts). */}
+          {activeStepId === 'upload' && squadInviteContext?.photoDay && selectedPlayer && (
+            <PhotoDayPicker
+              participationId={squadInviteContext.participationId}
+              photoDay={squadInviteContext.photoDay}
+              onChoose={(file) => assignPhoto(selectedPlayer.id, file)}
+              onWithdrawn={() => {
+                // Permission withdrawn: a Photo Day photo already on the
+                // card must not be sent. Own uploads are left alone.
+                setOrder((current) => ({
+                  ...current,
+                  players: current.players.map((player) =>
+                    player.photo?.fileName?.startsWith(PHOTO_DAY_FILE_PREFIX)
+                      ? { ...player, photo: undefined, approvedAt: undefined, updatedAt: nowIso() }
+                      : player),
+                }));
+              }}
+            />
           )}
 
           {activeStepId === 'upload' && (
@@ -2243,6 +2402,17 @@ export default function ProductionBuilder({
               <p className="uk-wizard-copy">
                 {order.type !== 'single' ? 'Drop in every player photo together, then complete each card in the queue.' : 'Pick the football photo you want to turn into a card.'}
               </p>
+              {directSingle && !selectedHasPhoto && (
+                <div className="uk-first-screen-intro">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- small fixed-size sample card */}
+                  <img src="/assets/home/gallery/custom-royal.webp" alt="A finished Emblem card" width={52} height={73} />
+                  <div>
+                    <strong>{PRICES.single} &middot; free UK delivery &middot; profile included</strong>
+                    <span>Any clear phone photo works. You&apos;ll see the card before you pay.</span>
+                    <a href="/football-gifts-for-kids#cards" data-track="builder_see_designs">No photo handy? See the designs first</a>
+                  </div>
+                </div>
+              )}
               {order.type === 'single' && selectedPlayer && !selectedHasPhoto && (
                 <div className="uk-photo-carousel single">
                   <label className="uk-upload-card active">
@@ -2330,15 +2500,26 @@ export default function ProductionBuilder({
                   onDuplicate={duplicatePlayer}
                   onAdd={() => addPlayer()}
                 />
-              ) : order.type === 'single' ? (
+              ) : order.type === 'single' && (!directSingle || order.players.length > 1) ? (
+                // Direct single-card orders hold one player, so the one-row
+                // queue is hidden there; it comes back if players were carried
+                // over from a team order, so each one can still be picked.
                 <PlayerStrip order={order} selectedId={selectedId} onSelect={setSelectedId} />
               ) : null}
               <div className="uk-draft-notice">
                 <p>
                   {deviceSaveOff
                     ? <>Your card isn&apos;t being saved on this device. If you leave or reload the page, you&apos;ll need to start again. Nothing is uploaded until you send your card.</>
-                    : <>While you build, your card&apos;s details and photo are saved on this device only, for up to 3 days, so you can carry on later. Nothing is uploaded until you send your card, and you can delete it at any time with &ldquo;Discard&rdquo; (tap the Emblem logo).</>}
+                    : directSingle
+                      ? <>Saved on this device for up to 3 days, so you can come back. Nothing is uploaded until you send your card.</>
+                      : <>While you build, your card&apos;s details and photo are saved on this device only, for up to 3 days, so you can carry on later. Nothing is uploaded until you send your card, and you can delete it at any time with &ldquo;Discard&rdquo; (tap the Emblem logo).</>}
                 </p>
+                {directSingle && !deviceSaveOff && (
+                  <details className="uk-draft-more">
+                    <summary>More</summary>
+                    <p>While you build, your card&apos;s details and photo are saved on this device only, for up to 3 days, so you can carry on later. Nothing is uploaded until you send your card, and you can delete it at any time with &ldquo;Discard&rdquo; (tap the Emblem logo).</p>
+                  </details>
+                )}
                 <label className="uk-draft-optout">
                   <input type="checkbox" checked={deviceSaveOff} onChange={(event) => { void changeDeviceSave(event.target.checked); }} />
                   <span>Don&apos;t save on this device <small>(best on a shared or public device; deletes anything already saved here)</small></span>
@@ -2368,15 +2549,27 @@ export default function ProductionBuilder({
           {activeStepId === 'upload' && !squadInviteContext && (
             <section className="uk-wizard-entry-options" aria-label="Other ways to order">
               {order.type === 'single' ? (
-                <button type="button" className="uk-entry-link" onClick={() => patchOrder({ type: 'squad' })}>
-                  Making cards for a whole team yourself? &rarr;
-                </button>
+                // One quiet line, so the photo stays the focus. Both team
+                // routes are still here: make every card yourself, or
+                // (when Squad Invite is on) invite parents to make their own.
+                <p className="uk-entry-team-line">
+                  Ordering for a team?{' '}
+                  <button type="button" onClick={() => patchOrder({ type: 'squad' })} data-track="builder_team_self">
+                    Make them yourself
+                  </button>
+                  {squadInviteEnabled && (
+                    <>
+                      {' '}or{' '}
+                      <a href="/squad-invite/start" data-track="builder_team_invite">invite parents</a>
+                    </>
+                  )}
+                </p>
               ) : (
                 <button type="button" className="uk-entry-link" onClick={() => patchOrder({ type: 'single' })}>
                   Just one player? &larr;
                 </button>
               )}
-              {squadInviteEnabled && (
+              {squadInviteEnabled && order.type !== 'single' && (
                 <>
                   <div className="uk-choice-divider" role="separator">
                     <span>Want parents to create their own?</span>
@@ -2427,11 +2620,78 @@ export default function ProductionBuilder({
             />
           )}
 
+          {activeStepId === 'design' && (
+            <section className="uk-wizard-panel">
+              <p className="uk-wizard-kicker">Pick their card</p>
+              <h1>Pick their card.</h1>
+              <p className="uk-wizard-copy">
+                {orderedTemplates.length} designs, {kitRanking ? 'ranked for this photo' : 'shown with their photo'}. You can change it on the next screen too.
+              </p>
+              {kitPhotoUrl && (
+                <div className="uk-kit-colours" aria-live="polite">
+                  {selectedKit === null || selectedKit === undefined ? (
+                    <span>Reading their kit colours…</span>
+                  ) : selectedKit.length > 0 ? (
+                    <>
+                      <span>Their kit</span>
+                      <span className="uk-kit-swatches" aria-hidden="true">
+                        {selectedKit.map((colour) => <i key={colour.hex} style={{ background: colour.hex }} />)}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+              )}
+              {order.type !== 'single' && (
+                <div className="uk-squad-edit-bar">
+                  <button type="button" onClick={() => selectAdjacentPlayer(-1)} disabled={selectedIndex <= 0}>Previous</button>
+                  <span>{selectedIndex + 1} of {order.players.length}</span>
+                  <button type="button" onClick={() => selectAdjacentPlayer(1)} disabled={selectedIndex >= order.players.length - 1}>Next</button>
+                </div>
+              )}
+              <div className="uk-design-grid" role="radiogroup" aria-label="Card designs">
+                {orderedTemplates.map((template) => {
+                  const isActive = selectedTemplate(order, selectedPlayer).id === template.id;
+                  return (
+                    <button
+                      key={template.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      aria-label={template.name}
+                      className={isActive ? 'active' : ''}
+                      onClick={() => chooseTemplate(template.id)}
+                    >
+                      <PlayerCard
+                        order={{ ...order, templateDefault: template.id }}
+                        player={selectedPlayer ? { ...selectedPlayer, templateId: template.id } : createPlayer({ templateId: template.id })}
+                        compact
+                      />
+                      {template.id === kitBestMatchId && <span className="uk-design-best">Best match</span>}
+                      <strong>{template.name}</strong>
+                      {order.collectionType === 'official' && template.id === preferredTemplateForClub(playerClubId(order, selectedPlayer)) && <small>Best match</small>}
+                    </button>
+                  );
+                })}
+              </div>
+              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('personalise')}>Add their details</button>
+            </section>
+          )}
+
           {activeStepId === 'personalise' && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Personalise cards</p>
-              <h1>Make it yours.</h1>
-              <p className="uk-wizard-copy">Choose the look, edit the details and approve each card when it is ready.</p>
+              {squadInviteContext ? (
+                <>
+                  <p className="uk-wizard-kicker">Personalise cards</p>
+                  <h1>Make it yours.</h1>
+                  <p className="uk-wizard-copy">Choose the look, edit the details and approve each card when it is ready.</p>
+                </>
+              ) : (
+                <>
+                  <p className="uk-wizard-kicker">Add their details</p>
+                  <h1>Add their details.</h1>
+                  <p className="uk-wizard-copy">Their name, number and team go on the card. Check the photo position, then review.</p>
+                </>
+              )}
               <div className="uk-wizard-fields">
                 {order.collectionType === 'official' ? (
                   <>
@@ -2482,6 +2742,15 @@ export default function ProductionBuilder({
                   <button type="button" onClick={() => selectAdjacentPlayer(1)} disabled={selectedIndex >= order.players.length - 1}>Next</button>
                 </div>
               )}
+              {!squadInviteContext ? (
+                <div className="uk-design-chosen">
+                  <span>
+                    <small>Design</small>
+                    <strong>{selectedTemplate(order, selectedPlayer).name}</strong>
+                  </span>
+                  <button type="button" onClick={() => setActiveStepId('design')}>Change</button>
+                </div>
+              ) : (
               <div className="uk-personalise-style">
                 <div className="uk-personalise-style-head">
                   <span>
@@ -2521,18 +2790,43 @@ export default function ProductionBuilder({
                   </button>
                 </div>
               </div>
+              )}
               <div
                 ref={setPreviewFrameEl}
-                className={`uk-edit-preview${photoEditable ? ' uk-photo-draggable' : ''}${photoGestures.dragging ? ' is-dragging' : ''}`}
+                className={`uk-edit-preview${photoMovable ? ' uk-photo-draggable' : ''}${touchPhone && photoAdjusting ? ' is-adjusting' : ''}${photoGestures.dragging ? ' is-dragging' : ''}`}
                 {...photoFrameProps}
               >
                 <PlayerCard order={order} player={selectedPlayer} side={cardSide} />
                 {photoCoach}
                 {photoHint}
               </div>
+              {!squadInviteContext && selectedPlayer && (
+                <button
+                  type="button"
+                  className={`uk-mini-card${miniCard.show ? ' is-visible' : ''}`}
+                  style={{ top: miniCard.top + 10 }}
+                  aria-label="Back to the card preview"
+                  onClick={() => previewFrameEl?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                >
+                  <PlayerCard order={order} player={selectedPlayer} side={cardSide} compact />
+                </button>
+              )}
+              {touchPhone && cardSide === 'front' && selectedPlayer.photo && (
+                <div className="uk-photo-adjust-bar">
+                  {photoAdjusting ? (
+                    <>
+                      <span>{photoEditable ? 'Drag to move, pinch to zoom.' : 'Use the sliders to position the photo.'}</span>
+                      <button type="button" className="uk-photo-adjust-done" onClick={() => setPhotoAdjusting(false)}>Done</button>
+                    </>
+                  ) : (
+                    <button type="button" className="uk-photo-adjust-start" onClick={() => setPhotoAdjusting(true)}>Adjust photo</button>
+                  )}
+                </div>
+              )}
               {photoTools && <div className="uk-photo-tools-row">{photoTools}</div>}
               {cardSide === 'front' ? (
                 selectedPlayer.photo ? (
+                  photoLocked ? null : (
                   <div className="uk-crop-controls">
                     <div className="uk-crop-controls-actions">
                       <button
@@ -2583,6 +2877,7 @@ export default function ProductionBuilder({
                       />
                     </label>
                   </div>
+                  )
                 ) : (
                   <label className="uk-photo-needed">
                     <strong>Upload player photo</strong>
@@ -2594,7 +2889,7 @@ export default function ProductionBuilder({
                 // Back is the template's own static, approved design (see
                 // card-face-registry.ts) — never editable, so none of the
                 // photo/framing/text controls below apply here at all.
-                <p className="uk-wizard-copy">This is the back of your card — nothing to edit here. Switch to Front to keep personalising.</p>
+                <p className="uk-wizard-copy">This is the back of your card. Nothing to edit here. Switch to Front to keep personalising.</p>
               )}
               <div className="uk-card-side-toggle wide" aria-label="Choose card side">
                 <button type="button" className={cardSide === 'front' ? 'active' : ''} onClick={() => setCardSide('front')}>Front</button>
@@ -2771,7 +3066,7 @@ export default function ProductionBuilder({
                       <h2>What happens next</h2>
                       <ul>
                         <li>Emblem staff review this card before it goes into production.</li>
-                        <li>A payment request will be emailed to you once your team&apos;s price is confirmed — nothing is charged today.</li>
+                        <li>A payment request will be emailed to you once your team&apos;s price is confirmed. Nothing is charged today.</li>
                         <li>The completed cards are delivered together to your approved organiser or coach.</li>
                       </ul>
                       <p className="uk-squad-invite-success-privacy">Your organiser can see the squad&apos;s overall progress, not your child&apos;s card details or photograph.</p>
@@ -2782,7 +3077,7 @@ export default function ProductionBuilder({
                     <p className="uk-wizard-kicker">Squad Invite</p>
                     <h1>Review and save your child&apos;s card</h1>
                     <p className="uk-wizard-copy">
-                      This creates one private Squad Invite commitment for {order.club || 'your team'}. It is private to you — your organiser sees aggregate progress only, never these details.
+                      This creates one private Squad Invite commitment for {order.club || 'your team'}. It is private to you: your organiser sees aggregate progress only, never these details.
                     </p>
 
                     <div className="uk-squad-review-grid">
@@ -2809,7 +3104,7 @@ export default function ProductionBuilder({
 
                         <div className="uk-squad-review-callout">
                           <p className="uk-squad-review-callout-title">Payment is required once your team&apos;s price is confirmed.</p>
-                          <p>No card details are collected here — you&apos;ll be sent a separate payment request by email once your team&apos;s final price is confirmed.</p>
+                          <p>No card details are collected here. You&apos;ll be sent a separate payment request by email once your team&apos;s final price is confirmed.</p>
                         </div>
 
                         {squadInviteOutcome === 'sign_in_required' && (
@@ -2819,7 +3114,7 @@ export default function ProductionBuilder({
                         )}
                         {squadInviteOutcome === 'unavailable' && (
                           <p role="alert" className="uk-enquiry-error">
-                            This couldn&apos;t be completed right now — it may already be saved, or the window to make changes has closed. Please try again shortly.
+                            This couldn&apos;t be completed right now. It may already be saved, or the window to make changes has closed. Please try again shortly.
                           </p>
                         )}
                         {squadInviteOutcome === 'campaign_closed' && (
@@ -2839,7 +3134,7 @@ export default function ProductionBuilder({
                         )}
                         {squadInviteOutcome === 'photo_upload_failed' && (
                           <p role="alert" className="uk-enquiry-error">
-                            Your photo couldn&apos;t be saved. Your details and declarations are still here — please try again, or use a different photo.
+                            Your photo couldn&apos;t be saved. Your details and declarations are still here. Please try again, or use a different photo.
                           </p>
                         )}
 
@@ -2893,7 +3188,7 @@ export default function ProductionBuilder({
                             {squadInviteSubmitting ? 'Saving…' : "Save my child's card"}
                           </button>
                           <p className="uk-squad-review-submit-note">
-                            Your child&apos;s card joins the team&apos;s production queue now. You&apos;ll be sent a payment request by email once the team&apos;s price is confirmed — your organiser sees aggregate progress only, never these details.
+                            Your child&apos;s card joins the team&apos;s production queue now. You&apos;ll be sent a payment request by email once the team&apos;s price is confirmed. Your organiser sees aggregate progress only, never these details.
                           </p>
                         </form>
                       </div>
@@ -2957,9 +3252,9 @@ export default function ProductionBuilder({
                   : !gate3Enabled
                     ? 'We have your production request and will email you within one business day.'
                     : checkoutStage === 'confirmed'
-                      ? 'Payment received — your cards are on their way into production.'
+                      ? 'Payment received. Your cards are on their way into production.'
                       : checkoutStage === 'awaiting-payment'
-                        ? "We're waiting for Shopify to confirm your payment — this can take a few moments. Complete checkout in the tab that just opened, then come back here."
+                        ? "We're waiting for Shopify to confirm your payment. This can take a few moments. Complete checkout in the tab that just opened, then come back here."
                         : 'Continue to secure checkout to confirm delivery and complete payment.'}
               </p>
               {enquiryStatus === 'sent' && gate3Enabled && checkoutStage !== 'confirmed' && (
@@ -2978,7 +3273,7 @@ export default function ProductionBuilder({
                         </a>
                       )}
                       <button type="button" className="uk-wizard-primary compact" onClick={checkGate3PaymentStatus}>
-                        I&apos;ve completed payment — check again
+                        I&apos;ve completed payment. Check again
                       </button>
                     </>
                   ) : (
@@ -3145,9 +3440,9 @@ export default function ProductionBuilder({
                 {enquiryStatus === 'error' && enquiryConflict && (
                   <div role="alert">
                     <p className="uk-enquiry-error">
-                      This order couldn&apos;t be resubmitted safely — your earlier attempt may have already gone through with different
+                      This order couldn&apos;t be resubmitted safely. Your earlier attempt may have already gone through with different
                       details, so resending this exact form could create a mismatched order. Nothing has been created from this attempt.
-                      Start a new order to try again — your card details are still here.
+                      Start a new order to try again. Your card details are still here.
                     </p>
                     <button type="button" className="uk-wizard-primary compact" onClick={startNewOrder}>
                       Start a new order
@@ -3158,7 +3453,7 @@ export default function ProductionBuilder({
                 {quoteBlocksSubmission && enquiryStatus !== 'sent' && (
                   <p id="uk-quote-block-hint" className="uk-quote-block-hint" aria-live="polite">
                     {quoteState.status === 'error'
-                      ? "We couldn't confirm your card price — tap Try again above before continuing."
+                      ? "We couldn't confirm your card price. Tap Try again above before continuing."
                       : 'Waiting for your authoritative card price before you can continue.'}
                   </p>
                 )}
@@ -3223,7 +3518,7 @@ export default function ProductionBuilder({
         </div>
         <div
           ref={setStageFrameEl}
-          className={`ukd-stage-card${photoEditable ? ' uk-photo-draggable' : ''}${photoGestures.dragging ? ' is-dragging' : ''}`}
+          className={`ukd-stage-card${photoMovable ? ' uk-photo-draggable' : ''}${photoGestures.dragging ? ' is-dragging' : ''}`}
           {...photoFrameProps}
         >
           {selectedPlayer && (

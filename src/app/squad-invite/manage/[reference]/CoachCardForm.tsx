@@ -70,7 +70,7 @@ export default function CoachCardForm({
   return (
     <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-5" aria-busy={submitting}>
       <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Free coach card unlocked</p>
-      <p className="mt-1 text-sm text-emerald-900">Add the coach&apos;s details below — Emblem staff will review before it goes into production.</p>
+      <p className="mt-1 text-sm text-emerald-900">Add the coach&apos;s details below. Emblem staff will review before it goes into production.</p>
       <div className="mt-4 grid gap-4">
         <label htmlFor="coach-card-full-name" className="block">
           <span className="font-semibold">Coach&apos;s full name</span>
@@ -128,7 +128,7 @@ export default function CoachCardForm({
           {submitting ? 'Submitting…' : 'Submit coach card'}
         </button>
         {error && <p role="alert" className="text-sm font-semibold text-red-700">{error}</p>}
-        {success && <p role="status" className="text-sm font-semibold text-emerald-700">Submitted — awaiting Emblem staff review.</p>}
+        {success && <p role="status" className="text-sm font-semibold text-emerald-700">Submitted. Awaiting Emblem staff review.</p>}
       </div>
     </div>
   );

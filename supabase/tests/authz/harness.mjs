@@ -20,7 +20,7 @@ const MIGRATION_FILE = /^(\d{4})_(.+)\.sql$/;
 // Supabase platform stand-ins. Only what the 0001–0087 migrations reference.
 // auth.uid()/role()/email() read the same request.jwt.claim.* settings that
 // the repository's other PGlite harnesses use.
-const PLATFORM_STUBS = `
+export const PLATFORM_STUBS = `
   create role anon nologin noinherit;
   create role authenticated nologin noinherit;
   create role service_role nologin noinherit bypassrls;
@@ -29,7 +29,7 @@ const PLATFORM_STUBS = `
   create extension pgcrypto schema extensions;
 
   create schema auth;
-  create table auth.users (id uuid primary key, email text);
+  create table auth.users (id uuid primary key, email text, created_at timestamptz default now());
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
   create function auth.role() returns text language sql stable as
@@ -52,7 +52,7 @@ const PLATFORM_STUBS = `
 // defaults still apply on top of these, exactly as in production: per-schema
 // rows only add privileges. In particular new functions keep the built-in
 // PUBLIC execute unless a migration revokes it.
-const PRODUCTION_DEFAULT_PRIVILEGES = `
+export const PRODUCTION_DEFAULT_PRIVILEGES = `
   alter default privileges for role postgres in schema public
     grant all on tables to postgres, service_role;
   alter default privileges for role postgres in schema public

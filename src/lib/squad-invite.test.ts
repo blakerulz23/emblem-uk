@@ -29,7 +29,7 @@ describe('Squad Invite lifecycle and privacy helpers', () => {
 
   it('creates only the approved minimal distribution label', () => {
     expect(minimalDistributionLabel({ firstName: 'Jacob', surnameInitial: 't', squadNumber: 10, packageReference: 'SI-014' }))
-      .toBe('Jacob T. — No. 10 — Package SI-014');
+      .toBe('Jacob T., No. 10, Package SI-014');
     expect(() => minimalDistributionLabel({ firstName: 'Jacob Smith', surnameInitial: 'T', packageReference: 'SI-014' })).toThrow(/exception/);
   });
 });

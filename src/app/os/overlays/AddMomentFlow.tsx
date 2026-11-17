@@ -174,7 +174,7 @@ export default function AddMomentFlow({ state, actions, fileInputRef }: { state:
           <div style={{ flex: '0 0 auto', padding: '14px 20px 20px', borderTop: '1px solid var(--os-border)' }}>
             {state.addStep === 5 && state.addSubmitError && (
               <div style={{ textAlign: 'center', fontSize: 12.5, color: '#A63426', marginBottom: 10 }}>
-                Couldn&apos;t save this moment — check your connection and try again.
+                Couldn&apos;t save this moment. Check your connection and try again.
               </div>
             )}
             {state.addStep === 5 ? (

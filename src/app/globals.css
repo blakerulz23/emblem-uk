@@ -25,11 +25,19 @@ body > div[style*="visibility: hidden"][style*="white-space: nowrap"] > img {
   --accent: #ff5a1f;
   --accent-tint: rgba(255, 90, 31, 0.10);
   --accent-glow: rgba(255, 90, 31, 0.32);
-  --font-sora: "Archivo", "Segoe UI", system-ui, sans-serif;
-  --font-manrope: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  /* Site typography: Manrope everywhere (headings, text and the small
+     capitals labels), loaded by next/font in layout.tsx as
+     --font-marketing-manrope. The variable names are historical. */
+  --font-sora: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
+  --font-manrope: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
+  /* Card artwork keeps the fonts it has always printed with: see
+     .uk-real-card below. */
+  --font-card-sora: "Archivo", "Segoe UI", system-ui, sans-serif;
+  --font-card-manrope: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --font-card-jbmono: "Cascadia Mono", Consolas, monospace;
   --font-rajdhani: "Rajdhani", "Arial Narrow", system-ui, sans-serif;
   --font-barlow-condensed: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
-  --font-jbmono: "Cascadia Mono", Consolas, monospace;
+  --font-jbmono: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
   --font-oswald: "Arial Narrow", Impact, sans-serif;
   --font-caveat: "Segoe Print", "Comic Sans MS", cursive;
   /* Real Antonio Bold (700), loaded above — used only by the Hollinwood
@@ -46,9 +54,21 @@ body > div[style*="visibility: hidden"][style*="white-space: nowrap"] > img {
    Builder, Player OS and Staff tools keep the --font-sora/--font-manrope/
    --font-jbmono bindings from :root above — do not widen this scope. */
 .marketing-shell {
-  --font-sora: var(--font-marketing-sora), "Segoe UI", system-ui, sans-serif;
+  --font-sora: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
   --font-manrope: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
-  --font-jbmono: var(--font-marketing-jbmono), Consolas, monospace;
+  --font-jbmono: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
+}
+/* The card in the builder (its preview and the print capture) keeps the
+   fonts it has always printed with, whatever the site's own typography:
+   the site moved to Manrope, the printed card did not change. Text with no
+   font of its own inherits the card body font. (The live designs set their
+   own fonts on every text layer; this guards the older templates that use
+   the site variables.) */
+.uk-real-card {
+  --font-sora: var(--font-card-sora);
+  --font-manrope: var(--font-card-manrope);
+  --font-jbmono: var(--font-card-jbmono);
+  font-family: var(--font-card-manrope);
 }
 
 * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
@@ -1223,6 +1243,30 @@ button.uk-wizard-brand {
   box-shadow: inset 0 0 0 1px var(--wizard-accent), 0 12px 24px var(--wizard-glow);
 }
 
+/* Official Collection until partner collections launch: visible, not selectable. */
+.uk-collection-choice button.coming-soon {
+  position: relative;
+  cursor: not-allowed;
+  background: #f2f1ef;
+  border-style: dashed;
+  opacity: 0.62;
+  filter: grayscale(1);
+}
+.uk-collection-choice button.coming-soon em { color: var(--wizard-soft); }
+.uk-collection-soon {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #2a241d;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .uk-collection-choice strong,
 .uk-collection-choice em {
   display: block;
@@ -1826,6 +1870,125 @@ button.uk-wizard-brand {
 
 .uk-style-rail {
   position: relative;
+}
+
+/* Direct builder "Pick their card" step: every design shown with their
+   photo, two to a row (adapted from Emblem Canada's design pick). */
+.uk-design-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 22px;
+}
+.uk-design-grid button {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 8px;
+  padding: 10px 6px 12px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 18px;
+  background: var(--wizard-surface);
+  color: var(--wizard-ink);
+  cursor: pointer;
+  text-align: center;
+}
+.uk-design-grid button.active {
+  border-color: var(--wizard-accent);
+  box-shadow: inset 0 0 0 2px var(--wizard-accent), 0 12px 24px var(--wizard-glow);
+}
+.uk-design-grid .uk-real-card.compact { justify-content: center; }
+.uk-design-grid .uk-player-card.compact { box-shadow: 0 8px 18px rgba(28, 24, 21, 0.22); }
+.uk-design-grid strong {
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.uk-design-grid small {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--wizard-accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+@media (max-width: 380px) {
+  .uk-design-grid { gap: 8px; }
+  .uk-design-grid button { padding: 8px 2px 10px; }
+  .uk-design-grid .uk-real-card.compact { transform: scale(0.9); transform-origin: top center; margin-bottom: -22px; }
+}
+
+/* Kit colours read from the photo, and the design that matches them best. */
+.uk-design-grid button { position: relative; }
+.uk-design-best {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 3;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--wizard-accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: 0 6px 14px rgba(20, 17, 15, 0.25);
+}
+.uk-kit-colours {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  margin-top: 14px;
+  color: var(--wizard-soft);
+  font-size: 15px;
+  font-weight: 700;
+}
+.uk-kit-swatches { display: inline-flex; gap: 6px; }
+.uk-kit-swatches i {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px var(--wizard-line);
+}
+
+/* Direct builder details step: the design picked on the previous step. */
+.uk-design-chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 18px;
+  background: var(--wizard-surface);
+}
+.uk-design-chosen span { display: grid; gap: 2px; min-width: 0; }
+.uk-design-chosen small {
+  color: var(--wizard-soft);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.uk-design-chosen strong {
+  font-family: var(--font-sora), system-ui, sans-serif;
+  font-size: 17px;
+}
+.uk-design-chosen button {
+  flex: none;
+  min-height: 40px;
+  padding: 8px 18px;
+  border: 1.5px solid var(--wizard-ink);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--wizard-ink);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
 }
 
 .uk-style-rail-btn {
@@ -10561,6 +10724,11 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   text-decoration: none;
 }
 .emh-faq-jump a:hover { border-color: #f1601d; }
+.emh-gift-coach {
+  margin-top: 24px;
+  font-size: 15px;
+  line-height: 1.55;
+}
 .emh-subpage-hero > .emh-gift-deadline {
   display: inline-block;
   margin-top: 20px;
@@ -10666,7 +10834,7 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 }
 .emh-stage-card {
   position: absolute;
-  left: 7%;
+  left: 5%;
   top: 4%;
   width: 41%;
   aspect-ratio: 5 / 7;
@@ -10700,7 +10868,7 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 }
 .emh-stage-nfc {
   position: absolute;
-  left: 47%;
+  left: 45%;
   top: 42%;
   width: 9%;
   overflow: visible;
@@ -10716,12 +10884,15 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   0%, 100% { opacity: 0.25; }
   40% { opacity: 1; }
 }
+/* Wide enough that the glass has exactly the capture's shape (390 × 751):
+   37.2cqw of glass across, 71.6cqw down, plus 1.4cqw of bezel each side,
+   so object-fit never crops a memory card off the edge. */
 .emh-stage-phone {
   position: absolute;
-  right: 6%;
+  right: 4%;
   top: 0;
-  width: 36%;
-  aspect-ratio: 9 / 18.5;
+  width: 40%;
+  aspect-ratio: 40 / 74.43;
   transform: rotate(4deg);
   padding: 1.4cqw;
   border-radius: 6.4cqw;
@@ -10733,7 +10904,7 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   height: 100%;
   border-radius: 5.2cqw;
   overflow: hidden;
-  background: #f3f1ec;
+  background: #121110;
 }
 /* The captured app screen fills the glass, top-aligned like a real viewport. */
 .emh-phone-screen img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
@@ -10869,6 +11040,64 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   cursor: pointer;
 }
 .uk-entry-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+/* Direct single-card builder: one quiet line for team orders. */
+.uk-entry-team-line {
+  margin: 0;
+  text-align: center;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--wizard-soft);
+}
+.uk-entry-team-line button,
+.uk-entry-team-line a {
+  border: 0;
+  background: none;
+  padding: 4px 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--wizard-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+/* Direct single-card builder: price and a sample card above the upload box. */
+.uk-first-screen-intro {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--wizard-line);
+  border-radius: 14px;
+  background: var(--wizard-surface);
+}
+.uk-first-screen-intro img {
+  flex: none;
+  width: 52px;
+  height: 73px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.uk-first-screen-intro div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--wizard-soft);
+}
+.uk-first-screen-intro strong {
+  color: var(--wizard-ink);
+  font-size: 14px;
+  font-weight: 800;
+}
+.uk-first-screen-intro a {
+  color: var(--wizard-accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 
 /* Background removal: optional, with progress (slow-connection opt-in). */
 .uk-bgremove-offer {
@@ -10911,6 +11140,18 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   color: var(--wizard-soft);
 }
 .uk-draft-notice p { margin: 0; }
+.uk-draft-more { margin-top: 4px; }
+.uk-draft-more summary {
+  display: inline-block;
+  padding: 4px 0;
+  color: var(--wizard-accent);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.uk-draft-more summary::-webkit-details-marker { display: none; }
+.uk-draft-more p { margin-top: 4px; }
 .uk-draft-optout {
   display: flex;
   align-items: center;
@@ -12006,9 +12247,14 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 .emh-home-hero .emh-home-hero-demo { margin-top: 12px; min-height: 32px; }
 .emh-home-hero .emh-hero-steps { margin: 20px auto 12px; }
 
-/* Phones: the showcase uses some of the side gutter. */
+/* Phones: the showcase uses some of the side gutter, and the copy is
+   centred like the Canada homepage. Desktop keeps copy left of the showcase. */
 @media (max-width: 999px) {
   .emh-home-hero .emh-stage-wrap { width: calc(100% + 20px); max-width: 580px; margin-left: -10px; margin-right: -10px; }
+  .emh-hero.emh-home-hero { text-align: center; }
+  .emh-page .emh-home-hero h1,
+  .emh-home-hero-desc { margin-left: auto; margin-right: auto; }
+  .emh-home-hero-actions { align-items: center; }
 }
 @media (min-width: 1000px) {
   .emh-hero.emh-home-hero {
@@ -12026,5 +12272,109 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   .emh-home-hero .emh-stage-wrap { width: min(100%, 600px, calc((100vh - 230px) * 1.36)); margin: 0 auto; }
   .emh-page .emh-home-hero .emh-home-hero-cta { width: auto; min-width: 260px; margin-top: 22px; }
   .emh-home-hero .emh-hero-steps { margin-top: 16px; }
+}
+
+/* Pinned mini card on the phone "Add their details" step (adapted from
+   Emblem Canada's V3MiniCard): appears once the full preview has scrolled
+   under the header; tapping it scrolls back to the full card. Hidden (and
+   out of the tab order) until then, and never shown on desktop, where the
+   stage keeps the card in view. */
+.uk-mini-card {
+  position: fixed;
+  right: 12px;
+  z-index: 7;
+  width: 112px;
+  height: 160px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  box-shadow: 0 14px 30px rgba(20, 17, 15, 0.32);
+  overflow: hidden;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px) scale(0.96);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0s linear 0.2s;
+}
+.uk-mini-card.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.uk-mini-card .uk-real-card.compact {
+  width: 170px;
+  transform: scale(0.659);
+  transform-origin: top left;
+}
+.uk-mini-card .uk-player-card.compact { box-shadow: none; }
+@media (prefers-reduced-motion: reduce) {
+  .uk-mini-card, .uk-mini-card.is-visible { transition: none; transform: none; }
+}
+@media (min-width: 1180px) {
+  .uk-mini-card { display: none; }
+}
+
+/* Phones: no accidental page zoom. iOS zooms the page when a field with
+   text under 16px is focused (the builder's fields were 13-15px), and a
+   quick double tap on a button or the card zooms it too. Pinch-to-zoom the
+   page stays available. Desktop sizes are unchanged. */
+@media (pointer: coarse) and (max-width: 1179px) {
+  .uk-builder-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  .uk-builder-shell select,
+  .uk-builder-shell textarea {
+    font-size: 16px;
+  }
+}
+.uk-builder-shell button,
+.uk-builder-shell a,
+.uk-builder-shell label,
+.uk-builder-shell input,
+.uk-builder-shell select,
+.uk-builder-shell .uk-edit-preview {
+  touch-action: manipulation;
+}
+/* The photo itself still takes every gesture while it is being adjusted. */
+.uk-builder-shell .uk-photo-draggable .uk-real-card { touch-action: none; }
+
+/* Phones: "Adjust photo" unlocks the card; "Done" locks it again. */
+.uk-photo-adjust-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 4px;
+}
+.uk-photo-adjust-bar span {
+  color: var(--wizard-soft);
+  font-size: 14px;
+  font-weight: 700;
+}
+.uk-photo-adjust-start,
+.uk-photo-adjust-done {
+  min-height: 44px;
+  padding: 10px 20px;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.uk-photo-adjust-start {
+  width: 100%;
+  border: 1.5px solid var(--wizard-ink);
+  background: transparent;
+  color: var(--wizard-ink);
+}
+.uk-photo-adjust-done {
+  flex: none;
+  border: 0;
+  background: var(--wizard-accent);
+  color: #fff;
+}
+.uk-edit-preview.is-adjusting .uk-real-card .uk-player-card,
+.uk-edit-preview.is-adjusting .uk-real-card > * {
+  outline: 3px solid var(--wizard-accent);
+  outline-offset: -3px;
 }
 

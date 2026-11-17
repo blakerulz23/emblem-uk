@@ -1,4 +1,16 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
+import { pageOpenGraph } from '@/lib/marketing/site';
+
+const DESCRIPTION =
+  'How Emblem protects young players: private-by-default profiles, guardian control, and parent or guardian approval before a card is printed.';
+
+export const metadata: Metadata = {
+  title: 'Trust and Safeguarding | Emblem',
+  description: DESCRIPTION,
+  alternates: { canonical: '/trust-and-safeguarding' },
+  openGraph: pageOpenGraph({ title: 'Trust and Safeguarding | Emblem', description: DESCRIPTION, url: '/trust-and-safeguarding' }),
+};
 
 // Same local style-token pattern as src/app/privacy/page.tsx and
 // src/app/terms/page.tsx — this codebase keeps each legal/trust page's
@@ -66,7 +78,7 @@ export default function TrustAndSafeguardingPage() {
         rather than bolt privacy on afterwards. This page explains, in plain language, what that
         means in practice. It doesn&rsquo;t replace our full{' '}
         <Link href="/privacy" style={{ color: 'var(--accent)' }}>Privacy Policy</Link>, which remains
-        the legally binding document — this page is the friendlier, parent-facing summary of it.
+        the legally binding document; this page is the friendlier, parent-facing summary of it.
       </p>
 
       <div style={SUMMARY_BOX}>
@@ -83,7 +95,7 @@ export default function TrustAndSafeguardingPage() {
         A player&rsquo;s digital profile (&ldquo;Player OS&rdquo;) is private the moment it&rsquo;s
         created, visible only to the guardian who claimed it and any coach that guardian specifically
         connects. There is no public roster, leaderboard or directory of players anywhere on
-        Emblem — a profile only becomes visible to anyone else if a guardian actively chooses to
+        Emblem; a profile only becomes visible to anyone else if a guardian actively chooses to
         publish it.
       </p>
 
@@ -98,14 +110,14 @@ export default function TrustAndSafeguardingPage() {
         <li>request full deletion of their child&rsquo;s profile.</li>
       </ul>
       <p style={{ ...BODY, marginTop: 10 }}>
-        These are guardian-only actions — being a coach or Squad Invite organiser does not by itself
+        These are guardian-only actions; being a coach or Squad Invite organiser does not by itself
         give anyone the ability to publish, share or delete a child&rsquo;s profile.
       </p>
 
       <h2 style={SECTION_TITLE}>Coach contributions and verification</h2>
       <p style={BODY}>
         Coaches can add moments, recognitions and season notes to a player they&rsquo;re connected to,
-        but nothing a coach submits appears as a &ldquo;verified&rdquo; achievement until reviewed —
+        but nothing a coach submits appears as a &ldquo;verified&rdquo; achievement until reviewed;
         this is a content-review step, distinct from vetting the coach as a person. To be precise
         about what &ldquo;verified&rdquo; does and doesn&rsquo;t mean here: signing in as a coach
         proves control of an email address, not employment, DBS status or club authority. We ask
@@ -118,12 +130,12 @@ export default function TrustAndSafeguardingPage() {
       <h2 style={SECTION_TITLE}>What information is collected, and why</h2>
       <p style={BODY}>We collect only what&rsquo;s needed to build, print and connect a card:</p>
       <ul style={{ ...BODY, paddingLeft: 20, display: 'grid', gap: 8 }}>
-        <li><strong style={{ color: 'var(--ink)' }}>Photos</strong> — to design the card itself.</li>
-        <li><strong style={{ color: 'var(--ink)' }}>Player details</strong> — first name, surname initial, position, squad number and team, so a card and profile can be built.</li>
-        <li><strong style={{ color: 'var(--ink)' }}>Order and delivery details</strong> — handled by Shopify, our checkout provider, to get the physical card to you.</li>
+        <li><strong style={{ color: 'var(--ink)' }}>Photos</strong>: to design the card itself.</li>
+        <li><strong style={{ color: 'var(--ink)' }}>Player details</strong>: first name, surname initial, position, squad number and team, so a card and profile can be built.</li>
+        <li><strong style={{ color: 'var(--ink)' }}>Order and delivery details</strong>: handled by Shopify, our checkout provider, to get the physical card to you.</li>
       </ul>
       <p style={{ ...BODY, marginTop: 10 }}>
-        We do not collect a child&rsquo;s exact date of birth — a football age group (e.g. U10) is
+        We do not collect a child&rsquo;s exact date of birth; a football age group (e.g. U10) is
         all the product needs. Full detail on every field we collect, every supplier involved and
         how long each is kept is in the{' '}
         <Link href="/privacy" style={{ color: 'var(--accent)' }}>Privacy Policy</Link>.
@@ -131,7 +143,7 @@ export default function TrustAndSafeguardingPage() {
 
       <h2 style={SECTION_TITLE}>Sharing and profile visibility</h2>
       <p style={BODY}>
-        A guardian can choose to make a player&rsquo;s profile — or specific moments on it — public.
+        A guardian can choose to make a player&rsquo;s profile (or specific moments on it) public.
         Even then, only an allow-listed set of fields is ever shown, deliberately excluding anything
         sensitive: never a child&rsquo;s exact date of birth, age, height, coach assessments, season
         goals, or the identity of their guardian. A guardian can switch public sharing off at any
@@ -142,15 +154,15 @@ export default function TrustAndSafeguardingPage() {
       <p style={BODY}>
         If a card is lost or stolen, contact us and we can disable that specific card&rsquo;s digital
         connection so tapping it no longer resolves to anything. Finding or tapping a lost physical
-        card never grants access to the private Player OS or its management controls — that always
+        card never grants access to the private Player OS or its management controls; that always
         requires the guardian&rsquo;s own sign-in, regardless of who is holding the card.
       </p>
 
       <h2 style={SECTION_TITLE}>Access, correction and deletion requests</h2>
       <p style={BODY}>
         Guardians can access, correct or delete most of their child&rsquo;s information directly
-        within Player OS. For anything else — including a request from a child old enough to make
-        their own — contact us at{' '}
+        within Player OS. For anything else (including a request from a child old enough to make
+        their own), contact us at{' '}
         <a href="mailto:hello@emblem.cards" style={{ color: 'var(--accent)' }}>hello@emblem.cards</a>{' '}
         and we will respond directly.
       </p>
@@ -158,11 +170,11 @@ export default function TrustAndSafeguardingPage() {
       <h2 style={SECTION_TITLE}>A plain-language Children&rsquo;s DPIA summary</h2>
       <p style={BODY}>
         Before building features that touch children&rsquo;s data, we complete a Children&rsquo;s
-        Data Protection Impact Assessment (DPIA) — a documented process of identifying what could go
+        Data Protection Impact Assessment (DPIA): a documented process of identifying what could go
         wrong for a child using the product, and deciding how to reduce that risk before shipping. A
         DPIA is a risk-assessment exercise, not a certificate: completing one doesn&rsquo;t mean a
         feature is risk-free, and we don&rsquo;t claim Emblem is &ldquo;DPIA certified,&rdquo;
-        &ldquo;ICO approved,&rdquo; guaranteed secure, or fully compliant with every applicable law —
+        &ldquo;ICO approved,&rdquo; guaranteed secure, or fully compliant with every applicable law;
         those aren&rsquo;t things a DPIA can certify, and no organisation should claim them from one.
       </p>
       <p style={{ ...BODY, marginTop: 10 }}>
@@ -170,15 +182,15 @@ export default function TrustAndSafeguardingPage() {
         safeguarding review, and we treat those as outstanding rather than resolved. We don&rsquo;t
         publish the full internal assessment, its risk register or our security controls here, since
         detailing exactly what we&rsquo;re still working through isn&rsquo;t itself good security
-        practice — but we&rsquo;re glad to discuss our approach with a guardian, club or specialist
+        practice, but we&rsquo;re glad to discuss our approach with a guardian, club or specialist
         reviewer directly on request.
       </p>
 
       <h2 style={SECTION_TITLE}>How to report a privacy or safeguarding concern</h2>
       <p style={BODY}>
-        If you&rsquo;re worried about how a child&rsquo;s data is being used on Emblem — including a
+        If you&rsquo;re worried about how a child&rsquo;s data is being used on Emblem (including a
         coach or organiser you believe shouldn&rsquo;t have access to a child, a public profile
-        showing something it shouldn&rsquo;t, or a lost card — contact us at{' '}
+        showing something it shouldn&rsquo;t, or a lost card), contact us at{' '}
         <a href="mailto:hello@emblem.cards" style={{ color: 'var(--accent)' }}>hello@emblem.cards</a>.
         We treat safeguarding-related reports as urgent and will respond as quickly as we can.
       </p>

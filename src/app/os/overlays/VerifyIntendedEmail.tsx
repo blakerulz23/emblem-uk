@@ -64,13 +64,13 @@ export default function VerifyIntendedEmail({
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setStatus('error');
-        setErrorMsg(data.error || "That code isn't recognised — check it and try again.");
+        setErrorMsg(data.error || "That code isn't recognised. Check it and try again.");
         return;
       }
       onVerified();
     } catch {
       setStatus('error');
-      setErrorMsg('Something went wrong — try again.');
+      setErrorMsg('Something went wrong. Try again.');
     }
   };
 

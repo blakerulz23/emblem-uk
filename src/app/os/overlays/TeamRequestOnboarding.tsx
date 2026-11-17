@@ -87,7 +87,7 @@ export default function TeamRequestOnboarding({
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      setErrorMsg(data.error || 'Could not send your request — try again.');
+      setErrorMsg(data.error || 'Could not send your request. Try again.');
       setBusy(false);
       return;
     }
@@ -103,7 +103,7 @@ export default function TeamRequestOnboarding({
     const res = await fetch(`/api/os/team-requests/${request.id}/cancel`, { method: 'POST' });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      setErrorMsg(data.error || 'Could not cancel — try again.');
+      setErrorMsg(data.error || 'Could not cancel. Try again.');
     }
     setBusy(false);
     router.refresh();

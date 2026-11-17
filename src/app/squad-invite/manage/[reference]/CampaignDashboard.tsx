@@ -20,7 +20,7 @@ type DashboardResponse = {
 };
 
 const COACH_CARD_STATUS_LABEL: Record<string, string> = {
-  submitted: 'Submitted — awaiting Emblem staff review.',
+  submitted: 'Submitted. Awaiting Emblem staff review.',
   locked: 'Locked for production ✓',
 };
 
@@ -185,7 +185,7 @@ export default function CampaignDashboard({ campaignId }: { campaignId: string }
                 onChange={(e) => setConcernNote(e.target.value)}
                 placeholder="e.g. I don't recognise this name as belonging to our team"
               />
-              <p className="mt-2 text-xs">This goes straight to Emblem staff for review — never back to the family who joined.</p>
+              <p className="mt-2 text-xs">This goes straight to Emblem staff for review, never back to the family who joined.</p>
               <button
                 type="button"
                 className="mt-3 rounded-xl bg-orange-600 p-3 font-bold text-white disabled:opacity-60"
@@ -210,7 +210,7 @@ export default function CampaignDashboard({ campaignId }: { campaignId: string }
       {campaign.freeCoachCardConfirmed && campaign.coachCard && campaign.coachCard.configurationStatus !== 'draft' && (
         <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
           <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Free coach card</p>
-          <p className="mt-1 text-sm text-emerald-900">{campaign.coachCard.fullName}, {campaign.coachCard.roleTitle} — {COACH_CARD_STATUS_LABEL[campaign.coachCard.configurationStatus] ?? campaign.coachCard.configurationStatus}</p>
+          <p className="mt-1 text-sm text-emerald-900">{campaign.coachCard.fullName}, {campaign.coachCard.roleTitle}: {COACH_CARD_STATUS_LABEL[campaign.coachCard.configurationStatus] ?? campaign.coachCard.configurationStatus}</p>
         </div>
       )}
       {!isClosed && (

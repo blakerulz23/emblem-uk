@@ -68,7 +68,7 @@ export default function PrivacyPage() {
       <p style={{ ...BODY, marginTop: 20 }}>
         Emblem (&ldquo;we&rdquo;, &ldquo;us&rdquo;) operates emblem.cards, including the Player OS,
         Coach OS and Squad Invite features described below. This policy explains what we collect
-        across the whole product — not just the shop — and what we do with it.
+        across the whole product (not just the shop) and what we do with it.
         Emblem is a trading name of LAUDA CARTOONS STUDIO LTD, a company registered in England and Wales
         (company number 16063577), registered office 344 Oldham Road, Ashton-under-Lyne, OL7 9PS.
         Contact: hello@emblem.cards.
@@ -76,11 +76,11 @@ export default function PrivacyPage() {
 
       <div style={SUMMARY_BOX}>
         <strong>In short, for families:</strong> a card belongs to one child. Whoever claims it
-        controls it — usually a parent or guardian — and decides what, if anything, is ever made
+        controls it (usually a parent or guardian) and decides what, if anything, is ever made
         public. Nothing is public by default. Coaches only see what you connect them to. We don&rsquo;t
         sell data or use it for advertising. A child&rsquo;s exact date of birth, height, and any
         coach assessment are never shown publicly, ever. You can ask us to delete a child&rsquo;s
-        data at any time — see &ldquo;Your rights&rdquo; below.
+        data at any time (see &ldquo;Your rights&rdquo; below).
       </div>
 
       <h2 style={SECTION_TITLE}>What we collect</h2>
@@ -88,7 +88,7 @@ export default function PrivacyPage() {
       <h3 style={SUBSECTION_TITLE}>To build and produce a card</h3>
       <ul style={{ ...BODY, paddingLeft: 20, display: 'grid', gap: 8 }}>
         <li>
-          <strong style={{ color: 'var(--ink)' }}>Photos you upload</strong> — used to build the
+          <strong style={{ color: 'var(--ink)' }}>Photos you upload</strong>: used to build the
           card design. Background removal is optional and runs on your own device, in your
           browser: the photo is not sent to us or to any AI service for it, and you can always
           continue with the original photo instead. Nothing is uploaded to us while you build.
@@ -98,16 +98,16 @@ export default function PrivacyPage() {
           on your device and is not sent.
         </li>
         <li>
-          <strong style={{ color: 'var(--ink)' }}>Player details</strong> — first name, surname
+          <strong style={{ color: 'var(--ink)' }}>Player details</strong>: first name, surname
           initial, position, squad number, team/club, and (where a coach adds it) exact date of
           birth, height, preferred foot and similar sporting details.
         </li>
         <li>
-          <strong style={{ color: 'var(--ink)' }}>Order and shipping information</strong> —
+          <strong style={{ color: 'var(--ink)' }}>Order and shipping information</strong>:
           purchaser name, email and delivery address, handled by Shopify, our checkout provider.
         </li>
         <li>
-          <strong style={{ color: 'var(--ink)' }}>Generated print files</strong> — rendered from
+          <strong style={{ color: 'var(--ink)' }}>Generated print files</strong>: rendered from
           your design and stored privately on Amazon S3 solely to produce and ship the order.
         </li>
       </ul>
@@ -120,7 +120,7 @@ export default function PrivacyPage() {
         badge) in your browser&rsquo;s own storage on this device. None of this is sent to us
         until you send your card. It is deleted automatically after 3 days, once your card has been sent, or
         straight away if you choose &ldquo;Discard&rdquo; (tap the Emblem logo in the builder).
-        We never save adult permission or consent answers this way — those are asked again.
+        We never save adult permission or consent answers this way; those are asked again.
       </p>
       <p style={{ ...BODY, marginTop: 10 }}>
         <strong style={{ color: 'var(--ink)' }}>Shared or public devices:</strong> anyone who
@@ -134,7 +134,7 @@ export default function PrivacyPage() {
         order already reached us before letting you send it again, so the builder never sends the same order twice.
       </p>
 
-      <h3 style={SUBSECTION_TITLE}>Once a card is claimed — Player OS</h3>
+      <h3 style={SUBSECTION_TITLE}>Once a card is claimed: Player OS</h3>
       <p style={BODY}>
         Tapping or claiming a card creates a private profile (&ldquo;Player OS&rdquo;) for that
         child, visible only to the guardian(s) who claimed it and any coach the guardian
@@ -148,7 +148,7 @@ export default function PrivacyPage() {
       </ul>
       <p style={{ ...BODY, marginTop: 10 }}>
         None of this is visible to anyone outside that circle unless a guardian explicitly makes a
-        specific moment public (see &ldquo;Public profiles&rdquo; below) — and even then, exact
+        specific moment public (see &ldquo;Public profiles&rdquo; below), and even then, exact
         date of birth, height, coach assessments, goals and season focus are never included in
         what&rsquo;s shown publicly, under any setting.
       </p>
@@ -157,15 +157,15 @@ export default function PrivacyPage() {
       <p style={BODY}>
         Coaches and Squad Invite organisers sign in with their own email (verified with a one-time
         code). We do not verify employment, DBS status, safeguarding clearance, or that someone
-        claiming to be a child&rsquo;s parent actually is — see &ldquo;A note on identity
-        verification&rdquo; below for what we do check.
+        claiming to be a child&rsquo;s parent actually is (see &ldquo;A note on identity
+        verification&rdquo; below for what we do check).
       </p>
 
       <h3 style={SUBSECTION_TITLE}>Squad Invite</h3>
       <p style={BODY}>
         Squad Invite lets a team organiser (coach or club representative) request one shared link
         that each parent uses independently to build their own child&rsquo;s card. The organiser
-        never sees child names, photos or a roster — only their own request details (team name,
+        never sees child names, photos or a roster, only their own request details (team name,
         estimated squad size, delivery contact) and, once parents start joining, a running count
         and each joined child&rsquo;s first name and surname initial only, so the organiser can
         confirm the names actually belong to their own team. Each parent&rsquo;s photo, full name
@@ -197,7 +197,7 @@ export default function PrivacyPage() {
 
       <h2 style={SECTION_TITLE}>A note on identity verification</h2>
       <p style={BODY}>
-        Signing in with an email and one-time code proves control of that email address — it does
+        Signing in with an email and one-time code proves control of that email address; it does
         not prove you are a child&rsquo;s parent or legal guardian, that you are an authorised
         coach, or that a club representative genuinely represents that club. We ask everyone to
         confirm their authority as part of using the product, and for Squad Invite, the team
@@ -213,12 +213,12 @@ export default function PrivacyPage() {
         A player&rsquo;s profile is private by default. A guardian can choose to make specific,
         individual moments public, and can choose whether the player has any public page at all.
         Even when enabled, a public profile only ever shows an allow-listed set of fields chosen to
-        exclude anything sensitive — never exact date of birth, age, height, preferred foot,
+        exclude anything sensitive: never exact date of birth, age, height, preferred foot,
         ambitions, assessments, goals, season focus, guardian identity, or the claim token itself.
         A guardian can disable public sharing at any time, which takes the page down immediately.
       </p>
       <p style={{ ...BODY, marginTop: 10 }}>
-        We do not currently apply search-engine no-index protection to every public profile page —
+        We do not currently apply search-engine no-index protection to every public profile page;
         we are working on this. Until it is in place, treat a public profile as potentially
         discoverable by search engines and plan accordingly (for example, delaying enabling it, or
         keeping it off entirely).
@@ -230,7 +230,7 @@ export default function PrivacyPage() {
         Tapping it opens that link; the chip itself stores no personal data and transmits nothing
         on its own. If a card is lost or stolen before being claimed, contact us and we will not
         activate it under that reference. If a card is lost or stolen after being claimed, contact
-        us immediately — today we can disable or rotate its public profile, and a fuller
+        us immediately; today we can disable or rotate its public profile, and a fuller
         card-level revocation process is actively being built. Until then, anyone who taps a lost
         claimed card cannot see the private Player OS (that requires the guardian&rsquo;s own
         sign-in) but could reach a public profile if one was enabled for that child.
@@ -276,12 +276,12 @@ export default function PrivacyPage() {
 
       <h2 style={SECTION_TITLE}>Who we share data with</h2>
       <ul style={{ ...BODY, paddingLeft: 20, display: 'grid', gap: 8 }}>
-        <li><strong style={{ color: 'var(--ink)' }}>Shopify</strong> — processes orders, payment and shipping details under their own privacy policy.</li>
-        <li><strong style={{ color: 'var(--ink)' }}>Supabase</strong> — hosts our database and handles sign-in (including one-time email codes).</li>
-        <li><strong style={{ color: 'var(--ink)' }}>Amazon Web Services (S3)</strong> — stores photos and print files privately; access is signed and time-limited.</li>
-        <li><strong style={{ color: 'var(--ink)' }}>Vercel</strong> — hosts the website and app, and provides our cookieless website analytics (see &ldquo;Website analytics&rdquo; above).</li>
-        <li><strong style={{ color: 'var(--ink)' }}>Google (Gemini)</strong> — not used for photos in the current card builder, where background removal runs on your device. Earlier versions of the builder sent a photo to Gemini when AI background removal was chosen for that upload; a non-AI option was always available.</li>
-        <li><strong style={{ color: 'var(--ink)' }}>Resend</strong> — sends transactional email (sign-in codes, order and account notifications) on our behalf.</li>
+        <li><strong style={{ color: 'var(--ink)' }}>Shopify</strong>: processes orders, payment and shipping details under their own privacy policy.</li>
+        <li><strong style={{ color: 'var(--ink)' }}>Supabase</strong>: hosts our database and handles sign-in (including one-time email codes).</li>
+        <li><strong style={{ color: 'var(--ink)' }}>Amazon Web Services (S3)</strong>: stores photos and print files privately; access is signed and time-limited.</li>
+        <li><strong style={{ color: 'var(--ink)' }}>Vercel</strong>: hosts the website and app, and provides our cookieless website analytics (see &ldquo;Website analytics&rdquo; above).</li>
+        <li><strong style={{ color: 'var(--ink)' }}>Google (Gemini)</strong>: not used for photos in the current card builder, where background removal runs on your device. Earlier versions of the builder sent a photo to Gemini when AI background removal was chosen for that upload; a non-AI option was always available.</li>
+        <li><strong style={{ color: 'var(--ink)' }}>Resend</strong>: sends transactional email (sign-in codes, order and account notifications) on our behalf.</li>
       </ul>
       <p style={{ ...BODY, marginTop: 14 }}>
         We do not sell data, and we do not share it with anyone for marketing purposes. Some of
@@ -291,7 +291,7 @@ export default function PrivacyPage() {
 
       <h2 style={SECTION_TITLE}>How long we keep it</h2>
       <p style={BODY}>
-        Retention periods below are our current proposal and are still under review — treat them as
+        Retention periods below are our current proposal and are still under review; treat them as
         indicative, not final:
       </p>
       <ul style={{ ...BODY, paddingLeft: 20, display: 'grid', gap: 8 }}>
@@ -302,7 +302,7 @@ export default function PrivacyPage() {
       </ul>
       <p style={{ ...BODY, marginTop: 10 }}>
         You can ask us to delete a player&rsquo;s profile, a specific moment or photo, or a whole
-        guardian account at any time — see &ldquo;Your rights&rdquo; below.
+        guardian account at any time (see &ldquo;Your rights&rdquo; below).
       </p>
 
       <h2 style={SECTION_TITLE}>Your rights (UK GDPR)</h2>

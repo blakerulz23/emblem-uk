@@ -114,7 +114,7 @@ export const DEMO_STRENGTHS: StrengthEntry[] = [
 export const DEMO_ASSESSMENTS: AssessmentEntry[] = [
   {
     id: 'demo-assessment-1',
-    body: "Riley's reading of the game has really grown this season — he's linking play well with the midfield. Keep working on first touch under pressure and he'll be even more of a threat.",
+    body: "Riley's reading of the game has really grown this season and he's linking play well with the midfield. Keep working on first touch under pressure and he'll be even more of a threat.",
     authorName: 'Coach Danny',
     createdAt: '2026-07-20',
   },
@@ -138,14 +138,14 @@ export const CELEBRATE_CATS: CelebrateGroup[] = CELEBRATE_GROUPS.map(({ group, i
 }));
 
 export const VERIFY_QUEUE: VerifyItem[] = [
-  { id: 'v1', player: 'Riley Hart', playerId: 'ollie', moment: 'First Goal', thumb: `${assetPath}/jn-potm.png`, by: 'Sam Hart (Parent)', date: '12 March 2025', note: 'His first goal — arrived late in the box and finished low into the corner!', mediaKind: 'photo' },
-  { id: 'v2', player: 'Jack Bennett', playerId: 'jack', moment: 'Tournament Winner', thumb: `${assetPath}/jn-county.png`, by: 'Mark Bennett (Parent)', date: '7 June 2026', note: null, mediaKind: 'photo' },
-  { id: 'v3', player: 'Leo Marsh', playerId: 'leo', moment: 'Team Photo', thumb: `${assetPath}/jn-potm.png`, by: 'Sara Marsh (Parent)', date: '22 April 2026', note: 'Whole squad after the cup win.', mediaKind: 'photo' },
+  { id: 'v1', player: 'Riley Hart', playerId: 'ollie', moment: 'First Goal', thumb: `${assetPath}/demo-riley-first-goal.webp`, by: 'Sam Hart (Parent)', date: '12 March 2025', note: 'His first goal: arrived late in the box and finished low into the corner!', mediaKind: 'photo' },
+  { id: 'v2', player: 'Jack Bennett', playerId: 'jack', moment: 'Tournament Winner', thumb: `${assetPath}/demo-riley-tournament-winner.webp`, by: 'Mark Bennett (Parent)', date: '7 June 2026', note: null, mediaKind: 'photo' },
+  { id: 'v3', player: 'Leo Marsh', playerId: 'leo', moment: 'Team Photo', thumb: `${assetPath}/demo-riley-team-photo-u9.webp`, by: 'Sara Marsh (Parent)', date: '22 April 2026', note: 'Whole squad after the cup win.', mediaKind: 'photo' },
 ];
 
 export const COACH_ACTIVITY: CoachActivityItem[] = [
-  { text: 'You celebrated Riley Hart — Great Teammate', when: '2h ago', ic: 'star' },
-  { text: 'You verified Reuben Clarke — First Assist', when: 'Yesterday', ic: 'shield' },
+  { text: 'You celebrated Riley Hart as a Great Teammate', when: '2h ago', ic: 'star' },
+  { text: "You verified Reuben Clarke's First Assist", when: 'Yesterday', ic: 'shield' },
   { text: 'You added a team photo', when: '2 days ago', ic: 'camera' },
 ];
 
@@ -251,15 +251,17 @@ export const ADD_ACH: AddAchievement[] = [
 // PLAYER_PROFILE and the card), across three seasons from U8 to this
 // season's U10, matching DEVELOPMENT_SEASONS (24/25, 25/26, 26/27). `year`
 // is the season label, so Collection's chapters and Home's "This season"
-// agree. All names, clubs and organisations are fictional. Moments carry
-// plain textures rather than photos: the earlier match photos showed a
-// real-looking kit sponsor and phone number, so they are not used.
+// agree. All names, clubs and organisations are fictional. Every moment has
+// a photo of the same synthetic player (AI-generated from the sample-player
+// reference only, no photo of a real child), in a plain kit with no crest,
+// sponsor, logo, maker's mark or number. The earlier jn-* match photos showed
+// a real-looking kit sponsor and phone number, so they are not used.
 export const MOMENTS: Record<string, Moment> = {
   e1: {
     id: 'e1', year: '2024/25', ageGroup: 'U8', title: 'First Goal', date: '12 March 2025', occurredOn: '2025-03-12', ic: 'ball',
-    thumb: `${assetPath}/jn-potm.png`,
+    thumb: `${assetPath}/demo-riley-first-goal.webp`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'Arrived late in the box and finished low into the corner — his first competitive goal.', media: false,
+    note: 'Arrived late in the box and finished low into the corner for his first competitive goal.', media: true,
     match: { competition: 'U8 League', opponent: 'Millbrook Rangers', score: '3 – 1', venue: 'Home' },
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
@@ -274,9 +276,9 @@ export const MOMENTS: Record<string, Moment> = {
   },
   e2: {
     id: 'e2', year: '2024/25', ageGroup: 'U8', title: 'Team Photo', date: '26 April 2025', occurredOn: '2025-04-26', ic: 'camera',
-    thumb: `${assetPath}/jn-county.png`,
+    thumb: `${assetPath}/demo-riley-team-photo-u8.webp`,
     trust: 'coach', source: 'Westbrook Juniors', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'End-of-season squad photo on the home pitch.', media: false,
+    note: 'End-of-season squad photo on the home pitch.', media: true,
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
       rank: 'milestone', sub: 'Team Memory',
@@ -289,9 +291,9 @@ export const MOMENTS: Record<string, Moment> = {
   },
   e4: {
     id: 'e4', year: '2025/26', ageGroup: 'U9', title: 'Leadership', date: '19 October 2025', occurredOn: '2025-10-19', ic: 'star',
-    thumb: `${assetPath}/jn-potm.png`,
+    thumb: `${assetPath}/demo-riley-potm-u9.webp`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'Led the press from the front — won the ball back high and kept the team moving all game.', media: false,
+    note: 'Led the press from the front, won the ball back high and kept the team moving all game.', media: true,
     match: { competition: 'U9 League', opponent: 'Millbrook Rangers', score: '2 – 2', venue: 'Away' },
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
@@ -305,9 +307,9 @@ export const MOMENTS: Record<string, Moment> = {
   },
   e7: {
     id: 'e7', year: '2025/26', ageGroup: 'U9', title: 'Team Photo', date: '18 April 2026', occurredOn: '2026-04-18', ic: 'camera',
-    thumb: `${assetPath}/jn-county.png`,
+    thumb: `${assetPath}/demo-riley-team-photo-u9.webp`,
     trust: 'parent', source: 'Sam Hart', uploadedBy: 'Sam Hart', verifiedBy: 'Sam Hart',
-    note: 'End-of-season squad photo — his second year with the team.', media: false,
+    note: 'End-of-season squad photo, his second year with the team.', media: true,
     rarity: { label: 'STANDARD', color: '#8A8378', tier: 'standard' },
     reward: {
       rank: 'standard', sub: 'Team Memory',
@@ -319,9 +321,9 @@ export const MOMENTS: Record<string, Moment> = {
   },
   e5: {
     id: 'e5', year: '2026/27', ageGroup: 'U10', title: 'Captain', date: '6 September 2026', occurredOn: '2026-09-06', ic: 'captain',
-    thumb: `${assetPath}/jn-potm.png`,
+    thumb: `${assetPath}/demo-riley-captain.webp`,
     trust: 'club', source: 'Westbrook Juniors', uploadedBy: 'Coach Danny', verifiedBy: 'Westbrook Juniors',
-    note: 'Handed the armband before the first league game of the season.', media: false,
+    note: 'Handed the armband before the first league game of the season.', media: true,
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
       rank: 'milestone', sub: 'Leadership Unlocked',
@@ -334,9 +336,9 @@ export const MOMENTS: Record<string, Moment> = {
   },
   e3: {
     id: 'e3', year: '2026/27', ageGroup: 'U10', title: 'Tournament Winner', date: '4 October 2026', occurredOn: '2026-10-04', ic: 'trophy',
-    thumb: `${assetPath}/jn-county.png`,
+    thumb: `${assetPath}/demo-riley-tournament-winner.webp`,
     trust: 'club', source: 'Westbrook Juniors', uploadedBy: 'Sam Hart', verifiedBy: 'Westbrook Juniors',
-    note: 'Lifted the U10 Champions Cup as captain after a 3-1 final.', media: false,
+    note: 'Lifted the U10 Champions Cup as captain after a 3-1 final.', media: true,
     match: { competition: 'U10 Champions Cup', opponent: 'Millbrook Rangers', score: '3 – 1', venue: 'Westbrook Park' },
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
@@ -353,14 +355,14 @@ export const MOMENTS: Record<string, Moment> = {
       coachName: 'Coach James Walker',
       score: '3 – 1', opp: 'Millbrook Rangers',
       facts: [['Goals', '1'], ['Assists', '1'], ['Round', 'Final'], ['Competition', 'U10 Champions Cup'], ['Venue', 'Westbrook Park']],
-      key: [['12′', 'Riley assist — through ball for the opener', 'star'], ['34′', 'Millbrook Rangers goal', 'ball'], ['56′', 'Westbrook Juniors goal', 'ball'], ['78′', 'Riley goal from the edge of the box', 'ball'], ['90′', 'Full time', 'shield']],
+      key: [['12′', 'Riley assist: through ball for the opener', 'star'], ['34′', 'Millbrook Rangers goal', 'ball'], ['56′', 'Westbrook Juniors goal', 'ball'], ['78′', 'Riley goal from the edge of the box', 'ball'], ['90′', 'Full time', 'shield']],
     },
   },
   e8: {
     id: 'e8', year: '2026/27', ageGroup: 'U10', title: 'Leadership', date: '11 October 2026', occurredOn: '2026-10-11', ic: 'star',
-    thumb: `${assetPath}/jn-potm.png`,
+    thumb: `${assetPath}/demo-riley-potm-u10.webp`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'A second Leadership award — organised the front line and set up two goals.', media: false,
+    note: 'A second Leadership award: organised the front line and set up two goals.', media: true,
     match: { competition: 'U10 League', opponent: 'Millbrook Rangers', score: '4 – 2', venue: 'Home' },
     rarity: { label: 'RECOGNIZED', color: '#E97435', tier: 'metallic' },
     reward: {
@@ -373,8 +375,7 @@ export const MOMENTS: Record<string, Moment> = {
   },
   e6: {
     id: 'e6', year: '2026/27', ageGroup: 'U10', title: 'County Selection', date: '17 October 2026', occurredOn: '2026-10-17', ic: 'shield',
-    // The demo's one photo: the fictional sample player with his card, so
-    // Home's Latest Moment has a picture (no real kit, sponsor or crest).
+    // The fictional sample player with his card (no real kit, sponsor or crest).
     thumb: `${assetPath}/demo-riley-county.webp`,
     trust: 'league', source: 'Northfield County FA', uploadedBy: 'Sam Hart', verifiedBy: 'Northfield County FA',
     note: 'Selected for the county development squad.', media: true,

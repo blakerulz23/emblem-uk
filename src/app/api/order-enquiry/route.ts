@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
   // is rejected before ever touching S3 or the database.
   const capabilityState = submissionKey ? await beginBuilderSubmissionFinalising(submissionKey) : null;
   if (submissionKey && capabilityState !== 'finalising' && capabilityState !== 'submitted') {
-    return NextResponse.json({ error: 'This order session is no longer available — please start a new order' }, { status: 409 });
+    return NextResponse.json({ error: 'This order session is no longer available. Please start a new order' }, { status: 409 });
   }
 
   console.info('Emblem production request received', {
@@ -121,14 +121,14 @@ export async function POST(request: NextRequest) {
     }
     // Never leak internal database error detail/stack traces to the client.
     console.error('create_authoritative_order failed', message);
-    return NextResponse.json({ error: 'Could not save your order — please try again' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not save your order. Please try again' }, { status: 500 });
   }
 
   const result = data as { orderId: string; orderRef: string; created: boolean } | null;
   if (!result?.orderId) {
     if (justStartedFinalising) await finishBuilderSubmissionFinalising(submissionKey, false);
     console.error('create_authoritative_order returned an unexpected result', data);
-    return NextResponse.json({ error: 'Could not save your order — please try again' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not save your order. Please try again' }, { status: 500 });
   }
 
   // The submission has genuinely completed — its builder capability moves

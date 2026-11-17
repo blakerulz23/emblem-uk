@@ -100,13 +100,13 @@ export default function RealCollection({
       // deleted this" and must not be shown as an error.
       if (!res.ok && res.status !== 404) {
         const body = await res.json().catch(() => null);
-        setDeleteMomentError((body && typeof body.error === 'string' && body.error) || 'Could not delete this moment — try again.');
+        setDeleteMomentError((body && typeof body.error === 'string' && body.error) || 'Could not delete this moment. Try again.');
         return;
       }
       closeMediaViewer(momentId);
       await refreshOsData();
     } catch {
-      setDeleteMomentError('Could not delete this moment — check your connection and try again.');
+      setDeleteMomentError('Could not delete this moment. Check your connection and try again.');
     } finally {
       setIsDeletingMoment(false);
     }
@@ -353,7 +353,7 @@ export default function RealCollection({
                         )}
                         {visibilityErrorId === m.id && (
                           <p role="alert" style={{ fontSize: 10, color: '#C0392B', margin: '4px 0 0' }}>
-                            Couldn&apos;t update — try again.
+                            Couldn&apos;t update. Try again.
                           </p>
                         )}
                       </div>

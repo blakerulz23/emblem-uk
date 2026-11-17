@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import ClosedRequestContact from './ClosedRequestContact';
 
 /**
  * "Reject request" records that staff reviewed a request and declined to
@@ -12,12 +13,13 @@ import { useRouter } from 'next/navigation';
  * status = 'rejected') — this UI gate is belt-and-braces, not the only
  * thing stopping an empty rejection.
  */
-export default function RejectButton({ requestId }: { requestId: string }) {
+export default function RejectButton({ requestId, contactEmail = null }: { requestId: string; contactEmail?: string | null }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [closed, setClosed] = useState(false);
 
   const reject = async () => {
     const trimmed = reason.trim();
@@ -35,9 +37,14 @@ export default function RejectButton({ requestId }: { requestId: string }) {
       setBusy(false);
       return;
     }
-    router.refresh();
+    // The contact address is now gone from the request: shown once more here.
     setBusy(false);
+    setClosed(true);
   };
+
+  if (closed) {
+    return <ClosedRequestContact outcome="rejected" contactEmail={contactEmail} onDone={() => router.refresh()} />;
+  }
 
   if (!confirming) {
     return (

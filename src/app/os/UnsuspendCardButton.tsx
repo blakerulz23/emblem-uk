@@ -55,7 +55,7 @@ export default function UnsuspendCardButton({ cardId }: { cardId: string }) {
       </button>
       {error && (
         <p role="alert" style={{ fontSize: 12.5, color: '#C0392B', marginTop: 10 }}>
-          Couldn&apos;t turn this card back on — try again.
+          Couldn&apos;t turn this card back on. Try again.
         </p>
       )}
     </div>

@@ -27,7 +27,7 @@ describe('ProductionBuilder personalise step — photo/framing/text controls are
 
   it('a read-only note is shown instead while viewing the back — appears exactly once, after the (single) cardSide ternary that gates the crop controls, and before PlayerEditor', () => {
     const ternaryIdx = builder.indexOf("{cardSide === 'front' ? (");
-    const noteIdx = builder.indexOf('This is the back of your card — nothing to edit here.');
+    const noteIdx = builder.indexOf('This is the back of your card. Nothing to edit here.');
     const playerEditorIdx = builder.indexOf('<PlayerEditor order={order}');
     expect(ternaryIdx).toBeGreaterThan(-1);
     expect(noteIdx).toBeGreaterThan(ternaryIdx);

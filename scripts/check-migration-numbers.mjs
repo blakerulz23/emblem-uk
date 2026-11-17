@@ -13,25 +13,34 @@ import { fileURLToPath } from 'url';
 
 const MIGRATION_FILE = /^(\d{4})_[a-z0-9_]+\.sql$/;
 
-// Reserved numbers:
-// - 0088–0091: the authorization security release (applied in production).
-// - 0092: test-card archive (feat/archive-test-cards still carries
-//   0088_test_card_archive.sql and must rename it to 0092 before merging).
-// - 0093/0094: retired, see RETIRED_NUMBERS below.
-// - 0097: the coach account-deletion fix (fix/coach-account-deletion). The
-//   print-PDF audit fix's unmerged 0097_erase_print_pdfs_on_player_deletion.sql
-//   must take another number.
-// - 0098: acquisition samples (feat/acquisition-samples).
-// - 0099: the My Season feature flag, created at the start of Season Phase 1.
+// Reserved numbers: the authorization security release owns 0088–0091; the
+// archive-test-cards and achievement-reveal features move to 0092 and 0093;
+// 0097 is the coach account-deletion fix (an unmerged branch's
+// 0097_erase_print_pdfs_on_player_deletion.sql must take another number);
+// 0098 is the deletion-review safeguarding fix, 0099 the Season feature
+// states, acquisition samples move to 0100, and 0101 is the R5 gift-order
+// checkout and payment gate, and 0102 closes checkout and payment for orders
+// held by 0097. 0103 restores the Squad Invite audit event types, and
+// 0104–0107 are Photo Day (both released from main before 0097, 0098 and
+// 0102 reached production). New work starts at 0108.
 export const RESERVED_NUMBERS = {
   '0088': 'relationship_authorization_foundation',
   '0089': 'relationship_authorization_lockdown',
   '0090': 'guardian_invite_write_lockdown',
   '0091': 'guardian_invite_code_confidentiality',
   '0092': 'test_card_archive',
+  '0093': 'achievement_card_reveals',
   '0097': 'coach_account_deletion_verified_moments',
-  '0098': 'acquisition_samples',
+  '0098': 'deletion_review_suspension_and_verifier_identity',
   '0099': 'season_feature_states',
+  '0100': 'acquisition_samples',
+  '0101': 'gift_checkout_requires_guardian_approval',
+  '0102': 'held_orders_checkout_payment_and_fresh_approval',
+  '0103': 'restore_squad_invite_audit_event_types',
+  '0104': 'squad_invite_photo_day_foundation',
+  '0105': 'squad_invite_photo_day_staff_controls',
+  '0106': 'squad_invite_photo_day_parent_consent',
+  '0107': 'squad_invite_photo_day_retention',
 };
 
 // Retired numbers may never be used. A gap number below the applied
@@ -39,7 +48,6 @@ export const RESERVED_NUMBERS = {
 // in production, so the two orders would differ. New migrations go above
 // the highest number in use.
 export const RETIRED_NUMBERS = {
-  '0093': 'was achievement_card_reveals; superseded by the Season data model',
   '0094': 'never used; gap below applied 0095',
 };
 

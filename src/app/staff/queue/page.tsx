@@ -6,6 +6,7 @@ import { isSquadInviteMvpEnabled } from '@/lib/squad-invite-mvp';
 import { getSignedDownloadUrl } from '@/lib/s3-client';
 import { buildNfcCardUrl } from '@/lib/nfc-link';
 import { positionCardLabel } from '@/lib/player-position';
+import { chooseProfileInviteRecipient, heldOrderIdsFromRead, isGiftAuthorityStatus, latestApprovalByOrder, normaliseEmail, type ApprovalRow } from '@/lib/gift-order-guardian';
 import {
   APPROVED_SORT_OPTIONS,
   buildStaffQueueUrl,
@@ -138,6 +139,18 @@ function representativeName(names: string[]): string {
 type PrintFileRef = { playerId?: string | null; playerName?: string | null; key: string };
 
 /**
+ * Orders held because the guardian they depend on deleted their account
+ * (migration 0097). Before 0097 the column doesn't exist, the read errors,
+ * and nothing is shown as held (nothing can be).
+ */
+async function getHeldOrderIds(supabase: ReturnType<typeof createServiceRoleClient>, orderIds: string[]): Promise<Set<string>> {
+  if (orderIds.length === 0) return new Set();
+  const { data, error } = await supabase.from('orders').select('id').in('id', orderIds).not('held_at', 'is', null);
+  // Fails closed except before 0097 (see heldOrderIdsFromRead).
+  return heldOrderIdsFromRead(orderIds, { data: (data ?? null) as Array<{ id: string }> | null, error });
+}
+
+/**
  * Section 1 — orders not yet approved. No display cap exists for this
  * section (never has), so it isn't paginated — approvalQ/approvalSort
  * filter and sort the full set server-side.
@@ -163,6 +176,7 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
   }
 
   const orderIds = (data ?? []).map((o) => o.id);
+  const heldOrderIds = await getHeldOrderIds(supabase, orderIds);
   const cardCounts = await getCardCountsByOrder(supabase, orderIds);
   const playerNamesByOrder = await getPlayerNamesByOrder(supabase, orderIds);
   const designPreviewsByOrder = await getDesignPreviewsByOrder(supabase, orderIds);
@@ -186,6 +200,7 @@ async function getPendingOrders(approvalQ: string, approvalSort: QueueSort) {
         cardCount: cardCounts.get(order.id) ?? 0,
         playerNames: playerNamesByOrder.get(order.id) ?? [],
         designPreview: designPreviewsByOrder.get(order.id) ?? null,
+        held: heldOrderIds.has(order.id),
       };
     })
   );
@@ -226,7 +241,9 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
 
   const { data: orders } = await supabase
     .from('orders')
-    .select('id, order_ref, purchaser_email, intended_guardian_email, approved_at, club_name, team_name, source')
+    // select('*'): intended_guardian_erased_at exists only from migration
+    // 0097, and the queue must work before and after it.
+    .select('*')
     .eq('payment_status', 'fulfilled')
     .order('approved_at', { ascending: false })
     // Not-searching keeps today's existing raw-fetch size (bounded, cheap);
@@ -279,8 +296,53 @@ async function getRecentlyApprovedSingleCardOrders(approvedQ: string, approvedSo
     if (invite.order_id) inviteByOrder.set(invite.order_id, invite);
   }
 
+  // Gift orders: the profile invite goes to the guardian who approved the
+  // order (gift-order-guardian.ts), so that is the recipient staff see and
+  // resend to — never the buyer. Read from the approval request itself.
+  const giftOrderIds = page.items.filter((o) => isGiftAuthorityStatus(o.authority_status)).map((o) => o.id);
+  const approvedGuardianByOrder = new Map<string, string>();
+  if (giftOrderIds.length) {
+    const { data: approvals } = await supabase
+      .from('builder_guardian_approval_requests')
+      .select('order_id, guardian_email, responded_at, created_at')
+      .eq('status', 'approved')
+      .in('order_id', giftOrderIds);
+    // An approval from the buyer's own address doesn't count (same rule as
+    // loadApprovedGuardianEmail): shown as withheld, matching what the
+    // approve and resend routes do.
+    const { data: declarations } = await supabase
+      .from('builder_order_authority_declarations')
+      .select('order_id, adult_email')
+      .in('order_id', giftOrderIds);
+    const buyerEmails = new Map<string, Set<string>>();
+    for (const o of page.items) buyerEmails.set(o.id, new Set([normaliseEmail(o.purchaser_email)].filter(Boolean)));
+    for (const d of (declarations ?? []) as Array<{ order_id: string; adult_email: string | null }>) {
+      buyerEmails.get(d.order_id)?.add(normaliseEmail(d.adult_email));
+    }
+    // Only the latest approval counts (responded_at descending, a missing
+    // time first, then created_at descending: the same order as
+    // loadApprovedGuardianEmail), so a redacted earlier approval left by a
+    // restart (0102) never hides, or stands in for, the current one.
+    latestApprovalByOrder((approvals ?? []) as ApprovalRow[]).forEach((a, orderId) => {
+      if (!a.guardian_email || buyerEmails.get(orderId)?.has(normaliseEmail(a.guardian_email))) return;
+      approvedGuardianByOrder.set(orderId, a.guardian_email);
+    });
+  }
+
   return {
-    orders: page.items.map((order) => ({ ...order, invite: inviteByOrder.get(order.id) ?? null })),
+    orders: page.items.map((order) => {
+      const recipient = chooseProfileInviteRecipient(order, approvedGuardianByOrder.get(order.id) ?? null);
+      return {
+        ...order,
+        invite: inviteByOrder.get(order.id) ?? null,
+        inviteRecipient: recipient.ok ? recipient.email : null,
+        inviteRecipientLabel: recipient.ok
+          ? recipient.source === 'approved_guardian' ? 'Approving guardian' : null
+          : recipient.reason === 'intended_guardian_erased'
+            ? 'The parent or guardian this order named deleted their Emblem account — invite withheld (never sent to the buyer)'
+            : 'No approving guardian on record — invite withheld',
+      };
+    }),
     total: page.total,
     page: page.page,
     pageSize: page.pageSize,
@@ -468,6 +530,10 @@ export default async function StaffQueuePage({
     .from('pending_auth_deletions')
     .select('id', { count: 'exact', head: true })
     .eq('status', 'pending');
+  const { count: pendingAccountReviewCount } = await createServiceRoleClient()
+    .from('pending_profile_deletions')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending');
 
   const pending = await getPendingOrders(approvalQ, approvalSort);
   const approved = await getRecentlyApprovedSingleCardOrders(approvedQ, approvedSort, approvedPageParam);
@@ -526,6 +592,18 @@ export default async function StaffQueuePage({
           }}
         >
           Stuck account deletions{pendingAuthDeletionCount ? ` — ${pendingAuthDeletionCount} pending` : ' — none pending'}
+        </Link>
+        <Link
+          href="/staff/account-deletions"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            fontFamily: 'var(--font-sora), system-ui', fontWeight: 700, fontSize: 13.5,
+            color: pendingAccountReviewCount ? '#b91c1c' : 'var(--ink-soft)',
+            background: pendingAccountReviewCount ? '#fef2f2' : 'var(--surface)',
+            padding: '9px 14px', borderRadius: 10, textDecoration: 'none',
+          }}
+        >
+          Account deletions under review{pendingAccountReviewCount ? ` — ${pendingAccountReviewCount} waiting` : ' — none waiting'}
         </Link>
       </div>
 
@@ -652,7 +730,12 @@ export default async function StaffQueuePage({
                 )}
               </div>
             </div>
-            {order.designPreview?.photoStatus !== 'rejected' && (
+            {order.held && (
+              <p role="status" style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>
+                Held: the parent or guardian this order depends on deleted their Emblem account. Don&apos;t approve or produce it. It can&apos;t be released by staff: only a fresh approval from the child&apos;s parent or guardian (gift orders, while unpaid) lifts it. Otherwise cancel it, or refund it in Shopify if it was paid.
+              </p>
+            )}
+            {order.designPreview?.photoStatus !== 'rejected' && !order.held && (
               order.cardCount > 1 ? (
                 <ApproveTeamOrderButton
                   orderId={order.id}
@@ -709,7 +792,7 @@ export default async function StaffQueuePage({
           ))}
         {approved.orders.map((order) => {
           const badge = order.invite?.email_status ? INVITE_BADGE[order.invite.email_status] : null;
-          const recipient = order.intended_guardian_email || order.purchaser_email;
+          const recipient = order.inviteRecipient;
           return (
             <div
               key={order.id}
@@ -738,6 +821,7 @@ export default async function StaffQueuePage({
                   </span>
                 )}
                 <div style={{ marginTop: 4, fontFamily: 'var(--font-jbmono), monospace', fontSize: 12, color: 'var(--ink-soft)' }}>
+                  {order.inviteRecipientLabel ? `${order.inviteRecipientLabel}${recipient ? ': ' : ''}` : ''}
                   {recipient}
                 </div>
                 {badge && (

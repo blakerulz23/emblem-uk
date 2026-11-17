@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { createGuardianInvite } from '@/lib/create-guardian-invite';
+import { ORDER_HELD_MESSAGE, isOrderHeld, resolveProfileInviteRecipient, retireOtherOrderApprovalInvites } from '@/lib/gift-order-guardian';
 
 export const runtime = 'nodejs';
 
@@ -27,12 +28,18 @@ export async function POST(_request: Request, { params }: { params: { id: string
 
   const { data: order, error } = await serviceRole
     .from('orders')
-    .select('id, payment_status, purchaser_email, intended_guardian_email')
+    // select('*'): held_at / intended_guardian_erased_at exist only from
+    // migration 0097, and this route must work before and after it.
+    .select('*')
     .eq('id', params.id)
     .single();
 
   if (error || !order) {
-    return NextResponse.json({ error: error?.message ?? 'Order not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  }
+
+  if (isOrderHeld(order)) {
+    return NextResponse.json({ error: ORDER_HELD_MESSAGE }, { status: 409 });
   }
 
   if (order.payment_status !== 'fulfilled') {
@@ -45,18 +52,55 @@ export async function POST(_request: Request, { params }: { params: { id: string
     .eq('order_id', order.id)
     .not('player_id', 'is', null);
 
-  const linkedCards = cards ?? [];
+  // One entry per child, the same rule as the approve route.
+  const linkedCards = Array.from(
+    new Map(((cards ?? []) as Array<{ player_id: string }>).map((c) => [c.player_id, c])).values()
+  );
   if (linkedCards.length !== 1) {
     return NextResponse.json({ error: 'Resend is only available for single-card orders' }, { status: 400 });
   }
 
   const playerId = linkedCards[0].player_id;
-  const recipient = order.intended_guardian_email?.trim() || order.purchaser_email?.trim();
-  if (!playerId || !recipient) {
+  // Same recipient rule as the approve route: a gift order's profile invite
+  // goes only to the guardian who approved it, never to the buyer, and a
+  // pending or declined gift order never gets one.
+  const recipient = await resolveProfileInviteRecipient(serviceRole, {
+    id: order.id,
+    authority_status: order.authority_status ?? null,
+    purchaser_email: order.purchaser_email ?? null,
+    intended_guardian_email: order.intended_guardian_email ?? null,
+    intended_guardian_erased_at: order.intended_guardian_erased_at ?? null,
+  });
+  if (!recipient.ok && (recipient.reason === 'guardian_not_approved' || recipient.reason === 'approved_guardian_missing')) {
+    return NextResponse.json({ error: 'This order has no approving guardian on record, so no profile invite can be sent' }, { status: 409 });
+  }
+  // The guardian the order named deleted their account (0097): the invite
+  // never falls back to the buyer.
+  if (!recipient.ok && recipient.reason === 'intended_guardian_erased') {
+    return NextResponse.json({ error: 'The parent or guardian this order named deleted their Emblem account, so no profile invite can be sent until a guardian is recorded again' }, { status: 409 });
+  }
+  if (!recipient.ok && recipient.reason === 'lookup_failed') {
+    return NextResponse.json({ error: 'Could not resend the invite. Please try again.' }, { status: 500 });
+  }
+  if (!playerId || !recipient.ok) {
     return NextResponse.json({ error: 'No player or recipient email on this order' }, { status: 400 });
   }
 
-  await createGuardianInvite(serviceRole, playerId, null, recipient, 'order_approval', order.id);
+  // A gift order approved before this fix may still have a live invite that
+  // went to the buyer. Retire it before sending the guardian's own one.
+  if (recipient.source === 'approved_guardian') {
+    const retired = await retireOtherOrderApprovalInvites(serviceRole, order.id, recipient.email);
+    if (!retired.ok) {
+      return NextResponse.json({ error: 'Could not resend the invite. Please try again.' }, { status: 500 });
+    }
+  }
+
+  // The database refuses an order invite to anyone but the order's
+  // confirmed recipient (0097, EMINV). Never report a refused resend as sent.
+  const invite = await createGuardianInvite(serviceRole, playerId, null, recipient.email, 'order_approval', order.id);
+  if (!invite.ok) {
+    return NextResponse.json({ error: 'The invite could not be sent to this order’s recipient. Check the order before trying again.' }, { status: 409 });
+  }
 
   return NextResponse.json({ ok: true, resent: 1 });
 }

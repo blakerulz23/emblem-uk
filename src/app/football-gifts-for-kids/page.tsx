@@ -21,9 +21,9 @@ export const metadata: Metadata = {
 
 const reasons = [
   { title: 'It’s really theirs', body: 'Their photo, name, number and club on a premium printed football card. No two are the same.' },
-  { title: 'It keeps going after Christmas', body: 'Tap the card to open their private player profile, where goals, appearances, photos and coach recognition build up all season.' },
-  { title: 'Safe to give', body: 'Profiles are private by default. If you are not the parent, their parent or guardian approves the card before we print it.' },
-  { title: 'Small enough for a stocking', body: 'A trading card that fits in a stocking or a gift box, and costs ' + PRICES.single + ' with the profile included.' },
+  { title: 'It grows all season', body: 'Tap the card to open their private profile: goals, appearances, photos and coach recognition, all season.' },
+  { title: 'Safe to give', body: 'Profiles are private by default and controlled by their parent or guardian.' },
+  { title: 'A football stocking filler they’ll keep', body: 'A trading card that fits a stocking or gift box. ' + PRICES.single + ' with the profile and free UK delivery included.' },
 ];
 
 export default function FootballGiftsForKidsPage() {
@@ -40,7 +40,7 @@ export default function FootballGiftsForKidsPage() {
       <section className="emh-section emh-subpage-hero emh-gift-hero">
         <p className="emh-eyebrow">Christmas football gifts</p>
         <h1>Personalised football gifts for kids, this Christmas.</h1>
-        <p>Give the young footballer in your life their own personalised football card, with a chip inside that opens a profile of their season. A gift they’ll unwrap and keep adding to all year.</p>
+        <p>Their own personalised football card, with a chip inside that opens a profile of their season. A children’s football gift they’ll unwrap, then keep adding to all year.</p>
         <div className="emh-actions">
           <Link className="emh-btn emh-btn-primary" href="/builder?mode=single" data-track="gift_hero_build">
             Build their card · {PRICES.single}
@@ -59,7 +59,7 @@ export default function FootballGiftsForKidsPage() {
 
       <section className="emh-section emh-gift-reasons" aria-labelledby="emh-gift-reasons-heading">
         <p className="emh-eyebrow">Why it makes a great gift</p>
-        <h2 id="emh-gift-reasons-heading">More than a football card.</h2>
+        <h2 id="emh-gift-reasons-heading">The football present that keeps going.</h2>
         <div className="emh-trust-grid">
           {reasons.map((r) => (
             <div key={r.title} className="emh-trust-item">
@@ -68,6 +68,12 @@ export default function FootballGiftsForKidsPage() {
             </div>
           ))}
         </div>
+        <p className="emh-gift-coach">
+          Buying for the coach? Every squad order of 10 or more cards comes with a free coach card.{' '}
+          <Link className="emh-text-link" href="/football-cards-for-clubs" data-track="gift_coach_squad">
+            See squad orders
+          </Link>
+        </p>
       </section>
 
       <section className="emh-section emh-steps" aria-labelledby="emh-gift-steps-heading">
@@ -77,17 +83,17 @@ export default function FootballGiftsForKidsPage() {
           <li className="emh-step">
             <span className="emh-step-number" aria-hidden="true">1</span>
             <h3>Design it</h3>
-            <p>Upload a photo of them in their kit, choose a design and add their name, number and club.</p>
+            <p>Upload a photo in their kit, pick a design and add their name, number and club.</p>
           </li>
           <li className="emh-step">
             <span className="emh-step-number" aria-hidden="true">2</span>
             <h3>Approve it</h3>
-            <p>Buying for someone else’s child? We ask their parent or guardian to approve the card before printing.</p>
+            <p>Buying for someone else’s child? Their parent or guardian approves the card before we print.</p>
           </li>
           <li className="emh-step">
             <span className="emh-step-number" aria-hidden="true">3</span>
             <h3>Unwrap and tap</h3>
-            <p>We print it in the UK and post it to you. When they unwrap it, tap the card to a phone to open their profile.</p>
+            <p>Printed in the UK and posted to you. On Christmas morning, tap it to a phone to open their profile.</p>
           </li>
         </ol>
       </section>

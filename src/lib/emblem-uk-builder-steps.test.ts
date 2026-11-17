@@ -9,13 +9,20 @@ import { STEP_LABEL, stepsFor } from './emblem-uk-builder';
  * Squad Invite four-step journey are unchanged.
  */
 describe('photo-first step order', () => {
-  it('one player: photo → background → collection → personalise → review → permission (6 steps, was 7)', () => {
-    expect(stepsFor('single')).toEqual(['upload', 'bg-removal', 'collection', 'personalise', 'review', 'adult-permission']);
+  it('one player: photo → background → collection → design → details → review → permission (7 steps)', () => {
+    expect(stepsFor('single')).toEqual(['upload', 'bg-removal', 'collection', 'design', 'personalise', 'review', 'adult-permission']);
   });
 
-  it('team and set orders keep the approve gate: 7 steps, was 8', () => {
+  it('team and set orders keep the approve gate: 8 steps', () => {
     for (const type of ['squad', 'set'] as const) {
-      expect(stepsFor(type)).toEqual(['upload', 'bg-removal', 'collection', 'personalise', 'approve', 'review', 'adult-permission']);
+      expect(stepsFor(type)).toEqual(['upload', 'bg-removal', 'collection', 'design', 'personalise', 'approve', 'review', 'adult-permission']);
+    }
+  });
+
+  it('the card is picked on its own screen, right before their details', () => {
+    for (const type of ['single', 'squad', 'set'] as const) {
+      const steps = stepsFor(type);
+      expect(steps.indexOf('design')).toBe(steps.indexOf('personalise') - 1);
     }
   });
 

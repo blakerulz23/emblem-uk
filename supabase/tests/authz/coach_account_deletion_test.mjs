@@ -1,5 +1,6 @@
 // A coach-only account deletes itself (Coach Profile → Account → Delete
-// account → /api/os/account/delete) on the final schema (0089–0091).
+// account → /api/os/account/delete) on the final schema, which includes
+// 0097 and 0098 (both live in production since 17 Nov 2026).
 //
 // RUN: see supabase/tests/authz/README.md (needs EMBLEM_AUTHZ_PGLITE_DIR).
 // Disposable in-memory PGlite, fictional data with generated ids only.
@@ -16,14 +17,17 @@
 // Update naming them as actor — so every foreign key and the append-only
 // relationship_audit_events trigger are exercised.
 //
-// Scenario D pins a KNOWN DEFECT found here (2026-11-11): a coach who has
-// ever verified a moment or sent a recognition (verification_status
-// 'coach_verified', verified_by = the coach) cannot delete their account.
-// delete_own_guardian_account sets moments.verified_by = NULL, which the
-// moments_verification_status_consistency check (0020) forbids for
-// coach_verified rows, so the whole call fails and rolls back. Fixing it
-// needs a migration (the RPC or the constraint), which this branch does
-// not add.
+// Scenario C: a coach who wrote a player record goes to staff review
+// (0097 decides first; 0098 pauses coach access). Nothing is deleted; every
+// active assignment is ended and every direct link removed, both
+// snapshotted; no new access can be gained while the review is pending; a
+// staff rejection followed by the restore gives back exactly that access.
+// Scenario D: a coach who sent a recognition (verification_status
+// 'coach_verified', verified_by = the coach). Before 0097 this deletion
+// failed on moments_verification_status_consistency (found here,
+// 2026-11-11). From 0097 it succeeds, and the child's moment stays
+// coach_verified, with verifier_account_deleted_at recording why
+// verified_by is empty.
 import crypto from 'crypto';
 import { applyMigrations, createDatabase } from './harness.mjs';
 
@@ -158,14 +162,7 @@ const count = async (db, sql, params) => (await db.query(sql, params)).rows[0].n
   await db.close();
 }
 
-// --- Scenario C: coach who wrote a player assessment (documents a limit) ----
-// delete_own_guardian_account (0076) stops before deleting the profile when
-// a NOT NULL coach-authored record exists, and files pending_profile_
-// deletions for staff. The route then signs the session out and does NOT
-// delete the Auth identity. Because nothing removes coach_team/coach_players
-// except the profile cascade, the coach's access rows remain until staff
-// finish the removal. These checks pin that current behaviour so a change
-// to it is noticed; they are not an endorsement of it.
+// --- Scenario C: coach who wrote a player assessment → staff review --------
 {
   const w = await world();
   const { db, people, service, user } = w;
@@ -173,20 +170,57 @@ const count = async (db, sql, params) => (await db.query(sql, params)).rows[0].n
     const req = (await user(people.coach, `insert into public.coach_team_requests (club_name, team_name) values ('Fictional FC', 'U10') returning id`)).rows[0].id;
     const team = (await service(`select public.approve_coach_team_request($1, $2, null, null, $3) as team_id`, [req, people.staff, w.season])).rows[0].team_id;
     await service(`update public.players set team_id = $1 where id = $2`, [team, w.player]);
+    const coachCode = `COACH-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    await user(people.parent, `insert into public.coach_invites (player_id, code, created_by) values ($1, $2, $3)`, [w.directPlayer, coachCode, people.parent]);
+    await service(`select status from public.redeem_coach_invite($1, $2)`, [coachCode, people.coach]);
     await user(people.coach, `insert into public.player_assessments (player_id, created_by, body) values ($1, $2, 'Fictional assessment')`, [w.player, people.coach]);
+
     const result = await deleteAccount(w, people.coach);
-    check('C: with a coach-authored assessment the RPC succeeds but withholds identity deletion', result.canDeleteIdentity === false, JSON.stringify(result));
-    check('C: staff get a pending_profile_deletions record (coach_authored_player_records)',
-      await count(db, `select count(*)::int n from public.pending_profile_deletions where auth_user_id = $1 and blocking_reason = 'coach_authored_player_records'`, [people.coach]) === 1);
-    check('C: CURRENT BEHAVIOUR — the profile and the active coach_team row remain until staff act',
-      await count(db, `select (select count(*) from public.profiles where id = $1) + (select count(*) from public.coach_team where profile_id = $1 and ended_at is null) as n`, [people.coach]) == 2);
+    check('C: with a coach-authored assessment the RPC files a staff review and withholds identity deletion', result.canDeleteIdentity === false && typeof result.reviewOpenedAt === 'string', JSON.stringify(result));
+    check('C: both coach accesses (team assignment and direct link) are reported as paused', result.coachAccessSuspended === 2, JSON.stringify(result));
+    const pending = (await db.query(`select id, status from public.pending_profile_deletions where auth_user_id = $1 and blocking_reason = 'coach_authored_player_records'`, [people.coach])).rows;
+    check('C: staff get one pending review (coach_authored_player_records)', pending.length === 1 && pending[0].status === 'pending', JSON.stringify(pending));
+    const kept = (await db.query(`select (select count(*) from auth.users where id = $1)::int as identity, (select count(*) from public.profiles where id = $1)::int as profile,
+      (select count(*) from public.player_assessments where created_by = $1)::int as assessments, (select count(*) from public.coach_team_requests where requester_profile_id = $1)::int as requests`, [people.coach])).rows[0];
+    check('C: nothing is deleted: the identity, profile, assessment and the coach\'s own team request all remain',
+      kept.identity === 1 && kept.profile === 1 && kept.assessments === 1 && kept.requests === 1, JSON.stringify(kept));
+    check('C: coaching access is paused: no active assignment (ended for the review) and no direct link', await count(db,
+      `select (select count(*) from public.coach_team where profile_id = $1 and ended_at is null) + (select count(*) from public.coach_players where profile_id = $1) as n`, [people.coach]) == 0 &&
+      await count(db, `select count(*)::int n from public.coach_team where profile_id = $1 and team_id = $2 and end_reason = 'account_deletion_review'`, [people.coach, team]) === 1);
+    check('C: exactly the paused access is snapshotted for restoration', await count(db,
+      `select count(*)::int n from public.deletion_review_access_suspensions where pending_deletion_id = $1 and resolved_at is null`, [pending[0]?.id]) === 2);
+
+    // While the review is pending, no new coach access.
+    let requestError = null;
+    try {
+      await user(people.coach, `insert into public.coach_team_requests (club_name, team_name) values ('Fictional FC', 'U13')`);
+    } catch (e) {
+      requestError = e.message;
+    }
+    check('C: a new team request is refused while the review is pending', requestError !== null && requestError.includes('account_deletion_review_pending'), requestError ?? 'the request was saved');
+    const code = `TEAM-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    await service(`insert into public.team_invites (team_id, code) values ($1, $2)`, [w.otherTeam, code]);
+    const redeem = (await service(`select status from public.redeem_team_invite($1, $2)`, [code, people.coach])).rows[0];
+    check('C: a team invite is refused without granting access while the review is pending', redeem?.status === 'account_deletion_review_pending' &&
+      await count(db, `select count(*)::int n from public.coach_team where profile_id = $1 and ended_at is null`, [people.coach]) === 0, JSON.stringify(redeem));
+
+    // Staff reject the deletion, then restore (what "Reject & restore access" does).
+    await service(`select public.reject_pending_profile_deletion($1, $2, 'Coach asked to stay')`, [pending[0].id, people.staff]);
+    const restored = (await service(`select public.restore_coach_access_after_deletion_rejection($1, $2, 'Coach asked to stay') as r`, [pending[0].id, people.staff])).rows[0].r;
+    const back = (await db.query(`select (select count(*) from public.coach_team where profile_id = $1 and team_id = $2 and ended_at is null)::int as team_active,
+      (select count(*) from public.coach_players where profile_id = $1 and player_id = $3)::int as direct_link,
+      (select count(*) from public.coach_team where profile_id = $1 and ended_at is null)::int as all_active`, [people.coach, team, w.directPlayer])).rows[0];
+    check('C: after staff rejection the restore gives back exactly the paused access', restored.restored === 2 && restored.notRestorable === 0 &&
+      back.team_active === 1 && back.direct_link === 1 && back.all_active === 1, JSON.stringify({ restored, back }));
+    check('C: the request is recorded as rejected and the account is untouched', await count(db,
+      `select (select count(*) from public.pending_profile_deletions where id = $1 and status = 'rejected') + (select count(*) from public.profiles where id = $2) as n`, [pending[0].id, people.coach]) == 2);
   } catch (e) {
     check('C: coach with authored records', false, e.message);
   }
   await db.close();
 }
 
-// --- Scenario D: coach who sent a recognition (KNOWN DEFECT, see header) ---
+// --- Scenario D: coach who sent a recognition (fixed by 0097) ---------------
 {
   const w = await world();
   const { db, people, service, user } = w;
@@ -195,19 +229,17 @@ const count = async (db, sql, params) => (await db.query(sql, params)).rows[0].n
     const team = (await service(`select public.approve_coach_team_request($1, $2, null, null, $3) as team_id`, [req, people.staff, w.season])).rows[0].team_id;
     await service(`update public.players set team_id = $1 where id = $2`, [team, w.player]);
     // Exactly what /api/os/celebrate inserts.
-    await user(people.coach, `insert into public.moments (player_id, title, trust, note, uploaded_by, verified_by, verified_at, verification_status)
-      values ($1, 'Man of the Match', 'coach', 'Brilliant', $2, $2, now(), 'coach_verified')`, [w.player, people.coach]);
-    let error = null;
-    try {
-      await deleteAccount(w, people.coach);
-    } catch (e) {
-      error = e.message;
-    }
-    check('D: KNOWN DEFECT — deletion fails for a coach who sent a recognition (moments_verification_status_consistency)',
-      error !== null && error.includes('moments_verification_status_consistency'), error ?? 'deletion succeeded — the defect is fixed; update this scenario');
-    check('D: …and the failure changes nothing (profile, active coach_team row, recognition all intact; retry-safe)', await count(db,
-      `select (select count(*) from public.profiles where id = $1) + (select count(*) from public.coach_team where profile_id = $1 and ended_at is null) + (select count(*) from public.moments where verified_by = $1) as n`,
-      [people.coach]) == 3);
+    const moment = (await user(people.coach, `insert into public.moments (player_id, title, trust, note, uploaded_by, verified_by, verified_at, verification_status)
+      values ($1, 'Man of the Match', 'coach', 'Brilliant', $2, $2, now(), 'coach_verified') returning id, verified_at`, [w.player, people.coach])).rows[0];
+    const result = await deleteAccount(w, people.coach);
+    check('D: a coach who sent a recognition deletes cleanly, with no staff review', result.canDeleteIdentity === true && result.coachAccessSuspended === 0, JSON.stringify(result));
+    check('D: the identity, profile and coach access are gone', await count(db,
+      `select (select count(*) from auth.users where id = $1) + (select count(*) from public.profiles where id = $1) + (select count(*) from public.coach_team where profile_id = $1) as n`, [people.coach]) == 0);
+    const m = (await db.query(`select title, verification_status, verified_by, verified_at, verifier_account_deleted_at from public.moments where id = $1`, [moment.id])).rows[0];
+    check('D: the child keeps the recognition, still coach_verified, marked as verified by a since-deleted account',
+      !!m && m.title === 'Man of the Match' && m.verification_status === 'coach_verified' && m.verified_by === null &&
+      m.verifier_account_deleted_at !== null && new Date(m.verified_at).getTime() === new Date(moment.verified_at).getTime(), JSON.stringify(m));
+    check('D: no staff review is filed', await count(db, `select count(*)::int n from public.pending_profile_deletions where auth_user_id = $1`, [people.coach]) === 0);
   } catch (e) {
     check('D: coach with a recognition', false, e.message);
   }

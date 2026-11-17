@@ -10,7 +10,7 @@ import OsApp from '../../OsApp';
  * writes no real accounts.
  */
 export const metadata: Metadata = {
-  title: 'Emblem OS — Demo',
+  title: 'Emblem OS | Demo',
   description: 'A sample Emblem player profile with fictional data.',
   robots: { index: false, follow: false },
 };

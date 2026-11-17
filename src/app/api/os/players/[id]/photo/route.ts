@@ -123,7 +123,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
   try {
     await deleteObject(player.photo_key);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Could not remove the photo — try again.';
+    const message = error instanceof Error ? error.message : 'Could not remove the photo. Try again.';
     return NextResponse.json(
       { error: message.includes('AWS_S3_BUCKET') ? 'Photo storage is not configured' : message },
       { status: 500 }

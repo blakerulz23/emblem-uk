@@ -24,7 +24,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  */
 function coachInviteSuccessCopy(reused: boolean, emailStatus: 'sent' | 'failed' | 'skipped_no_email'): string {
   if (reused) {
-    if (emailStatus === 'sent') return "An active invite already exists — we've resent the email. You can also copy the link below.";
+    if (emailStatus === 'sent') return "An active invite already exists. We've resent the email. You can also copy the link below.";
     if (emailStatus === 'failed') return "An active invite already exists, but we couldn't resend the email. Copy the link below and send it yourself.";
     return 'An active invite already exists. You can resend this link.';
   }
@@ -122,14 +122,14 @@ export default function Profile({ actions }: { actions: OsActions }) {
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
         setCoachInviteStatus('error');
-        setCoachInviteError(json?.error ?? 'Could not create the invite — try again.');
+        setCoachInviteError(json?.error ?? 'Could not create the invite. Try again.');
         return;
       }
       setCoachInviteResult({ url: json.url as string, reused: !!json.reused, emailStatus: json.emailStatus });
       setCoachInviteStatus('created');
     } catch {
       setCoachInviteStatus('error');
-      setCoachInviteError('Could not create the invite — try again.');
+      setCoachInviteError('Could not create the invite. Try again.');
     }
   };
 
@@ -235,7 +235,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
         const ok = await setPublicVisibility(true);
         if (!ok) {
           setShareStatus('error');
-          setShareError("Couldn't turn on the public link — try again.");
+          setShareError("Couldn't turn on the public link. Try again.");
           return;
         }
       }
@@ -256,11 +256,11 @@ export default function Profile({ actions }: { actions: OsActions }) {
         setTimeout(() => setShareStatus((s) => (s === 'copied' ? 'idle' : s)), 2500);
       } else {
         setShareStatus('error');
-        setShareError("Couldn't copy the link automatically — copy it from your browser's address bar instead.");
+        setShareError("Couldn't copy the link automatically. Copy it from your browser's address bar instead.");
       }
     } catch {
       setShareStatus('error');
-      setShareError("Couldn't share the link — try again.");
+      setShareError("Couldn't share the link. Try again.");
     } finally {
       setShareBusy(false);
     }
@@ -275,7 +275,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
     setShareBusy(false);
     if (!ok) {
       setShareStatus('error');
-      setShareError("Couldn't turn off the public link — try again.");
+      setShareError("Couldn't turn off the public link. Try again.");
     }
   };
 
@@ -320,7 +320,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
     if (positionRes) {
       const positionResult = (await positionRes.json()) as { secondaryPositionCleared?: boolean };
       if (positionResult.secondaryPositionCleared) {
-        setPositionNotice('Secondary position cleared — it matched the new primary position.');
+        setPositionNotice('Secondary position cleared because it matched the new primary position.');
       }
     }
     setEditStatus('idle');
@@ -482,12 +482,12 @@ export default function Profile({ actions }: { actions: OsActions }) {
           <p style={{ fontSize: 11.5, color: '#2E9E5B', margin: '0 0 12px' }}>Photo updated.</p>
         )}
         {photoStatus === 'error' && (
-          <p style={{ fontSize: 11.5, color: '#C0392B', margin: '0 0 12px' }}>{photoError ?? 'Could not upload photo — try again.'} The existing photo has been kept.</p>
+          <p style={{ fontSize: 11.5, color: '#C0392B', margin: '0 0 12px' }}>{photoError ?? 'Could not upload photo. Try again.'} The existing photo has been kept.</p>
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--os-border)', borderBottom: '1px solid var(--os-border)', padding: '12px 0', marginBottom: 14 }}>
-          <div><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>MEMBER SINCE</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.memberSinceYear ?? '—'}</div></div>
-          <div style={{ textAlign: 'center' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>SQUAD NUMBER</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.squadNumber ?? '—'}</div></div>
-          <div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>SEASON</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.season ?? '—'}</div></div>
+          <div><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>MEMBER SINCE</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.memberSinceYear ?? '-'}</div></div>
+          <div style={{ textAlign: 'center' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>SQUAD NUMBER</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.squadNumber ?? '-'}</div></div>
+          <div style={{ textAlign: 'right' }}><div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: 'var(--os-muted)' }}>SEASON</div><div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: 'var(--os-ink)' }}>{playerProfile.season ?? '-'}</div></div>
         </div>
         {isReal && playerProfile.publicPlayerId && (
           <>
@@ -516,7 +516,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
                 onKeyDown={onActivateKey(turnOffPublicLink)}
                 style={{ textAlign: 'center', marginTop: 8, fontSize: 11.5, color: 'var(--os-muted)', textDecoration: 'underline', cursor: shareBusy ? 'default' : 'pointer' }}
               >
-                Public link is on — turn off
+                Public link is on. Turn off
               </div>
             )}
           </>
@@ -584,7 +584,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
             >
               {editStatus === 'saving' ? 'Saving…' : 'Save'}
             </button>
-            {editStatus === 'error' && <p style={{ fontSize: 12.5, color: '#C0392B', margin: 0 }}>Could not save — try again.</p>}
+            {editStatus === 'error' && <p style={{ fontSize: 12.5, color: '#C0392B', margin: 0 }}>Could not save. Try again.</p>}
           </form>
         )}
       </div>
@@ -685,7 +685,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
                 >
                   {addGoalStatus === 'sending' ? 'Adding…' : 'Add goal'}
                 </button>
-                {addGoalStatus === 'error' && <p style={{ fontSize: 12.5, color: '#C0392B', margin: 0 }}>Could not add goal — try again.</p>}
+                {addGoalStatus === 'error' && <p style={{ fontSize: 12.5, color: '#C0392B', margin: 0 }}>Could not add goal. Try again.</p>}
               </form>
             )}
           </div>
@@ -737,7 +737,7 @@ export default function Profile({ actions }: { actions: OsActions }) {
                         Cancel
                       </button>
                     </div>
-                    {revokeErrorId === c.profileId && <span style={{ fontSize: 10, color: '#C0392B' }}>Couldn&apos;t remove — try again.</span>}
+                    {revokeErrorId === c.profileId && <span style={{ fontSize: 10, color: '#C0392B' }}>Couldn&apos;t remove. Try again.</span>}
                   </div>
                 ) : (
                   <button

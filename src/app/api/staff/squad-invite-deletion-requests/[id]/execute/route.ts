@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
+import { readPendingDeletionRequestContact } from '@/lib/deletion-request-contact';
 import { deleteObject } from '@/lib/s3-client';
+import { deletePhotoDayObject } from '@/lib/photo-day-storage';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -26,6 +28,11 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ error: 'A completion note is required.' }, { status: 400 });
   }
 
+  // There is no staff page for these requests: the address (cleared by the
+  // database as the request completes, 0097) is returned once, only when
+  // this call completed it, for the reply.
+  const contactEmail = await readPendingDeletionRequestContact(createServiceRoleClient(), 'squad_invite_participation_deletion_requests', params.id);
+
   const { data: confirmResult, error: confirmError } = await supabase.rpc('confirm_squad_invite_participation_erasure', {
     p_request_id: params.id,
     p_completion_note: note,
@@ -48,7 +55,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
   // client-supplied count.
   for (const object of result.inventory) {
     try {
-      await deleteObject(object.s3Key);
+      // Photo Day photos live in their own bucket (see photo-day-storage.ts).
+      if (object.kind === 'photo_day_photo') await deletePhotoDayObject(object.s3Key);
+      else await deleteObject(object.s3Key);
       await supabase.rpc('record_squad_invite_deletion_storage_attempt', {
         p_object_id: object.id,
         p_deleted: true,
@@ -71,5 +80,6 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ error: finalizeError.message }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, ...(finalizeResult as { completed: boolean; state?: string }) });
+  const outcome = finalizeResult as { completed: boolean; state?: string };
+  return NextResponse.json({ ok: true, ...outcome, ...(outcome.completed === true ? { contactEmail } : {}) });
 }

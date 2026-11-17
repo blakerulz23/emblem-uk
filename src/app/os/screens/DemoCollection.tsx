@@ -38,7 +38,7 @@ export default function DemoCollection({ actions }: { actions: OsActions }) {
           <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 42, lineHeight: .92, color: '#fff', marginTop: 7, letterSpacing: '-.01em' }}>{moments.length}</div>
           <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 22, letterSpacing: '.24em', color: '#EDE7DC', marginTop: 2 }}>{moments.length === 1 ? 'MEMORY' : 'MEMORIES'}</div>
           <div style={{ fontFamily: 'Roboto', fontSize: 13.5, color: '#9A948C', marginTop: 10 }}>
-            Across {years.length} season{years.length === 1 ? '' : 's'} — {latestYear} is still being written.
+            Across {years.length} season{years.length === 1 ? '' : 's'}, and {latestYear} is still being written.
           </div>
         </div>
       </div>

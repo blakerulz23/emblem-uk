@@ -31,12 +31,15 @@ vi.mock('@/lib/supabase/server', () => ({
         if (opts?.head) {
           return { eq: () => ({ eq: () => mockCountResolve() }) };
         }
-        return { eq: () => ({ not: () => mockJoinedResolve() }) };
+        // Joined list: campaign, then NOT 'started' (Photo Day permission
+        // writes a first name before commitment, 0106), then has a name.
+        return { eq: () => ({ neq: (column: string, value: string) => { joinedNeq.push([column, value]); return { not: () => mockJoinedResolve() }; } }) };
       },
     }),
   }),
 }));
 
+const joinedNeq: [string, string][] = [];
 const USER_ID = '11111111-2222-4333-8444-555555555555';
 const CAMPAIGN_ID = '66095c4d-f177-442a-bf35-cc4f76245841';
 
@@ -75,6 +78,12 @@ describe('GET /api/squad-invites/[id]/dashboard', () => {
     mockCampaignMaybeSingle.mockResolvedValue({ data: null });
     const res = await get();
     expect(res.status).toBe(404);
+  });
+
+  it('never lists a participation still at started as joined (a Photo Day name is not a commitment)', async () => {
+    joinedNeq.length = 0;
+    await get();
+    expect(joinedNeq).toEqual([['status', 'started']]);
   });
 
   it('returns an empty joinedPlayers list when nobody has joined yet', async () => {

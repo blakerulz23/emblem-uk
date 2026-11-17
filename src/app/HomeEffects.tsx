@@ -495,7 +495,7 @@ export function DigitalProfilePreview(props: {
           <span className="emh-dp-nfc" aria-hidden="true"><span /><span /></span>
           <img
             className="emh-dp-reveal-phone"
-            src={`${optimizedAssetPath}/eos-home.webp`}
+            src={`${optimizedAssetPath}/eos-home-dark.webp`}
             alt="Emblem digital profile on a phone"
             loading="lazy"
             decoding="async"
@@ -629,7 +629,7 @@ const stepCards = [
   {
     number: '1',
     title: 'Upload',
-    body: 'Choose your favourite photo and personalise your card with 100s of templates.',
+    body: 'Upload your favourite photo, pick a card design and add their name, number and club.',
   },
   {
     number: '2',
@@ -680,7 +680,7 @@ function StepCard({ step }: { step: (typeof stepCards)[number] }) {
           <>
             <Image src={`${dpAssetPath}/hiw-consistent-card.webp`} alt="" width={420} height={599} loading="lazy" sizes="(max-width: 760px) 38vw, 220px" />
             <span className="emh-hiw-nfc"><i /><i /><i /></span>
-            <Image src={`${dpAssetPath}/eos-home.webp`} alt="" width={180} height={360} loading="lazy" sizes="(max-width: 760px) 32vw, 180px" />
+            <Image src={`${dpAssetPath}/eos-home-dark.webp`} alt="" width={560} height={1187} loading="lazy" sizes="(max-width: 760px) 32vw, 180px" />
           </>
         )}
       </div>

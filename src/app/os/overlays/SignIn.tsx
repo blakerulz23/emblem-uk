@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { osAssetPath } from '../data';
 import { createClient } from '@/lib/supabase/client';
 import BackLink from './BackLink';
+import { ACCOUNT_ERASED_QUERY, signInErrorMessage } from '@/lib/account-deletion-copy';
 
 /**
  * The entry point into Emblem OS when there's no Supabase session yet.
@@ -25,6 +26,14 @@ export default function SignIn({ onSuccess, onBack }: { onSuccess?: () => void; 
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+  // The middleware sends an erased account here with this flag after
+  // clearing its session (migration 0097 erased_accounts).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get(ACCOUNT_ERASED_QUERY) === '1') {
+      setStatus('error');
+      setErrorMsg(signInErrorMessage({ code: 'account_erased' }));
+    }
+  }, []);
 
   const sendCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,7 +46,7 @@ export default function SignIn({ onSuccess, onBack }: { onSuccess?: () => void; 
 
     if (error) {
       setStatus('error');
-      setErrorMsg(error.message);
+      setErrorMsg(signInErrorMessage(error));
       return;
     }
     setStep('code');
@@ -59,7 +68,7 @@ export default function SignIn({ onSuccess, onBack }: { onSuccess?: () => void; 
 
     if (error) {
       setStatus('error');
-      setErrorMsg(error.message);
+      setErrorMsg(signInErrorMessage(error));
       return;
     }
     if (onSuccess) {
@@ -201,7 +210,7 @@ export default function SignIn({ onSuccess, onBack }: { onSuccess?: () => void; 
 
           {status === 'error' && (
             <p role="alert" style={{ fontSize: 13, color: '#E9745C', marginTop: 14, maxWidth: 280 }}>
-              {errorMsg || 'Something went wrong — try again.'}
+              {errorMsg || 'Something went wrong. Try again.'}
             </p>
           )}
         </>
@@ -267,7 +276,7 @@ export default function SignIn({ onSuccess, onBack }: { onSuccess?: () => void; 
 
           {status === 'error' && (
             <p role="alert" style={{ fontSize: 13, color: '#E9745C', marginTop: 14, maxWidth: 280 }}>
-              {errorMsg || 'Something went wrong — try again.'}
+              {errorMsg || 'Something went wrong. Try again.'}
             </p>
           )}
         </>

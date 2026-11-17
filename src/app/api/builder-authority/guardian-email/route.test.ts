@@ -3,8 +3,22 @@ import { NextRequest } from 'next/server';
 import { randomBytes } from 'crypto';
 
 const mockRpc = vi.fn();
+let declarationEmail: string | null = null;
 vi.mock('@/lib/supabase/server', () => ({
-  createServiceRoleClient: () => ({ rpc: mockRpc }),
+  createServiceRoleClient: () => ({
+    rpc: mockRpc,
+    from: (table: string) => {
+      if (table !== 'builder_order_authority_declarations') throw new Error('unexpected table ' + table);
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        order: () => chain,
+        limit: () => chain,
+        maybeSingle: async () => ({ data: declarationEmail ? { adult_email: declarationEmail } : null, error: null }),
+      };
+      return chain;
+    },
+  }),
 }));
 
 const mockConsumeAnonymousRequestRateLimit = vi.fn();
@@ -42,6 +56,7 @@ function post(body: unknown, csrf: { origin?: string | null; cookie?: string | n
 }
 
 beforeEach(() => {
+  declarationEmail = null;
   mockRpc.mockReset().mockResolvedValue({ data: { ok: true, requestId: 'req-1' }, error: null });
   mockConsumeAnonymousRequestRateLimit.mockReset().mockResolvedValue(true);
   mockSendBuilderGuardianApprovalEmail.mockReset().mockResolvedValue({ ok: true });
@@ -104,6 +119,22 @@ describe('POST /api/builder-authority/guardian-email', () => {
     expect(mockSendBuilderGuardianApprovalEmail).not.toHaveBeenCalled();
   });
 
+  it('0102: a held order that has been paid is refused with 409 (refund or cancel first), and no email is sent', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { code: 'EMHLD', message: 'held_order_paid_refund_or_cancel_first' } });
+    const res = await post({ orderId: ORDER_ID, guardianEmail: 'guardian@example.test' });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/a new approval can’t be requested/);
+    expect(mockSendBuilderGuardianApprovalEmail).not.toHaveBeenCalled();
+  });
+
+  it('0102: a held order with a refused payment (cancel instead) is refused with 409 too, never a generic retry message', async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { code: 'EMHLD', message: 'held_order_payment_refused_cancel_instead' } });
+    const res = await post({ orderId: ORDER_ID, guardianEmail: 'guardian@example.test' });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).not.toMatch(/try again/i);
+    expect(mockSendBuilderGuardianApprovalEmail).not.toHaveBeenCalled();
+  });
+
   it('reports failure (not ok:true) when the DB row is created but the email fails to send', async () => {
     // The Postgres write and the email send are not atomic — a failed send
     // must never be reported to the client as success, even though the
@@ -120,5 +151,20 @@ describe('POST /api/builder-authority/guardian-email', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
+  });
+
+  it('refuses a guardian email that is the buyer’s own verified email (no self-approval), before any token or email', async () => {
+    declarationEmail = 'coach@example.test';
+    const res = await post({ orderId: ORDER_ID, guardianEmail: ' Coach@Example.test ' });
+    expect(res.status).toBe(400);
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(mockSendBuilderGuardianApprovalEmail).not.toHaveBeenCalled();
+  });
+
+  it('accepts a guardian email that differs from the buyer’s', async () => {
+    declarationEmail = 'coach@example.test';
+    const res = await post({ orderId: ORDER_ID, guardianEmail: 'parent@example.test' });
+    expect(res.status).toBe(200);
+    expect(mockRpc).toHaveBeenCalledTimes(1);
   });
 });

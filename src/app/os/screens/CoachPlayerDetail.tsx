@@ -375,7 +375,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
         ) : coachFieldsLoading ? (
           <p style={{ fontSize: 13, color: 'var(--os-muted)' }}>Loading…</p>
         ) : coachFieldsLoadError ? (
-          <p role="alert" style={{ fontSize: 13, color: '#C0392B' }}>Couldn&apos;t load this player&apos;s details — try again.</p>
+          <p role="alert" style={{ fontSize: 13, color: '#C0392B' }}>Couldn&apos;t load this player&apos;s details. Try again.</p>
         ) : (
           <>
             {/* Football age group — Emblem does not collect exact date of
@@ -409,7 +409,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
                 ))}
               </div>
               <p style={{ fontSize: 12, color: 'var(--os-muted)', margin: '6px 0 0' }}>
-                Not the same as age — a player can be assigned an older group if they&apos;re playing up.
+                Not the same as age. A player can be assigned an older group if they&apos;re playing up.
               </p>
             </div>
 
@@ -493,7 +493,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
             </div>
 
             {coachFieldsSaveStatus === 'error' && (
-              <p role="alert" style={{ fontSize: 12.5, color: '#C0392B', margin: '14px 0 0' }}>Couldn&apos;t save those changes — your edits are still here, try again.</p>
+              <p role="alert" style={{ fontSize: 12.5, color: '#C0392B', margin: '14px 0 0' }}>Couldn&apos;t save those changes. Your edits are still here, so try again.</p>
             )}
             {coachFieldsSaveStatus === 'success' && (
               <p role="status" style={{ fontSize: 12.5, color: '#2E9E5B', margin: '14px 0 0' }}>Saved</p>
@@ -551,7 +551,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
               <span aria-hidden="true" style={{ flex: '0 0 auto', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 34, lineHeight: 0.5, color: '#E97435', marginTop: 10 }}>&ldquo;</span>
               <p style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 17, lineHeight: 1.4, color: 'var(--os-ink)', margin: 0 }}>{latestAssessment.body}</p>
             </div>
-            <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--os-muted)' }}>— {latestAssessment.authorName ?? 'Coach'}</div>
+            <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--os-muted)' }}>{latestAssessment.authorName ?? 'Coach'}</div>
             <div style={{ fontSize: 11, color: 'var(--os-muted)', marginTop: 1 }}>{formatDate(latestAssessment.createdAt)}</div>
           </div>
         ) : (
@@ -620,7 +620,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
               {TargetIcon('#E97435')}
             </div>
             <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)', marginBottom: 6 }}>No Season Focus yet</div>
-            <div style={{ fontSize: 13, color: 'var(--os-muted)', lineHeight: 1.5 }}>Set what this player is working on this season — you and their guardian can both contribute.</div>
+            <div style={{ fontSize: 13, color: 'var(--os-muted)', lineHeight: 1.5 }}>Set what this player is working on this season. You and their guardian can both contribute.</div>
           </div>
         ) : (
           player.seasonFocus.map((f) => (
@@ -645,7 +645,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
             <input
               value={focusDraft}
               onChange={(e) => setFocusDraft(e.target.value)}
-              placeholder={activeFocusCount >= 3 ? '3 active already — complete one first' : 'e.g. First touch under pressure'}
+              placeholder={activeFocusCount >= 3 ? '3 active already. Complete one first' : 'e.g. First touch under pressure'}
               disabled={activeFocusCount >= 3}
               style={{ ...inputStyle, flex: 1 }}
             />
@@ -682,7 +682,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
                   Cancel
                 </button>
               </div>
-              {leaveError && <p role="alert" style={{ color: '#C0392B', fontSize: 12.5, marginTop: 8 }}>Couldn&apos;t leave — try again.</p>}
+              {leaveError && <p role="alert" style={{ color: '#C0392B', fontSize: 12.5, marginTop: 8 }}>Couldn&apos;t leave. Try again.</p>}
             </div>
           ) : (
             <div

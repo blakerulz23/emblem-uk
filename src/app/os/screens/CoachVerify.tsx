@@ -88,7 +88,7 @@ export default function CoachVerify() {
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         setErrorId(id);
-        setErrorMessage((body && typeof body.error === 'string' && body.error) || 'Could not save your decision — try again.');
+        setErrorMessage((body && typeof body.error === 'string' && body.error) || 'Could not save your decision. Try again.');
         return; // Item stays in the queue (and the viewer, if open, stays open) — never removed on failure.
       }
       setItems((current) => current.filter((v) => v.id !== id));
@@ -99,7 +99,7 @@ export default function CoachVerify() {
       refreshOsData();
     } catch {
       setErrorId(id);
-      setErrorMessage('Could not save your decision — check your connection and try again.');
+      setErrorMessage('Could not save your decision. Check your connection and try again.');
     } finally {
       setBusyId(null);
     }
@@ -129,7 +129,7 @@ export default function CoachVerify() {
               ref={(el) => { triggerRefs.current[v.id] = el; }}
               role="button"
               tabIndex={0}
-              aria-label={`View submitted ${v.mediaKind === 'video' ? 'video' : 'photo'} for ${v.moment} — ${v.player}`}
+              aria-label={`View submitted ${v.mediaKind === 'video' ? 'video' : 'photo'} for ${v.moment}, ${v.player}`}
               onClick={() => setExpandedId(v.id)}
               onKeyDown={onActivateKey(() => setExpandedId(v.id))}
               style={{ width: 56, height: 56, borderRadius: 12, overflow: 'hidden', flex: '0 0 auto', position: 'relative', background: '#100E0C', cursor: 'pointer' }}

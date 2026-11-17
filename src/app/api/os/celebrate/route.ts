@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     actorProfileId: user.id,
     recipients: (guardianRows ?? []).map((g) => ({ profileId: g.profile_id, presenceScope: `collection:${playerId}` })),
     title: 'Coach Recognition',
-    body: `${actorName} recognised ${player?.name ?? 'your player'} — ${award}`,
+    body: `${actorName} recognised ${player?.name ?? 'your player'}: ${award}`,
     relatedMomentId: moment.id,
   });
 

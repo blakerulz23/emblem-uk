@@ -14,10 +14,17 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-  const [step, setStep] = useState<'ready' | 'email' | 'code'>('ready');
+  const [step, setStep] = useState<'ready' | 'email' | 'code' | 'photo-day'>('ready');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  // Photo Day (migration 0106): set only when the team has a scheduled
+  // photo day and this parent has not chosen yet.
+  const [photoDay, setPhotoDay] = useState<{ participationId: string; scheduledFor: string; venueLabel: string } | null>(null);
+  const [photoChoice, setPhotoChoice] = useState<'yes' | 'no' | ''>('');
+  const [childFirstName, setChildFirstName] = useState('');
+  const [childInitial, setChildInitial] = useState('');
+  const [childNumber, setChildNumber] = useState('');
 
   useEffect(() => {
     if (!cooldown) return;
@@ -32,8 +39,43 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
       const response = await fetch('/api/squad-invite-links/participation', { method: 'POST', headers: { 'X-Emblem-CSRF': csrfToken } });
       if (response.status === 401) { setStep('email'); return; }
       if (!response.ok) { setError('This Squad Invite is unavailable.'); return; }
-      const result = (await response.json()) as { participationId: string };
+      const result = (await response.json()) as {
+        participationId: string;
+        photoDay?: { scheduledFor: string; venueLabel: string; canGrant: boolean; decision: string | null } | null;
+      };
+      if (result.photoDay && result.photoDay.canGrant && result.photoDay.decision === null) {
+        setPhotoDay({ participationId: result.participationId, scheduledFor: result.photoDay.scheduledFor, venueLabel: result.photoDay.venueLabel });
+        setStep('photo-day');
+        return;
+      }
       router.push(`/builder?squadParticipation=${encodeURIComponent(result.participationId)}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  const savePhotoDayChoice = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!photoDay || !photoChoice) { setError('Choose yes or no.'); return; }
+    setError('');
+    setSubmitting(true);
+    try {
+      const body = photoChoice === 'yes'
+        ? { granted: true, firstName: childFirstName, surnameInitial: childInitial, squadNumber: childNumber.trim() === '' ? null : Number(childNumber) }
+        : { granted: false };
+      let response: Response;
+      try {
+        response = await fetch(`/api/squad-invite-participations/${encodeURIComponent(photoDay.participationId)}/photo-day-consent`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Emblem-CSRF': csrfToken },
+          body: JSON.stringify(body),
+        });
+      } catch {
+        setError('A network problem stopped the request. Check your connection and try again.');
+        return;
+      }
+      const json = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) { setError(json?.error ?? 'Your choice could not be saved. Try again.'); return; }
+      router.push(`/builder?squadParticipation=${encodeURIComponent(photoDay.participationId)}`);
     } finally {
       setSubmitting(false);
     }
@@ -107,8 +149,8 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
   if (invitation.currentIncentive === 'squad') {
     incentiveHeadline = 'Full Squad pricing unlocked';
     incentiveDetail = invitation.freeCoachCardConfirmed
-      ? `${invitation.completedCommitments} joined — the lowest price per card, plus a free coach card.`
-      : `${invitation.completedCommitments} joined — the lowest price per card.`;
+      ? `${invitation.completedCommitments} joined: the lowest price per card, plus a free coach card.`
+      : `${invitation.completedCommitments} joined: the lowest price per card.`;
   } else if (invitation.currentIncentive === 'multi') {
     const remaining = Math.max(1, SQUAD_MIN_DISPLAY - invitation.completedCommitments);
     incentiveHeadline = `${invitation.completedCommitments} of ${SQUAD_MIN_DISPLAY} joined`;
@@ -276,6 +318,67 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
                   Change email
                 </button>
               </div>
+            </form>
+          )}
+
+          {step === 'photo-day' && photoDay && (
+            <form onSubmit={savePhotoDayChoice} className="grid gap-4" noValidate>
+              <div className="rounded-2xl border-2 border-sky-200 bg-sky-50 p-5 text-sm text-sky-950">
+                <h2 className="text-lg font-bold">Photo Day</h2>
+                <p className="mt-1">
+                  An Emblem photographer will take matchday photos of the team at {photoDay.venueLabel} on{' '}
+                  {new Date(`${photoDay.scheduledFor}T12:00:00Z`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}.
+                  If you say yes, we match your child&apos;s photos to your card so you can choose one.
+                </p>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  <li>Photos are used only to make your child&apos;s card. Nothing is posted online without separate written permission.</li>
+                  <li>You see only your own child&apos;s photos. Other parents never see them.</li>
+                  <li>Every photo is deleted within 30 days of the team order closing, and no later than 60 days after the shoot.</li>
+                  <li>If you say no, the photographer will leave your child out. You can still upload your own photo.</li>
+                  <li>You can withdraw at any time from your card page.</li>
+                </ul>
+              </div>
+              <fieldset className="grid gap-2">
+                <legend className="font-semibold">Can the photographer take photos of your child?</legend>
+                <label className="flex items-center gap-2 rounded-xl border border-[#c9c2b3] p-3">
+                  <input type="radio" name="photo-day-choice" value="yes" checked={photoChoice === 'yes'} onChange={() => setPhotoChoice('yes')} />
+                  Yes, for my child&apos;s card
+                </label>
+                <label className="flex items-center gap-2 rounded-xl border border-[#c9c2b3] p-3">
+                  <input type="radio" name="photo-day-choice" value="no" checked={photoChoice === 'no'} onChange={() => setPhotoChoice('no')} />
+                  No, I&apos;ll upload my own photo
+                </label>
+              </fieldset>
+              {photoChoice === 'yes' && (
+                <div className="grid gap-3">
+                  <p className="text-sm text-[#5b6b60]">So we can match the right photos to your child:</p>
+                  <label htmlFor="pd-first" className="block font-semibold">
+                    Child&apos;s first name
+                    <input id="pd-first" required maxLength={24} autoComplete="off" value={childFirstName} onChange={(e) => setChildFirstName(e.target.value)}
+                      className="mt-1 block w-full rounded-xl border border-[#c9c2b3] p-3" />
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label htmlFor="pd-initial" className="block font-semibold">
+                      Surname initial
+                      <input id="pd-initial" required maxLength={1} autoComplete="off" value={childInitial} onChange={(e) => setChildInitial(e.target.value.toUpperCase())}
+                        className="mt-1 block w-full rounded-xl border border-[#c9c2b3] p-3" />
+                    </label>
+                    <label htmlFor="pd-number" className="block font-semibold">
+                      Shirt number <span className="font-normal text-[#5b6b60]">(if known)</span>
+                      <input id="pd-number" inputMode="numeric" pattern="[0-9]*" maxLength={3} autoComplete="off" value={childNumber} onChange={(e) => setChildNumber(e.target.value.replace(/[^0-9]/g, ''))}
+                        className="mt-1 block w-full rounded-xl border border-[#c9c2b3] p-3" />
+                    </label>
+                  </div>
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={submitting || !photoChoice}
+                aria-busy={submitting}
+                className="w-full rounded-xl bg-orange-600 p-3 font-bold text-white transition hover:bg-orange-700 disabled:opacity-60"
+              >
+                {submitting ? 'Saving…' : 'Continue to your card'}
+              </button>
             </form>
           )}
 
