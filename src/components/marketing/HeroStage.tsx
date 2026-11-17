@@ -9,11 +9,13 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
  * hero), rebuilt light: Canada renders every card live from full print
  * templates (~30 MB); here each design is one pre-rendered WebP (40–80 KB).
  *
- * The phone shows the real app: a capture of the /os/demo Collection screen,
- * scrolled to the season albums so four photo memories show (fictional sample
- * player, demo banner hidden, status-bar strip cleared under the notch,
- * 390 × 751 at 2x, the phone screen's own ratio) as a 23–45 KB WebP, so no
- * app code or backend request ships with the homepage. The app has no per-design theme, so the phone
+ * The phone shows the real app in its own dark mode, for contrast with the
+ * light page: a capture of the /os/demo Collection screen scrolled to the
+ * first two season albums, so four whole memory cards sit between the notch
+ * and the nav (fictional sample player; demo banner, the story banner and the
+ * later album hidden so no card is cut). 390 × 751 at 2x, exactly the glass's
+ * shape (see .emh-stage-phone), as a 23–46 KB WebP, so no app code or backend
+ * request ships with the homepage. The app has no per-design theme, so the phone
  * keeps its colours when the card design changes.
  *
  * - Only the first design is in the server HTML. The others mount after the
