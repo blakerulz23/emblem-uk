@@ -5,8 +5,16 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { onActivateKey } from '../a11y';
 import { useOsPhotoUpload } from '../useOsPhotoUpload';
-import { COACH_DELETE_CONFIRM, COACH_DELETE_REVIEW_NOTE, deletionReviewResponse } from '@/lib/account-deletion-copy';
-import DeletionReviewStatus from './DeletionReviewStatus';
+import {
+  CLEARED_DELETE_FLOW,
+  deletionOutcome,
+  deletionRedirectDelayMs,
+  sendCodeFailureMessage,
+  type DeleteStep,
+  type DeletionOutcome,
+  type ReauthStatus,
+} from '@/lib/account-deletion-flow';
+import DeleteAccountPanel from './DeleteAccountPanel';
 
 const COLORS = {
   card: 'var(--os-card)',
@@ -82,9 +90,15 @@ export default function AccountSettings(props: AccountSettingsProps) {
 
   // --- Account info ---
   const [email, setEmail] = useState<string | null>(null);
+  // Send code stays disabled until this has settled (it needs the address).
+  const [emailLoaded, setEmailLoaded] = useState(false);
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? null));
+    supabase.auth
+      .getUser()
+      .then(({ data }) => setEmail(data.user?.email ?? null))
+      .catch(() => setEmail(null))
+      .finally(() => setEmailLoaded(true));
   }, []);
 
   const [signingOut, setSigningOut] = useState(false);
@@ -101,22 +115,17 @@ export default function AccountSettings(props: AccountSettingsProps) {
     window.location.assign('/os');
   };
 
-  // --- Delete guardian account: two-step destructive confirm, OTP re-auth ---
-  type DeleteStep = 'idle' | 'explain' | 'reauth-code' | 'confirm' | 'done';
+  // --- Delete account: two-step destructive confirm, OTP re-auth (DeleteAccountPanel) ---
   const [deleteStep, setDeleteStep] = useState<DeleteStep>('idle');
   const [reauthCode, setReauthCode] = useState('');
-  const [reauthStatus, setReauthStatus] = useState<'idle' | 'sending' | 'verifying' | 'error'>('idle');
+  const [reauthStatus, setReauthStatus] = useState<ReauthStatus>('idle');
   const [reauthError, setReauthError] = useState<string | null>(null);
   const [deleteAccountStatus, setDeleteAccountStatus] = useState<'idle' | 'deleting' | 'error'>('idle');
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
-  // Set when the server reports partial completion — DB data removed,
-  // sign-in revocation still finishing (see the route's own doc comment).
-  // Must never be papered over as a flat "deleted" success.
-  const [deleteAccountPartial, setDeleteAccountPartial] = useState(false);
-  // Set when the deletion went to staff review (migration 0097): nothing has
-  // been deleted yet, so this must never read as "removed" either.
-  const [deleteAccountUnderReview, setDeleteAccountUnderReview] = useState(false);
-  const [deleteAccountCoachPaused, setDeleteAccountCoachPaused] = useState(false);
+  // What the server reported: a staff review (0097, nothing deleted), a
+  // partial completion (sign-in revocation still finishing) or a deletion.
+  // Neither of the first two may ever read as a flat "deleted".
+  const [deleteOutcome, setDeleteOutcome] = useState<DeletionOutcome | null>(null);
   // The account's own deletion review, if one is pending (migration 0098).
   const [reviewStatus, setReviewStatus] = useState<{ underReview: boolean; coachAccessPaused: boolean } | null>(null);
   useEffect(() => {
@@ -134,18 +143,36 @@ export default function AccountSettings(props: AccountSettingsProps) {
     };
   }, []);
 
+  // Cancel closes the flow and clears every message it showed.
+  const cancelDelete = () => {
+    setDeleteStep(CLEARED_DELETE_FLOW.step);
+    setReauthCode(CLEARED_DELETE_FLOW.reauthCode);
+    setReauthStatus(CLEARED_DELETE_FLOW.reauthStatus);
+    setReauthError(CLEARED_DELETE_FLOW.reauthError);
+    setDeleteAccountError(CLEARED_DELETE_FLOW.deleteError);
+  };
+
   const sendReauthCode = async () => {
-    if (!email || reauthStatus === 'sending') return;
+    if (!emailLoaded || !email || reauthStatus === 'sending') return;
     setReauthStatus('sending');
     setReauthError(null);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({ email });
-    if (error) {
+    setDeleteAccountError(null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithOtp({ email });
+      if (error) {
+        // Shown on the step the person is on (explain), not on the next one.
+        setReauthStatus('error');
+        setReauthError(sendCodeFailureMessage(error.message));
+        return;
+      }
+    } catch {
       setReauthStatus('error');
-      setReauthError(error.message);
+      setReauthError(sendCodeFailureMessage('Check your connection and try again.'));
       return;
     }
     setReauthStatus('idle');
+    setReauthCode('');
     setDeleteStep('reauth-code');
   };
 
@@ -183,12 +210,10 @@ export default function AccountSettings(props: AccountSettingsProps) {
         setDeleteAccountError((body && typeof body.error === 'string' && body.error) || 'Could not delete your account — try again.');
         return;
       }
-      const body = await res.json().catch(() => null);
-      setDeleteAccountPartial(!!body?.partial);
-      setDeleteAccountUnderReview(!!body?.identityRetained);
-      setDeleteAccountCoachPaused(Number(body?.coachAccessSuspended) > 0);
+      const outcome = deletionOutcome(await res.json().catch(() => null));
+      setDeleteOutcome(outcome);
       setDeleteStep('done');
-      setTimeout(() => window.location.assign('/os'), body?.identityRetained ? 6000 : body?.partial ? 3200 : 2200);
+      setTimeout(() => window.location.assign('/os'), deletionRedirectDelayMs(outcome));
     } catch {
       setDeleteAccountStatus('error');
       setDeleteAccountError('Could not reach the server — check your connection and try again.');
@@ -236,118 +261,28 @@ export default function AccountSettings(props: AccountSettingsProps) {
         {player && <PlayerPublicAndMediaSections player={player} />}
 
         <SectionCard title="Delete account">
-          {deleteStep !== 'done' && reviewStatus?.underReview && <DeletionReviewStatus coachAccessPaused={reviewStatus.coachAccessPaused} />}
-          {deleteStep === 'idle' && (
-            <>
-              <p style={{ fontSize: 12.5, lineHeight: 1.55, color: COLORS.muted, margin: '0 0 12px' }}>
-                {player
-                  ? <>Permanently deletes your guardian login and access. This is separate from deleting {playerName}&apos;s data — see below.</>
-                  : 'Permanently deletes your Emblem login and your coach access.'}
-              </p>
-              <div
-                role="button"
-                tabIndex={0}
-                aria-label="Delete account"
-                onClick={() => setDeleteStep('explain')}
-                onKeyDown={onActivateKey(() => setDeleteStep('explain'))}
-                style={{ display: 'inline-flex', padding: '10px 16px', borderRadius: 11, border: `1px solid ${COLORS.danger}`, fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: COLORS.danger, cursor: 'pointer' }}
-              >
-                Delete account
-              </div>
-
-              {player && <PlayerDataDeletionRequest player={player} />}
-            </>
-          )}
-
-          {deleteStep === 'explain' && (
-            <div>
-              <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 16, color: COLORS.ink, marginBottom: 10 }}>Before you delete your account</div>
-              {player ? (
-                <ul style={{ fontSize: 12.5, lineHeight: 1.6, color: COLORS.muted, margin: '0 0 14px', paddingLeft: 18 }}>
-                  <li>This deletes <b>your own guardian login</b> — the email you sign in with, and your access to Emblem OS.</li>
-                  <li>It does <b>not</b> delete {playerName}&apos;s profile, moments or photos — those belong to {playerName}, not your account.</li>
-                  <li>If another guardian is also linked to {playerName}, they keep their own full access — nothing changes for them, and {playerName}&apos;s data is not touched.</li>
-                  <li>If you&apos;re {playerName}&apos;s only guardian, deleting your account also removes your link to them — we file a request to delete their data too, which our team reviews and carries out by hand rather than deleting it instantly.</li>
-                  <li>Records that must stay connected to a physical card, an order, or another guardian&apos;s account are kept, as they are for any other guardian.</li>
-                </ul>
-              ) : (
-                <ul style={{ fontSize: 12.5, lineHeight: 1.6, color: COLORS.muted, margin: '0 0 14px', paddingLeft: 18 }}>
-                  <li>If nothing needs staff review (see the last point), this deletes <b>your own login</b> — the email you sign in with — and your coach access to every team and player.</li>
-                  <li>Players&apos; cards, moments and the recognitions you gave stay with their families, still marked as coach-verified.</li>
-                  <li>Any team request you sent is withdrawn.</li>
-                  {alsoGuardian && (
-                    <li>You&apos;re also a parent or guardian on Emblem: your guardian access goes too. Another guardian keeps full access; if you&apos;re a child&apos;s only guardian, we file a request to delete their data, which our team reviews by hand.</li>
-                  )}
-                  <li>{COACH_DELETE_REVIEW_NOTE}</li>
-                </ul>
-              )}
-              {deleteAccountError && <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 12 }}>{deleteAccountError}</p>}
-              <p style={{ fontSize: 12, color: COLORS.muted, marginBottom: 10 }}>To confirm, we&apos;ll send a fresh code to {email ?? 'your email'}.</p>
-              <div style={{ display: 'flex', gap: 9 }}>
-                <div role="button" tabIndex={0} aria-label="Cancel" onClick={() => setDeleteStep('idle')} onKeyDown={onActivateKey(() => setDeleteStep('idle'))} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: COLORS.ink, cursor: 'pointer' }}>
-                  Cancel
-                </div>
-                <div role="button" tabIndex={0} aria-label="Send verification code" onClick={sendReauthCode} onKeyDown={onActivateKey(sendReauthCode)} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, background: COLORS.danger, color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: reauthStatus === 'sending' ? 'default' : 'pointer' }}>
-                  {reauthStatus === 'sending' ? 'Sending…' : 'Send code'}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {deleteStep === 'reauth-code' && (
-            <form onSubmit={verifyReauthCode}>
-              <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 16, color: COLORS.ink, marginBottom: 8 }}>Enter your code</div>
-              <p style={{ fontSize: 12.5, color: COLORS.muted, margin: '0 0 10px' }}>We sent a fresh code to {email}. Enter it to confirm it&apos;s really you before we delete anything.</p>
-              <input
-                type="text"
-                inputMode="numeric"
-                required
-                value={reauthCode}
-                onChange={(e) => setReauthCode(e.target.value)}
-                placeholder="6-digit code"
-                style={{ width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 10, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontSize: 14, marginBottom: 10 }}
-              />
-              {reauthError && <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 10 }}>{reauthError}</p>}
-              <div style={{ display: 'flex', gap: 9 }}>
-                <div role="button" tabIndex={0} aria-label="Cancel" onClick={() => setDeleteStep('idle')} onKeyDown={onActivateKey(() => setDeleteStep('idle'))} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: COLORS.ink, cursor: 'pointer' }}>
-                  Cancel
-                </div>
-                <button type="submit" disabled={reauthStatus === 'verifying'} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, background: COLORS.danger, color: '#fff', border: 'none', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: reauthStatus === 'verifying' ? 'default' : 'pointer' }}>
-                  {reauthStatus === 'verifying' ? 'Verifying…' : 'Verify'}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {deleteStep === 'confirm' && (
-            <div>
-              <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 16, color: COLORS.ink, marginBottom: 10 }}>Permanently delete your account?</div>
-              <p style={{ fontSize: 12.5, lineHeight: 1.55, color: COLORS.muted, margin: '0 0 14px' }}>
-                {player
-                  ? 'This cannot be undone. Your sign-in and guardian access are removed immediately.'
-                  : COACH_DELETE_CONFIRM}
-              </p>
-              {deleteAccountError && <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 12 }}>{deleteAccountError}</p>}
-              <div style={{ display: 'flex', gap: 9 }}>
-                <div role="button" tabIndex={0} aria-label="Cancel" onClick={() => (deleteAccountStatus === 'deleting' ? null : setDeleteStep('idle'))} onKeyDown={deleteAccountStatus === 'deleting' ? undefined : onActivateKey(() => setDeleteStep('idle'))} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, border: `1px solid ${COLORS.border}`, fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, color: COLORS.ink, cursor: deleteAccountStatus === 'deleting' ? 'default' : 'pointer' }}>
-                  Cancel
-                </div>
-                <div role="button" tabIndex={0} aria-label="Permanently delete my account" onClick={deleteAccountStatus === 'deleting' ? undefined : deleteAccount} onKeyDown={deleteAccountStatus === 'deleting' ? undefined : onActivateKey(deleteAccount)} style={{ flex: 1, textAlign: 'center', padding: 12, borderRadius: 11, background: deleteAccountStatus === 'deleting' ? 'rgba(192,57,43,.5)' : COLORS.danger, color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 13, cursor: deleteAccountStatus === 'deleting' ? 'default' : 'pointer' }}>
-                  {deleteAccountStatus === 'deleting' ? 'Deleting…' : 'Permanently delete'}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {deleteStep === 'done' && (
-            <p style={{ fontSize: 13.5, fontWeight: 700, color: '#2E9E5B', textAlign: 'center', padding: '10px 0', lineHeight: 1.5 }}>
-              {deleteAccountUnderReview
-                ? `${deletionReviewResponse(deleteAccountCoachPaused)} Signing you out…`
-                : deleteAccountPartial
-                ? "Your account data has been removed. We're still finishing the revocation of your sign-in — this happens automatically, no action needed. Signing you out…"
-                : 'Your account has been deleted. Signing you out…'}
-            </p>
-          )}
+          <DeleteAccountPanel
+            audience={player ? 'guardian' : 'coach'}
+            playerName={playerName}
+            alsoGuardian={alsoGuardian}
+            email={email}
+            emailLoaded={emailLoaded}
+            step={deleteStep}
+            reauthCode={reauthCode}
+            reauthStatus={reauthStatus}
+            reauthError={reauthError}
+            deleteStatus={deleteAccountStatus}
+            deleteError={deleteAccountError}
+            outcome={deleteOutcome}
+            reviewStatus={reviewStatus}
+            playerSection={player ? <PlayerDataDeletionRequest player={player} /> : null}
+            onStart={() => setDeleteStep('explain')}
+            onCancel={cancelDelete}
+            onSendCode={sendReauthCode}
+            onCodeChange={setReauthCode}
+            onVerify={verifyReauthCode}
+            onDelete={deleteAccount}
+          />
         </SectionCard>
       </div>
     </div>

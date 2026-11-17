@@ -54,5 +54,12 @@ export function signInErrorMessage(error: { code?: string; message?: string }): 
  */
 export const COACH_DELETE_REVIEW_NOTE =
   'If you’ve written player assessments, goals, strengths or season focus (or organised a Squad Invite), those records have to be kept, so your request goes to Emblem staff for review instead. Nothing is deleted while they review it, and your coaching access is paused. If staff decide not to delete your account, your coaching access is restored where possible.';
+/**
+ * Parent/guardian confirm step. A guardian account can also go to staff
+ * review (for example a Squad Invite organiser, 0097), so removal is not
+ * promised as immediate.
+ */
+export const GUARDIAN_DELETE_CONFIRM =
+  'If nothing needs staff review, your sign-in and guardian access are removed straight away and this cannot be undone. If your account is linked to records that have to be kept (such as a Squad Invite you organised), your request goes to Emblem staff for review instead, and nothing is deleted until they decide.';
 export const COACH_DELETE_CONFIRM =
   'If nothing needs staff review, your account is deleted straight away and this cannot be undone. If it does need review, nothing is deleted until staff decide, and your coaching access is paused meanwhile.';
