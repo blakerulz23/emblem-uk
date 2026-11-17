@@ -629,7 +629,7 @@ const stepCards = [
   {
     number: '1',
     title: 'Upload',
-    body: 'Choose your favourite photo and personalise your card with 100s of templates.',
+    body: 'Upload your favourite photo, pick a card design and add their name, number and club.',
   },
   {
     number: '2',

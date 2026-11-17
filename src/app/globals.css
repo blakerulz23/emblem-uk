@@ -10561,6 +10561,11 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   text-decoration: none;
 }
 .emh-faq-jump a:hover { border-color: #f1601d; }
+.emh-gift-coach {
+  margin-top: 24px;
+  font-size: 15px;
+  line-height: 1.55;
+}
 .emh-subpage-hero > .emh-gift-deadline {
   display: inline-block;
   margin-top: 20px;
