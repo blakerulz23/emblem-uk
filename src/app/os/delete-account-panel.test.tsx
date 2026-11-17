@@ -14,7 +14,6 @@ import {
 } from '@/lib/account-deletion-flow';
 import { DELETION_REVIEW_COACHING_PAUSED, DELETION_REVIEW_RESPONSE, GUARDIAN_DELETE_CONFIRM, SETTINGS_REVIEW_TITLE } from '@/lib/account-deletion-copy';
 
-
 const noop = () => {};
 const base: DeleteAccountPanelProps = {
   audience: 'coach',
