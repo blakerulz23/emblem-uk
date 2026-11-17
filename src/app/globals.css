@@ -10671,7 +10671,7 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 }
 .emh-stage-card {
   position: absolute;
-  left: 7%;
+  left: 5%;
   top: 4%;
   width: 41%;
   aspect-ratio: 5 / 7;
@@ -10705,7 +10705,7 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 }
 .emh-stage-nfc {
   position: absolute;
-  left: 47%;
+  left: 45%;
   top: 42%;
   width: 9%;
   overflow: visible;
@@ -10721,12 +10721,15 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   0%, 100% { opacity: 0.25; }
   40% { opacity: 1; }
 }
+/* Wide enough that the glass has exactly the capture's shape (390 × 751):
+   37.2cqw of glass across, 71.6cqw down, plus 1.4cqw of bezel each side,
+   so object-fit never crops a memory card off the edge. */
 .emh-stage-phone {
   position: absolute;
-  right: 6%;
+  right: 4%;
   top: 0;
-  width: 36%;
-  aspect-ratio: 9 / 18.5;
+  width: 40%;
+  aspect-ratio: 40 / 74.43;
   transform: rotate(4deg);
   padding: 1.4cqw;
   border-radius: 6.4cqw;
@@ -10738,7 +10741,7 @@ button.uk-bgremove-frame:disabled { cursor: default; }
   height: 100%;
   border-radius: 5.2cqw;
   overflow: hidden;
-  background: #f3f1ec;
+  background: #121110;
 }
 /* The captured app screen fills the glass, top-aligned like a real viewport. */
 .emh-phone-screen img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top; }
