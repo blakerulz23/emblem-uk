@@ -299,6 +299,14 @@ describe('the builder keeps guardian controls and creates no records when saving
     expect(builder).toMatch(/saved on this device only, for up to 3 days/);
   });
 
+  it('keeps the full device-only explanation one tap away when the direct single-card builder shows the short line', () => {
+    expect(builder).toContain('Saved on this device for up to 3 days, so you can come back. Nothing is uploaded until you send your card.');
+    const more = builder.match(/<details className="uk-draft-more">([\s\S]*?)<\/details>/)?.[1] ?? '';
+    expect(more).toMatch(/saved on this device only, for up to 3 days/);
+    expect(more).toContain('Nothing is uploaded until you send your card');
+    expect(more).toContain('(tap the Emblem logo)');
+  });
+
   it('clears the draft when an order is submitted or a Squad Invite card is committed', () => {
     expect(builder).toMatch(/setEnquiryStatus\('sent'\);\s*\/\/ Submitted: nothing left to resume on this device\.\s*clearBuilderDraft\(draftScope\)/);
     expect(builder).toMatch(/setSquadInvitePhase\('success'\);\s*clearBuilderDraft\(draftScope\)/);
