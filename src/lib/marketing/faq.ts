@@ -5,9 +5,9 @@ import { PRICES } from './site';
  * Christmas page and the FAQPage structured data, so the visible answers
  * and the schema can never drift apart (Google requires them to match).
  *
- * Every answer states something the UK product actually does today. Delivery
- * times and Christmas dates are deliberately not promised here until
- * production confirms them.
+ * Every answer states something the UK product actually does today. UK
+ * delivery is free (confirmed by Blake, 17 Nov 2026); delivery times are
+ * deliberately not promised here until production confirms them.
  */
 export type FaqItem = {
   question: string;
@@ -56,7 +56,7 @@ export const FAQ_GIFTS_AND_DELIVERY: FaqItem[] = [
   },
   {
     question: 'How much is delivery?',
-    answer: 'UK delivery is calculated at checkout and shown before the order is completed.',
+    answer: 'UK delivery is free.',
   },
   {
     question: 'I sent my card but didn’t finish paying. What now?',
@@ -67,7 +67,7 @@ export const FAQ_GIFTS_AND_DELIVERY: FaqItem[] = [
   {
     question: 'Will it arrive in time for Christmas?',
     answer:
-      'Please order as early as you can. Every card is made to order, and if you are not the child’s parent or guardian, they need to approve the card before it is printed. UK delivery is calculated at checkout and shown before you pay.',
+      'Please order as early as you can. Every card is made to order, and if you are not the child’s parent or guardian, they need to approve the card before it is printed. UK delivery is free.',
     link: { label: 'See Christmas gift ideas →', href: '/football-gifts-for-kids' },
   },
 ];
