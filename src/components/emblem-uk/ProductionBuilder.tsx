@@ -2295,7 +2295,7 @@ export default function ProductionBuilder({
                   {/* eslint-disable-next-line @next/next/no-img-element -- small fixed-size sample card */}
                   <img src="/assets/home/gallery/custom-royal.webp" alt="A finished Emblem card" width={52} height={73} />
                   <div>
-                    <strong>{PRICES.single} &middot; printed in the UK &middot; profile included</strong>
+                    <strong>{PRICES.single} &middot; free UK delivery &middot; profile included</strong>
                     <span>Any clear phone photo works. You&apos;ll see the card before you pay.</span>
                     <a href="/football-gifts-for-kids#cards" data-track="builder_see_designs">No photo handy? See the designs first</a>
                   </div>

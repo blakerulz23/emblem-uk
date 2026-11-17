@@ -23,7 +23,7 @@ const reasons = [
   { title: 'It’s really theirs', body: 'Their photo, name, number and club on a premium printed football card. No two are the same.' },
   { title: 'It keeps going after Christmas', body: 'Tap the card to open their private profile: goals, appearances, photos and coach recognition, all season.' },
   { title: 'Safe to give', body: 'Profiles are private by default and controlled by their parent or guardian.' },
-  { title: 'Small enough for a stocking', body: 'A trading card for a stocking or gift box. ' + PRICES.single + ' with the profile included.' },
+  { title: 'Small enough for a stocking', body: 'A trading card for a stocking or gift box. ' + PRICES.single + ' with the profile and free UK delivery included.' },
 ];
 
 export default function FootballGiftsForKidsPage() {

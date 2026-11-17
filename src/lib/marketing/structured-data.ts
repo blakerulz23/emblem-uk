@@ -34,6 +34,27 @@ export function personalisedCardProductJsonLd() {
       price: (SINGLE_UNIT_PRICE_PENCE / 100).toFixed(2),
       availability: 'https://schema.org/InStock',
       itemCondition: 'https://schema.org/NewCondition',
+      // Free UK delivery (Shopify charges UK customers nothing). Handling +
+      // transit match the Terms' "3–5 business days" and the Merchant Center
+      // shipping settings; change all three together.
+      shippingDetails: {
+        '@type': 'OfferShippingDetails',
+        shippingRate: { '@type': 'MonetaryAmount', value: '0', currency: 'GBP' },
+        shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'GB' },
+        deliveryTime: {
+          '@type': 'ShippingDeliveryTime',
+          handlingTime: { '@type': 'QuantitativeValue', minValue: 1, maxValue: 2, unitCode: 'DAY' },
+          transitTime: { '@type': 'QuantitativeValue', minValue: 2, maxValue: 3, unitCode: 'DAY' },
+        },
+      },
+      // Personalised, made to order: no change-of-mind returns (Terms →
+      // "Returns and reprints"); damaged/defective/wrong cards get a free
+      // reprint or refund, which is a fault remedy, not a return.
+      hasMerchantReturnPolicy: {
+        '@type': 'MerchantReturnPolicy',
+        applicableCountry: 'GB',
+        returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
+      },
     },
   };
 }

@@ -64,7 +64,7 @@ const trustItems = [
   { title: 'Private by default', body: 'Every player profile is private by default.' },
   { title: 'Guardian controlled', body: 'Parents and guardians decide what’s added, who sees it and when it’s deleted.' },
   { title: 'Approved before printing', body: 'Not the parent? Their parent or guardian approves the card first.' },
-  { title: 'Secure checkout', body: 'Shopify’s secure checkout, with UK delivery shown before you pay.' },
+  { title: 'Secure checkout', body: 'Shopify’s secure checkout, with free UK delivery.' },
 ];
 
 export default function Home() {
@@ -101,7 +101,7 @@ export default function Home() {
               </span>
             </Link>
             <p className="emh-home-hero-price">{PRICES.single} · Private digital profile included</p>
-            <p className="emh-home-hero-delivery">UK delivery calculated at checkout.</p>
+            <p className="emh-home-hero-delivery">Free UK delivery.</p>
             <Link className="emh-hero-demo emh-home-hero-demo" href="/os/demo" data-track="hero_try_app">
               Explore the app
               <Icon name="chevR" size={14} />
@@ -165,7 +165,7 @@ export default function Home() {
         </div>
         <div className="emh-pricing-note">
           <p className="emh-pricing-reassurance">Digital profile access included. No annual subscription.</p>
-          <p className="emh-pricing-delivery">UK delivery is calculated at checkout, before you pay.</p>
+          <p className="emh-pricing-delivery">Free UK delivery on every order.</p>
         </div>
       </section>
 

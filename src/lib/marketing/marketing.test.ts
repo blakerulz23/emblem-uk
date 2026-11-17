@@ -76,6 +76,13 @@ describe('structured data', () => {
     expect(PRICES.single).toBe(`£${offer.price}`);
   });
 
+  it('declares free UK delivery and the no-change-of-mind return policy', () => {
+    const offer = personalisedCardProductJsonLd().offers;
+    expect(offer.shippingDetails.shippingRate).toEqual({ '@type': 'MonetaryAmount', value: '0', currency: 'GBP' });
+    expect(offer.shippingDetails.shippingDestination.addressCountry).toBe('GB');
+    expect(offer.hasMerchantReturnPolicy.returnPolicyCategory).toBe('https://schema.org/MerchantReturnNotPermitted');
+  });
+
   it('FAQ schema mirrors the visible questions and answers', () => {
     const schema = faqPageJsonLd(HOMEPAGE_FAQ_ITEMS);
     expect(schema.mainEntity.map((q) => q.name)).toEqual(HOMEPAGE_FAQ_ITEMS.map((i) => i.question));
