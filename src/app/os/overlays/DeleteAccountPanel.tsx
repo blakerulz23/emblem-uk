@@ -1,6 +1,6 @@
 import type { FormEvent, ReactNode } from 'react';
 import { onActivateKey } from '../a11y';
-import { COACH_DELETE_CONFIRM, COACH_DELETE_REVIEW_NOTE, GUARDIAN_DELETE_CONFIRM } from '@/lib/account-deletion-copy';
+import { COACH_DELETE_CONFIRM, COACH_DELETE_REVIEW_NOTE, GUARDIAN_DELETE_CONFIRM, GUARDIAN_DELETE_REVIEW_NOTE } from '@/lib/account-deletion-copy';
 import { deletionDoneMessage, sendCodeButton, type DeleteStep, type DeletionOutcome, type ReauthStatus } from '@/lib/account-deletion-flow';
 import DeletionReviewStatus from './DeletionReviewStatus';
 
@@ -52,6 +52,10 @@ export default function DeleteAccountPanel(p: DeleteAccountPanelProps) {
   const guardian = p.audience === 'guardian';
   const send = sendCodeButton({ email: p.email, emailLoaded: p.emailLoaded, reauthStatus: p.reauthStatus });
   const deleting = p.deleteStatus === 'deleting';
+  // While a request is in flight Cancel is inert: its result would otherwise
+  // reopen the flow after the person had cancelled it.
+  const sending = p.reauthStatus === 'sending';
+  const verifying = p.reauthStatus === 'verifying';
 
   return (
     <>
@@ -83,11 +87,12 @@ export default function DeleteAccountPanel(p: DeleteAccountPanelProps) {
           <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 16, color: COLORS.ink, marginBottom: 10 }}>Before you delete your account</div>
           {guardian ? (
             <ul style={{ fontSize: 12.5, lineHeight: 1.6, color: COLORS.muted, margin: '0 0 14px', paddingLeft: 18 }}>
-              <li>This deletes <b>your own guardian login</b> — the email you sign in with, and your access to Emblem OS.</li>
+              <li>If nothing needs staff review (see the last point), this deletes <b>your own guardian login</b> — the email you sign in with, and your access to Emblem OS.</li>
               <li>It does <b>not</b> delete {playerName}&apos;s profile, moments or photos — those belong to {playerName}, not your account.</li>
               <li>If another guardian is also linked to {playerName}, they keep their own full access — nothing changes for them, and {playerName}&apos;s data is not touched.</li>
               <li>If you&apos;re {playerName}&apos;s only guardian, deleting your account also removes your link to them — we file a request to delete their data too, which our team reviews and carries out by hand rather than deleting it instantly.</li>
               <li>Records that must stay connected to a physical card, an order, or another guardian&apos;s account are kept, as they are for any other guardian.</li>
+              <li>{GUARDIAN_DELETE_REVIEW_NOTE}</li>
             </ul>
           ) : (
             <ul style={{ fontSize: 12.5, lineHeight: 1.6, color: COLORS.muted, margin: '0 0 14px', paddingLeft: 18 }}>
@@ -105,13 +110,13 @@ export default function DeleteAccountPanel(p: DeleteAccountPanelProps) {
           <p style={{ fontSize: 12, color: COLORS.muted, marginBottom: 10 }}>To confirm, we&apos;ll send a fresh code to {p.email ?? 'your email'}.</p>
           {send.note && <p style={{ fontSize: 12, color: COLORS.danger, marginBottom: 10 }}>{send.note}</p>}
           <div style={{ display: 'flex', gap: 9 }}>
-            <div role="button" tabIndex={0} aria-label="Cancel" onClick={p.onCancel} onKeyDown={onActivateKey(p.onCancel)} style={cancelStyle(false)}>
+            <div role="button" tabIndex={0} aria-label="Cancel" aria-disabled={sending} onClick={sending ? undefined : p.onCancel} onKeyDown={sending ? undefined : onActivateKey(p.onCancel)} style={cancelStyle(sending)}>
               Cancel
             </div>
             <div
               role="button"
-              tabIndex={send.disabled ? -1 : 0}
-              aria-label="Send verification code"
+              tabIndex={0}
+              aria-label={send.label === 'Send code' ? 'Send verification code' : `Send verification code: ${send.label}`}
               aria-disabled={send.disabled}
               onClick={send.disabled ? undefined : p.onSendCode}
               onKeyDown={send.disabled ? undefined : onActivateKey(p.onSendCode)}
@@ -138,7 +143,7 @@ export default function DeleteAccountPanel(p: DeleteAccountPanelProps) {
           />
           {p.reauthError && <p role="alert" style={{ fontSize: 12, color: COLORS.danger, marginBottom: 10 }}>{p.reauthError}</p>}
           <div style={{ display: 'flex', gap: 9 }}>
-            <div role="button" tabIndex={0} aria-label="Cancel" onClick={p.onCancel} onKeyDown={onActivateKey(p.onCancel)} style={cancelStyle(false)}>
+            <div role="button" tabIndex={0} aria-label="Cancel" aria-disabled={verifying} onClick={verifying ? undefined : p.onCancel} onKeyDown={verifying ? undefined : onActivateKey(p.onCancel)} style={cancelStyle(verifying)}>
               Cancel
             </div>
             <button type="submit" disabled={p.reauthStatus === 'verifying'} style={{ ...dangerStyle(p.reauthStatus === 'verifying'), border: 'none' }}>

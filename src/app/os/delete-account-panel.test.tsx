@@ -14,6 +14,7 @@ import {
 } from '@/lib/account-deletion-flow';
 import { DELETION_REVIEW_COACHING_PAUSED, DELETION_REVIEW_RESPONSE, GUARDIAN_DELETE_CONFIRM, SETTINGS_REVIEW_TITLE } from '@/lib/account-deletion-copy';
 
+
 const noop = () => {};
 const base: DeleteAccountPanelProps = {
   audience: 'coach',
@@ -40,7 +41,7 @@ type Node = { props?: { role?: string; 'aria-label'?: string; 'aria-disabled'?: 
 function findButton(node: unknown, label: string): Node | null {
   if (!node || typeof node !== 'object') return null;
   const n = node as Node;
-  if (n.props?.role === 'button' && n.props['aria-label'] === label) return n;
+  if (n.props?.role === 'button' && (n.props['aria-label'] === label || n.props['aria-label']?.startsWith(`${label}:`))) return n;
   const kids = n.props?.children;
   for (const k of Array.isArray(kids) ? kids : [kids]) {
     const hit = findButton(k, label);
@@ -78,6 +79,9 @@ describe('Send code waits for the email address', () => {
     expect(button?.props?.['aria-disabled']).toBe(true);
     expect(button?.props?.onClick).toBeUndefined();
     expect(html({ step: 'explain', email: null, emailLoaded: false })).toContain('Loading your email…');
+    // Screen readers hear the state too, and the button stays in the tab order.
+    expect(html({ step: 'explain', email: null, emailLoaded: false })).toContain('aria-label="Send verification code: Loading your email…"');
+    expect(html({ step: 'explain', email: null, emailLoaded: false })).not.toContain('tabindex="-1"');
   });
 
   it('if the email never loads: disabled with a clear way forward', () => {
@@ -109,15 +113,19 @@ describe('Cancel closes the flow and clears stale errors', () => {
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
-  it('Cancel is inert while the deletion request is in flight', () => {
+  it('Cancel is inert while any request is in flight, so a late result cannot reopen a cancelled flow', () => {
     expect(findButton(tree({ step: 'confirm', deleteStatus: 'deleting' }), 'Cancel')?.props?.onClick).toBeUndefined();
+    expect(findButton(tree({ step: 'explain', reauthStatus: 'sending' }), 'Cancel')?.props?.onClick).toBeUndefined();
+    expect(findButton(tree({ step: 'reauth-code', reauthStatus: 'verifying' }), 'Cancel')?.props?.onClick).toBeUndefined();
   });
 
   it('AccountSettings wires every Cancel to the reset that applies all of the cleared state', () => {
     const src = fs.readFileSync(path.join(__dirname, 'overlays/AccountSettings.tsx'), 'utf8');
     expect(src).toContain('onCancel={cancelDelete}');
     const body = src.slice(src.indexOf('const cancelDelete = () => {'), src.indexOf('};', src.indexOf('const cancelDelete = () => {')));
-    for (const field of ['step', 'reauthCode', 'reauthStatus', 'reauthError', 'deleteError']) expect(body).toContain(`CLEARED_DELETE_FLOW.${field}`);
+    for (const [setter, field] of [['setDeleteStep', 'step'], ['setReauthCode', 'reauthCode'], ['setReauthStatus', 'reauthStatus'], ['setReauthError', 'reauthError'], ['setDeleteAccountError', 'deleteError']]) {
+      expect(body).toContain(`${setter}(CLEARED_DELETE_FLOW.${field})`);
+    }
   });
 });
 
@@ -128,6 +136,9 @@ describe('parent confirmation copy', () => {
     expect(GUARDIAN_DELETE_CONFIRM).toContain('If nothing needs staff review');
     expect(GUARDIAN_DELETE_CONFIRM).toContain('nothing is deleted until they decide');
     expect(GUARDIAN_DELETE_CONFIRM).not.toMatch(/in touch|email us|hello@/i);
+    const explain = html({ audience: 'guardian', playerName: 'Sam', step: 'explain' });
+    expect(explain).toContain('If nothing needs staff review (see the last point), this deletes');
+    expect(explain).toContain('your request goes to Emblem staff for review instead');
   });
 });
 

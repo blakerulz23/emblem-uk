@@ -59,6 +59,8 @@ export const COACH_DELETE_REVIEW_NOTE =
  * review (for example a Squad Invite organiser, 0097), so removal is not
  * promised as immediate.
  */
+export const GUARDIAN_DELETE_REVIEW_NOTE =
+  'If your account is linked to records that have to be kept (such as a Squad Invite you organised), your request goes to Emblem staff for review instead. Nothing is deleted while they review it.';
 export const GUARDIAN_DELETE_CONFIRM =
   'If nothing needs staff review, your sign-in and guardian access are removed straight away and this cannot be undone. If your account is linked to records that have to be kept (such as a Squad Invite you organised), your request goes to Emblem staff for review instead, and nothing is deleted until they decide.';
 export const COACH_DELETE_CONFIRM =
