@@ -116,14 +116,45 @@ const collections = [
     title: 'Custom Collection',
     proof: 'Build Your Own',
     points: ['Any club or school', 'One-off events', 'Emblem badge included'],
+    comingSoon: false,
   },
   {
+    // Shown greyed out and not selectable until official partner
+    // collections launch. Its code paths stay (types, payload fallbacks,
+    // coach-card grouping), so turning it back on is this one flag.
     id: 'official',
     title: 'Official Collection',
     proof: 'Official Partner',
     points: ['Licensed badges', 'Official templates', 'League approved'],
+    comingSoon: true,
   },
 ] as const;
+
+const OFFICIAL_COLLECTION_AVAILABLE = !collections.find((collection) => collection.id === 'official')?.comingSoon;
+
+/** Moves an order onto the Custom Collection, keeping any custom design and club already chosen. */
+function toCustomCollection(current: OrderDraft): OrderDraft {
+  const customClub = current.collectionType === 'custom' ? current.club : '';
+  const customTemplate = isCustomCollectionTemplateId(current.templateDefault) ? current.templateDefault : DEFAULT_CUSTOM_TEMPLATE_ID;
+  return {
+    ...current,
+    collectionType: 'custom',
+    collectionName: 'Custom Collection',
+    league: undefined,
+    emjflClubId: undefined,
+    club: customClub,
+    templateDefault: customTemplate,
+    players: current.players.map((player) => ({
+      ...player,
+      club: current.collectionType === 'custom' ? player.club || customClub : '',
+      emjflClubId: undefined,
+      badgeUrl: player.badgeUrl || current.badgeUrl,
+      clubEdited: true,
+      templateId: player.templateId && isCustomCollectionTemplateId(player.templateId) ? player.templateId : customTemplate,
+      updatedAt: nowIso(),
+    })),
+  };
+}
 
 // squad's maxPlayers matches DIRECT_BUILDER_MAX_PAID_PLAYERS exactly — the
 // same server-enforced pilot cap (order-enquiry-validation.ts), not a
@@ -735,7 +766,11 @@ export default function ProductionBuilder({
           // A Squad Invite card stays locked to one child, the Custom
           // Collection and the campaign's own club, whatever the draft says.
           ? { ...restored.order, players, type: 'single', collectionType: 'custom', collectionName: 'Custom Collection', club: squadInviteContext.campaignClubName }
-          : { ...restored.order, players };
+          // A draft saved on the Official Collection while it was open
+          // reopens on Custom, since Official can't be chosen right now.
+          : !OFFICIAL_COLLECTION_AVAILABLE && restored.order.collectionType === 'official'
+            ? toCustomCollection({ ...restored.order, players })
+            : { ...restored.order, players };
         const steps = squadInviteContext ? SQUAD_INVITE_STEP_ORDER : stepsFor(nextOrder.type);
         // Never resume on (or past) the permission step: the adult
         // permission and its email verification are always done again.
@@ -825,32 +860,12 @@ export default function ProductionBuilder({
 
   const selectCollection = (collectionType: OrderDraft['collectionType']) => {
     if (collectionType === 'official') {
+      if (!OFFICIAL_COLLECTION_AVAILABLE) return;
       selectOrderClub(order.emjflClubId || DEFAULT_EMJFL_CLUB.id);
       return;
     }
 
-    setOrder((current) => {
-      const customClub = current.collectionType === 'custom' ? current.club : '';
-      const customTemplate = isCustomCollectionTemplateId(current.templateDefault) ? current.templateDefault : DEFAULT_CUSTOM_TEMPLATE_ID;
-      return {
-        ...current,
-        collectionType: 'custom',
-        collectionName: 'Custom Collection',
-        league: undefined,
-        emjflClubId: undefined,
-        club: customClub,
-        templateDefault: customTemplate,
-        players: current.players.map((player) => ({
-          ...player,
-          club: current.collectionType === 'custom' ? player.club || customClub : '',
-          emjflClubId: undefined,
-          badgeUrl: player.badgeUrl || current.badgeUrl,
-          clubEdited: true,
-          templateId: player.templateId && isCustomCollectionTemplateId(player.templateId) ? player.templateId : customTemplate,
-          updatedAt: nowIso(),
-        })),
-      };
-    });
+    setOrder(toCustomCollection);
   };
 
   const updateCustomClub = (club: string) => {
@@ -2243,13 +2258,16 @@ export default function ProductionBuilder({
                     <button
                       key={collection.id}
                       type="button"
-                      className={order.collectionType === collection.id ? 'active' : ''}
+                      className={collection.comingSoon ? 'coming-soon' : order.collectionType === collection.id ? 'active' : ''}
                       onClick={() => selectCollection(collection.id)}
+                      disabled={collection.comingSoon}
+                      aria-describedby={collection.comingSoon ? `collection-${collection.id}-soon` : undefined}
                     >
                       <span>
                         <strong>{collection.title}</strong>
                         <em>{collection.proof}</em>
                       </span>
+                      {collection.comingSoon && <small id={`collection-${collection.id}-soon`} className="uk-collection-soon">Coming soon</small>}
                       <ul>
                         {collection.points.map((point) => <li key={point}>{point}</li>)}
                       </ul>
