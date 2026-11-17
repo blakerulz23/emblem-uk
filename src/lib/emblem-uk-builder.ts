@@ -102,6 +102,10 @@ export type PlayerDraft = {
   stats: Record<string, string>;
   photo?: PhotoAsset;
   templateId?: TemplateId;
+  // Set when the design was picked by hand (draft only, never sent with the
+  // order): the kit-colour "Best match" may pre-select a design, but never
+  // over one someone chose, including after the draft is reopened.
+  designChosen?: boolean;
   prints: number;
   approvedAt?: string;
   updatedAt: string;

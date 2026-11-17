@@ -35,3 +35,21 @@ describe('Pick their card, then Add their details', () => {
     expect(source).toContain("previewFrameEl?.scrollIntoView({ behavior: 'smooth', block: 'center' })");
   });
 });
+
+describe('designs ranked by their kit colours', () => {
+  it('reads the kit only from a background-removed cut-out, in the direct builder, on the Custom Collection', () => {
+    expect(source).toMatch(/const kitPhotoUrl = !squadInviteContext && order\.collectionType === 'custom' && selectedPlayer\?\.photo\?\.bgRemoved \? selectedPlayer\.photo\.srcUrl : '';/);
+    expect(source).toContain('sampleJerseyColours(kitPhotoUrl)');
+  });
+
+  it('orders the designs by the ranking and badges the top one', () => {
+    expect(source).toContain('return kitRanking ? kitRanking.map((ranked) => ranked.item) : collectionTemplates;');
+    expect(source).toContain('}, [order, selectedPlayer, kitRanking]);');
+    expect(source).toContain('{template.id === kitBestMatchId && <span className="uk-design-best">Best match</span>}');
+  });
+
+  it('pre-selects the best match only on the design step and never over a hand-picked design', () => {
+    expect(source).toMatch(/if \(activeStepId !== 'design' \|\| !kitBestMatchId \|\| !selectedPlayer \|\| selectedPlayer\.designChosen\) return;/);
+    expect(source).toContain('patchPlayer(selectedPlayer.id, { templateId, designChosen: true });');
+  });
+});

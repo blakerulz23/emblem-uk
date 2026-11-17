@@ -1,5 +1,6 @@
 'use client';
 
+import { rankByJersey, sampleJerseyColours, type JerseyColour } from '@/lib/jersey-colour-match';
 import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -1958,26 +1959,62 @@ export default function ProductionBuilder({
   };
   const chooseTemplate = (templateId: TemplateId) => {
     patchOrder({ templateDefault: templateId });
-    if (selectedPlayer) patchPlayer(selectedPlayer.id, { templateId });
+    if (selectedPlayer) patchPlayer(selectedPlayer.id, { templateId, designChosen: true });
   };
   const styleRailRef = useRef<HTMLDivElement>(null);
   const scrollStyleRail = (direction: -1 | 1) => {
     styleRailRef.current?.scrollBy({ left: direction * 140, behavior: 'smooth' });
   };
+  // Kit colours read from each player's background-removed cut-out, on the
+  // device (adapted from Emblem Canada). Direct builder only: Squad Invite's
+  // carousel keeps its fixed order. null while reading.
+  const [kitColours, setKitColours] = useState<Record<string, { url: string; colours: JerseyColour[] | null }>>({});
+  const kitPhotoUrl = !squadInviteContext && order.collectionType === 'custom' && selectedPlayer?.photo?.bgRemoved ? selectedPlayer.photo.srcUrl : '';
+  const selectedKit = selectedPlayer && kitPhotoUrl && kitColours[selectedPlayer.id]?.url === kitPhotoUrl ? kitColours[selectedPlayer.id].colours : undefined;
+  useEffect(() => {
+    if (!selectedPlayer || !kitPhotoUrl || kitColours[selectedPlayer.id]?.url === kitPhotoUrl) return;
+    const playerId = selectedPlayer.id;
+    setKitColours((current) => ({ ...current, [playerId]: { url: kitPhotoUrl, colours: null } }));
+    sampleJerseyColours(kitPhotoUrl)
+      .catch(() => [] as JerseyColour[])
+      .then((colours) => setKitColours((current) => (current[playerId]?.url === kitPhotoUrl ? { ...current, [playerId]: { url: kitPhotoUrl, colours } } : current)));
+    // Read once per player photo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPlayer?.id, kitPhotoUrl]);
+
+  const kitRanking = useMemo(() => {
+    if (!selectedKit?.length) return null;
+    const collectionTemplates = templates.filter((template) => isCustomCollectionTemplateId(template.id));
+    return rankByJersey(collectionTemplates, (template) => template.accent, selectedKit);
+  }, [selectedKit]);
+  // As in the Canada builder, the top-ranked design is the best match
+  // whenever the kit could be read (a plain white or black kit gives no
+  // colours, so no ranking and no badge).
+  const kitBestMatchId = kitRanking ? kitRanking[0].item.id : null;
+  // Start them on the best match, as the Canada builder does: once the kit
+  // has been read, and never over a design they picked by hand.
+  useEffect(() => {
+    if (activeStepId !== 'design' || !kitBestMatchId || !selectedPlayer || selectedPlayer.designChosen) return;
+    if (selectedPlayer.templateId === kitBestMatchId) return;
+    patchPlayer(selectedPlayer.id, { templateId: kitBestMatchId });
+    if (order.type === 'single') patchOrder({ templateDefault: kitBestMatchId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStepId, kitBestMatchId, selectedPlayer?.id]);
+
   const orderedTemplates = useMemo(() => {
     const collectionTemplates = templates.filter((template) =>
       order.collectionType === 'custom'
         ? isCustomCollectionTemplateId(template.id)
         : !isCustomCollectionTemplateId(template.id),
     );
-    if (order.collectionType === 'custom') return collectionTemplates;
+    if (order.collectionType === 'custom') return kitRanking ? kitRanking.map((ranked) => ranked.item) : collectionTemplates;
     const preferred = preferredTemplateForClub(playerClubId(order, selectedPlayer));
     return [...collectionTemplates].sort((a, b) => {
       if (a.id === preferred) return -1;
       if (b.id === preferred) return 1;
       return 0;
     });
-  }, [order, selectedPlayer]);
+  }, [order, selectedPlayer, kitRanking]);
 
   // Desktop split layout (>=1180px, adapted from Emblem Canada's "ukd"
   // builder): the same steps, state and handlers; on desktop the phone column
@@ -2564,7 +2601,23 @@ export default function ProductionBuilder({
             <section className="uk-wizard-panel">
               <p className="uk-wizard-kicker">Pick their card</p>
               <h1>Pick their card.</h1>
-              <p className="uk-wizard-copy">{orderedTemplates.length} designs, shown with their photo. You can change it on the next screen too.</p>
+              <p className="uk-wizard-copy">
+                {orderedTemplates.length} designs, {kitRanking ? 'ranked for this photo' : 'shown with their photo'}. You can change it on the next screen too.
+              </p>
+              {kitPhotoUrl && (
+                <div className="uk-kit-colours" aria-live="polite">
+                  {selectedKit === null || selectedKit === undefined ? (
+                    <span>Reading their kit colours…</span>
+                  ) : selectedKit.length > 0 ? (
+                    <>
+                      <span>Their kit</span>
+                      <span className="uk-kit-swatches" aria-hidden="true">
+                        {selectedKit.map((colour) => <i key={colour.hex} style={{ background: colour.hex }} />)}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+              )}
               {order.type !== 'single' && (
                 <div className="uk-squad-edit-bar">
                   <button type="button" onClick={() => selectAdjacentPlayer(-1)} disabled={selectedIndex <= 0}>Previous</button>
@@ -2590,6 +2643,7 @@ export default function ProductionBuilder({
                         player={selectedPlayer ? { ...selectedPlayer, templateId: template.id } : createPlayer({ templateId: template.id })}
                         compact
                       />
+                      {template.id === kitBestMatchId && <span className="uk-design-best">Best match</span>}
                       <strong>{template.name}</strong>
                       {order.collectionType === 'official' && template.id === preferredTemplateForClub(playerClubId(order, selectedPlayer)) && <small>Best match</small>}
                     </button>

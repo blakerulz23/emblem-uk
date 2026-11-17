@@ -1898,6 +1898,42 @@ button.uk-wizard-brand {
   .uk-design-grid .uk-real-card.compact { transform: scale(0.9); transform-origin: top center; margin-bottom: -22px; }
 }
 
+/* Kit colours read from the photo, and the design that matches them best. */
+.uk-design-grid button { position: relative; }
+.uk-design-best {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 3;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--wizard-accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow: 0 6px 14px rgba(20, 17, 15, 0.25);
+}
+.uk-kit-colours {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  margin-top: 14px;
+  color: var(--wizard-soft);
+  font-size: 15px;
+  font-weight: 700;
+}
+.uk-kit-swatches { display: inline-flex; gap: 6px; }
+.uk-kit-swatches i {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px var(--wizard-line);
+}
+
 /* Direct builder details step: the design picked on the previous step. */
 .uk-design-chosen {
   display: flex;
