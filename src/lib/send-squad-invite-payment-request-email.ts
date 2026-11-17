@@ -38,9 +38,9 @@ export async function sendSquadInvitePaymentRequestEmail(params: {
       body: JSON.stringify({
         from,
         to: params.toEmail,
-        subject: `Complete payment for your Squad Invite card — ${params.teamName}`,
+        subject: `Complete payment for your Squad Invite card: ${params.teamName}`,
         html: `
-          <h2>Your card is ready — payment is now open</h2>
+          <h2>Your card is ready. Payment is now open</h2>
           <p>Squad numbers for <strong>${team}</strong> are finalised, and it's time to complete payment for the card you built.</p>
           <p><strong>${priceLine}</strong></p>
           <p><a href="${params.paymentUrl}" style="display:inline-block;padding:12px 20px;background:#E97435;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Pay now</a></p>

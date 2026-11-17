@@ -88,8 +88,8 @@ function buildSquadInviteEmail(
     case 'approved_link_ready':
       return {
         subject: `Your Squad Invite for ${params.teamName} has been approved`,
-        html: `<h2>Your Squad Invite has been approved</h2><p><strong>${team}</strong> · Reference: <strong>${ref}</strong></p><p>Here's what happens next: sign in and complete delivery setup. Once delivery details are added, the link to share with parents becomes available — it isn't ready before then.</p>${ctaButtonHtml(manageUrl, 'Complete setup and get your parent link')}<p style="color:#6b7280;font-size:13px">If you weren't expecting this email, please contact Emblem support before continuing.</p>`,
-        text: `Your Squad Invite has been approved\n\n${params.teamName} · Reference: ${params.publicReference}\n\nHere's what happens next: sign in and complete delivery setup. Once delivery details are added, the link to share with parents becomes available — it isn't ready before then.\n\n${ctaLineText(manageUrl, 'Complete setup and get your parent link')}\n\nIf you weren't expecting this email, please contact Emblem support before continuing.`,
+        html: `<h2>Your Squad Invite has been approved</h2><p><strong>${team}</strong> · Reference: <strong>${ref}</strong></p><p>Here's what happens next: sign in and complete delivery setup. Once delivery details are added, the link to share with parents becomes available. It isn't ready before then.</p>${ctaButtonHtml(manageUrl, 'Complete setup and get your parent link')}<p style="color:#6b7280;font-size:13px">If you weren't expecting this email, please contact Emblem support before continuing.</p>`,
+        text: `Your Squad Invite has been approved\n\n${params.teamName} · Reference: ${params.publicReference}\n\nHere's what happens next: sign in and complete delivery setup. Once delivery details are added, the link to share with parents becomes available. It isn't ready before then.\n\n${ctaLineText(manageUrl, 'Complete setup and get your parent link')}\n\nIf you weren't expecting this email, please contact Emblem support before continuing.`,
       };
     case 'rejected':
       return {

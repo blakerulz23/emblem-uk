@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (!(await consumeAnonymousRequestRateLimit(request.headers, 'partner-application', parsed.value.email))) {
-    return NextResponse.json({ error: 'Too many attempts — please try again later.' }, { status: 429 });
+    return NextResponse.json({ error: 'Too many attempts. Please try again later.' }, { status: 429 });
   }
 
   const { name, email, platform, profileUrl, audience } = parsed.value;
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
   );
   if (error) {
     console.error('partners/apply: insert failed');
-    return NextResponse.json({ error: 'Could not send your application — please try again.' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not send your application. Please try again.' }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true });

@@ -127,7 +127,7 @@ export default function MomentStage({ state, actions }: { state: OsState; action
                 <div style={{ letterSpacing: '.18em', fontSize: 12, fontWeight: 800, color: '#E97435', margin: '0 0 10px' }}>COACH NOTES</div>
                 <div style={{ background: '#1C1A18', borderRadius: 16, padding: 16, border: '1px solid rgba(255,255,255,.06)', display: 'flex', gap: 13 }}>
                   <div style={{ width: 40, height: 40, borderRadius: '50%', flex: '0 0 auto', background: 'linear-gradient(150deg,#3a3a3a,#111)' }} />
-                  <div><p style={{ fontSize: 14, lineHeight: 1.55, color: '#E7E1D6', margin: '0 0 8px', fontStyle: 'italic' }}>&quot;{rc.coach}&quot;</p><div style={{ fontSize: 12, fontWeight: 700, color: '#9C948A' }}>— {rc.coachName}</div></div>
+                  <div><p style={{ fontSize: 14, lineHeight: 1.55, color: '#E7E1D6', margin: '0 0 8px', fontStyle: 'italic' }}>&quot;{rc.coach}&quot;</p><div style={{ fontSize: 12, fontWeight: 700, color: '#9C948A' }}>{rc.coachName}</div></div>
                 </div>
               </>
             )}

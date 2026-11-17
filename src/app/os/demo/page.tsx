@@ -11,7 +11,7 @@ import OsApp from '../OsApp';
  * in the header switches between the parent and coach sides.
  */
 export const metadata: Metadata = {
-  title: 'Emblem OS — Demo',
+  title: 'Emblem OS | Demo',
   description: 'A look inside the app an Emblem card unlocks, with sample data.',
   robots: { index: false, follow: false },
 };

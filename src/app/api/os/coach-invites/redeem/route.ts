@@ -161,7 +161,7 @@ export async function POST(request: NextRequest) {
     if (isDeletionReviewPending(error)) {
       return NextResponse.json({ error: COACH_ACCESS_PAUSED_MESSAGE }, { status: 409 });
     }
-    return NextResponse.json({ error: 'Could not redeem this invite — try again' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not redeem this invite. Try again' }, { status: 500 });
   }
   const result = (Array.isArray(rows) ? rows[0] : rows) as { status: string; player_id: string | null } | undefined;
 

@@ -72,7 +72,7 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
     if (!outcome?.code) return;
     const ok = await copyInviteLink(outcome.code);
     setCopied(ok);
-    setError(ok ? '' : 'Could not copy the link — try again');
+    setError(ok ? '' : 'Could not copy the link. Try again');
   };
 
   const sendInvite = async (e: React.FormEvent) => {
@@ -118,7 +118,7 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
       }
       const ok = await copyInviteLink(data.code);
       if (!ok) {
-        setError('Could not copy the link — try again');
+        setError('Could not copy the link. Try again');
         return;
       }
       setCopied(true);
@@ -145,7 +145,7 @@ export default function GuardianInviteSheet({ player, onClose }: { player: Squad
       }
       const ok = await copyInviteLink(data.code);
       setCopied(ok);
-      if (!ok) setError('Could not copy the link — try again');
+      if (!ok) setError('Could not copy the link. Try again');
     } finally {
       setBusy(false);
     }

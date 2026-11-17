@@ -130,7 +130,7 @@ export default function RecoverByEmail({ hasSession, onBack }: { hasSession: boo
 
       {orders !== null && allCards.length === 0 && heldForGuardian.length === 0 && (
         <p style={{ fontSize: 14, lineHeight: 1.55, color: '#B8AE9F', maxWidth: 280 }}>
-          Nothing available to recover yet — your order may still be waiting on approval, or you may not have any orders under this email.
+          Nothing available to recover yet. Your order may still be waiting on approval, or you may not have any orders under this email.
         </p>
       )}
 

@@ -57,7 +57,7 @@ export const SAMPLE_CARDS: Record<string, SampleCardProfile> = {
     name: 'Jordan Patel',
     subtitle: '#14 · RIVERSIDE LIONS · STRIKER',
     photo: '/samples/player-jaylen.png',
-    blocks: [{ type: 'stats', items: [{ label: 'GOALS', value: '—' }, { label: 'ASST', value: '—' }, { label: 'APPS', value: '—' }] }],
+    blocks: [{ type: 'stats', items: [{ label: 'GOALS', value: '-' }, { label: 'ASST', value: '-' }, { label: 'APPS', value: '-' }] }],
     status: 'pending_staff_review',
     setupChoice: 'staff_done_for_you',
     chipProgrammed: false,
@@ -72,7 +72,7 @@ export const SAMPLE_CARDS: Record<string, SampleCardProfile> = {
     blocks: [
       { type: 'text', body: 'New single out now. Tap below to listen, watch the unreleased clip, or follow for more.' },
       { type: 'link', label: '🎵 Listen on Spotify', url: 'https://open.spotify.com/', style: 'primary' },
-      { type: 'link', label: '🔒 Unreleased clip — Circle members only', url: 'https://www.youtube.com/', style: 'secondary' },
+      { type: 'link', label: '🔒 Unreleased clip: Circle members only', url: 'https://www.youtube.com/', style: 'secondary' },
       { type: 'links_row', items: [{ label: 'Instagram', url: 'https://instagram.com/' }, { label: 'TikTok', url: 'https://tiktok.com/' }] },
     ],
     status: 'published',

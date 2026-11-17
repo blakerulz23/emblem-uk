@@ -172,7 +172,7 @@ export async function POST() {
     return NextResponse.json({
       ok: true,
       partial: true,
-      message: "Your account data has been removed. We're still finishing the revocation of your sign-in — this is handled automatically, no action needed from you.",
+      message: "Your account data has been removed. We're still finishing the revocation of your sign-in. This is handled automatically, no action needed from you.",
       ...(typeof rpcResult === 'object' ? rpcResult : {}),
     });
   }

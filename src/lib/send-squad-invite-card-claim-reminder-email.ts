@@ -29,7 +29,7 @@ export async function sendSquadInviteCardClaimReminderEmail(params: {
 
   const from = process.env.RESEND_FROM_EMAIL || 'Emblem <onboarding@resend.dev>';
   const team = escapeHtml(params.teamName);
-  const subject = `Your Squad Invite card for ${params.teamName} is ready — tap to activate`;
+  const subject = `Your Squad Invite card for ${params.teamName} is ready. Tap to activate`;
   const html = `<h2>Your card is ready</h2><p>Your child's card for <strong>${team}</strong> is ready. Tap it on your phone, or open the link below on the device you'll use for Player OS, to activate it.</p><p><a href="${params.claimUrl}" style="display:inline-block;padding:12px 20px;background:#E97435;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Activate the card</a></p><p style="color:#6b7280;font-size:13px">This link works once, for this specific card. If you weren't expecting this email, you can ignore it.</p>`;
   const text = `Your card is ready\n\nYour child's card for ${params.teamName} is ready. Tap it on your phone, or open this link on the device you'll use for Player OS, to activate it.\n\nActivate the card: ${params.claimUrl}\n\nThis link works once, for this specific card. If you weren't expecting this email, you can ignore it.`;
 

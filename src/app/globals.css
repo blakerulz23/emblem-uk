@@ -25,11 +25,19 @@ body > div[style*="visibility: hidden"][style*="white-space: nowrap"] > img {
   --accent: #ff5a1f;
   --accent-tint: rgba(255, 90, 31, 0.10);
   --accent-glow: rgba(255, 90, 31, 0.32);
-  --font-sora: "Archivo", "Segoe UI", system-ui, sans-serif;
-  --font-manrope: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  /* Site typography: Manrope everywhere (headings, text and the small
+     capitals labels), loaded by next/font in layout.tsx as
+     --font-marketing-manrope. The variable names are historical. */
+  --font-sora: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
+  --font-manrope: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
+  /* Card artwork keeps the fonts it has always printed with: see
+     .uk-real-card below. */
+  --font-card-sora: "Archivo", "Segoe UI", system-ui, sans-serif;
+  --font-card-manrope: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --font-card-jbmono: "Cascadia Mono", Consolas, monospace;
   --font-rajdhani: "Rajdhani", "Arial Narrow", system-ui, sans-serif;
   --font-barlow-condensed: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
-  --font-jbmono: "Cascadia Mono", Consolas, monospace;
+  --font-jbmono: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
   --font-oswald: "Arial Narrow", Impact, sans-serif;
   --font-caveat: "Segoe Print", "Comic Sans MS", cursive;
   /* Real Antonio Bold (700), loaded above — used only by the Hollinwood
@@ -46,9 +54,21 @@ body > div[style*="visibility: hidden"][style*="white-space: nowrap"] > img {
    Builder, Player OS and Staff tools keep the --font-sora/--font-manrope/
    --font-jbmono bindings from :root above — do not widen this scope. */
 .marketing-shell {
-  --font-sora: var(--font-marketing-sora), "Segoe UI", system-ui, sans-serif;
+  --font-sora: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
   --font-manrope: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
-  --font-jbmono: var(--font-marketing-jbmono), Consolas, monospace;
+  --font-jbmono: var(--font-marketing-manrope), "Segoe UI", system-ui, sans-serif;
+}
+/* The card in the builder (its preview and the print capture) keeps the
+   fonts it has always printed with, whatever the site's own typography:
+   the site moved to Manrope, the printed card did not change. Text with no
+   font of its own inherits the card body font. (The live designs set their
+   own fonts on every text layer; this guards the older templates that use
+   the site variables.) */
+.uk-real-card {
+  --font-sora: var(--font-card-sora);
+  --font-manrope: var(--font-card-manrope);
+  --font-jbmono: var(--font-card-jbmono);
+  font-family: var(--font-card-manrope);
 }
 
 * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }

@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (!(await consumeAnonymousRequestRateLimit(request.headers, 'coach-team-request', user.id))) {
-    return NextResponse.json({ error: 'Too many requests — try again in a few minutes' }, { status: 429 });
+    return NextResponse.json({ error: 'Too many requests. Try again in a few minutes' }, { status: 429 });
   }
 
   const body = await request.json().catch(() => null);

@@ -89,7 +89,7 @@ export default function AdultPermissionStep({
     try {
       const result = await postJson('/api/builder-authority/request-code', { email: email.trim() });
       if (!result.ok) {
-        setEmailError(result.error || 'Could not send a code — please try again.');
+        setEmailError(result.error || 'Could not send a code. Please try again.');
         return;
       }
       setPhase('code');
@@ -114,7 +114,7 @@ export default function AdultPermissionStep({
     try {
       const result = await postJson('/api/builder-authority/verify-code', { email: email.trim(), code: code.trim() });
       if (!result.ok) {
-        setCodeError(result.error || 'That code didn’t work — please try again.');
+        setCodeError(result.error || 'That code didn’t work. Please try again.');
         return;
       }
       setPhase('details');
@@ -153,7 +153,7 @@ export default function AdultPermissionStep({
       });
       if (!confirmAttempts.isCurrent(attemptId)) return;
       if (!result.ok) {
-        dispatchConfirm({ type: 'settle', error: result.error || 'Could not save your confirmation — please try again.' });
+        dispatchConfirm({ type: 'settle', error: result.error || 'Could not save your confirmation. Please try again.' });
         return;
       }
       // Only reached once the server has genuinely recorded the

@@ -65,7 +65,7 @@ export default function DeleteAccountPanel(p: DeleteAccountPanelProps) {
         <>
           <p style={{ fontSize: 12.5, lineHeight: 1.55, color: COLORS.muted, margin: '0 0 12px' }}>
             {guardian
-              ? <>Permanently deletes your guardian login and access. This is separate from deleting {playerName}&apos;s data — see below.</>
+              ? <>Permanently deletes your guardian login and access. This is separate from deleting {playerName}&apos;s data (see below).</>
               : 'Permanently deletes your Emblem login and your coach access.'}
           </p>
           <div
@@ -87,16 +87,16 @@ export default function DeleteAccountPanel(p: DeleteAccountPanelProps) {
           <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, fontSize: 16, color: COLORS.ink, marginBottom: 10 }}>Before you delete your account</div>
           {guardian ? (
             <ul style={{ fontSize: 12.5, lineHeight: 1.6, color: COLORS.muted, margin: '0 0 14px', paddingLeft: 18 }}>
-              <li>If nothing needs staff review (see the last point), this deletes <b>your own guardian login</b> — the email you sign in with, and your access to Emblem OS.</li>
-              <li>It does <b>not</b> delete {playerName}&apos;s profile, moments or photos — those belong to {playerName}, not your account.</li>
-              <li>If another guardian is also linked to {playerName}, they keep their own full access — nothing changes for them, and {playerName}&apos;s data is not touched.</li>
-              <li>If you&apos;re {playerName}&apos;s only guardian, deleting your account also removes your link to them — we file a request to delete their data too, which our team reviews and carries out by hand rather than deleting it instantly.</li>
+              <li>If nothing needs staff review (see the last point), this deletes <b>your own guardian login</b>: the email you sign in with, and your access to Emblem OS.</li>
+              <li>It does <b>not</b> delete {playerName}&apos;s profile, moments or photos. Those belong to {playerName}, not your account.</li>
+              <li>If another guardian is also linked to {playerName}, they keep their own full access. Nothing changes for them, and {playerName}&apos;s data is not touched.</li>
+              <li>If you&apos;re {playerName}&apos;s only guardian, deleting your account also removes your link to them. We file a request to delete their data too, which our team reviews and carries out by hand rather than deleting it instantly.</li>
               <li>Records that must stay connected to a physical card, an order, or another guardian&apos;s account are kept, as they are for any other guardian.</li>
               <li>{GUARDIAN_DELETE_REVIEW_NOTE}</li>
             </ul>
           ) : (
             <ul style={{ fontSize: 12.5, lineHeight: 1.6, color: COLORS.muted, margin: '0 0 14px', paddingLeft: 18 }}>
-              <li>If nothing needs staff review (see the last point), this deletes <b>your own login</b> — the email you sign in with — and your coach access to every team and player.</li>
+              <li>If nothing needs staff review (see the last point), this deletes <b>your own login</b> (the email you sign in with) and your coach access to every team and player.</li>
               <li>Players&apos; cards, moments and the recognitions you gave stay with their families, still marked as coach-verified.</li>
               <li>Any team request you sent is withdrawn.</li>
               {p.alsoGuardian && (

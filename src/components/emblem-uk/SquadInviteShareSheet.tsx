@@ -263,7 +263,7 @@ export default function SquadInviteShareSheet({
             <div className="uk-squad-share-caption-preview">
               <span className="uk-squad-share-caption-label">Caption preview</span>
               <p>{CARD_SHARE_MESSAGE_TEXT}</p>
-              <span className="uk-squad-share-caption-note">The real link is created when you share — it shows this card for 7 days, then stops working.</span>
+              <span className="uk-squad-share-caption-note">The real link is created when you share. It shows this card for 7 days, then stops working.</span>
             </div>
             <label className="uk-card-share-confirm">
               <input type="checkbox" checked={stage.checked} onChange={() => dispatch({ type: 'toggle-checked' })} />
@@ -297,7 +297,7 @@ export default function SquadInviteShareSheet({
           <button type="button" onClick={handleCopyMessage}>{messageCopied ? 'Copied' : 'Copy message'}</button>
         </div>
       )}
-      {stage.type === 'cancelled' && <p role="status">Cancelled — no image was created.</p>}
+      {stage.type === 'cancelled' && <p role="status">Cancelled. No image was created.</p>}
       {stage.type === 'failed' && (
         <div>
           <p className="uk-enquiry-error" role="alert">{stage.message}</p>

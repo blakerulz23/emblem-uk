@@ -89,7 +89,7 @@ function OrganiserPanel() {
   const p = SQUAD_INVITE_JOURNEY_DEMO.organiserPanel;
   return (
     <div className="sqi-organiser-panel">
-      <span className="sqi-sr-only">Example Squad Invite organiser view —</span>
+      <span className="sqi-sr-only">Example Squad Invite organiser view:</span>
       <div className="sqi-organiser-head">
         <span className="sqi-organiser-label">{p.label}</span>
         <span className="sqi-organiser-status">{p.status}</span>
@@ -133,7 +133,7 @@ function FamilyPhoto({ tile }: { tile: FamilyTile }) {
 function FamilyTiles() {
   return (
     <div className="sqi-family-stack">
-      <span className="sqi-sr-only">Illustrative example of family progress: one card approved, one still being edited, one not started yet. Not real Squad Invite participants —</span>
+      <span className="sqi-sr-only">Illustrative example of family progress: one card approved, one still being edited, one not started yet. Not real Squad Invite participants.</span>
       {SQUAD_INVITE_JOURNEY_DEMO.familyTiles.map((tile) => (
         <div key={tile.id} className={`sqi-family-card sqi-family-card--${tile.position}`}>
           <FamilyPhoto tile={tile} />

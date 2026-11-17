@@ -61,7 +61,7 @@ export default function CardAccessNotice({
               This card is suspended
             </div>
             <p style={{ fontSize: 13.5, lineHeight: 1.55, color: 'var(--os-muted, #8A8378)', margin: '0 0 20px' }}>
-              You or a member of staff paused this card. Your child&apos;s profile is safe — nobody else can see it while
+              You or a member of staff paused this card. Your child&apos;s profile is safe. Nobody else can see it while
               it&apos;s suspended. Turn it back on any time.
             </p>
             <UnsuspendCardButton cardId={cardId} />

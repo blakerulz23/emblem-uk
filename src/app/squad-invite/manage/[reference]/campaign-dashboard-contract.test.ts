@@ -60,7 +60,7 @@ describe('Squad progress — organiser-facing dashboard, bounded club-mediated i
     const statusLineIndex = source.indexOf('Status: {r.request_status');
     const dashboardIndex = source.indexOf('<CampaignDashboard campaignId={r.campaign_id}/>');
     const correctionIndex = source.indexOf('<CorrectionForm');
-    const deliverySetupIndex = source.indexOf('Approved — delivery setup required');
+    const deliverySetupIndex = source.indexOf('Approved: delivery setup required');
     expect(dashboardIndex).toBeGreaterThan(statusLineIndex);
     expect(dashboardIndex).toBeLessThan(correctionIndex);
     expect(dashboardIndex).toBeLessThan(deliverySetupIndex);

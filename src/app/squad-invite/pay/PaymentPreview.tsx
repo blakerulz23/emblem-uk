@@ -82,7 +82,7 @@ export default function PaymentPreview() {
       <div className="mx-auto min-h-screen max-w-2xl px-5 py-16">
         <p className="text-sm font-bold uppercase tracking-widest text-orange-600">Squad Invite</p>
         <h1 className="mt-3 text-4xl font-bold">Payment already received.</h1>
-        <p className="mt-4 text-neutral-600">Thanks — this card is already paid for and on its way into production.</p>
+        <p className="mt-4 text-neutral-600">Thanks, this card is already paid for and on its way into production.</p>
       </div>
     );
   }
