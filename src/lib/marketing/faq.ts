@@ -120,7 +120,7 @@ export const FAQ_TEAMS: FaqItem[] = [
   },
   {
     question: 'Is Emblem only for football?',
-    answer: 'No. Emblem is designed to celebrate players, teams and achievements across different sports and levels.',
+    answer: 'Right now Emblem is for football. The cards, designs and player profiles are made for grassroots football players and their teams.',
   },
 ];
 
