@@ -46,6 +46,11 @@ export const FAQ_ABOUT_THE_CARD: FaqItem[] = [
     answer:
       'Yes. The same profile can carry the player’s story forward from season to season. A new season card can become the next physical collectible connected to their continuing journey.',
   },
+  {
+    question: 'Is it a digital football card or a printed one?',
+    answer:
+      'Both. It is a printed football card they can hold and keep, and a tap with a phone opens their digital player profile.',
+  },
 ];
 
 export const FAQ_GIFTS_AND_DELIVERY: FaqItem[] = [
@@ -69,6 +74,11 @@ export const FAQ_GIFTS_AND_DELIVERY: FaqItem[] = [
     answer:
       'Please order as early as you can. Every card is made to order, and if you are not the child’s parent or guardian, they need to approve the card before it is printed. UK delivery is free.',
     link: { label: 'See Christmas gift ideas →', href: '/football-gifts-for-kids' },
+  },
+  {
+    question: 'Does it make a good birthday present?',
+    answer:
+      'Yes. Their own football card is one of the few football birthday presents that keeps growing: the profile carries on long after the party. UK delivery is free.',
   },
 ];
 
@@ -138,6 +148,7 @@ export const GIFT_PAGE_FAQ_ITEMS: FaqItem[] = [
   FAQ_ABOUT_THE_CARD[1],
   FAQ_ABOUT_THE_CARD[3],
   FAQ_PRIVACY[0],
+  FAQ_GIFTS_AND_DELIVERY[4],
 ];
 
 /**

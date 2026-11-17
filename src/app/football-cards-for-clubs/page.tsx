@@ -86,7 +86,7 @@ export default function FootballCardsForClubsPage() {
       <section id="pricing" className="emh-section emh-clubs-shop" aria-labelledby="emh-clubs-pricing-heading">
         <div className="emh-clubs-shop-intro">
           <h2 id="emh-clubs-pricing-heading">Their season. Worth keeping.</h2>
-          <p>Personalised football cards for your squad. Private profile included.</p>
+          <p>Personalised football cards for your squad: an end of season football gift every player keeps. Private profile included.</p>
           <Link className="emh-btn emh-btn-primary" href={startHref} data-track="clubs_pricing_start">
             Start a Squad Invite
             <span aria-hidden="true" className="emh-hero-cta-icon">
@@ -208,6 +208,7 @@ export default function FootballCardsForClubsPage() {
 
       <section className="emh-section emh-explore emh-clubs-close">
         <h2>Bring your squad together this season.</h2>
+        <p>Football team gifts every family keeps, and each family pays only for their own child’s card.</p>
         <div className="emh-explore-cta">
           <Link className="emh-btn emh-btn-primary" href={startHref} data-track="clubs_final_start">
             Start a Squad Invite
