@@ -47,14 +47,9 @@ export function personalisedCardProductJsonLd() {
           transitTime: { '@type': 'QuantitativeValue', minValue: 2, maxValue: 3, unitCode: 'DAY' },
         },
       },
-      // Personalised, made to order: no change-of-mind returns (Terms →
-      // "Returns and reprints"); damaged/defective/wrong cards get a free
-      // reprint or refund, which is a fault remedy, not a return.
-      hasMerchantReturnPolicy: {
-        '@type': 'MerchantReturnPolicy',
-        applicableCountry: 'GB',
-        returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
-      },
+      // No return policy here on purpose: returns are accepted for defective
+      // items only (Terms → "Returns and reprints"), which schema.org can't
+      // express cleanly. Merchant Center holds the policy and takes precedence.
     },
   };
 }
