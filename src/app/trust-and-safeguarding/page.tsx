@@ -1,4 +1,16 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
+import { pageOpenGraph } from '@/lib/marketing/site';
+
+const DESCRIPTION =
+  'How Emblem protects young players: private-by-default profiles, guardian control, and parent or guardian approval before a card is printed.';
+
+export const metadata: Metadata = {
+  title: 'Trust and Safeguarding | Emblem',
+  description: DESCRIPTION,
+  alternates: { canonical: '/trust-and-safeguarding' },
+  openGraph: pageOpenGraph({ title: 'Trust and Safeguarding | Emblem', description: DESCRIPTION, url: '/trust-and-safeguarding' }),
+};
 
 // Same local style-token pattern as src/app/privacy/page.tsx and
 // src/app/terms/page.tsx — this codebase keeps each legal/trust page's

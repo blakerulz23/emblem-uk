@@ -21,9 +21,9 @@ export const metadata: Metadata = {
 
 const reasons = [
   { title: 'It’s really theirs', body: 'Their photo, name, number and club on a premium printed football card. No two are the same.' },
-  { title: 'It keeps going after Christmas', body: 'Tap the card to open their private profile: goals, appearances, photos and coach recognition, all season.' },
+  { title: 'It grows all season', body: 'Tap the card to open their private profile: goals, appearances, photos and coach recognition, all season.' },
   { title: 'Safe to give', body: 'Profiles are private by default and controlled by their parent or guardian.' },
-  { title: 'Small enough for a stocking', body: 'A trading card for a stocking or gift box. ' + PRICES.single + ' with the profile and free UK delivery included.' },
+  { title: 'A football stocking filler they’ll keep', body: 'A trading card that fits a stocking or gift box. ' + PRICES.single + ' with the profile and free UK delivery included.' },
 ];
 
 export default function FootballGiftsForKidsPage() {
@@ -59,7 +59,7 @@ export default function FootballGiftsForKidsPage() {
 
       <section className="emh-section emh-gift-reasons" aria-labelledby="emh-gift-reasons-heading">
         <p className="emh-eyebrow">Why it makes a great gift</p>
-        <h2 id="emh-gift-reasons-heading">More than a football card.</h2>
+        <h2 id="emh-gift-reasons-heading">The football present that keeps going.</h2>
         <div className="emh-trust-grid">
           {reasons.map((r) => (
             <div key={r.title} className="emh-trust-item">
@@ -68,6 +68,12 @@ export default function FootballGiftsForKidsPage() {
             </div>
           ))}
         </div>
+        <p className="emh-gift-coach">
+          Buying for the coach? Every squad order of 10 or more cards comes with a free coach card.{' '}
+          <Link className="emh-text-link" href="/football-cards-for-clubs" data-track="gift_coach_squad">
+            See squad orders
+          </Link>
+        </p>
       </section>
 
       <section className="emh-section emh-steps" aria-labelledby="emh-gift-steps-heading">

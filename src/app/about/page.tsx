@@ -1,5 +1,17 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import Icon from '@/components/builder/emblem/Icon';
+import { pageOpenGraph } from '@/lib/marketing/site';
+
+const DESCRIPTION =
+  'Emblem makes personalised football cards for UK grassroots players: printed in the UK, with a chip that opens a private player profile their family controls.';
+
+export const metadata: Metadata = {
+  title: 'About Emblem | Personalised Football Cards for Grassroots Players',
+  description: DESCRIPTION,
+  alternates: { canonical: '/about' },
+  openGraph: pageOpenGraph({ title: 'About Emblem', description: DESCRIPTION, url: '/about' }),
+};
 
 export default function AboutPage() {
   return (
@@ -34,7 +46,7 @@ export default function AboutPage() {
           margin: 0,
         }}
       >
-        Custom merch. You design, we chip and print.
+        Every young footballer deserves their own card.
       </h1>
 
       <p
@@ -46,17 +58,18 @@ export default function AboutPage() {
           color: 'var(--ink-soft)',
         }}
       >
-        Upload one photo. We turn it into NFC-enabled trading cards, posters, wristbands, stickers
-        and more. Pro quality, no studio needed.
+        Emblem makes personalised football cards for UK grassroots players. Upload one photo and
+        we print a premium card with their name, number and club. Tap it with a phone and it opens
+        a private player profile their family controls.
       </p>
 
       <div
         className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3"
       >
         {[
-          { val: 'Premium', label: 'Print quality', sub: 'Personalised football trading card' },
-          { val: 'NFC', label: 'Tap-to-share', sub: 'Stats, video, socials in one tap' },
-          { val: 'UK', label: 'Made to order', sub: 'Printed in the UK' },
+          { val: 'Premium', label: 'Print quality', sub: 'A personalised football card' },
+          { val: 'NFC', label: 'Tap to open', sub: 'Their private player profile' },
+          { val: 'UK', label: 'Made to order', sub: 'Printed in the UK, free UK delivery' },
         ].map((s) => (
           <div
             key={s.label}
@@ -125,11 +138,10 @@ export default function AboutPage() {
           color: 'var(--ink-soft)',
         }}
       >
-        Trading cards have been a collector format for a hundred years. Nobody had made them
-        personal and connected. Every Emblem piece comes with a real NFC chip built in. Tap it
-        with a phone and whatever profile, highlights, or links you&apos;ve set come up instantly. We
-        started with cards and kept going: posters, wristbands, stickers, keychains and more. One
-        photo, every format.
+        Grassroots football is full of moments worth keeping: a first goal, a big save, the season
+        a nervous player found their feet. Pro players get their own cards. We wanted every
+        grassroots player to have one too, with a private profile where their family keeps the
+        season&apos;s moments and achievements. Parents and guardians decide who sees it.
       </p>
 
       <h2
@@ -143,7 +155,7 @@ export default function AboutPage() {
           margin: 0,
         }}
       >
-        Bulk orders
+        Teams and clubs
       </h2>
 
       <p
@@ -155,13 +167,16 @@ export default function AboutPage() {
           color: 'var(--ink-soft)',
         }}
       >
-        Ordering for a group? Teams, clubs, and events get bulk pricing on any product. Get in
-        touch and we&apos;ll sort it out.
+        Ordering for a whole squad? Orders of 10 or more cards get squad pricing and a free coach
+        card. Or send families one private link so each creates their own child&apos;s card.{' '}
+        <Link href="/football-cards-for-clubs" style={{ color: 'var(--accent)', fontWeight: 700 }}>
+          Cards for clubs
+        </Link>
       </p>
 
       <div className="mt-12">
         <Link
-          href="/builder"
+          href="/builder?mode=single"
           className="inline-flex items-center gap-2 rounded-2xl font-bold transition-transform active:scale-[0.98]"
           style={{
             background: 'var(--accent)',
@@ -174,7 +189,7 @@ export default function AboutPage() {
             letterSpacing: '-0.01em',
           }}
         >
-          Make yours
+          Build their card
           <Icon name="chevR" size={18} />
         </Link>
       </div>

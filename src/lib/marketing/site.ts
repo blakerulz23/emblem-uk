@@ -93,7 +93,7 @@ export const PUBLIC_PAGES: ReadonlyArray<{ path: string; priority: number; chang
   { path: '/football-cards-for-clubs', priority: 0.8, changeFrequency: 'monthly', contentUpdated: '2026-10-17' },
   { path: '/faq', priority: 0.7, changeFrequency: 'monthly', contentUpdated: '2026-10-16' },
   { path: '/trust-and-safeguarding', priority: 0.6, changeFrequency: 'monthly', contentUpdated: '2026-09-07' },
-  { path: '/about', priority: 0.5, changeFrequency: 'yearly', contentUpdated: '2026-07-04' },
+  { path: '/about', priority: 0.5, changeFrequency: 'yearly', contentUpdated: '2026-11-17' },
   { path: '/privacy', priority: 0.3, changeFrequency: 'yearly', contentUpdated: '2026-08-17' },
   { path: '/terms', priority: 0.3, changeFrequency: 'yearly', contentUpdated: '2026-08-17' },
 ];
