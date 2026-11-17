@@ -201,6 +201,10 @@ export type OsState = {
   celeb: string | null;
   award: string | null;
   coachMsg: string;
+  /** True from "Send Recognition" until the real-account request settles — blocks a second send that would duplicate the recognition. */
+  celebSending: boolean;
+  /** True when a real-account recognition failed to save — shown in the sheet instead of the success toast. */
+  celebError: boolean;
   sent: boolean;
   activated: boolean;
   dark: boolean;
@@ -236,6 +240,8 @@ export const initialOsState: OsState = {
   celeb: null,
   award: null,
   coachMsg: '',
+  celebSending: false,
+  celebError: false,
   sent: false,
   activated: false,
   dark: false,

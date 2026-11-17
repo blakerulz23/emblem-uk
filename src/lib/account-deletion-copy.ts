@@ -44,3 +44,25 @@ export function signInErrorMessage(error: { code?: string; message?: string }): 
   if (error.code === 'account_erased' || error.code === 'user_banned' || /banned/i.test(error.message ?? '')) return ACCOUNT_ERASED_SIGN_IN;
   return error.message ?? 'Something went wrong. Please try again.';
 }
+
+/**
+ * Coach Account Settings (PR #139): what happens when a coach deletes their
+ * account, from migrations 0097/0098. A coach who wrote player records (or
+ * organised a Squad Invite) goes to staff review: nothing is deleted and
+ * their coaching access is paused until staff decide; rejecting restores it.
+ * Like the rest of this file, it never promises an email.
+ */
+export const COACH_DELETE_REVIEW_NOTE =
+  'If you’ve written player assessments, goals, strengths or season focus (or organised a Squad Invite), those records have to be kept, so your request goes to Emblem staff for review instead. Nothing is deleted while they review it, and your coaching access is paused. If staff decide not to delete your account, your coaching access is restored where possible.';
+/** Guardian explain step: when the request goes to staff review instead (0097). */
+export const GUARDIAN_DELETE_REVIEW_NOTE =
+  'If your account is linked to records that have to be kept (such as a Squad Invite you organised), your request goes to Emblem staff for review instead. Nothing is deleted while they review it.';
+/**
+ * Parent/guardian confirm step. A guardian account can also go to staff
+ * review (for example a Squad Invite organiser, 0097), so removal is not
+ * promised as immediate.
+ */
+export const GUARDIAN_DELETE_CONFIRM =
+  'If nothing needs staff review, your sign-in and guardian access are removed straight away and this cannot be undone. If your account is linked to records that have to be kept (such as a Squad Invite you organised), your request goes to Emblem staff for review instead, and nothing is deleted until they decide.';
+export const COACH_DELETE_CONFIRM =
+  'If nothing needs staff review, your account is deleted straight away and this cannot be undone. If it does need review, nothing is deleted until staff decide, and your coaching access is paused meanwhile.';

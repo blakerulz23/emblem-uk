@@ -13,7 +13,8 @@ import type { FakeCall } from '@/lib/fake-supabase.test-support';
  */
 const COACH = 'aaaaaaaa-0000-4000-8000-0000000000c1';
 const OTHER = 'bbbbbbbb-0000-4000-8000-0000000000c2';
-const PLAYER = 'cccccccc-0000-4000-8000-0000000000p1';
+// A well-formed UUID: /api/os/celebrate rejects a malformed playerId with 400 (PR #139).
+const PLAYER = 'cccccccc-0000-4000-8000-0000000000a1';
 const FORGED = { verified_by: OTHER, verifiedBy: OTHER, uploaded_by: OTHER, verifierId: OTHER, coachId: OTHER, userId: OTHER };
 
 let session: ReturnType<typeof createFakeSupabase>;
