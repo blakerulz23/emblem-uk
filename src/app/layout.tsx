@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Sora, Manrope, JetBrains_Mono } from 'next/font/google';
+import { Manrope } from 'next/font/google';
 import './globals.css';
 import ConditionalChrome from '@/components/ConditionalChrome';
 import { isDisposableSquadInviteMvpPreview } from '@/lib/squad-invite-preview-safety';
@@ -7,27 +7,13 @@ import { googleSiteVerification, OG_IMAGE, SITE_URL } from '@/lib/marketing/site
 import AnalyticsConsent from '@/components/marketing/AnalyticsConsent';
 import VercelWebAnalytics from '@/components/marketing/VercelWebAnalytics';
 
-// Marketing typography (emblem.cards). Scoped to the marketing shell via
-// .marketing-shell in globals.css — Builder, Player OS and Staff tools keep
-// their own existing --font-sora/--font-manrope/--font-jbmono bindings.
-const marketingSora = Sora({
-  subsets: ['latin'],
-  weight: ['400', '600', '700', '800'],
-  variable: '--font-marketing-sora',
-  display: 'swap',
-});
-
+// Site typography: Manrope everywhere (see --font-sora/--font-manrope/
+// --font-jbmono in globals.css, which all point at it). Card artwork keeps
+// its own fonts (.uk-real-card in globals.css).
 const marketingManrope = Manrope({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700', '800'],
   variable: '--font-marketing-manrope',
-  display: 'swap',
-});
-
-const marketingJbMono = JetBrains_Mono({
-  subsets: ['latin'],
-  weight: ['500', '600'],
-  variable: '--font-marketing-jbmono',
   display: 'swap',
 });
 
@@ -63,7 +49,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en-GB" className={`${marketingSora.variable} ${marketingManrope.variable} ${marketingJbMono.variable}`}>
+    <html lang="en-GB" className={marketingManrope.variable}>
       <body className="font-body text-[var(--ink)] antialiased">
         <ConditionalChrome disposableSquadInvitePreview={isDisposableSquadInviteMvpPreview()}>{children}</ConditionalChrome>
         <AnalyticsConsent />
