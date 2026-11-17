@@ -26,10 +26,14 @@ describe('public /os/demo data', () => {
   it("shows Home a latest moment with the fictional photo and a populated 'This season'", () => {
     const moments = PUBLIC_DEMO_OS_DATA.moments;
     expect(moments.length).toBeGreaterThan(0);
-    // The old match photos showed a real sponsor and crest; the only photo
-    // now is the fictional player with his card, on the newest moment.
+    // The old jn-* match photos showed a real sponsor and crest; every moment
+    // now has one photo of the fictional player, newest = him with his card.
     expect(moments[0].media.map((x) => x.url)).toEqual(['/assets/emblem-os/demo-riley-county.webp']);
-    expect(moments.slice(1).every((m) => m.media.length === 0)).toBe(true);
+    for (const m of moments) {
+      expect(m.media).toHaveLength(1);
+      expect(m.media[0].url).toMatch(/^\/assets\/emblem-os\/demo-riley-[a-z0-9-]+\.webp$/);
+    }
+    expect(new Set(moments.map((m) => m.media[0].url)).size).toBe(moments.length);
     const thisSeason = moments.filter((m) => m.seasonLabel === PLAYER_PROFILE.season);
     expect(thisSeason.length).toBeGreaterThan(0);
     expect(PUBLIC_DEMO_OS_DATA.currentSeasonStatus).toBe('active');
