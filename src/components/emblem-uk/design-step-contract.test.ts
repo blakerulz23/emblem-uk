@@ -53,3 +53,30 @@ describe('designs ranked by their kit colours', () => {
     expect(source).toContain('patchPlayer(selectedPlayer.id, { templateId, designChosen: true });');
   });
 });
+
+describe('phones: no accidental zoom, photo locked until Adjust photo', () => {
+  const css = readFileSync(path.join(__dirname, '../../app/globals.css'), 'utf8');
+
+  it('builder fields are 16px on touch phones, so iOS does not zoom on focus', () => {
+    expect(css).toMatch(/@media \(pointer: coarse\) and \(max-width: 1179px\) \{\s*\.uk-builder-shell input:not/);
+    expect(css).toMatch(/\.uk-builder-shell textarea \{\s*font-size: 16px;/);
+  });
+
+  it('double-tap zoom is off on builder controls', () => {
+    expect(css).toMatch(/\.uk-builder-shell \.uk-edit-preview \{\s*touch-action: manipulation;/);
+  });
+
+  it('the photo only takes gestures, sliders and the drag affordance once Adjust photo is on', () => {
+    expect(source).toContain("window.matchMedia('(pointer: coarse) and (max-width: 1179px)')");
+    expect(source).toContain('const photoLocked = touchPhone && !photoAdjusting;');
+    expect(source).toContain('const photoMovable = photoEditable && !photoLocked;');
+    expect(source).toContain('enabled: photoMovable,');
+    expect(source).toContain('photoLocked ? null : (');
+    expect(source).toContain('onClick={() => setPhotoAdjusting(true)}>Adjust photo</button>');
+    expect(source).toContain('onClick={() => setPhotoAdjusting(false)}>Done</button>');
+  });
+
+  it('locks again on another step, side or card', () => {
+    expect(source).toContain('useEffect(() => { setPhotoAdjusting(false); }, [activeStepId, cardSide, selectedPlayer?.id]);');
+  });
+});

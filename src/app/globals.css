@@ -12295,3 +12295,66 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 @media (min-width: 1180px) {
   .uk-mini-card { display: none; }
 }
+
+/* Phones: no accidental page zoom. iOS zooms the page when a field with
+   text under 16px is focused (the builder's fields were 13-15px), and a
+   quick double tap on a button or the card zooms it too. Pinch-to-zoom the
+   page stays available. Desktop sizes are unchanged. */
+@media (pointer: coarse) and (max-width: 1179px) {
+  .uk-builder-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  .uk-builder-shell select,
+  .uk-builder-shell textarea {
+    font-size: 16px;
+  }
+}
+.uk-builder-shell button,
+.uk-builder-shell a,
+.uk-builder-shell label,
+.uk-builder-shell input,
+.uk-builder-shell select,
+.uk-builder-shell .uk-edit-preview {
+  touch-action: manipulation;
+}
+/* The photo itself still takes every gesture while it is being adjusted. */
+.uk-builder-shell .uk-photo-draggable .uk-real-card { touch-action: none; }
+
+/* Phones: "Adjust photo" unlocks the card; "Done" locks it again. */
+.uk-photo-adjust-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 4px;
+}
+.uk-photo-adjust-bar span {
+  color: var(--wizard-soft);
+  font-size: 14px;
+  font-weight: 700;
+}
+.uk-photo-adjust-start,
+.uk-photo-adjust-done {
+  min-height: 44px;
+  padding: 10px 20px;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.uk-photo-adjust-start {
+  width: 100%;
+  border: 1.5px solid var(--wizard-ink);
+  background: transparent;
+  color: var(--wizard-ink);
+}
+.uk-photo-adjust-done {
+  flex: none;
+  border: 0;
+  background: var(--wizard-accent);
+  color: #fff;
+}
+.uk-edit-preview.is-adjusting .uk-real-card .uk-player-card,
+.uk-edit-preview.is-adjusting .uk-real-card > * {
+  outline: 3px solid var(--wizard-accent);
+  outline-offset: -3px;
+}
+

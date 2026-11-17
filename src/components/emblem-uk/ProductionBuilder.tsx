@@ -2041,6 +2041,29 @@ export default function ProductionBuilder({
   const photoEditable = Boolean(
     activeStepId === 'personalise' && cardSide === 'front' && selectedPlayer?.photo?.srcUrl && cardPositionsPhoto(order, selectedPlayer),
   );
+  // On a touch phone the card fills most of the screen, so a finger meant to
+  // scroll the page kept moving the photo, and the sliders below it caught
+  // scrolls too. There the photo is locked until "Adjust photo" is tapped:
+  // then one finger drags, a pinch zooms and the sliders show; "Done" locks
+  // it again. Desktop and large tablets (the >=1180px layout) are unchanged.
+  const [touchPhone, setTouchPhone] = useState(false);
+  useEffect(() => {
+    let query: MediaQueryList;
+    try {
+      query = window.matchMedia('(pointer: coarse) and (max-width: 1179px)');
+    } catch {
+      return undefined;
+    }
+    const update = () => setTouchPhone(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  const [photoAdjusting, setPhotoAdjusting] = useState(false);
+  // Locked again whenever they move on: another step, side or card.
+  useEffect(() => { setPhotoAdjusting(false); }, [activeStepId, cardSide, selectedPlayer?.id]);
+  const photoLocked = touchPhone && !photoAdjusting;
+  const photoMovable = photoEditable && !photoLocked;
   const [previewFrameEl, setPreviewFrameEl] = useState<HTMLDivElement | null>(null);
   // Phone "Add their details" step (direct builder): once the card preview has
   // scrolled up under the header, a small copy of the card stays pinned at the
@@ -2098,7 +2121,7 @@ export default function ProductionBuilder({
 
   const photoGestures = usePhotoGestures({
     frames: [previewFrameEl, stageFrameEl],
-    enabled: photoEditable,
+    enabled: photoMovable,
     photo: selectedPlayer?.photo,
     onChange: (crop) => {
       const photo = selectedPlayer?.photo;
@@ -2117,12 +2140,12 @@ export default function ProductionBuilder({
     const timer = setTimeout(() => setPhotoBlockedHint(false), 3500);
     return () => clearTimeout(timer);
   }, [photoBlockedHint]);
-  const photoHint = photoEditable && photoBlockedHint ? (
+  const photoHint = photoMovable && photoBlockedHint ? (
     <div className="uk-photo-hint" role="status">The whole photo is showing. Zoom in to move it.</div>
   ) : null;
   /** Arrow keys move, +/- zoom, 0 restores the suggested framing, when the card has focus. */
   const onPhotoKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (!photoEditable || !selectedPlayer) return;
+    if (!photoMovable || !selectedPlayer) return;
     const step = event.shiftKey ? 0.05 : 0.01;
     const keys: Record<string, () => void> = {
       ArrowLeft: () => photoGestures.panBy(-step, 0),
@@ -2140,7 +2163,7 @@ export default function ProductionBuilder({
     dismissPhotoCoach();
     action();
   };
-  const photoFrameProps = photoEditable
+  const photoFrameProps = photoMovable
     ? {
         tabIndex: 0,
         role: 'group' as const,
@@ -2149,7 +2172,7 @@ export default function ProductionBuilder({
         onDoubleClick: () => selectedPlayer && resetPlayerPhotoToSuggested(selectedPlayer.id),
       }
     : {};
-  const photoTools = photoEditable && selectedPlayer?.photo ? (
+  const photoTools = photoMovable && selectedPlayer?.photo ? (
     <div className="uk-photo-tools" role="group" aria-label="Photo zoom">
       <button type="button" onClick={() => photoGestures.zoomBy(1 / 1.12)} aria-label="Zoom out">−</button>
       <span aria-live="polite">{Math.round(selectedPlayer.photo.crop.scale * 100)}%</span>
@@ -2159,7 +2182,7 @@ export default function ProductionBuilder({
       )}
     </div>
   ) : null;
-  const photoCoach = photoEditable && showPhotoCoach ? (
+  const photoCoach = photoMovable && showPhotoCoach ? (
     // No handler of its own: pointer-events:none lets the first touch reach
     // the card, whose own touchstart clears it, so one touch both dismisses
     // it and starts the drag.
@@ -2770,7 +2793,7 @@ export default function ProductionBuilder({
               )}
               <div
                 ref={setPreviewFrameEl}
-                className={`uk-edit-preview${photoEditable ? ' uk-photo-draggable' : ''}${photoGestures.dragging ? ' is-dragging' : ''}`}
+                className={`uk-edit-preview${photoMovable ? ' uk-photo-draggable' : ''}${touchPhone && photoAdjusting ? ' is-adjusting' : ''}${photoGestures.dragging ? ' is-dragging' : ''}`}
                 {...photoFrameProps}
               >
                 <PlayerCard order={order} player={selectedPlayer} side={cardSide} />
@@ -2788,9 +2811,22 @@ export default function ProductionBuilder({
                   <PlayerCard order={order} player={selectedPlayer} side={cardSide} compact />
                 </button>
               )}
+              {touchPhone && cardSide === 'front' && selectedPlayer.photo && (
+                <div className="uk-photo-adjust-bar">
+                  {photoAdjusting ? (
+                    <>
+                      <span>{photoEditable ? 'Drag to move, pinch to zoom.' : 'Use the sliders to position the photo.'}</span>
+                      <button type="button" className="uk-photo-adjust-done" onClick={() => setPhotoAdjusting(false)}>Done</button>
+                    </>
+                  ) : (
+                    <button type="button" className="uk-photo-adjust-start" onClick={() => setPhotoAdjusting(true)}>Adjust photo</button>
+                  )}
+                </div>
+              )}
               {photoTools && <div className="uk-photo-tools-row">{photoTools}</div>}
               {cardSide === 'front' ? (
                 selectedPlayer.photo ? (
+                  photoLocked ? null : (
                   <div className="uk-crop-controls">
                     <div className="uk-crop-controls-actions">
                       <button
@@ -2841,6 +2877,7 @@ export default function ProductionBuilder({
                       />
                     </label>
                   </div>
+                  )
                 ) : (
                   <label className="uk-photo-needed">
                     <strong>Upload player photo</strong>
@@ -3481,7 +3518,7 @@ export default function ProductionBuilder({
         </div>
         <div
           ref={setStageFrameEl}
-          className={`ukd-stage-card${photoEditable ? ' uk-photo-draggable' : ''}${photoGestures.dragging ? ' is-dragging' : ''}`}
+          className={`ukd-stage-card${photoMovable ? ' uk-photo-draggable' : ''}${photoGestures.dragging ? ' is-dragging' : ''}`}
           {...photoFrameProps}
         >
           {selectedPlayer && (
