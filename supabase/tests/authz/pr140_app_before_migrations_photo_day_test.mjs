@@ -36,13 +36,15 @@ const SIGNALS = ['account_deletion_review_pending', 'EMDRP', 'Staff accounts can
 // pr140_app_before_0097_0098_test.mjs proves fall back safely (middleware lets
 // the request continue; the review status reads "not under review"; the staff
 // page shows no counts and offers no completion; the staff routes answer a
-// fixed 500).
+// fixed 500). src/lib/coach-review-status.ts (the /os review status screen,
+// after PR #140) reads my_account_deletion_review too: any error reads as
+// unknown, so /os renders exactly as before (src/app/os/coach-review-status.test.tsx).
 const NEW_FUNCTIONS = ['account_deletion_preview', 'account_is_erased', 'complete_pending_profile_deletion', 'my_account_deletion_review',
   'record_account_sign_in_removal', 'reject_pending_profile_deletion', 'restore_coach_access_after_deletion_rejection'];
 const NEW_FUNCTION_CALLERS = ['src/lib/supabase/middleware.ts', 'src/app/api/os/account/deletion-review/route.ts',
   'src/app/api/staff/account-deletions/[id]/complete/route.ts', 'src/app/api/staff/account-deletions/[id]/reject/route.ts',
   'src/app/api/staff/account-deletions/[id]/retry-sign-in/route.ts', 'src/app/staff/account-deletions/page.tsx',
-  'src/lib/remove-account-sign-in.ts'];
+  'src/lib/remove-account-sign-in.ts', 'src/lib/coach-review-status.ts'];
 const NEW_TABLES = ['account_deletion_staff_actions', 'deletion_review_access_suspensions', 'erased_accounts'];
 const NEW_TABLE_CALLERS = ['src/app/staff/account-deletions/page.tsx', 'src/app/api/staff/account-deletions/[id]/retry-sign-in/route.ts'];
 
