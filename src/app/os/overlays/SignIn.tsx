@@ -210,7 +210,7 @@ export default function SignIn({ onSuccess, onBack }: { onSuccess?: () => void; 
 
           {status === 'error' && (
             <p role="alert" style={{ fontSize: 13, color: '#E9745C', marginTop: 14, maxWidth: 280 }}>
-              {errorMsg || 'Something went wrong — try again.'}
+              {errorMsg || 'Something went wrong. Try again.'}
             </p>
           )}
         </>
@@ -276,7 +276,7 @@ export default function SignIn({ onSuccess, onBack }: { onSuccess?: () => void; 
 
           {status === 'error' && (
             <p role="alert" style={{ fontSize: 13, color: '#E9745C', marginTop: 14, maxWidth: 280 }}>
-              {errorMsg || 'Something went wrong — try again.'}
+              {errorMsg || 'Something went wrong. Try again.'}
             </p>
           )}
         </>

@@ -52,7 +52,7 @@ export async function sendCoachInviteEmail(
         subject: `You've been invited to coach ${playerLabel} on Emblem`,
         html: `
           <h2>You've been invited to connect as a coach</h2>
-          <p>${fromWhom} has invited you to connect as ${playerLabel}'s coach on Emblem — sharing development feedback, tracking progress, and recognising great moments.</p>
+          <p>${fromWhom} has invited you to connect as ${playerLabel}'s coach on Emblem, sharing development feedback, tracking progress, and recognising great moments.</p>
           <p><a href="${inviteUrl}" style="display:inline-block;padding:12px 20px;background:#E97435;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Accept invitation</a></p>
           <p>Once you accept, you'll be connected as ${playerLabel}'s coach. This invitation expires in 7 days.</p>
           <p style="color:#888;font-size:13px">If you weren't expecting this, you can safely ignore this email.</p>

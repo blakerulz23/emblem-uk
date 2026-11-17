@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
       title: verificationStatus === 'pending_verification' ? 'Verification Needed' : 'Guardian Upload',
       body:
         verificationStatus === 'pending_verification'
-          ? `${actorName} submitted a moment for ${player?.name ?? 'their player'} — waiting for your verification.`
+          ? `${actorName} submitted a moment for ${player?.name ?? 'their player'}, waiting for your verification.`
           : `${actorName} uploaded a new moment for ${player?.name ?? 'their player'}.`,
       relatedMomentId: moment.id,
     });

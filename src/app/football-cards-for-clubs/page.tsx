@@ -149,7 +149,7 @@ export default function FootballCardsForClubsPage() {
                 </div>
               </div>
               <h3>Protective display case</h3>
-              <p className="emh-clubs-tile-preview">Preview — availability to be confirmed</p>
+              <p className="emh-clubs-tile-preview">Preview: availability to be confirmed</p>
             </li>
           </ul>
           <p className="emh-clubs-shop-rule">

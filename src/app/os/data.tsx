@@ -113,7 +113,7 @@ export const DEMO_STRENGTHS: StrengthEntry[] = [
 export const DEMO_ASSESSMENTS: AssessmentEntry[] = [
   {
     id: 'demo-assessment-1',
-    body: "Riley's reading of the game has really grown this season — he's linking play well with the midfield. Keep working on first touch under pressure and he'll be even more of a threat.",
+    body: "Riley's reading of the game has really grown this season and he's linking play well with the midfield. Keep working on first touch under pressure and he'll be even more of a threat.",
     authorName: 'Coach Danny',
     createdAt: '2026-07-20',
   },
@@ -134,14 +134,14 @@ export const CELEBRATE_CATS: CelebrateGroup[] = [
 ];
 
 export const VERIFY_QUEUE: VerifyItem[] = [
-  { id: 'v1', player: 'Riley Hart', playerId: 'ollie', moment: 'First Goal', thumb: `${assetPath}/demo-riley-first-goal.webp`, by: 'Sam Hart (Parent)', date: '12 March 2025', note: 'His first goal — arrived late in the box and finished low into the corner!', mediaKind: 'photo' },
+  { id: 'v1', player: 'Riley Hart', playerId: 'ollie', moment: 'First Goal', thumb: `${assetPath}/demo-riley-first-goal.webp`, by: 'Sam Hart (Parent)', date: '12 March 2025', note: 'His first goal: arrived late in the box and finished low into the corner!', mediaKind: 'photo' },
   { id: 'v2', player: 'Jack Bennett', playerId: 'jack', moment: 'Tournament Winner', thumb: `${assetPath}/demo-riley-tournament-winner.webp`, by: 'Mark Bennett (Parent)', date: '7 June 2026', note: null, mediaKind: 'photo' },
   { id: 'v3', player: 'Leo Marsh', playerId: 'leo', moment: 'Team Photo', thumb: `${assetPath}/demo-riley-team-photo-u9.webp`, by: 'Sara Marsh (Parent)', date: '22 April 2026', note: 'Whole squad after the cup win.', mediaKind: 'photo' },
 ];
 
 export const COACH_ACTIVITY: CoachActivityItem[] = [
-  { text: 'You celebrated Riley Hart — Player of the Match', when: '2h ago', ic: 'star' },
-  { text: 'You verified Reuben Clarke — First Assist', when: 'Yesterday', ic: 'shield' },
+  { text: "You celebrated Riley Hart's Player of the Match", when: '2h ago', ic: 'star' },
+  { text: "You verified Reuben Clarke's First Assist", when: 'Yesterday', ic: 'shield' },
   { text: 'You added a team photo', when: '2 days ago', ic: 'camera' },
 ];
 
@@ -256,7 +256,7 @@ export const MOMENTS: Record<string, Moment> = {
     id: 'e1', year: '2024/25', ageGroup: 'U8', title: 'First Goal', date: '12 March 2025', occurredOn: '2025-03-12', ic: 'ball',
     thumb: `${assetPath}/demo-riley-first-goal.webp`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'Arrived late in the box and finished low into the corner — his first competitive goal.', media: true,
+    note: 'Arrived late in the box and finished low into the corner for his first competitive goal.', media: true,
     match: { competition: 'U8 League', opponent: 'Millbrook Rangers', score: '3 – 1', venue: 'Home' },
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
@@ -288,7 +288,7 @@ export const MOMENTS: Record<string, Moment> = {
     id: 'e4', year: '2025/26', ageGroup: 'U9', title: 'Player of the Match', date: '19 October 2025', occurredOn: '2025-10-19', ic: 'star',
     thumb: `${assetPath}/demo-riley-potm-u9.webp`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'Led the press from the front — won the ball back high and kept the team moving all game.', media: true,
+    note: 'Led the press from the front, won the ball back high and kept the team moving all game.', media: true,
     match: { competition: 'U9 League', opponent: 'Millbrook Rangers', score: '2 – 2', venue: 'Away' },
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
@@ -304,7 +304,7 @@ export const MOMENTS: Record<string, Moment> = {
     id: 'e7', year: '2025/26', ageGroup: 'U9', title: 'Team Photo', date: '18 April 2026', occurredOn: '2026-04-18', ic: 'camera',
     thumb: `${assetPath}/demo-riley-team-photo-u9.webp`,
     trust: 'parent', source: 'Sam Hart', uploadedBy: 'Sam Hart', verifiedBy: 'Sam Hart',
-    note: 'End-of-season squad photo — his second year with the team.', media: true,
+    note: 'End-of-season squad photo, his second year with the team.', media: true,
     rarity: { label: 'STANDARD', color: '#8A8378', tier: 'standard' },
     reward: {
       rank: 'standard', sub: 'Team Memory',
@@ -350,14 +350,14 @@ export const MOMENTS: Record<string, Moment> = {
       coachName: 'Coach James Walker',
       score: '3 – 1', opp: 'Millbrook Rangers',
       facts: [['Goals', '1'], ['Assists', '1'], ['Round', 'Final'], ['Competition', 'U10 Champions Cup'], ['Venue', 'Westbrook Park']],
-      key: [['12′', 'Riley assist — through ball for the opener', 'star'], ['34′', 'Millbrook Rangers goal', 'ball'], ['56′', 'Westbrook Juniors goal', 'ball'], ['78′', 'Riley goal from the edge of the box', 'ball'], ['90′', 'Full time', 'shield']],
+      key: [['12′', 'Riley assist: through ball for the opener', 'star'], ['34′', 'Millbrook Rangers goal', 'ball'], ['56′', 'Westbrook Juniors goal', 'ball'], ['78′', 'Riley goal from the edge of the box', 'ball'], ['90′', 'Full time', 'shield']],
     },
   },
   e8: {
     id: 'e8', year: '2026/27', ageGroup: 'U10', title: 'Player of the Match', date: '11 October 2026', occurredOn: '2026-10-11', ic: 'star',
     thumb: `${assetPath}/demo-riley-potm-u10.webp`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'A second Player of the Match award — two assists from up front.', media: true,
+    note: 'A second Player of the Match award, with two assists from up front.', media: true,
     match: { competition: 'U10 League', opponent: 'Millbrook Rangers', score: '4 – 2', venue: 'Home' },
     rarity: { label: 'RECOGNIZED', color: '#E97435', tier: 'metallic' },
     reward: {

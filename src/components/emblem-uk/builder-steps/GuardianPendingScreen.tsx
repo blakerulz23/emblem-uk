@@ -25,7 +25,7 @@ export default function GuardianPendingScreen({ orderId }: { orderId: string | n
       return;
     }
     if (!orderId) {
-      setError('Something went wrong — please refresh and try again.');
+      setError('Something went wrong. Please refresh and try again.');
       return;
     }
     setStatus('sending');
@@ -38,13 +38,13 @@ export default function GuardianPendingScreen({ orderId }: { orderId: string | n
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.ok) {
         setStatus('error');
-        setError(result?.error || 'Could not send that request — please try again.');
+        setError(result?.error || 'Could not send that request. Please try again.');
         return;
       }
       setStatus('sent');
     } catch {
       setStatus('error');
-      setError('Could not send that request — please try again.');
+      setError('Could not send that request. Please try again.');
     }
   };
 

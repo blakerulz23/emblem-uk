@@ -63,8 +63,8 @@ export function minimalDistributionLabel(input: {
   if (!/^[A-Za-zÀ-ÖØ-öø-ÿ'’-]{1,50}$/.test(firstName) || !/^[A-Z]$/.test(initial)) {
     throw new Error('A staff-reviewed packaging exception is required');
   }
-  const number = input.squadNumber == null ? '' : ` — No. ${input.squadNumber}`;
-  return `${firstName} ${initial}.${number} — Package ${input.packageReference}`;
+  const number = input.squadNumber == null ? '' : `, No. ${input.squadNumber}`;
+  return `${firstName} ${initial}.${number}, Package ${input.packageReference}`;
 }
 
 export const SQUAD_INVITE_ANALYTICS_EVENTS = [

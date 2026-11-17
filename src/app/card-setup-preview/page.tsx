@@ -76,7 +76,7 @@ export default function CardSetupChoicePreview() {
       >
         Selected: <strong style={{ color: 'var(--ink)' }}>{choice === 'self_serve' ? 'Set it up myself' : 'Let Emblem build it for me (+$5)'}</strong>
         <br />
-        This selection isn&rsquo;t saved anywhere yet — it&rsquo;s just here so you can see how the choice would look and feel at checkout.
+        This selection isn&rsquo;t saved anywhere yet. It&rsquo;s just here so you can see how the choice would look and feel at checkout.
       </div>
     </div>
   );

@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
     // stacks a second live pending token alongside this one.
     console.warn('builder-authority/guardian-email:send-failed — request row committed, email not delivered');
     return NextResponse.json(
-      { error: 'We could not send that email — please try again.' },
+      { error: 'We could not send that email. Please try again.' },
       { status: 502, headers: { 'Cache-Control': 'no-store' } }
     );
   }

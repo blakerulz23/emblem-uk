@@ -44,8 +44,8 @@ export default function TermsPage() {
       </p>
 
       <p style={{ ...BODY, marginTop: 20 }}>
-        These terms govern your use of emblem.cards and any order, account, or feature on it —
-        including Player OS, Coach OS and Squad Invite — operated by Emblem.
+        These terms govern your use of emblem.cards and any order, account, or feature on it
+        (including Player OS, Coach OS and Squad Invite) operated by Emblem.
         Emblem is a trading name of LAUDA CARTOONS STUDIO LTD, a company registered in England and Wales
         (company number 16063577), registered office 344 Oldham Road, Ashton-under-Lyne, OL7 9PS.
         Contact: hello@emblem.cards.
@@ -53,7 +53,7 @@ export default function TermsPage() {
 
       <h2 style={SECTION_TITLE}>Accounts and who you say you are</h2>
       <p style={BODY}>
-        Signing in with an email and one-time code proves you control that email — it does not
+        Signing in with an email and one-time code proves you control that email; it does not
         verify your identity, your relationship to a child, your employment, or any safeguarding
         clearance. By claiming a card, connecting as a coach, or organising a Squad Invite, you
         confirm that any declaration you make (parental authority, coaching authorisation, club
@@ -68,14 +68,14 @@ export default function TermsPage() {
         for who they connect as a coach. You can remove a coach connection, disable public
         sharing, delete a moment or photo, or request full deletion of the profile at any time.
         Content you make public can be viewed, and potentially copied or downloaded, by anyone with
-        the link — think carefully before enabling public sharing.
+        the link; think carefully before enabling public sharing.
       </p>
 
       <h2 style={SECTION_TITLE}>Coaches</h2>
       <p style={BODY}>
         Coach access is granted by a guardian (direct connection) or comes from an organiser&rsquo;s
         Squad Invite approval (team-wide access). Using assessment, strength, goal and moment
-        features responsibly — accurately, respectfully, and only for coaching purposes — is a
+        features responsibly (accurately, respectfully, and only for coaching purposes) is a
         condition of that access. A guardian or Emblem staff can remove your access at any time.
       </p>
 
@@ -84,7 +84,7 @@ export default function TermsPage() {
         By submitting a Squad Invite request, you confirm you are authorised to organise this for
         the named team, and that your delivery recipient has agreed to receive and distribute the
         completed order. Requests are reviewed and approved by Emblem staff before parents can
-        join — approval is not guaranteed and may be declined or require changes. Families don&rsquo;t
+        join; approval is not guaranteed and may be declined or require changes. Families don&rsquo;t
         pay when they join. At the team&rsquo;s deadline the price per card is set by the number of
         families who have committed to a card (1 family &pound;24.99; 2&ndash;9 families &pound;21.99;
         10 or more families &pound;18.99). Each family then receives a payment link and pays for their
@@ -106,7 +106,7 @@ export default function TermsPage() {
       <p style={BODY}>
         Public profiles are opt-in and guardian-controlled. We choose what a public profile can
         ever show (never exact date of birth, height, assessments, goals or guardian identity), but
-        we cannot control what a third party does with content once it&rsquo;s public — including
+        we cannot control what a third party does with content once it&rsquo;s public, including
         copying, downloading, or indexing by a search engine. Disabling public sharing removes the
         page going forward but cannot retroactively remove copies others may already have made.
       </p>
@@ -115,7 +115,7 @@ export default function TermsPage() {
       <p style={BODY}>
         Products described as NFC-enabled include a physical chip carrying a claim link.
         Functionality available via the chip is described at the time of purchase. If a card is
-        lost, stolen, or damaged, contact us — see the Privacy Policy for what we can currently do
+        lost, stolen, or damaged, contact us; see the Privacy Policy for what we can currently do
         about a lost or stolen card, and its limitations.
       </p>
 
@@ -148,8 +148,8 @@ export default function TermsPage() {
 
       <h2 style={SECTION_TITLE}>Account and access removal</h2>
       <p style={BODY}>
-        We may suspend or remove access — including a guardian, coach, or organiser account, a
-        public profile, or specific content — where we reasonably believe these terms, applicable
+        We may suspend or remove access (including a guardian, coach, or organiser account, a
+        public profile, or specific content) where we reasonably believe these terms, applicable
         law, or a child&rsquo;s safety is at risk, with or without prior notice depending on the
         severity of the concern.
       </p>
@@ -170,7 +170,7 @@ export default function TermsPage() {
 
       <h2 style={SECTION_TITLE}>Governing law</h2>
       <p style={BODY}>
-        These terms are governed by the laws of England and Wales. [Placeholder — full governing
+        These terms are governed by the laws of England and Wales. [Placeholder: full governing
         law and jurisdiction clause to be finalised with legal review.]
       </p>
 

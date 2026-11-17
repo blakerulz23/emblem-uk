@@ -192,7 +192,7 @@ function quoteSubtotalLabel(state: OrderPricingQuoteState): string {
     case 'error':
       return 'Unavailable';
     default:
-      return '—';
+      return '-';
   }
 }
 
@@ -1700,7 +1700,7 @@ export default function ProductionBuilder({
       if (!response.ok || !result?.ok || typeof result.checkoutUrl !== 'string') {
         checkoutTab?.close();
         setCheckoutStage('error');
-        setCheckoutError(result?.error || 'Could not start secure checkout — please try again');
+        setCheckoutError(result?.error || 'Could not start secure checkout. Please try again');
         return;
       }
       setCheckoutUrl(result.checkoutUrl);
@@ -1712,7 +1712,7 @@ export default function ProductionBuilder({
     } catch {
       checkoutTab?.close();
       setCheckoutStage('error');
-      setCheckoutError('Could not start secure checkout — please try again');
+      setCheckoutError('Could not start secure checkout. Please try again');
     }
   };
 
@@ -2271,7 +2271,7 @@ export default function ProductionBuilder({
         </div>
         <div className="ukd-total">
           <small>{order.players.length} card{order.players.length === 1 ? '' : 's'}</small>
-          <strong>{quoteState.status === 'ready' && summary.approvedPlayers.length > 0 ? quoteSubtotalLabel(quoteState) : '—'}</strong>
+          <strong>{quoteState.status === 'ready' && summary.approvedPlayers.length > 0 ? quoteSubtotalLabel(quoteState) : '-'}</strong>
         </div>
         <button type="button" className="ukd-exit" onClick={exitBuilder}>{deviceSaveOff || draftDone ? 'Exit' : 'Save & exit'}</button>
       </header>
@@ -2889,7 +2889,7 @@ export default function ProductionBuilder({
                 // Back is the template's own static, approved design (see
                 // card-face-registry.ts) — never editable, so none of the
                 // photo/framing/text controls below apply here at all.
-                <p className="uk-wizard-copy">This is the back of your card — nothing to edit here. Switch to Front to keep personalising.</p>
+                <p className="uk-wizard-copy">This is the back of your card. Nothing to edit here. Switch to Front to keep personalising.</p>
               )}
               <div className="uk-card-side-toggle wide" aria-label="Choose card side">
                 <button type="button" className={cardSide === 'front' ? 'active' : ''} onClick={() => setCardSide('front')}>Front</button>
@@ -3066,7 +3066,7 @@ export default function ProductionBuilder({
                       <h2>What happens next</h2>
                       <ul>
                         <li>Emblem staff review this card before it goes into production.</li>
-                        <li>A payment request will be emailed to you once your team&apos;s price is confirmed — nothing is charged today.</li>
+                        <li>A payment request will be emailed to you once your team&apos;s price is confirmed. Nothing is charged today.</li>
                         <li>The completed cards are delivered together to your approved organiser or coach.</li>
                       </ul>
                       <p className="uk-squad-invite-success-privacy">Your organiser can see the squad&apos;s overall progress, not your child&apos;s card details or photograph.</p>
@@ -3077,7 +3077,7 @@ export default function ProductionBuilder({
                     <p className="uk-wizard-kicker">Squad Invite</p>
                     <h1>Review and save your child&apos;s card</h1>
                     <p className="uk-wizard-copy">
-                      This creates one private Squad Invite commitment for {order.club || 'your team'}. It is private to you — your organiser sees aggregate progress only, never these details.
+                      This creates one private Squad Invite commitment for {order.club || 'your team'}. It is private to you: your organiser sees aggregate progress only, never these details.
                     </p>
 
                     <div className="uk-squad-review-grid">
@@ -3104,7 +3104,7 @@ export default function ProductionBuilder({
 
                         <div className="uk-squad-review-callout">
                           <p className="uk-squad-review-callout-title">Payment is required once your team&apos;s price is confirmed.</p>
-                          <p>No card details are collected here — you&apos;ll be sent a separate payment request by email once your team&apos;s final price is confirmed.</p>
+                          <p>No card details are collected here. You&apos;ll be sent a separate payment request by email once your team&apos;s final price is confirmed.</p>
                         </div>
 
                         {squadInviteOutcome === 'sign_in_required' && (
@@ -3114,7 +3114,7 @@ export default function ProductionBuilder({
                         )}
                         {squadInviteOutcome === 'unavailable' && (
                           <p role="alert" className="uk-enquiry-error">
-                            This couldn&apos;t be completed right now — it may already be saved, or the window to make changes has closed. Please try again shortly.
+                            This couldn&apos;t be completed right now. It may already be saved, or the window to make changes has closed. Please try again shortly.
                           </p>
                         )}
                         {squadInviteOutcome === 'campaign_closed' && (
@@ -3134,7 +3134,7 @@ export default function ProductionBuilder({
                         )}
                         {squadInviteOutcome === 'photo_upload_failed' && (
                           <p role="alert" className="uk-enquiry-error">
-                            Your photo couldn&apos;t be saved. Your details and declarations are still here — please try again, or use a different photo.
+                            Your photo couldn&apos;t be saved. Your details and declarations are still here. Please try again, or use a different photo.
                           </p>
                         )}
 
@@ -3188,7 +3188,7 @@ export default function ProductionBuilder({
                             {squadInviteSubmitting ? 'Saving…' : "Save my child's card"}
                           </button>
                           <p className="uk-squad-review-submit-note">
-                            Your child&apos;s card joins the team&apos;s production queue now. You&apos;ll be sent a payment request by email once the team&apos;s price is confirmed — your organiser sees aggregate progress only, never these details.
+                            Your child&apos;s card joins the team&apos;s production queue now. You&apos;ll be sent a payment request by email once the team&apos;s price is confirmed. Your organiser sees aggregate progress only, never these details.
                           </p>
                         </form>
                       </div>
@@ -3252,9 +3252,9 @@ export default function ProductionBuilder({
                   : !gate3Enabled
                     ? 'We have your production request and will email you within one business day.'
                     : checkoutStage === 'confirmed'
-                      ? 'Payment received — your cards are on their way into production.'
+                      ? 'Payment received. Your cards are on their way into production.'
                       : checkoutStage === 'awaiting-payment'
-                        ? "We're waiting for Shopify to confirm your payment — this can take a few moments. Complete checkout in the tab that just opened, then come back here."
+                        ? "We're waiting for Shopify to confirm your payment. This can take a few moments. Complete checkout in the tab that just opened, then come back here."
                         : 'Continue to secure checkout to confirm delivery and complete payment.'}
               </p>
               {enquiryStatus === 'sent' && gate3Enabled && checkoutStage !== 'confirmed' && (
@@ -3273,7 +3273,7 @@ export default function ProductionBuilder({
                         </a>
                       )}
                       <button type="button" className="uk-wizard-primary compact" onClick={checkGate3PaymentStatus}>
-                        I&apos;ve completed payment — check again
+                        I&apos;ve completed payment. Check again
                       </button>
                     </>
                   ) : (
@@ -3440,9 +3440,9 @@ export default function ProductionBuilder({
                 {enquiryStatus === 'error' && enquiryConflict && (
                   <div role="alert">
                     <p className="uk-enquiry-error">
-                      This order couldn&apos;t be resubmitted safely — your earlier attempt may have already gone through with different
+                      This order couldn&apos;t be resubmitted safely. Your earlier attempt may have already gone through with different
                       details, so resending this exact form could create a mismatched order. Nothing has been created from this attempt.
-                      Start a new order to try again — your card details are still here.
+                      Start a new order to try again. Your card details are still here.
                     </p>
                     <button type="button" className="uk-wizard-primary compact" onClick={startNewOrder}>
                       Start a new order
@@ -3453,7 +3453,7 @@ export default function ProductionBuilder({
                 {quoteBlocksSubmission && enquiryStatus !== 'sent' && (
                   <p id="uk-quote-block-hint" className="uk-quote-block-hint" aria-live="polite">
                     {quoteState.status === 'error'
-                      ? "We couldn't confirm your card price — tap Try again above before continuing."
+                      ? "We couldn't confirm your card price. Tap Try again above before continuing."
                       : 'Waiting for your authoritative card price before you can continue.'}
                   </p>
                 )}

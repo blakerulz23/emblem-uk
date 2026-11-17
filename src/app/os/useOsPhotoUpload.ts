@@ -37,7 +37,7 @@ export function useOsPhotoUpload(playerId: string | null) {
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         setStatus('error');
-        setError((body && typeof body.error === 'string' && body.error) || 'Could not upload photo — try again.');
+        setError((body && typeof body.error === 'string' && body.error) || 'Could not upload photo. Try again.');
         return;
       }
       setStatus('success');
@@ -45,7 +45,7 @@ export function useOsPhotoUpload(playerId: string | null) {
       setTimeout(() => setStatus((current) => (current === 'success' ? 'idle' : current)), 2500);
     } catch {
       setStatus('error');
-      setError('Could not upload photo — check your connection and try again.');
+      setError('Could not upload photo. Check your connection and try again.');
     }
   };
 
@@ -58,7 +58,7 @@ export function useOsPhotoUpload(playerId: string | null) {
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         setRemoveStatus('error');
-        setRemoveError((body && typeof body.error === 'string' && body.error) || 'Could not remove photo — try again.');
+        setRemoveError((body && typeof body.error === 'string' && body.error) || 'Could not remove photo. Try again.');
         return;
       }
       setRemoveStatus('success');
@@ -66,7 +66,7 @@ export function useOsPhotoUpload(playerId: string | null) {
       setTimeout(() => setRemoveStatus((current) => (current === 'success' ? 'idle' : current)), 2500);
     } catch {
       setRemoveStatus('error');
-      setRemoveError('Could not remove photo — check your connection and try again.');
+      setRemoveError('Could not remove photo. Check your connection and try again.');
     }
   };
 

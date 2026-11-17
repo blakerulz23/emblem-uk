@@ -183,7 +183,7 @@ export default function ClaimCodeEntry({
 
       {status === 'error' && (
         <p role="alert" style={{ fontSize: 13, color: '#E9745C', marginTop: 14, maxWidth: 280 }}>
-          That code isn&apos;t recognised — check it and try again.
+          That code isn&apos;t recognised. Check it and try again.
         </p>
       )}
       {status === 'rateLimited' && (

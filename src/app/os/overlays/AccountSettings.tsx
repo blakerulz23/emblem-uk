@@ -203,11 +203,11 @@ export default function AccountSettings(props: AccountSettingsProps) {
         if (body?.code === 'REAUTH_REQUIRED') {
           setDeleteAccountStatus('idle');
           setDeleteStep('explain');
-          setDeleteAccountError('That took a little too long — please verify your email code again.');
+          setDeleteAccountError('That took a little too long. Please verify your email code again.');
           return;
         }
         setDeleteAccountStatus('error');
-        setDeleteAccountError((body && typeof body.error === 'string' && body.error) || 'Could not delete your account — try again.');
+        setDeleteAccountError((body && typeof body.error === 'string' && body.error) || 'Could not delete your account. Try again.');
         return;
       }
       const outcome = deletionOutcome(await res.json().catch(() => null));
@@ -216,7 +216,7 @@ export default function AccountSettings(props: AccountSettingsProps) {
       setTimeout(() => window.location.assign('/os'), deletionRedirectDelayMs(outcome));
     } catch {
       setDeleteAccountStatus('error');
-      setDeleteAccountError('Could not reach the server — check your connection and try again.');
+      setDeleteAccountError('Could not reach the server. Check your connection and try again.');
     }
   };
 
@@ -245,7 +245,7 @@ export default function AccountSettings(props: AccountSettingsProps) {
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 16px 40px' }}>
         <SectionCard title="Account">
           <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 3 }}>Signed in as</div>
-          <div style={{ fontSize: 14.5, fontWeight: 700, color: COLORS.ink, marginBottom: 16, wordBreak: 'break-word' }}>{email ?? '—'}</div>
+          <div style={{ fontSize: 14.5, fontWeight: 700, color: COLORS.ink, marginBottom: 16, wordBreak: 'break-word' }}>{email ?? '-'}</div>
           <div
             role="button"
             tabIndex={0}
@@ -307,13 +307,13 @@ function PlayerPublicAndMediaSections({ player }: { player: PlayerScope }) {
         body: JSON.stringify({ enabled: !publicIdEnabled }),
       });
       if (!res.ok) {
-        setPublicError("Couldn't update the public profile setting — try again.");
+        setPublicError("Couldn't update the public profile setting. Try again.");
         return;
       }
       onPublicVisibilityChanged();
       router.refresh();
     } catch {
-      setPublicError('Could not reach the server — check your connection and try again.');
+      setPublicError('Could not reach the server. Check your connection and try again.');
     } finally {
       setPublicBusy(false);
     }
@@ -332,7 +332,7 @@ function PlayerPublicAndMediaSections({ player }: { player: PlayerScope }) {
             <div>
               <div style={{ fontSize: 13.5, fontWeight: 700, color: COLORS.ink }}>{playerName}&apos;s public link</div>
               <div style={{ fontSize: 11.5, color: COLORS.muted, marginTop: 2 }}>
-                {publicIdEnabled ? 'Anyone with the link can view it.' : 'Currently off — no one can view it.'}
+                {publicIdEnabled ? 'Anyone with the link can view it.' : 'Currently off, so no one can view it.'}
               </div>
             </div>
             <div
@@ -450,7 +450,7 @@ function PlayerDataDeletionRequest({ player }: { player: PlayerScope }) {
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         setDeletionRequestStatus('error');
-        setDeletionRequestError((body && typeof body.error === 'string' && body.error) || 'Could not send the request — try again.');
+        setDeletionRequestError((body && typeof body.error === 'string' && body.error) || 'Could not send the request. Try again.');
         return;
       }
       const body = await res.json().catch(() => null);
@@ -458,7 +458,7 @@ function PlayerDataDeletionRequest({ player }: { player: PlayerScope }) {
       setDeletionRequestStatus('sent');
     } catch {
       setDeletionRequestStatus('error');
-      setDeletionRequestError('Could not reach the server — check your connection and try again.');
+      setDeletionRequestError('Could not reach the server. Check your connection and try again.');
     }
   };
 
@@ -500,7 +500,7 @@ function PlayerDataDeletionRequest({ player }: { player: PlayerScope }) {
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         setCancelDeletionStatus('error');
-        setCancelDeletionError((body && typeof body.error === 'string' && body.error) || 'Could not cancel the request — try again.');
+        setCancelDeletionError((body && typeof body.error === 'string' && body.error) || 'Could not cancel the request. Try again.');
         return;
       }
       // Nothing else changes — no player, media, account or card data is
@@ -510,7 +510,7 @@ function PlayerDataDeletionRequest({ player }: { player: PlayerScope }) {
       setConfirmCancelDeletion(false);
     } catch {
       setCancelDeletionStatus('error');
-      setCancelDeletionError('Could not reach the server — check your connection and try again.');
+      setCancelDeletionError('Could not reach the server. Check your connection and try again.');
     }
   };
 
@@ -519,7 +519,7 @@ function PlayerDataDeletionRequest({ player }: { player: PlayerScope }) {
               <div style={{ borderTop: `1px solid ${COLORS.border}`, marginTop: 18, paddingTop: 16 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: COLORS.ink, marginBottom: 4 }}>Delete {playerName}&apos;s data</div>
                 <p style={{ fontSize: 12, lineHeight: 1.5, color: COLORS.muted, margin: '0 0 10px' }}>
-                  Sends a request to permanently delete {playerName}&apos;s profile, moments and photos. A member of our team reviews and carries this out — it is not instant.
+                  Sends a request to permanently delete {playerName}&apos;s profile, moments and photos. A member of our team reviews and carries this out. It is not instant.
                 </p>
                 {deletionRequestStatus === 'sent' ? (
                   cancelDeletionStatus === 'cancelled' ? (
@@ -531,14 +531,14 @@ function PlayerDataDeletionRequest({ player }: { player: PlayerScope }) {
                     </div>
                   ) : (
                     <div style={{ fontSize: 12.5, lineHeight: 1.6, color: COLORS.ink }}>
-                      <p style={{ fontWeight: 700, color: '#2E9E5B', margin: '0 0 4px' }}>Request received — status: Pending.</p>
+                      <p style={{ fontWeight: 700, color: '#2E9E5B', margin: '0 0 4px' }}>Request received. Status: Pending.</p>
                       {deletionRequestId && (
                         <p style={{ margin: '0 0 4px', color: COLORS.muted }}>
                           Reference: <span style={{ fontFamily: 'monospace' }}>{deletionRequestId.slice(0, 8)}</span>
                         </p>
                       )}
                       <p style={{ margin: '0 0 10px', color: COLORS.muted }}>
-                        Our team will review it — {playerName}&apos;s data has <b>not</b> been deleted yet. We&apos;ll confirm by email once it&apos;s actually done.
+                        Our team will review it. {playerName}&apos;s data has <b>not</b> been deleted yet. We&apos;ll confirm by email once it&apos;s actually done.
                       </p>
                       {!confirmCancelDeletion ? (
                         <div
@@ -594,7 +594,7 @@ function PlayerDataDeletionRequest({ player }: { player: PlayerScope }) {
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}>
-                    <span style={{ fontSize: 12, color: COLORS.muted }}>Send this request? This does not delete anything yet — our team reviews it first.</span>
+                    <span style={{ fontSize: 12, color: COLORS.muted }}>Send this request? This does not delete anything yet. Our team reviews it first.</span>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <div
                         role="button"

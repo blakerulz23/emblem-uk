@@ -85,7 +85,7 @@ describe('Squad Invite / ProductionBuilder reuse — no duplicate builder, real 
     // The success screen's own payment line (0067): states a payment
     // request will follow by email once pricing is confirmed, now that
     // squad_invite_payment_mode_enabled() is genuinely true.
-    expect(squadInviteReview).toContain("A payment request will be emailed to you once your team&apos;s price is confirmed — nothing is charged today.");
+    expect(squadInviteReview).toContain("A payment request will be emailed to you once your team&apos;s price is confirmed. Nothing is charged today.");
   });
 
   it('requires every declaration accepted separately before submit is possible, matching the commit route contract', () => {

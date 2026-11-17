@@ -61,7 +61,7 @@ describe('Squad Invite builder completion screen — a real next step, not a dea
   it('replaces the old five-item repetitive tick list with a compact, truthful "What happens next" section', () => {
     expect(successBlock).toContain('<h2>What happens next</h2>');
     expect(successBlock).toContain('Emblem staff review this card before it goes into production.');
-    expect(successBlock).toContain('A payment request will be emailed to you once your team&apos;s price is confirmed — nothing is charged today.');
+    expect(successBlock).toContain('A payment request will be emailed to you once your team&apos;s price is confirmed. Nothing is charged today.');
     expect(successBlock).toContain('The completed cards are delivered together to your approved organiser or coach.');
     // Old five-bullet list, and its unstyled/removed markup, must be gone.
     expect(successBlock).not.toContain('uk-squad-invite-success-list');

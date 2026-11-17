@@ -58,7 +58,7 @@ export async function PATCH(request: NextRequest) {
     }
     if (!moment) {
       return NextResponse.json(
-        { error: "This moment can't be recognised — it may not exist, may already be verified, or you may not have permission" },
+        { error: "This moment can't be recognised. It may not exist, may already be verified, or you may not have permission" },
         { status: 403 }
       );
     }
@@ -100,7 +100,7 @@ export async function PATCH(request: NextRequest) {
   }
   if (!data || data.length === 0) {
     return NextResponse.json(
-      { error: "This moment can't be rejected — it may not exist, may already be verified, or you may not have permission" },
+      { error: "This moment can't be rejected. It may not exist, may already be verified, or you may not have permission" },
       { status: 403 }
     );
   }

@@ -28,7 +28,7 @@ export function deletionOutcome(body: unknown): DeletionOutcome {
 export function deletionDoneMessage(outcome: DeletionOutcome): string {
   if (outcome.kind === 'review') return `${deletionReviewResponse(outcome.coachPaused)} Signing you out…`;
   if (outcome.kind === 'partial') {
-    return "Your account data has been removed. We're still finishing the revocation of your sign-in — this happens automatically, no action needed. Signing you out…";
+    return "Your account data has been removed. We're still finishing the revocation of your sign-in. This happens automatically, no action needed. Signing you out…";
   }
   return 'Your account has been deleted. Signing you out…';
 }

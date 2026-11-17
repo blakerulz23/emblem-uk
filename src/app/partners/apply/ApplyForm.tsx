@@ -40,7 +40,7 @@ export default function ApplyForm() {
     const body = res ? await res.json().catch(() => null) : null;
     setBusy(false);
     if (!res?.ok) {
-      setError((body && typeof body.error === 'string' && body.error) || 'Could not send your application — please try again.');
+      setError((body && typeof body.error === 'string' && body.error) || 'Could not send your application. Please try again.');
       return;
     }
     setDone(true);

@@ -51,7 +51,7 @@ export function computeCloseConsequence(completedCommitments: number): CloseCons
     return {
       leadLine: null,
       leadBold: false,
-      consequenceLine: `${n} ${childWord} joined so far. Closing now locks everyone in at ${currentPrice} per card — your best available rate — and stops anyone else from joining or finishing their card. You can reopen this yourself later if you need to.`,
+      consequenceLine: `${n} ${childWord} joined so far. Closing now locks everyone in at ${currentPrice} per card (your best available rate) and stops anyone else from joining or finishing their card. You can reopen this yourself later if you need to.`,
     };
   }
 
@@ -70,7 +70,7 @@ export function computeCloseConsequence(completedCommitments: number): CloseCons
   const gap = nextThreshold - n;
   const totalSaving = formatPence(n * (current.unitPricePence - next.unitPricePence));
   return {
-    leadLine: `${gap} more player${gap === 1 ? '' : 's'} would save the team ${totalSaving} — the price drops to ${nextPrice} per card once you reach ${nextThreshold} players.`,
+    leadLine: `${gap} more player${gap === 1 ? '' : 's'} would save the team ${totalSaving}. The price drops to ${nextPrice} per card once you reach ${nextThreshold} players.`,
     leadBold: true,
     consequenceLine: `${n} ${childWord} joined so far. Closing now locks everyone in at ${currentPrice} per card, and stops anyone else from joining or finishing their card. You can reopen this yourself later if you need to.`,
   };

@@ -11,7 +11,7 @@ import type { BuilderAuthorityRelationship } from './builder-authority-shared';
  * component is the smallest fix for that, not a new test dependency).
  */
 
-export const GENERIC_FAILURE = 'Something went wrong — please try again.';
+export const GENERIC_FAILURE = 'Something went wrong. Please try again.';
 export const TIMEOUT_FAILURE = 'This is taking longer than expected. Please try again.';
 
 /**

@@ -92,15 +92,15 @@ export default async function PublicPlayerProfilePage({ params }: { params: { pu
           <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${COLORS.border}`, borderBottom: `1px solid ${COLORS.border}`, padding: '12px 0' }}>
             <div>
               <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: COLORS.muted }}>SQUAD NUMBER</div>
-              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: COLORS.ink }}>{profile.squadNumber ?? '—'}</div>
+              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: COLORS.ink }}>{profile.squadNumber ?? '-'}</div>
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: COLORS.muted }}>POSITION</div>
-              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: COLORS.ink }}>{profile.secondaryPosition ? `${profile.position} / ${profile.secondaryPosition}` : (profile.position ?? '—')}</div>
+              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: COLORS.ink }}>{profile.secondaryPosition ? `${profile.position} / ${profile.secondaryPosition}` : (profile.position ?? '-')}</div>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 600, fontSize: 10, color: COLORS.muted }}>SEASON</div>
-              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: COLORS.ink }}>{profile.team?.season ?? '—'}</div>
+              <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, color: COLORS.ink }}>{profile.team?.season ?? '-'}</div>
             </div>
           </div>
         </div>

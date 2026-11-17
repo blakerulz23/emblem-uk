@@ -256,7 +256,7 @@ export default function CoachTeam({ actions }: { actions: OsActions }) {
                       The invitation email could not be sent. Share this code with the player&apos;s parent instead.
                     </div>
                   )}
-                  <div style={{ fontSize: 13, color: 'var(--os-muted)', marginBottom: 8 }}>Share this code with the player&apos;s parent — they&apos;ll enter it when they sign up.</div>
+                  <div style={{ fontSize: 13, color: 'var(--os-muted)', marginBottom: 8 }}>Share this code with the player&apos;s parent. They&apos;ll enter it when they sign up.</div>
                   <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 24, letterSpacing: '.2em', color: 'var(--os-ink)', marginBottom: 12 }}>{claimToken}</div>
                 </>
               )}

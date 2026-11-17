@@ -10,7 +10,7 @@ const STATUS_LABEL: Record<OsRefreshStatus, string> = {
   ready: 'Release to refresh',
   refreshing: 'Checking for updates…',
   success: 'Up to date',
-  error: "Couldn't refresh — try again",
+  error: "Couldn't refresh. Try again",
 };
 
 function RefreshGlyph({ status, progress }: { status: OsRefreshStatus; progress: number }) {
@@ -104,7 +104,7 @@ export default function OsRefreshIndicator({
       onClick={status === 'error' ? onRetry : undefined}
       role={status === 'error' ? 'button' : undefined}
       tabIndex={status === 'error' ? 0 : undefined}
-      aria-label={status === 'error' ? `${STATUS_LABEL.error} — retry` : undefined}
+      aria-label={status === 'error' ? `${STATUS_LABEL.error} (retry)` : undefined}
     >
       <div
         style={{

@@ -162,7 +162,7 @@ function Summary({label,value}:{label:string;value:string}){return <div classNam
 function PricingProjectionCard({projection,squadSize}:{projection:ReturnType<typeof projectedSquadIncentive>;squadSize:number}){
  if(!projection)return null;
  const tierLabel={single:'Single-player pricing',multi:'Multi-player pricing',squad:'Full Squad pricing'}[projection.tier];
- const coachCard=projection.tier==='squad'?'Included — a free coach card at Full Squad pricing.':'Not yet — unlocked at 10 or more players.';
+ const coachCard=projection.tier==='squad'?'Included: a free coach card at Full Squad pricing.':'Not yet. Unlocked at 10 or more players.';
  return <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4" aria-live="polite">
    <p className="text-xs font-bold uppercase tracking-wide text-orange-700">Projected pricing</p>
    <dl className="mt-2 grid gap-1.5 text-sm">

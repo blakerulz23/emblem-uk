@@ -105,7 +105,7 @@ async function approveSquadInviteOrder(
     .limit(1)
     .maybeSingle();
   if (rejectedPhoto) {
-    return NextResponse.json({ error: "This order's photo was rejected — cannot approve until it's replaced" }, { status: 409 });
+    return NextResponse.json({ error: "This order's photo was rejected, so it can't be approved until it's replaced" }, { status: 409 });
   }
 
   const { data: paymentModeEnabled } = await serviceRole.rpc('squad_invite_payment_mode_enabled');

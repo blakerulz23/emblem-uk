@@ -141,7 +141,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
             <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="var(--os-muted)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="9" cy="9" r="2" /><path d="M21 15l-5-5L5 21" /></svg>
             <span style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 14, color: 'var(--os-ink)' }}>{uploading ? 'Uploading…' : 'Add a photo'}</span>
             {photoStatus === 'error' && (
-              <span style={{ fontFamily: 'Roboto', fontSize: 11.5, color: '#C0392B', textAlign: 'center', padding: '0 16px' }}>{photoError ?? 'Could not upload photo — try again.'}</span>
+              <span style={{ fontFamily: 'Roboto', fontSize: 11.5, color: '#C0392B', textAlign: 'center', padding: '0 16px' }}>{photoError ?? 'Could not upload photo. Try again.'}</span>
             )}
           </div>
         ) : (
@@ -229,7 +229,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
               <span aria-hidden="true" style={{ flex: '0 0 auto', fontFamily: 'Georgia, serif', fontWeight: 700, fontSize: 34, lineHeight: 0.5, color: '#E97435', marginTop: 10 }}>&ldquo;</span>
               <p style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 17, lineHeight: 1.4, color: 'var(--os-ink)', margin: 0 }}>{assessments[0].body}</p>
             </div>
-            <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--os-muted)' }}>— {assessments[0].authorName ?? 'Coach'}</div>
+            <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--os-muted)' }}>{assessments[0].authorName ?? 'Coach'}</div>
             <div style={{ fontSize: 11, color: 'var(--os-muted)', marginTop: 1 }}>{formatDate(assessments[0].createdAt)}</div>
           </div>
         ) : (
@@ -267,7 +267,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
               {TargetIcon('#E97435')}
             </div>
             <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)', marginBottom: 6 }}>No Season Focus yet.</div>
-            <div style={{ fontSize: 13, color: 'var(--os-muted)', lineHeight: 1.5 }}>{`Set what ${firstName || 'this player'} is working on this season — their coach can see it too.`}</div>
+            <div style={{ fontSize: 13, color: 'var(--os-muted)', lineHeight: 1.5 }}>{`Set what ${firstName || 'this player'} is working on this season. Their coach can see it too.`}</div>
           </div>
         ) : (
           seasonFocus.map((f) => (
@@ -297,7 +297,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
                 onKeyDown={onActivateKey(() => activeFocusCount < 3 && setShowAddFocus(true))}
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 11, border: '1px dashed var(--os-border)', color: activeFocusCount >= 3 ? 'var(--os-muted)' : '#E97435', fontFamily: 'Roboto', fontWeight: 700, fontSize: 13, cursor: activeFocusCount >= 3 ? 'default' : 'pointer' }}
               >
-                {activeFocusCount >= 3 ? '3 active already — complete one first' : '+ Add a Season Focus'}
+                {activeFocusCount >= 3 ? '3 active already. Complete one first' : '+ Add a Season Focus'}
               </div>
             ) : (
               <form onSubmit={addFocus} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>

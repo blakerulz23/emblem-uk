@@ -14,7 +14,7 @@ export default function CelebrateSheet({ state, actions }: { state: OsState; act
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', background: '#F4F2EE', borderRadius: '26px 26px 0 0', padding: '10px 20px 26px', maxHeight: '90%', overflowY: 'auto' }}>
         <div style={{ width: 42, height: 5, borderRadius: 4, background: 'rgba(0,0,0,.18)', margin: '0 auto 16px' }} />
         <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 22, color: 'var(--os-ink)' }}>Celebrate {playerName}</div>
-        <div style={{ fontSize: 13, color: 'var(--os-muted)', margin: '3px 0 16px' }}>Pick one — it&apos;s added to their journey and their family is notified.</div>
+        <div style={{ fontSize: 13, color: 'var(--os-muted)', margin: '3px 0 16px' }}>Pick one. It&apos;s added to their journey and their family is notified.</div>
         {CELEBRATE_CATS.map((group) => (
           <div key={group.group}>
             <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: 'var(--os-muted)', margin: '0 0 9px 2px' }}>{group.group.toUpperCase()}</div>
@@ -32,10 +32,10 @@ export default function CelebrateSheet({ state, actions }: { state: OsState; act
           </div>
         ))}
         <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.1em', fontSize: 11, color: 'var(--os-muted)', margin: '0 0 8px 2px' }}>COACH MESSAGE · OPTIONAL</div>
-        <textarea value={state.coachMsg} onChange={actions.setCoachMsg} placeholder="Add a message — it becomes part of their collectible." style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--os-border)', borderRadius: 14, padding: 13, fontFamily: 'Roboto', fontSize: 13.5, color: 'var(--os-ink)', background: '#fff', resize: 'none', minHeight: 64, marginBottom: 18 }} />
+        <textarea value={state.coachMsg} onChange={actions.setCoachMsg} placeholder="Add a message. It becomes part of their collectible." style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--os-border)', borderRadius: 14, padding: 13, fontFamily: 'Roboto', fontSize: 13.5, color: 'var(--os-ink)', background: '#fff', resize: 'none', minHeight: 64, marginBottom: 18 }} />
         {state.celebError && (
           <div role="alert" style={{ textAlign: 'center', fontSize: 12.5, color: '#A63426', marginBottom: 10 }}>
-            Couldn&apos;t send this recognition — check your connection and try again.
+            Couldn&apos;t send this recognition. Check your connection and try again.
           </div>
         )}
         <div onClick={state.celebSending ? undefined : actions.sendRecognition} aria-disabled={state.celebSending} style={{ textAlign: 'center', padding: 14, borderRadius: 12, background: sendBg, color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, cursor: state.celebSending ? 'default' : 'pointer' }}>{state.celebSending ? 'Sending…' : 'Send Recognition'}</div>

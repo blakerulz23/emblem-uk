@@ -91,12 +91,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     // unresolved product/variant mapping. Logged with the tier only —
     // never the order id, ref, or any customer detail.
     console.error('orders/checkout: unresolved Shopify variant mapping for pricing tier', result.pricingTier);
-    return NextResponse.json({ error: 'Secure checkout is not yet available for this order type — please contact us' }, { status: 503 });
+    return NextResponse.json({ error: 'Secure checkout is not yet available for this order type. Please contact us' }, { status: 503 });
   }
 
   const checkoutUrl = buildUkCardCartUrl(result.quantity, result.orderRef, parseUtmCookie(request.cookies.get(UTM_COOKIE)?.value));
   if (!checkoutUrl) {
-    return NextResponse.json({ error: 'Secure checkout is not configured yet — please contact us' }, { status: 503 });
+    return NextResponse.json({ error: 'Secure checkout is not configured yet. Please contact us' }, { status: 503 });
   }
 
   // Defence in depth — never return a URL that isn't genuinely Shopify's
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   // loud, immediate failure here.
   if (!isSafeShopifyCheckoutUrl(checkoutUrl)) {
     console.error('orders/checkout: refusing to return a URL that failed Shopify-host validation');
-    return NextResponse.json({ error: 'Could not prepare secure checkout — please try again' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not prepare secure checkout. Please try again' }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, checkoutUrl }, { headers: { 'Cache-Control': 'no-store' } });

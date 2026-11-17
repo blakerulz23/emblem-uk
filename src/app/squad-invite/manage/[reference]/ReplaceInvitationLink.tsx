@@ -104,7 +104,7 @@ export default function ReplaceInvitationLink({ campaignId }: { campaignId: stri
       <section className="mt-8 rounded-2xl border-2 border-orange-600 bg-white p-6">
         <h2 className="text-2xl font-bold">Your new invitation link</h2>
         <p className="mt-2 text-sm text-neutral-700">
-          This is shown once. Copy it now — it cannot be recovered after you leave this page. The previous link has already stopped working.
+          This is shown once. Copy it now. It cannot be recovered after you leave this page. The previous link has already stopped working.
         </p>
         <input
           className="mt-4 block w-full rounded-xl border p-3 font-mono text-sm"
@@ -131,7 +131,7 @@ export default function ReplaceInvitationLink({ campaignId }: { campaignId: stri
       {phase === 'idle' && (
         <>
           <p className="mt-2 text-sm text-neutral-700">
-            You can generate a replacement. Replacing it immediately stops the current link from working — anyone who still has the old link will no longer be able to use it.
+            You can generate a replacement. Replacing it immediately stops the current link from working. Anyone who still has the old link will no longer be able to use it.
           </p>
           <button type="button" className="mt-4 rounded-xl border-2 border-orange-600 px-4 py-2 font-bold text-orange-700" onClick={() => setPhase('confirming')}>
             Replace invitation link
@@ -142,7 +142,7 @@ export default function ReplaceInvitationLink({ campaignId }: { campaignId: stri
         <div className="mt-3 rounded-xl bg-amber-50 p-4">
           <p className="font-bold text-amber-900">This will immediately stop the current link from working.</p>
           <p className="mt-2 text-sm text-amber-900">
-            Anyone still holding the old link — including a parent who hasn&apos;t opened it yet — will no longer be able to use it once you confirm.
+            Anyone still holding the old link (including a parent who hasn&apos;t opened it yet) will no longer be able to use it once you confirm.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" className="rounded-xl bg-orange-600 px-4 py-2 font-bold text-white" onClick={confirmReplace}>

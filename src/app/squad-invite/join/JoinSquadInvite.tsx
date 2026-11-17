@@ -149,8 +149,8 @@ export default function JoinSquadInvite({ invitation, csrfToken }: { invitation:
   if (invitation.currentIncentive === 'squad') {
     incentiveHeadline = 'Full Squad pricing unlocked';
     incentiveDetail = invitation.freeCoachCardConfirmed
-      ? `${invitation.completedCommitments} joined — the lowest price per card, plus a free coach card.`
-      : `${invitation.completedCommitments} joined — the lowest price per card.`;
+      ? `${invitation.completedCommitments} joined: the lowest price per card, plus a free coach card.`
+      : `${invitation.completedCommitments} joined: the lowest price per card.`;
   } else if (invitation.currentIncentive === 'multi') {
     const remaining = Math.max(1, SQUAD_MIN_DISPLAY - invitation.completedCommitments);
     incentiveHeadline = `${invitation.completedCommitments} of ${SQUAD_MIN_DISPLAY} joined`;

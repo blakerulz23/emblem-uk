@@ -43,7 +43,7 @@ describe('Squad Invite final review/commit panel — polish contract', () => {
     const review = reviewBlock();
     expect(review).toContain('uk-squad-review-callout');
     expect(review).toContain("Payment is required once your team&apos;s price is confirmed.");
-    expect(review).toContain("No card details are collected here — you&apos;ll be sent a separate payment request by email once your team&apos;s final price is confirmed.");
+    expect(review).toContain("No card details are collected here. You&apos;ll be sent a separate payment request by email once your team&apos;s final price is confirmed.");
     expect(css).toMatch(/\.uk-squad-review-callout \{[\s\S]*?border: 2px solid var\(--wizard-accent\);/);
   });
 
