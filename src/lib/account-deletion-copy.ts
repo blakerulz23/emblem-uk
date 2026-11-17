@@ -53,6 +53,6 @@ export function signInErrorMessage(error: { code?: string; message?: string }): 
  * Like the rest of this file, it never promises an email.
  */
 export const COACH_DELETE_REVIEW_NOTE =
-  'If you’ve written player assessments, goals, strengths or season focus (or organised a Squad Invite), those records have to be kept, so your request goes to Emblem staff for review instead. Nothing is deleted while they review it, and your coaching access is paused. If staff decide not to delete your account, your coaching access is restored.';
+  'If you’ve written player assessments, goals, strengths or season focus (or organised a Squad Invite), those records have to be kept, so your request goes to Emblem staff for review instead. Nothing is deleted while they review it, and your coaching access is paused. If staff decide not to delete your account, your coaching access is restored where possible.';
 export const COACH_DELETE_CONFIRM =
-  'This cannot be undone. If your account needs staff review first, nothing is deleted until staff decide, and your coaching access is paused meanwhile.';
+  'If nothing needs staff review, your account is deleted straight away and this cannot be undone. If it does need review, nothing is deleted until staff decide, and your coaching access is paused meanwhile.';

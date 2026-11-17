@@ -272,7 +272,7 @@ export default function AccountSettings(props: AccountSettingsProps) {
                 </ul>
               ) : (
                 <ul style={{ fontSize: 12.5, lineHeight: 1.6, color: COLORS.muted, margin: '0 0 14px', paddingLeft: 18 }}>
-                  <li>This deletes <b>your own login</b> — the email you sign in with — and your coach access to every team and player.</li>
+                  <li>If nothing needs staff review (see the last point), this deletes <b>your own login</b> — the email you sign in with — and your coach access to every team and player.</li>
                   <li>Players&apos; cards, moments and the recognitions you gave stay with their families, still marked as coach-verified.</li>
                   <li>Any team request you sent is withdrawn.</li>
                   {alsoGuardian && (

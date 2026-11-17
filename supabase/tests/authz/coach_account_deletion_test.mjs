@@ -180,9 +180,10 @@ const count = async (db, sql, params) => (await db.query(sql, params)).rows[0].n
     check('C: both coach accesses (team assignment and direct link) are reported as paused', result.coachAccessSuspended === 2, JSON.stringify(result));
     const pending = (await db.query(`select id, status from public.pending_profile_deletions where auth_user_id = $1 and blocking_reason = 'coach_authored_player_records'`, [people.coach])).rows;
     check('C: staff get one pending review (coach_authored_player_records)', pending.length === 1 && pending[0].status === 'pending', JSON.stringify(pending));
-    check('C: nothing is deleted: the identity, profile, assessment and the parent\'s guardian links remain', await count(db,
-      `select (select count(*) from auth.users where id = $1) + (select count(*) from public.profiles where id = $1) + (select count(*) from public.player_assessments where created_by = $1) + (select count(*) from public.guardians where profile_id = $2) as n`,
-      [people.coach, people.parent]) == 5);
+    const kept = (await db.query(`select (select count(*) from auth.users where id = $1)::int as identity, (select count(*) from public.profiles where id = $1)::int as profile,
+      (select count(*) from public.player_assessments where created_by = $1)::int as assessments, (select count(*) from public.coach_team_requests where requester_profile_id = $1)::int as requests`, [people.coach])).rows[0];
+    check('C: nothing is deleted: the identity, profile, assessment and the coach\'s own team request all remain',
+      kept.identity === 1 && kept.profile === 1 && kept.assessments === 1 && kept.requests === 1, JSON.stringify(kept));
     check('C: coaching access is paused: no active assignment (ended for the review) and no direct link', await count(db,
       `select (select count(*) from public.coach_team where profile_id = $1 and ended_at is null) + (select count(*) from public.coach_players where profile_id = $1) as n`, [people.coach]) == 0 &&
       await count(db, `select count(*)::int n from public.coach_team where profile_id = $1 and team_id = $2 and end_reason = 'account_deletion_review'`, [people.coach, team]) === 1);
@@ -206,9 +207,11 @@ const count = async (db, sql, params) => (await db.query(sql, params)).rows[0].n
     // Staff reject the deletion, then restore (what "Reject & restore access" does).
     await service(`select public.reject_pending_profile_deletion($1, $2, 'Coach asked to stay')`, [pending[0].id, people.staff]);
     const restored = (await service(`select public.restore_coach_access_after_deletion_rejection($1, $2, 'Coach asked to stay') as r`, [pending[0].id, people.staff])).rows[0].r;
-    check('C: after staff rejection the restore gives back exactly the paused access', restored.restored === 2 && restored.notRestorable === 0 && await count(db,
-      `select (select count(*) from public.coach_team where profile_id = $1 and team_id = $2 and ended_at is null) + (select count(*) from public.coach_players where profile_id = $1 and player_id = $3) as n`,
-      [people.coach, team, w.directPlayer]) == 2, JSON.stringify(restored));
+    const back = (await db.query(`select (select count(*) from public.coach_team where profile_id = $1 and team_id = $2 and ended_at is null)::int as team_active,
+      (select count(*) from public.coach_players where profile_id = $1 and player_id = $3)::int as direct_link,
+      (select count(*) from public.coach_team where profile_id = $1 and ended_at is null)::int as all_active`, [people.coach, team, w.directPlayer])).rows[0];
+    check('C: after staff rejection the restore gives back exactly the paused access', restored.restored === 2 && restored.notRestorable === 0 &&
+      back.team_active === 1 && back.direct_link === 1 && back.all_active === 1, JSON.stringify({ restored, back }));
     check('C: the request is recorded as rejected and the account is untouched', await count(db,
       `select (select count(*) from public.pending_profile_deletions where id = $1 and status = 'rejected') + (select count(*) from public.profiles where id = $2) as n`, [pending[0].id, people.coach]) == 2);
   } catch (e) {
