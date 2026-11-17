@@ -40,7 +40,7 @@ export default function FootballGiftsForKidsPage() {
       <section className="emh-section emh-subpage-hero emh-gift-hero">
         <p className="emh-eyebrow">Christmas football gifts</p>
         <h1>Personalised football gifts for kids, this Christmas.</h1>
-        <p>Their own personalised football card, with a chip inside that opens a profile of their season. A gift they’ll unwrap, then keep adding to all year.</p>
+        <p>Their own personalised football card, with a chip inside that opens a profile of their season. A children’s football gift they’ll unwrap, then keep adding to all year.</p>
         <div className="emh-actions">
           <Link className="emh-btn emh-btn-primary" href="/builder?mode=single" data-track="gift_hero_build">
             Build their card · {PRICES.single}
