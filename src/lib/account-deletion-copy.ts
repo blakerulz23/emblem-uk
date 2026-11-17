@@ -21,6 +21,16 @@ export const SETTINGS_REVIEW_TITLE = 'Deletion request under review';
 export const SETTINGS_REVIEW_BODY = 'Your account and family data remain in place while Emblem staff review your request.';
 export const SETTINGS_REVIEW_COACHING_PAUSED = 'Your coaching access is currently paused.';
 
+/**
+ * /os for a coach-only account under review (no view while coach access is
+ * paused). Nothing is deleted; no email is promised.
+ */
+export const COACH_REVIEW_SCREEN_TITLE = 'Your account is under review';
+export const COACH_REVIEW_SCREEN_BODY =
+  'You asked to delete your account, and Emblem staff are reviewing the request. Nothing has been permanently deleted yet.';
+export const COACH_REVIEW_SCREEN_PAUSED =
+  'Your coaching access is paused while the request is reviewed, so your teams, players and team requests aren’t available. If staff decide not to delete your account, your coaching access is restored where possible.';
+
 /** Migration 0098 refuses staff accounts; staff access is removed by the two-person manual procedure first. */
 export const STAFF_ACCOUNT_DELETE_REFUSED =
   "Staff accounts can't be deleted here. Ask another authorised member of Emblem staff to remove your staff access first; you can then delete your account in the usual way.";

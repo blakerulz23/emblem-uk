@@ -53,6 +53,7 @@ import CoachVerify from './screens/CoachVerify';
 import CoachProfile from './screens/CoachProfile';
 import { rememberOsView } from '@/lib/os-view';
 import type { OsView, TeamRequestSummary } from '@/lib/os-view';
+import type { DeletionReviewState } from '@/lib/coach-review-status';
 
 export type OsActions = {
   activate: () => void;
@@ -123,6 +124,8 @@ export type OsAppProps = {
   availableViews?: OsView[];
   /** The person's latest team request, for the coach onboarding screen. */
   teamRequest?: TeamRequestSummary | null;
+  /** The account's own deletion review, read only when there is no view (src/lib/os-data.ts). */
+  deletionReview?: DeletionReviewState | null;
   /** True only when src/app/os/page.tsx has already resolved a ?card=
    * claim_token server-side and confirmed the current session is that
    * player's guardian — tells ActivationGate not to re-run its own
@@ -150,6 +153,7 @@ export default function OsApp({
   view = null,
   availableViews = [],
   teamRequest = null,
+  deletionReview = null,
   cardAlreadyResolved = false,
   demo = false,
   embedded = false,
@@ -763,6 +767,7 @@ export default function OsApp({
                 profileRole={profileRole}
                 view={view}
                 teamRequest={teamRequest}
+                deletionReview={deletionReview}
                 cardAlreadyResolved={cardAlreadyResolved}
               />
             </div>

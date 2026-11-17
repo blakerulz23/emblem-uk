@@ -12,6 +12,7 @@ import { activeCoachAssignments, COACH_ASSIGNMENT_STATE_COLUMNS } from '@/lib/co
 import type { CoachAssignmentState } from '@/lib/coach-assignment';
 import { parseOsView, resolveOsView } from '@/lib/os-view';
 import type { OsView, TeamRequestSummary } from '@/lib/os-view';
+import { readDeletionReview, type DeletionReviewState } from '@/lib/coach-review-status';
 
 type CardDefinitionDbRow = {
   id: string;
@@ -194,6 +195,12 @@ export type OsAccount = {
   availableViews: OsView[];
   /** The person's most recent team request, or null (none, or 0088 not applied). */
   teamRequest: TeamRequestSummary | null;
+  /**
+   * The account's own deletion review (0098), read only when there is no
+   * view (a coach-only account under review has none). Null otherwise, or
+   * when it couldn't be read.
+   */
+  deletionReview: DeletionReviewState | null;
 };
 
 const SUPABASE_CONFIGURED = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -206,6 +213,7 @@ const SIGNED_OUT: OsAccount = {
   view: null,
   availableViews: [],
   teamRequest: null,
+  deletionReview: null,
 };
 
 /**
@@ -260,6 +268,10 @@ export async function getOsAccount(requestedView: OsView | null = null): Promise
       }
     : null;
 
+  // Only an account with no view can be the coach-only account under review;
+  // everyone with access skips this read.
+  const deletionReview = view === null ? await readDeletionReview(supabase) : null;
+
   return {
     session: { userId: user.id, email: user.email ?? null },
     profileRole,
@@ -268,6 +280,7 @@ export async function getOsAccount(requestedView: OsView | null = null): Promise
     view,
     availableViews,
     teamRequest,
+    deletionReview,
   };
 }
 

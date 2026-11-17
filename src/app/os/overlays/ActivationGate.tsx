@@ -18,6 +18,8 @@ import type { ClaimConfirmFields } from './ClaimConfirm';
 import type { TeamInviteLookupResult, TeamInviteConfirmFields } from './TeamInviteConfirm';
 import type { CoachInviteLookupResult, CoachInviteConfirmFields } from './CoachInviteConfirm';
 import type { OsView, TeamRequestSummary } from '@/lib/os-view';
+import { showsCoachReviewScreen, type DeletionReviewState } from '@/lib/coach-review-status';
+import CoachReviewStatusScreen from './CoachReviewStatusScreen';
 
 export type ActivationGateProps = {
   onActivate: () => void;
@@ -28,6 +30,8 @@ export type ActivationGateProps = {
   view: OsView | null;
   /** The person's latest team request, if any. */
   teamRequest: TeamRequestSummary | null;
+  /** The account's own deletion review (read only when there is no view). */
+  deletionReview?: DeletionReviewState | null;
   /** True only when src/app/os/page.tsx already resolved this exact
    * ?card= claim_token server-side as a match for the current guardian —
    * suppresses the authenticated ?card= re-check below so it doesn't
@@ -77,7 +81,7 @@ function clearIntent() {
  * cross-origin redirect to preserve anything across). Once authenticated,
  * ActivationGate's branching is purely server-known facts, same as before.
  */
-export default function ActivationGate({ onActivate, hasSession, profileRole, view, teamRequest, cardAlreadyResolved = false }: ActivationGateProps) {
+export default function ActivationGate({ onActivate, hasSession, profileRole, view, teamRequest, deletionReview = null, cardAlreadyResolved = false }: ActivationGateProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // A post-approval or coach-invite email links here as /os?invite=CODE.
@@ -400,6 +404,12 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, vi
   // Any guardian or coach relationship (a resolved view) opens the app;
   // only someone with neither sees onboarding, whatever profiles.role says.
   if (!view) {
+    // A coach-only account whose deletion is under staff review (0098 paused
+    // its coach access, so it has no view): status and Sign out, instead of
+    // the team-request onboarding the database would refuse.
+    if (showsCoachReviewScreen({ hasSession, view, profileRole, deletionReview })) {
+      return <CoachReviewStatusScreen />;
+    }
     if (intent?.kind === 'recover') {
       return <RecoverByEmail hasSession />;
     }
