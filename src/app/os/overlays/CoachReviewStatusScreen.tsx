@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { osAssetPath } from '../data';
 import { createClient } from '@/lib/supabase/client';
-import { COACH_REVIEW_SCREEN_BODY, COACH_REVIEW_SCREEN_PAUSED, COACH_REVIEW_SCREEN_TITLE } from '@/lib/account-deletion-copy';
+import { COACH_REVIEW_SCREEN_BODY, COACH_REVIEW_SCREEN_NOT_PAUSED, COACH_REVIEW_SCREEN_PAUSED, COACH_REVIEW_SCREEN_TITLE } from '@/lib/account-deletion-copy';
 import { signOutToStart } from '@/lib/coach-review-status';
 
 /** The real Sign out: end the Supabase session, then load the signed-out /os start screen. */
@@ -17,8 +17,11 @@ export function signOutFromReviewScreen(): Promise<void> {
  * out only: it changes nothing about the review itself.
  */
 export default function CoachReviewStatusScreen({
+  coachAccessPaused = true,
   onSignOut,
 }: {
+  /** False for a coach account that had no coach access to pause (e.g. only a team request). */
+  coachAccessPaused?: boolean;
   /** Injected in tests; defaults to the real sign-out and a hard navigation to /os. */
   onSignOut?: () => Promise<void>;
 }) {
@@ -30,8 +33,7 @@ export default function CoachReviewStatusScreen({
   };
 
   return (
-    <div
-      role="main"
+    <section
       aria-labelledby="coach-review-title"
       style={{ position: 'absolute', inset: 0, zIndex: 80, background: 'radial-gradient(120% 80% at 50% 0%,#211b16 0%,#0f0c0a 55%,#0a0908 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '36px 30px', textAlign: 'center', overflowY: 'auto' }}
     >
@@ -42,7 +44,7 @@ export default function CoachReviewStatusScreen({
       </h1>
       <div role="status" style={{ maxWidth: 320 }}>
         <p style={{ fontSize: 14, lineHeight: 1.55, color: '#D8CFC2', margin: '0 0 12px' }}>{COACH_REVIEW_SCREEN_BODY}</p>
-        <p style={{ fontSize: 14, lineHeight: 1.55, color: '#B8AE9F', margin: '0 0 28px' }}>{COACH_REVIEW_SCREEN_PAUSED}</p>
+        <p style={{ fontSize: 14, lineHeight: 1.55, color: '#B8AE9F', margin: '0 0 28px' }}>{coachAccessPaused ? COACH_REVIEW_SCREEN_PAUSED : COACH_REVIEW_SCREEN_NOT_PAUSED}</p>
       </div>
       <button
         type="button"
@@ -52,6 +54,6 @@ export default function CoachReviewStatusScreen({
       >
         {signingOut ? 'Signing out…' : 'Sign out'}
       </button>
-    </div>
+    </section>
   );
 }

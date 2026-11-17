@@ -14,7 +14,7 @@ vi.mock('@/lib/supabase/server', () => ({ createClient: () => h.session!.client,
 import ActivationGate from './overlays/ActivationGate';
 import CoachReviewStatusScreen, { signOutFromReviewScreen } from './overlays/CoachReviewStatusScreen';
 import { readDeletionReview, showsCoachReviewScreen, signOutToStart } from '@/lib/coach-review-status';
-import { COACH_REVIEW_SCREEN_BODY, COACH_REVIEW_SCREEN_PAUSED, COACH_REVIEW_SCREEN_TITLE } from '@/lib/account-deletion-copy';
+import { COACH_REVIEW_SCREEN_BODY, COACH_REVIEW_SCREEN_NOT_PAUSED, COACH_REVIEW_SCREEN_PAUSED, COACH_REVIEW_SCREEN_TITLE } from '@/lib/account-deletion-copy';
 
 const UNDER_REVIEW = { underReview: true, coachAccessPaused: true };
 const gate = (p: Partial<Parameters<typeof ActivationGate>[0]>) =>
@@ -50,9 +50,57 @@ describe('the pending coach-only state (ActivationGate)', () => {
     expect(html).toContain('Tap to activate');
   });
 
+  it('a coach role with nothing left to pause gets the matching wording, not "your access is paused"', () => {
+    const html = gate({ deletionReview: { underReview: true, coachAccessPaused: false } });
+    expect(html).toContain(COACH_REVIEW_SCREEN_TITLE);
+    expect(html).toContain(COACH_REVIEW_SCREEN_NOT_PAUSED.split('’')[0]);
+    expect(html).not.toContain('Your coaching access is paused');
+  });
+
   it('unchanged for a non-coach account under review with no coach access paused (out of scope)', () => {
     const html = gate({ profileRole: 'parent', deletionReview: { underReview: true, coachAccessPaused: false } });
     expect(html).not.toContain(COACH_REVIEW_SCREEN_TITLE);
+  });
+});
+
+describe('only the coach path changes: earlier flows keep their place', () => {
+  const realWindow = (globalThis as { window?: unknown }).window;
+  const realStorage = (globalThis as { sessionStorage?: unknown }).sessionStorage;
+  const withIntent = (intent: object | null, fn: () => void) => {
+    (globalThis as { window?: unknown }).window = { location: { assign: vi.fn(), href: 'https://emblem.cards/os' } };
+    (globalThis as { sessionStorage?: unknown }).sessionStorage = { getItem: () => (intent ? JSON.stringify(intent) : null), setItem: vi.fn(), removeItem: vi.fn() };
+    try {
+      fn();
+    } finally {
+      (globalThis as { window?: unknown }).window = realWindow;
+      (globalThis as { sessionStorage?: unknown }).sessionStorage = realStorage;
+    }
+  };
+
+  it('a stored "parent" intent (claiming a card) still opens the claim step, not the review screen', () => {
+    withIntent({ kind: 'parent' }, () => {
+      const html = gate({ deletionReview: UNDER_REVIEW });
+      expect(html).not.toContain(COACH_REVIEW_SCREEN_TITLE);
+      expect(html).not.toContain('Send request');
+    });
+  });
+
+  it('a stored "coach" intent lands on the review screen (the coach path)', () => {
+    withIntent({ kind: 'coach' }, () => {
+      expect(gate({ deletionReview: UNDER_REVIEW })).toContain(COACH_REVIEW_SCREEN_TITLE);
+    });
+  });
+
+  it('a parent-role account whose coach access was paused still gets the parent claim path', () => {
+    const html = gate({ profileRole: 'parent', deletionReview: UNDER_REVIEW });
+    expect(html).not.toContain(COACH_REVIEW_SCREEN_TITLE);
+    expect(html).not.toContain('Send request');
+  });
+
+  it('the review screen replaces the team-request form for a pending team request too', () => {
+    const html = gate({ deletionReview: UNDER_REVIEW, teamRequest: { id: 'r1', status: 'pending', clubName: 'FC', teamName: 'U9', ageGroup: null, decisionNote: null, createdAt: '2026-11-01' } as never });
+    expect(html).toContain(COACH_REVIEW_SCREEN_TITLE);
+    expect(html).not.toContain('Cancel request');
   });
 });
 
@@ -142,7 +190,7 @@ describe('readDeletionReview', () => {
   });
 });
 
-describe('getOsAccount reads the review only when there is no view', () => {
+describe('getOsAccount reads the review only for the /os page and only when there is no view', () => {
   beforeEach(() => {
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://example.supabase.co');
     vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon');
@@ -162,17 +210,26 @@ describe('getOsAccount reads the review only when there is no view', () => {
   it('coach-only account with no access: view null and the review status is returned', async () => {
     const s = account((c) => (c.table === 'coach_team' ? { data: [] } : { count: 0 }));
     const { getOsAccount } = await import('@/lib/os-data');
-    const a = await getOsAccount(null);
+    const a = await getOsAccount(null, { includeDeletionReview: true });
     expect(a.view).toBeNull();
     expect(a.profileRole).toBe('coach');
     expect(a.deletionReview).toEqual(UNDER_REVIEW);
     expect(s.rpcCalls.map((c) => c.fn)).toEqual(['my_account_deletion_review']);
   });
 
+  it('other callers (e.g. /api/os/refresh) never read it, even with no view', async () => {
+    const s = account((c) => (c.table === 'coach_team' ? { data: [] } : { count: 0 }));
+    const { getOsAccount } = await import('@/lib/os-data');
+    const a = await getOsAccount(null);
+    expect(a.view).toBeNull();
+    expect(a.deletionReview).toBeNull();
+    expect(s.rpcCalls).toHaveLength(0);
+  });
+
   it('an account with coach access: the review is not read at all', async () => {
     const s = account((c) => (c.table === 'coach_team' ? { data: [{ team_id: 't1', ended_at: null, expires_at: null }] } : { count: 0 }));
     const { getOsAccount } = await import('@/lib/os-data');
-    const a = await getOsAccount(null);
+    const a = await getOsAccount(null, { includeDeletionReview: true });
     expect(a.view).toBe('coach');
     expect(a.deletionReview).toBeNull();
     expect(s.rpcCalls).toHaveLength(0);

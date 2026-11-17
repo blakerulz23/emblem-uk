@@ -404,12 +404,6 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, vi
   // Any guardian or coach relationship (a resolved view) opens the app;
   // only someone with neither sees onboarding, whatever profiles.role says.
   if (!view) {
-    // A coach-only account whose deletion is under staff review (0098 paused
-    // its coach access, so it has no view): status and Sign out, instead of
-    // the team-request onboarding the database would refuse.
-    if (showsCoachReviewScreen({ hasSession, view, profileRole, deletionReview })) {
-      return <CoachReviewStatusScreen />;
-    }
     if (intent?.kind === 'recover') {
       return <RecoverByEmail hasSession />;
     }
@@ -420,6 +414,14 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, vi
     const path: OsView | null =
       chosenPath ?? (openRequest ? 'coach' : null) ?? (intent?.kind === 'coach' || intent?.kind === 'parent' ? intent.kind : null) ?? profileRole;
     if (path === 'coach') {
+      // A coach-only account whose deletion is under staff review (0098
+      // paused its coach access, so it has no view): status and Sign out in
+      // place of the team-request onboarding, which the database refuses
+      // during review. Only the coach path changes: recovery, invites, card
+      // claims and the parent path work as before (0098 blocks coach access only).
+      if (showsCoachReviewScreen({ hasSession, view, profileRole, deletionReview })) {
+        return <CoachReviewStatusScreen coachAccessPaused={deletionReview?.coachAccessPaused === true} />;
+      }
       return <TeamRequestOnboarding request={teamRequest} onChooseParent={() => choosePath('parent')} />;
     }
     if (path === 'parent') {
