@@ -1912,9 +1912,12 @@ export default function ProductionBuilder({
   };
 
   const progress = ((activeIndex + 1) / stepOrder.length) * 100;
+  // The direct builder picks the card on its own step first, so its details
+  // step is "Add their details"; Squad Invite keeps "Personalise cards".
+  const stepLabel = (step: StepId) => (step === 'personalise' && !squadInviteContext ? 'Add their details' : STEP_LABEL[step]);
   const progressLabel = activeStepId === 'approve' || activeStepId === 'review'
     ? `${order.players.length} player${order.players.length === 1 ? '' : 's'} - ${summary.counts.approved} approved`
-    : STEP_LABEL[activeStepId];
+    : stepLabel(activeStepId);
   // The direct single-card builder (not set/squad, not Squad Invite). Its
   // first screen is trimmed for phones: price and sample card up front, no
   // decorative step pill, no one-row player queue, a short device-save line.
@@ -1946,7 +1949,7 @@ export default function ProductionBuilder({
     submitEnquiry(event);
   };
   const approveOrReviewStep: StepId = stepOrder.includes('approve') ? 'approve' : 'review';
-  const prePersonaliseSteps: StepId[] = ['upload', 'bg-removal', 'collection'];
+  const prePersonaliseSteps: StepId[] = ['upload', 'bg-removal', 'collection', 'design'];
   const selectedIndex = selectedPlayer ? order.players.findIndex((player) => player.id === selectedPlayer.id) : -1;
   const selectAdjacentPlayer = (direction: -1 | 1) => {
     if (selectedIndex < 0) return;
@@ -2002,6 +2005,37 @@ export default function ProductionBuilder({
     activeStepId === 'personalise' && cardSide === 'front' && selectedPlayer?.photo?.srcUrl && cardPositionsPhoto(order, selectedPlayer),
   );
   const [previewFrameEl, setPreviewFrameEl] = useState<HTMLDivElement | null>(null);
+  // Phone "Add their details" step (direct builder): once the card preview has
+  // scrolled up under the header, a small copy of the card stays pinned at the
+  // top right (adapted from Emblem Canada). Desktop always shows the card in
+  // the stage, so CSS hides the mini card there.
+  const [miniCard, setMiniCard] = useState<{ show: boolean; top: number }>({ show: false, top: 0 });
+  useEffect(() => {
+    if (squadInviteContext || activeStepId !== 'personalise' || !previewFrameEl) {
+      setMiniCard((current) => (current.show ? { ...current, show: false } : current));
+      return;
+    }
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const header = document.querySelector('.uk-wizard-header');
+      // The header is only pinned while its own block is on screen, so it can
+      // scroll away on a phone; then the mini card pins to the top edge.
+      const top = Math.max(0, Math.round(header ? header.getBoundingClientRect().bottom : 0));
+      const box = previewFrameEl.getBoundingClientRect();
+      const show = box.height > 0 && box.bottom < top + 48;
+      setMiniCard((current) => (current.show === show && current.top === top ? current : { show, top }));
+    };
+    const schedule = () => { if (!frame) frame = window.requestAnimationFrame(update); };
+    update();
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
+    };
+  }, [squadInviteContext, activeStepId, previewFrameEl]);
   const [stageFrameEl, setStageFrameEl] = useState<HTMLDivElement | null>(null);
 
   // The coach mark ("Drag to move / Pinch to zoom") over the card the first
@@ -2172,7 +2206,7 @@ export default function ProductionBuilder({
         </button>
         <span className="ukd-divider" aria-hidden="true" />
         <div className="ukd-title">
-          <small>{String(activeIndex + 1).padStart(2, '0')} / {String(stepOrder.length).padStart(2, '0')} &middot; {STEP_LABEL[activeStepId]}</small>
+          <small>{String(activeIndex + 1).padStart(2, '0')} / {String(stepOrder.length).padStart(2, '0')} &middot; {stepLabel(activeStepId)}</small>
           <strong>{deskTitle}</strong>
         </div>
         <div className="ukd-total">
@@ -2211,7 +2245,7 @@ export default function ProductionBuilder({
           </div>
           <div className="uk-wizard-progress">
             <div><span style={{ width: `${progress}%` }} /></div>
-            <b>{String(activeIndex + 1).padStart(2, '0')} / {String(stepOrder.length).padStart(2, '0')} &middot; {STEP_LABEL[activeStepId]}</b>
+            <b>{String(activeIndex + 1).padStart(2, '0')} / {String(stepOrder.length).padStart(2, '0')} &middot; {stepLabel(activeStepId)}</b>
           </div>
         </header>
 
@@ -2275,7 +2309,7 @@ export default function ProductionBuilder({
                   ))}
                 </div>
               </div>
-              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('personalise')}>Continue</button>
+              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('design')}>Continue</button>
             </section>
           )}
 
@@ -2526,11 +2560,61 @@ export default function ProductionBuilder({
             />
           )}
 
+          {activeStepId === 'design' && (
+            <section className="uk-wizard-panel">
+              <p className="uk-wizard-kicker">Pick their card</p>
+              <h1>Pick their card.</h1>
+              <p className="uk-wizard-copy">{orderedTemplates.length} designs, shown with their photo. You can change it on the next screen too.</p>
+              {order.type !== 'single' && (
+                <div className="uk-squad-edit-bar">
+                  <button type="button" onClick={() => selectAdjacentPlayer(-1)} disabled={selectedIndex <= 0}>Previous</button>
+                  <span>{selectedIndex + 1} of {order.players.length}</span>
+                  <button type="button" onClick={() => selectAdjacentPlayer(1)} disabled={selectedIndex >= order.players.length - 1}>Next</button>
+                </div>
+              )}
+              <div className="uk-design-grid" role="radiogroup" aria-label="Card designs">
+                {orderedTemplates.map((template) => {
+                  const isActive = selectedTemplate(order, selectedPlayer).id === template.id;
+                  return (
+                    <button
+                      key={template.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      aria-label={template.name}
+                      className={isActive ? 'active' : ''}
+                      onClick={() => chooseTemplate(template.id)}
+                    >
+                      <PlayerCard
+                        order={{ ...order, templateDefault: template.id }}
+                        player={selectedPlayer ? { ...selectedPlayer, templateId: template.id } : createPlayer({ templateId: template.id })}
+                        compact
+                      />
+                      <strong>{template.name}</strong>
+                      {order.collectionType === 'official' && template.id === preferredTemplateForClub(playerClubId(order, selectedPlayer)) && <small>Best match</small>}
+                    </button>
+                  );
+                })}
+              </div>
+              <button type="button" className="uk-wizard-primary" onClick={() => setActiveStepId('personalise')}>Add their details</button>
+            </section>
+          )}
+
           {activeStepId === 'personalise' && (
             <section className="uk-wizard-panel">
-              <p className="uk-wizard-kicker">Personalise cards</p>
-              <h1>Make it yours.</h1>
-              <p className="uk-wizard-copy">Choose the look, edit the details and approve each card when it is ready.</p>
+              {squadInviteContext ? (
+                <>
+                  <p className="uk-wizard-kicker">Personalise cards</p>
+                  <h1>Make it yours.</h1>
+                  <p className="uk-wizard-copy">Choose the look, edit the details and approve each card when it is ready.</p>
+                </>
+              ) : (
+                <>
+                  <p className="uk-wizard-kicker">Add their details</p>
+                  <h1>Add their details.</h1>
+                  <p className="uk-wizard-copy">Their name, number and team go on the card. Check the photo position, then review.</p>
+                </>
+              )}
               <div className="uk-wizard-fields">
                 {order.collectionType === 'official' ? (
                   <>
@@ -2581,6 +2665,15 @@ export default function ProductionBuilder({
                   <button type="button" onClick={() => selectAdjacentPlayer(1)} disabled={selectedIndex >= order.players.length - 1}>Next</button>
                 </div>
               )}
+              {!squadInviteContext ? (
+                <div className="uk-design-chosen">
+                  <span>
+                    <small>Design</small>
+                    <strong>{selectedTemplate(order, selectedPlayer).name}</strong>
+                  </span>
+                  <button type="button" onClick={() => setActiveStepId('design')}>Change</button>
+                </div>
+              ) : (
               <div className="uk-personalise-style">
                 <div className="uk-personalise-style-head">
                   <span>
@@ -2620,6 +2713,7 @@ export default function ProductionBuilder({
                   </button>
                 </div>
               </div>
+              )}
               <div
                 ref={setPreviewFrameEl}
                 className={`uk-edit-preview${photoEditable ? ' uk-photo-draggable' : ''}${photoGestures.dragging ? ' is-dragging' : ''}`}
@@ -2629,6 +2723,17 @@ export default function ProductionBuilder({
                 {photoCoach}
                 {photoHint}
               </div>
+              {!squadInviteContext && selectedPlayer && (
+                <button
+                  type="button"
+                  className={`uk-mini-card${miniCard.show ? ' is-visible' : ''}`}
+                  style={{ top: miniCard.top + 10 }}
+                  aria-label="Back to the card preview"
+                  onClick={() => previewFrameEl?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                >
+                  <PlayerCard order={order} player={selectedPlayer} side={cardSide} compact />
+                </button>
+              )}
               {photoTools && <div className="uk-photo-tools-row">{photoTools}</div>}
               {cardSide === 'front' ? (
                 selectedPlayer.photo ? (
