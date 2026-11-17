@@ -35,7 +35,7 @@ export default function CelebrateSheet({ state, actions }: { state: OsState; act
         <textarea value={state.coachMsg} onChange={actions.setCoachMsg} placeholder="Add a message. It becomes part of their collectible." style={{ width: '100%', boxSizing: 'border-box', border: '1px solid var(--os-border)', borderRadius: 14, padding: 13, fontFamily: 'Roboto', fontSize: 13.5, color: 'var(--os-ink)', background: '#fff', resize: 'none', minHeight: 64, marginBottom: 18 }} />
         {state.celebError && (
           <div role="alert" style={{ textAlign: 'center', fontSize: 12.5, color: '#A63426', marginBottom: 10 }}>
-            Couldn&apos;t send this recognition. Check your connection and try again.
+            Couldn&apos;t send this recognition. Check your connection and try again. If it keeps failing, reload the app: some categories have changed.
           </div>
         )}
         <div onClick={state.celebSending ? undefined : actions.sendRecognition} aria-disabled={state.celebSending} style={{ textAlign: 'center', padding: 14, borderRadius: 12, background: sendBg, color: '#fff', fontFamily: 'Roboto', fontWeight: 800, fontSize: 14, cursor: state.celebSending ? 'default' : 'pointer' }}>{state.celebSending ? 'Sending…' : 'Send Recognition'}</div>

@@ -74,7 +74,7 @@ describe('migration number uniqueness', () => {
   });
 
   it('reports a reserved number used by a different migration, and accepts the reserved ones', () => {
-    expect(findReservedNumberProblems(['0088_test_card_archive.sql', '0091_achievement_card_reveals.sql', '0092_test_card_archive.sql', '0099_season_feature_states.sql', '0099_my_season.sql', '0100_anything.sql'])).toEqual([
+    expect(findReservedNumberProblems(['0088_test_card_archive.sql', '0091_achievement_card_reveals.sql', '0092_test_card_archive.sql', '0099_season_feature_states.sql', '0099_my_season.sql', '0108_anything.sql'])).toEqual([
       { number: '0088', file: '0088_test_card_archive.sql', reservedFor: '0088_relationship_authorization_foundation.sql' },
       { number: '0091', file: '0091_achievement_card_reveals.sql', reservedFor: '0091_guardian_invite_code_confidentiality.sql' },
       { number: '0099', file: '0099_my_season.sql', reservedFor: '0099_season_feature_states.sql' },

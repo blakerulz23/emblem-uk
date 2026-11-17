@@ -69,7 +69,8 @@ describe('Public demo: no retired category as a new celebration', () => {
     const celebrated = COACH_ACTIVITY.filter((a) => a.text.startsWith('You celebrated'));
     expect(celebrated.length).toBeGreaterThan(0);
     for (const a of celebrated) {
-      const label = a.text.split(' — ').pop();
+      // "You celebrated Riley Hart as a Great Teammate" (main's no-em-dash copy).
+      const label = a.text.replace(/^You celebrated .+? as an? /, '');
       expect(isActiveCelebrateLabel(label)).toBe(true);
     }
   });

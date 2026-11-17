@@ -39,7 +39,7 @@ const momentWrites = () => session.calls.filter((c) => c.table === 'moments' && 
 describe('the verifier is always the signed-in user', () => {
   it('celebrate ignores every verifier field in the body', async () => {
     const res = await celebrate(
-      new NextRequest('https://emblem.cards/api/os/celebrate', { method: 'POST', body: JSON.stringify({ playerId: PLAYER, award: 'Man of the Match', ...FORGED }) }),
+      new NextRequest('https://emblem.cards/api/os/celebrate', { method: 'POST', body: JSON.stringify({ playerId: PLAYER, award: 'Great Teammate', ...FORGED }) }),
     );
     expect(res.status).toBe(200);
     const writes = momentWrites();
