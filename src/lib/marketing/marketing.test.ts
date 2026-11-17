@@ -243,10 +243,10 @@ describe('grassroots club landing page', () => {
 
   it('is linked from the nav Teams tab and the footer club link', async () => {
     expect(await read('../../components/Footer.tsx')).toContain("{ href: '/football-cards-for-clubs', label: 'Clubs & coaches' }");
-    // The shared desktop/mobile nav links to it as "Teams"; gifts stays reachable from the footer.
+    // The shared desktop/mobile nav links to it as "Teams". Gifts joined the nav for Christmas 2026 (Blake, 17 Nov).
     const nav = await read('../../components/Navbar.tsx');
     expect(nav).toContain("{ href: '/football-cards-for-clubs', label: 'Teams' }");
-    expect(nav).not.toContain("label: 'Gifts'");
+    expect(nav).toContain("{ href: '/football-gifts-for-kids', label: 'Gifts' }");
     // "The Cards" left the nav; the logo is the way home. The footer keeps /#cards.
     expect(nav).not.toContain("'/#cards'");
     expect(nav).toContain('href="/" className="flex items-center" aria-label="Emblem home"');
