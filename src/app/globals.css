@@ -12081,9 +12081,14 @@ button.uk-bgremove-frame:disabled { cursor: default; }
 .emh-home-hero .emh-home-hero-demo { margin-top: 12px; min-height: 32px; }
 .emh-home-hero .emh-hero-steps { margin: 20px auto 12px; }
 
-/* Phones: the showcase uses some of the side gutter. */
+/* Phones: the showcase uses some of the side gutter, and the copy is
+   centred like the Canada homepage. Desktop keeps copy left of the showcase. */
 @media (max-width: 999px) {
   .emh-home-hero .emh-stage-wrap { width: calc(100% + 20px); max-width: 580px; margin-left: -10px; margin-right: -10px; }
+  .emh-hero.emh-home-hero { text-align: center; }
+  .emh-page .emh-home-hero h1,
+  .emh-home-hero-desc { margin-left: auto; margin-right: auto; }
+  .emh-home-hero-actions { align-items: center; }
 }
 @media (min-width: 1000px) {
   .emh-hero.emh-home-hero {
