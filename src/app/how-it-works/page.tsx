@@ -24,7 +24,7 @@ export default function HowItWorksPage() {
       <section className="emh-section emh-subpage-hero">
         <p className="emh-eyebrow">How it works</p>
         <h1>From one photo to a card that comes to life.</h1>
-        <p>Make your own personalised football card in a few minutes. We print it in the UK on premium stock with a chip inside, and the card opens a private player profile their family controls.</p>
+        <p>Make your own personalised football card in a few minutes with our football card maker. We print it in the UK on premium stock with a chip inside, and the card opens a private player profile their family controls.</p>
         <div className="emh-actions">
           <Link className="emh-btn emh-btn-primary" href="/builder?mode=single" data-track="hiw_build">Build my card · {PRICES.single}</Link>
           <Link className="emh-btn emh-btn-secondary" href="/os/demo" data-track="hiw_try_app">Try the app</Link>
