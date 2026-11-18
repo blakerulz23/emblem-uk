@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DEMO_PLAYER_PHOTO } from '../data';
 import { useOsData, useRefreshOsData } from '../OsDataContext';
+import { legacyFocusAddError } from '@/lib/my-season';
 import { CardFace } from '@/lib/card-definition';
 import { onActivateKey } from '../a11y';
 import { usePresenceHeartbeat } from '../usePresenceHeartbeat';
@@ -14,7 +15,7 @@ import type { OsState } from '../types';
 import { formatFoot, formatFootballAgeGroup, formatHeightCm, positionLabel } from '../coachFields';
 import { positionCardLabel } from '@/lib/player-position';
 import { useOsPhotoUpload } from '../useOsPhotoUpload';
-import { MySeasonError, SeasonCheckFailed } from '../mySeasonUi';
+import { LegacyFocusAddError, MySeasonError, SeasonCheckFailed } from '../mySeasonUi';
 import { MS_IDS, focusElementById } from '../mySeasonFlows';
 
 /**
@@ -104,7 +105,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
       });
       const data = await res.json();
       if (!res.ok) {
-        setFocusError(data.error || 'Could not add that focus');
+        setFocusError(legacyFocusAddError(data, 'family'));
         return;
       }
       setFocusDraft('');
@@ -348,7 +349,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
                 >
                   {focusBusy ? 'Adding…' : 'Add Season Focus'}
                 </button>
-                {focusError && <p style={{ fontSize: 12.5, color: '#C0392B', margin: 0 }}>{focusError}</p>}
+                {focusError && <LegacyFocusAddError message={focusError} style={{ margin: 0 }} />}
               </form>
             )}
           </div>

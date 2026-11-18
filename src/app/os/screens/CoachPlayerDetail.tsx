@@ -15,6 +15,8 @@ import { AGE_GROUP_OPTIONS, FOOT_OPTIONS, POSITION_OPTIONS, positionLabel, valid
 import { positionDisplayLabel } from '@/lib/player-position';
 import CoachMySeasonSection, { LegacyFocusNotice, legacyFocusGate, useCoachMySeason } from './CoachMySeasonSection';
 import { MS_IDS, focusElementById } from '../mySeasonFlows';
+import { LegacyFocusAddError } from '../mySeasonUi';
+import { legacyFocusAddError } from '@/lib/my-season';
 
 /** "15 Aug 2026" — matches RealCollection/PlayerHome's date convention. */
 function formatDate(iso: string): string {
@@ -326,7 +328,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
       });
       const data = await res.json();
       if (!res.ok) {
-        setFocusError(data.error || 'Could not add that focus');
+        setFocusError(legacyFocusAddError(data, 'coach'));
         return;
       }
       setFocusDraft('');
@@ -671,7 +673,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
             </button>
           </div>
         )}
-        {focusError && <p role="alert" style={{ color: '#C0392B', fontSize: 12.5, marginTop: 6 }}>{focusError}</p>}
+        {focusError && <LegacyFocusAddError message={focusError} style={{ marginTop: 6 }} />}
         <LegacyFocusNotice
           gate={legacyGate}
           onRetry={() => {

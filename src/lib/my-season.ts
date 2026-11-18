@@ -261,7 +261,21 @@ export const MY_SEASON_UNKNOWN_STATE = { enabled: 'unknown' } as const;
 export type MySeasonParentState = MySeasonView | typeof MY_SEASON_UNKNOWN_STATE;
 
 /** The legacy POST's refusal once the feature is on for the player. */
-export const LEGACY_FOCUS_REPLACED_MESSAGE = 'This player now uses My Season. Refresh to see it.';
+export const LEGACY_FOCUS_REPLACED_CODE = 'my_season_enabled';
+export const LEGACY_FOCUS_REPLACED_MESSAGE = 'This player now uses My Season. Close and reopen the app to see it.';
+/** Closing the player screen remounts it, which repeats the My Season lookup. */
+export const LEGACY_FOCUS_REPLACED_COACH_MESSAGE = 'This player now uses My Season. Close this player screen and reopen it to continue.';
+
+/** What a failed legacy "add focus" shows, in words that fit the screen it failed on. */
+export function legacyFocusAddError(
+  data: { error?: unknown; code?: unknown } | null | undefined,
+  audience: 'coach' | 'family',
+): string {
+  if (data?.code === LEGACY_FOCUS_REPLACED_CODE) {
+    return audience === 'coach' ? LEGACY_FOCUS_REPLACED_COACH_MESSAGE : LEGACY_FOCUS_REPLACED_MESSAGE;
+  }
+  return typeof data?.error === 'string' && data.error ? data.error : 'Could not add that focus';
+}
 
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isStrOrNull = (v: unknown): v is string | null => v === null || typeof v === 'string';

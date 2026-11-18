@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
 import { mySeasonDefinitelyEnabled } from '@/lib/my-season-api';
-import { LEGACY_FOCUS_REPLACED_MESSAGE } from '@/lib/my-season';
+import { LEGACY_FOCUS_REPLACED_CODE, LEGACY_FOCUS_REPLACED_MESSAGE } from '@/lib/my-season';
 
 export const runtime = 'nodejs';
 
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (await mySeasonDefinitelyEnabled(supabase, playerId)) {
-    return NextResponse.json({ error: LEGACY_FOCUS_REPLACED_MESSAGE, code: 'my_season_enabled' }, { status: 409 });
+    return NextResponse.json({ error: LEGACY_FOCUS_REPLACED_MESSAGE, code: LEGACY_FOCUS_REPLACED_CODE }, { status: 409 });
   }
 
   const { data: focusId, error } = await supabase.rpc('create_season_focus', {

@@ -164,6 +164,15 @@ export function MySeasonError({ onRetry, busy, signedOut = false }: { onRetry: (
 }
 
 /** The legacy Season Focus while the lookup has failed: neutral copy, and a way to ask again. */
+/**
+ * A failed legacy "add focus". Mounted only while there is an error, so a
+ * screen reader hears it once per failed attempt and not on later re-renders.
+ * os-ms-error carries the AA colour for light and dark.
+ */
+export function LegacyFocusAddError({ message, style }: { message: string; style?: CSSProperties }) {
+  return <p role="alert" className="os-ms-error" style={{ fontSize: 12.5, ...style }}>{message}</p>;
+}
+
 export function SeasonCheckFailed({ onRetry, busy }: { onRetry: () => void; busy?: boolean }) {
   return (
     <div role="alert" data-testid="season-check-failed" style={{ marginTop: 10, display: 'grid', gap: 8 }}>

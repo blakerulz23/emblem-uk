@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MY_SEASON_ERRORS, parseMySeasonView, visibleFamilyObservations, type MySeasonView } from '@/lib/my-season';
+import { readFileSync } from 'node:fs';
+import { LEGACY_FOCUS_REPLACED_CODE, LEGACY_FOCUS_REPLACED_COACH_MESSAGE, LEGACY_FOCUS_REPLACED_MESSAGE, MY_SEASON_ERRORS, legacyFocusAddError, parseMySeasonView, visibleFamilyObservations, type MySeasonView } from '@/lib/my-season';
+import { LegacyFocusAddError } from './mySeasonUi';
 import { loadMySeasonView, type LoadResult } from './mySeasonClient';
 import { MS_IDS, NOTE_ALREADY_REMOVED, NOTE_ALREADY_WITHDRAWN, WITHDRAW_FOCUS, createHomeCardSync, decideNoteOutcome, homeCardSignature, type PendingFocus } from './mySeasonFlows';
 import MySeasonHomeCard from './screens/MySeasonHomeCard';
@@ -317,5 +319,44 @@ describe('staff removal: what the family and the author see', () => {
     expect(reload).toHaveBeenCalledTimes(1);
     await withdrawFlow('o1', { ...deps, withdraw: async () => ({ ok: false, error: 'No.', unknown: true }) });
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the legacy add refusal once My Season is on', () => {
+  const refusal = { error: LEGACY_FOCUS_REPLACED_MESSAGE, code: LEGACY_FOCUS_REPLACED_CODE };
+
+  it('tells the coach to close and reopen the player screen, and never to refresh', () => {
+    const text = legacyFocusAddError(refusal, 'coach');
+    expect(text).toBe(LEGACY_FOCUS_REPLACED_COACH_MESSAGE);
+    expect(text).toMatch(/close this player screen and reopen it/i);
+    expect(text).not.toMatch(/refresh/i);
+  });
+
+  it('gives the family an instruction that works from the Card', () => {
+    const text = legacyFocusAddError(refusal, 'family');
+    expect(text).toMatch(/close and reopen the app/i);
+    expect(text).not.toMatch(/refresh|player screen/i);
+  });
+
+  it('leaves every other failure as it is today', () => {
+    expect(legacyFocusAddError({ error: 'Not authorized' }, 'coach')).toBe('Not authorized');
+    expect(legacyFocusAddError({}, 'family')).toBe('Could not add that focus');
+    expect(legacyFocusAddError(null, 'coach')).toBe('Could not add that focus');
+  });
+
+  it('is one alert in the theme colour, with no fixed colour', () => {
+    const html = renderToStaticMarkup(<LegacyFocusAddError message="No." style={{ margin: 0 }} />);
+    expect(html.match(/role="alert"/g)).toHaveLength(1);
+    expect(html).toContain('class="os-ms-error"');
+    expect(html).not.toMatch(/color:/);
+  });
+
+  it('is wired on both screens, mounted only while an error exists', () => {
+    for (const [file, audience] of [['Card', 'family'], ['CoachPlayerDetail', 'coach']] as const) {
+      const source = readFileSync(`src/app/os/screens/${file}.tsx`, 'utf8');
+      expect(source).toContain(`legacyFocusAddError(data, '${audience}')`);
+      expect(source).toMatch(/\{focusError && <LegacyFocusAddError message=\{focusError\}/);
+      expect(source).not.toContain('{focusError && <p');
+    }
   });
 });
