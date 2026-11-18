@@ -19,6 +19,15 @@
 //      branches react to;
 //   4. after 0097, 0098 and 0102 (final production order) every call binds,
 //      every table exists and the signals exist.
+// My Season Phase 1 (0099 + 0108) reaches production after 0102. Until then
+// the app's My Season RPCs (my_season_for_player, my_season_set_focus,
+// my_season_add_observation, my_season_withdraw_observation and the two
+// my_season_staff_* functions) are missing too; they may be called only from
+// the My Season routes (family and staff), src/lib/my-season* and
+// src/lib/os-data.ts, which treat a missing function as "off" (family) or a
+// fixed failure (staff). The app never reads or
+// writes a My Season or season feature table directly (no .from()). The final
+// state applies 0099 and 0108 after 0102.
 //
 // Run: node --no-warnings supabase/tests/authz/pr140_app_before_migrations_photo_day_test.mjs
 import crypto from 'crypto';
@@ -46,7 +55,9 @@ const NEW_FUNCTION_CALLERS = ['src/lib/supabase/middleware.ts', 'src/app/api/os/
   'src/app/api/staff/account-deletions/[id]/retry-sign-in/route.ts', 'src/app/staff/account-deletions/page.tsx',
   'src/lib/remove-account-sign-in.ts', 'src/lib/coach-review-status.ts'];
 const NEW_TABLES = ['account_deletion_staff_actions', 'deletion_review_access_suspensions', 'erased_accounts'];
-const NEW_TABLE_CALLERS = ['src/app/staff/account-deletions/page.tsx', 'src/app/api/staff/account-deletions/[id]/retry-sign-in/route.ts'];
+const MY_SEASON_FUNCTIONS = ['my_season_add_observation', 'my_season_for_player', 'my_season_set_focus', 'my_season_staff_list_observations', 'my_season_staff_remove_observation', 'my_season_withdraw_observation'];
+const isMySeasonCaller = (rel) => rel === 'src/lib/os-data.ts' || rel.startsWith('src/app/api/os/my-season/') || rel.startsWith('src/app/api/staff/my-season/') || rel.startsWith('src/lib/my-season');
+const NEW_TABLE_CALLERS =['src/app/staff/account-deletions/page.tsx', 'src/app/api/staff/account-deletions/[id]/retry-sign-in/route.ts'];
 
 const results = [];
 function check(name, pass, detail) {
@@ -137,9 +148,13 @@ async function assess(db, label, final) {
   if (final) {
     check(`${label}: every function the application calls exists`, missingFns.length === 0, missingFns);
   } else {
-    check(`${label}: the functions missing are exactly the seven 0097/0098 account-deletion functions`, JSON.stringify(missingFns) === JSON.stringify([...NEW_FUNCTIONS].sort()), missingFns);
-    const callers = [...new Set(missing.map((c) => c.rel))].sort();
+    const calledMySeason = MY_SEASON_FUNCTIONS.filter((fn) => rpcCalls.some((c) => c.fn === fn));
+    check(`${label}: the functions missing are exactly the seven 0097/0098 account-deletion functions plus the ${calledMySeason.length} My Season RPCs the app calls`,
+      JSON.stringify(missingFns) === JSON.stringify([...NEW_FUNCTIONS, ...calledMySeason].sort()), missingFns);
+    const callers = [...new Set(missing.filter((c) => NEW_FUNCTIONS.includes(c.fn)).map((c) => c.rel))].sort();
     check(`${label}: …called only from the files proven to fall back safely`, callers.every((r) => NEW_FUNCTION_CALLERS.includes(r)), callers);
+    const msCallers = [...new Set(missing.filter((c) => MY_SEASON_FUNCTIONS.includes(c.fn)).map((c) => c.rel))].sort();
+    check(`${label}: …My Season RPCs called only from the My Season routes, src/lib/my-season* and src/lib/os-data.ts`, msCallers.every(isMySeasonCaller), msCallers);
   }
   const tables = new Set((await db.query(`select table_name t from information_schema.tables where table_schema = 'public'`)).rows.map((r) => r.t));
   const missingT = tableUses.filter((u) => !tables.has(u.table));
@@ -170,6 +185,13 @@ async function assess(db, label, final) {
   check('staff account-deletions page treats a failed read of a new table as unavailable (no throw)',
     NEW_TABLES.every((t) => page.includes(`'${t}'`)) && !/throw\s+(new\s+Error|error)/.test(page));
 }
+{
+  const unknownMs = [...new Set(rpcCalls.filter((c) => /^(my_season|season_feature)/.test(c.fn) && !MY_SEASON_FUNCTIONS.includes(c.fn)).map((c) => c.fn))];
+  check('the app calls no My Season or season feature function other than the six My Season RPCs', unknownMs.length === 0, unknownMs);
+  const direct = tableUses.filter((u) => /^(my_season|season_feature)/.test(u.table));
+  check('the app never reads or writes a My Season or season feature table directly (.from)', direct.length === 0, direct);
+  console.log(`  · My Season RPCs called by the app: ${MY_SEASON_FUNCTIONS.filter((fn) => rpcCalls.some((c) => c.fn === fn)).join(', ') || 'none yet'}`);
+}
 check(`argument objects not found statically (existence-checked only): ${unresolved.length}`, true);
 for (const u of unresolved) console.log(`  · ${u.fn} in ${u.rel} (argument ${u.arg})`);
 
@@ -186,8 +208,8 @@ check('0101 and 0103-0107 present; 0097, 0098, 0102 absent', (await db.query(`se
   .rows.every((r) => r.a && r.b && r.c && r.d && r.e && r.f));
 await assess(db, 'before', false);
 
-console.log('\n=== after 0097, 0098, 0102 (final production order) ===');
-for (const n of ['0097', '0098', '0102']) await db.exec(migration(n));
+console.log('\n=== after 0097, 0098, 0102, then 0099, 0108 (final production order) ===');
+for (const n of ['0097', '0098', '0102', '0099', '0108']) await db.exec(migration(n));
 await assess(db, 'after', true);
 await db.close();
 

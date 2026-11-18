@@ -1,10 +1,12 @@
 /**
  * My Season feature flag: the contract only (Phase 0).
  *
- * Phase 0 has nothing to gate, so there is no table yet and nothing calls
- * getSeasonFeatureState(). The per-team state and the global kill switch
- * arrive as migration 0099_season_feature_states.sql at the start of
- * Phase 1; until then every team resolves to 'off'.
+ * Phase 0 had nothing to gate. From Phase 1 the per-team state and the
+ * global kill switch live in migration 0099_season_feature_states.sql and
+ * are evaluated inside the database (my_season_* RPCs). The app only reads
+ * the deploy kill switch here (isSeasonDeployKillSwitchOn, used by the
+ * /api/os/my-season routes and os-data); getSeasonFeatureState() is still
+ * unused and resolves every team to 'off'.
  *
  * - 'off'   (default) nothing Season-related is shown or accepted
  * - 'demo'  staff/test accounts on the team see the fixture, read-only

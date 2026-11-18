@@ -1,0 +1,224 @@
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, sep } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+
+/**
+ * Flag-off contract: with My Season not enabled for the player (the
+ * default everywhere), the OS renders exactly as before, the client makes
+ * no My Season call, the bottom navigation is unchanged and /os/demo never
+ * touches My Season.
+ */
+
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
+vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({ channel: () => ({ on: () => ({ subscribe: () => ({}) }) }), removeChannel: () => {} }) }));
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: () => {
+    throw new Error('not used');
+  },
+  createServiceRoleClient: () => {
+    throw new Error('not used');
+  },
+}));
+
+import PlayerHome from './screens/PlayerHome';
+import CardScreen from './screens/Card';
+import CoachPlayerDetail from './screens/CoachPlayerDetail';
+import { OsDataProvider } from './OsDataContext';
+import { DEMO_OS_DATA, PUBLIC_DEMO_OS_DATA, type OsData } from './osData';
+import { initialOsState } from './types';
+import type { OsActions } from './OsApp';
+import { PLAYER_NAV_ITEMS, COACH_NAV_ITEMS } from './navigation/navItems';
+import { loadMySeasonView, shouldLookUpCoachMySeason } from './mySeasonClient';
+import { startCoachMySeasonLookup } from './screens/CoachMySeasonSection';
+import { loadParentMySeason } from '@/lib/os-data';
+import { MS_PLAYER_ID, MS_TEAM_ID, REAL_PARENT, msContent } from './my-season-test-support';
+
+const actions = new Proxy({}, { get: () => vi.fn() }) as unknown as OsActions;
+const home = (data: OsData) => renderToStaticMarkup(<OsDataProvider value={data}><PlayerHome actions={actions} storyUpdates={[]} /></OsDataProvider>);
+const cardBack = (data: OsData) => renderToStaticMarkup(<OsDataProvider value={data}><CardScreen state={{ ...initialOsState, activated: true, flipped: true }} actions={actions} /></OsDataProvider>);
+const squadPlayer = { ...DEMO_OS_DATA.squad[0], id: MS_PLAYER_ID, name: 'Riley Hart', teamId: MS_TEAM_ID };
+const REAL_COACH: OsData = { ...DEMO_OS_DATA, mode: 'real', squad: [squadPlayer], verifyQueue: [], coachTeamsManaged: [{ id: MS_TEAM_ID, name: 'U10 Blues', playerCount: 1 }] as OsData['coachTeamsManaged'] };
+const coachDetail = (data: OsData) => renderToStaticMarkup(<OsDataProvider value={data}><CoachPlayerDetail playerId={MS_PLAYER_ID} actions={actions} /></OsDataProvider>);
+
+const withoutKeys = (d: OsData): OsData => {
+  const copy = { ...d } as Partial<OsData>;
+  delete copy.mySeason;
+  delete copy.mySeasonCoachLookup;
+  return copy as OsData;
+};
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+
+describe('flag off: identical rendering', () => {
+  it('PlayerHome renders the same with mySeason absent, null or disabled, and shows no My Season UI', () => {
+    const baseline = home(withoutKeys(REAL_PARENT));
+    expect(home({ ...REAL_PARENT, mySeason: null })).toBe(baseline);
+    expect(home({ ...REAL_PARENT, mySeason: { enabled: false } })).toBe(baseline);
+    expect(baseline).not.toContain('My Season');
+    expect(baseline).not.toContain('My Focus');
+    expect(baseline).toContain('This Season');
+  });
+
+  it('demo PlayerHome is unchanged by a stray mySeason value (demo never shows My Season)', () => {
+    expect(home({ ...PUBLIC_DEMO_OS_DATA, mySeason: msContent() })).toBe(home(PUBLIC_DEMO_OS_DATA));
+  });
+
+  it('Card back keeps the legacy Season Focus section and renders the same', () => {
+    const baseline = cardBack(withoutKeys(REAL_PARENT));
+    expect(baseline).toContain('SEASON FOCUS');
+    expect(cardBack({ ...REAL_PARENT, mySeason: null })).toBe(baseline);
+    expect(cardBack({ ...REAL_PARENT, mySeason: { enabled: false } })).toBe(baseline);
+  });
+
+  it('CoachPlayerDetail with no lookup needed renders the legacy Season Focus section exactly as before', () => {
+    const baseline = coachDetail(withoutKeys(REAL_COACH));
+    expect(baseline).toContain('Season Focus');
+    expect(baseline).not.toContain('My Season');
+    expect(baseline).not.toContain('legacy-focus-');
+    expect(coachDetail({ ...REAL_COACH, mySeasonCoachLookup: false })).toBe(baseline);
+  });
+
+  it('while the lookup is unanswered the legacy section stays readable, with its Add disabled and a status', () => {
+    const html = coachDetail({ ...REAL_COACH, mySeasonCoachLookup: true });
+    expect(html).toContain('Season Focus');
+    expect(html).not.toContain('My Season');
+    expect(html).toContain('data-testid="legacy-focus-checking"');
+    expect(html).toContain('Checking this player&#x27;s season...');
+    expect(html).toMatch(/placeholder="e\.g\. First touch under pressure" disabled=""/);
+  });
+});
+
+describe('flag off: no client network call', () => {
+  it('the coach screen only asks when real, allowed by the deploy switch and the player is on a team', () => {
+    expect(shouldLookUpCoachMySeason({ isReal: true, lookup: true, teamId: MS_TEAM_ID })).toBe(true);
+    expect(shouldLookUpCoachMySeason({ isReal: false, lookup: true, teamId: MS_TEAM_ID })).toBe(false);
+    expect(shouldLookUpCoachMySeason({ isReal: true, lookup: false, teamId: MS_TEAM_ID })).toBe(false);
+    expect(shouldLookUpCoachMySeason({ isReal: true, lookup: undefined, teamId: MS_TEAM_ID })).toBe(false);
+    expect(shouldLookUpCoachMySeason({ isReal: true, lookup: true, teamId: null })).toBe(false);
+  });
+
+  it('the coach hook effect with My Season off resets and never fetches; allowed, it fetches once (the gate can fail)', async () => {
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ enabled: false }), { status: 200 }));
+    const off = [
+      { isReal: false, lookup: true, teamId: MS_TEAM_ID },
+      { isReal: true, lookup: false, teamId: MS_TEAM_ID },
+      { isReal: true, lookup: undefined, teamId: MS_TEAM_ID },
+      { isReal: true, lookup: true, teamId: null },
+    ];
+    for (const c of off) {
+      const reset = vi.fn();
+      startCoachMySeasonLookup(shouldLookUpCoachMySeason(c), { reset, run: () => loadMySeasonView(MS_PLAYER_ID, fetchSpy) });
+      expect(reset).toHaveBeenCalledTimes(1);
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+    startCoachMySeasonLookup(shouldLookUpCoachMySeason({ isReal: true, lookup: true, teamId: MS_TEAM_ID }), { reset: () => {}, run: () => loadMySeasonView(MS_PLAYER_ID, fetchSpy) });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('the coach hook runs its effect through that gate', () => {
+    const src = readFileSync('src/app/os/screens/CoachMySeasonSection.tsx', 'utf8');
+    expect(src).toMatch(/const allowed = shouldLookUpCoachMySeason\(\{ isReal, lookup, teamId \}\);/);
+    expect(src).toMatch(/useEffect\(\(\) => \{\s*startCoachMySeasonLookup\(allowed, /);
+  });
+
+  it('PlayerHome only opens the My Season screen (the one that fetches) from the enabled guardian card', () => {
+    const src = readFileSync('src/app/os/screens/PlayerHome.tsx', 'utf8');
+    expect(src).toMatch(/mySeasonGuardianView && <MySeasonHomeCard [^>]*onOpen=\{openMySeason\}/);
+    expect(src.match(/openMySeason/g)).toHaveLength(2);
+    expect(src.match(/setMySeasonOpen\(true\)/g)).toHaveLength(1);
+    expect(src).toMatch(/\{mySeasonPlayer && \(\s*<MySeasonScreen/);
+  });
+});
+
+describe('os-data parent load', () => {
+  const rpcClient = (result: unknown) => {
+    const rpc = vi.fn(() => (result instanceof Error ? Promise.reject(result) : Promise.resolve(result)));
+    return { client: { rpc } as unknown as Parameters<typeof loadParentMySeason>[0], rpc };
+  };
+
+  it('deploy kill switch on: never calls the RPC', async () => {
+    vi.stubEnv('SEASON_FEATURE_KILL_SWITCH', 'true');
+    const { client, rpc } = rpcClient({ data: msContent(), error: null });
+    expect(await loadParentMySeason(client, MS_PLAYER_ID)).toBeNull();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('null only when confirmed off: disabled, or the function is missing (app deployed before 0108)', async () => {
+    for (const r of [{ data: { enabled: false }, error: null }, { data: null, error: { code: 'PGRST202', message: 'function not found' } }, { data: null, error: { code: '42883', message: 'undefined function' } }]) {
+      expect(await loadParentMySeason(rpcClient(r).client, MS_PLAYER_ID)).toBeNull();
+    }
+  });
+
+  it('an unexpected RPC failure, a throw or an unreadable answer is "unknown": neither off nor enabled', async () => {
+    for (const r of [{ data: null, error: { code: '57014', message: 'timeout' } }, { data: null, error: { code: 'XX000', message: 'boom' } }, { data: { enabled: 'yes' }, error: null }, { data: null, error: null }, new Error('network')]) {
+      expect(await loadParentMySeason(rpcClient(r).client, MS_PLAYER_ID)).toEqual({ enabled: 'unknown' });
+    }
+  });
+
+  describe('a family when the lookup failed (most have the feature off)', () => {
+    const unknown = { ...REAL_PARENT, mySeason: { enabled: 'unknown' } } as OsData;
+    const withFocus = { ...unknown, seasonFocus: [{ id: 'lf1', label: 'First touch', status: 'active', authorRole: 'guardian', authorName: 'Pat', createdAt: '2026-09-01T10:00:00Z' }] } as OsData;
+
+    it('Home is exactly the flag-off Home', () => {
+      expect(home(unknown)).toBe(home(withoutKeys(REAL_PARENT)));
+    });
+
+    it('Card back: legacy focuses readable, no Add, neutral copy with Retry, no My Season wording', () => {
+      const html = cardBack(withFocus);
+      expect(html).toContain('SEASON FOCUS');
+      expect(html).toContain('First touch');
+      expect(html).not.toContain('Add a Season Focus');
+      expect(html).toContain('data-testid="season-check-failed"');
+      expect(html).toContain('Couldn&#x27;t check this section. Try again.');
+      expect(html).toContain('>Retry<');
+      expect(html).not.toMatch(/my.?season/i);
+      expect(html).not.toContain('season-focus-unavailable');
+    });
+
+    it('demo mode never shows it', () => {
+      expect(cardBack({ ...PUBLIC_DEMO_OS_DATA, mySeason: { enabled: 'unknown' } })).toBe(cardBack(PUBLIC_DEMO_OS_DATA));
+    });
+  });
+
+  it('with the marker the Card back has no legacy Add, and offers Retry', () => {
+    const html = cardBack({ ...REAL_PARENT, mySeason: { enabled: true, access: 'none', reason: 'unavailable' } });
+    expect(html).toContain('data-testid="season-focus-unavailable"');
+    expect(html).toContain('Retry');
+    expect(html).not.toContain('Add a Season Focus');
+  });
+
+  it('a malformed view that claims the feature is on keeps the legacy section hidden', async () => {
+    expect(await loadParentMySeason(rpcClient({ data: { enabled: true, access: 'guardian' }, error: null }).client, MS_PLAYER_ID)).toEqual({ enabled: true, access: 'none', reason: 'unavailable' });
+  });
+
+  it('the enabled view when the feature is on', async () => {
+    const { client, rpc } = rpcClient({ data: msContent(), error: null });
+    expect(await loadParentMySeason(client, MS_PLAYER_ID)).toEqual(msContent());
+    expect(rpc).toHaveBeenCalledWith('my_season_for_player', { p_player_id: MS_PLAYER_ID });
+  });
+});
+
+describe('navigation and /os/demo', () => {
+  it('the bottom navigation is unchanged', () => {
+    expect(PLAYER_NAV_ITEMS.map((i) => i.label)).toEqual(['Home', 'Card', 'Collection', 'Profile']);
+    expect(COACH_NAV_ITEMS.map((i) => i.label)).toEqual(['Home', 'Team', 'Celebrate', 'Verify', 'Profile']);
+    for (const f of readdirSync('src/app/os/navigation')) {
+      expect(readFileSync(join('src/app/os/navigation', f), 'utf8')).not.toMatch(/my.?season/i);
+    }
+  });
+
+  it('demo data and /os/demo never reference My Season', () => {
+    expect('mySeason' in DEMO_OS_DATA).toBe(false);
+    expect('mySeason' in PUBLIC_DEMO_OS_DATA).toBe(false);
+    expect('mySeasonCoachLookup' in DEMO_OS_DATA).toBe(false);
+    expect(JSON.stringify(PUBLIC_DEMO_OS_DATA)).not.toMatch(/my.?season/i);
+    const walk = (dir: string): string[] => readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? walk(join(dir, n)) : [join(dir, n)]));
+    for (const f of [...walk('src/app/os/demo'), 'src/app/os/data.tsx', 'src/app/os/playerProfile.ts']) {
+      expect(readFileSync(f, 'utf8'), f.split(sep).join('/')).not.toMatch(/my.?season/i);
+    }
+  });
+});

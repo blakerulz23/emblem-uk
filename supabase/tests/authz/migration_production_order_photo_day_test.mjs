@@ -87,7 +87,14 @@ async function readyDatabase(through) {
   await db.exec('begin; set local role service_role;');
   await db.query(`select public.confirm_release_readiness('authorization_relationships_v1', $1, $2, true, true, true, true, true, true)`, [COMMIT, staff]);
   await db.exec('commit;');
-  await applyMigrations(db, { from: '0089', through });
+  // My Season (0099, 0108, 0109) reaches production after everything this suite
+  // covers; it is left out of every build here and proven separately in
+  // my_season_production_order_test.mjs.
+  const last = through ?? '9999';
+  for (const [a, b] of [['0089', '0098'], ['0100', '0107'], ['0110', '9999']]) {
+    if (a > last) break;
+    await applyMigrations(db, { from: a, through: b < last ? b : last });
+  }
   return db;
 }
 

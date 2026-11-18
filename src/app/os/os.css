@@ -534,3 +534,40 @@ body.emblem-os-active {
 .emblem-os.os-dark .os-notice-ok { color: #6FD39A; }
 .emblem-os.os-dark .os-notice-warn { color: #F2A272; }
 .emblem-os.os-dark .os-notice-error { color: #F28B82; }
+
+/* My Season (Phase 1). Only rendered when the feature is enabled for the
+   player's team. Text colours meet WCAG AA on --os-card / --os-screen in
+   both themes; every control gets a visible keyboard focus ring. Do not put
+   .os-ms-soft inside an element with its own opacity: the two multiply and
+   the text drops below AA. */
+.emblem-os .os-ms-accent { color: #B34715; }
+.emblem-os.os-dark .os-ms-accent { color: #F08A4B; }
+.emblem-os .os-ms-soft { color: var(--os-ink); opacity: .74; }
+.emblem-os .os-ms-error { color: #B3261E; }
+.emblem-os.os-dark .os-ms-error { color: #F2A099; }
+.emblem-os button.os-ms-accent:disabled { opacity: .45; cursor: default; }
+.emblem-os .os-ms-focus:focus-visible {
+  outline: 2px solid #B34715;
+  outline-offset: 2px;
+}
+.emblem-os.os-dark .os-ms-focus:focus-visible { outline-color: #F08A4B; }
+.emblem-os .os-ms-primary {
+  background: #B34715;
+  color: #fff;
+  border: none;
+}
+.emblem-os .os-ms-primary:disabled { opacity: .45; cursor: default; }
+.emblem-os .os-ms-ghost {
+  background: transparent;
+  color: var(--os-ink);
+  border: 1.5px solid var(--os-ink);
+}
+.emblem-os .os-ms-ghost:disabled { opacity: .45; cursor: default; }
+.emblem-os .os-ms-skeleton {
+  background: rgba(127, 127, 127, .18);
+  border-radius: 10px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .emblem-os .os-ms-skeleton { animation: osMsPulse 1.2s ease-in-out infinite; }
+}
+@keyframes osMsPulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }

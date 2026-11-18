@@ -22,7 +22,9 @@ const MIGRATION_FILE = /^(\d{4})_[a-z0-9_]+\.sql$/;
 // checkout and payment gate, and 0102 closes checkout and payment for orders
 // held by 0097. 0103 restores the Squad Invite audit event types, and
 // 0104–0107 are Photo Day (both released from main before 0097, 0098 and
-// 0102 reached production). New work starts at 0108.
+// 0102 reached production). 0108 is My Season (focus and coach
+// observations; it reaches production after 0099), and 0109 stops a
+// parent-coach withdrawing a note about their own child. New work starts at 0110.
 export const RESERVED_NUMBERS = {
   '0088': 'relationship_authorization_foundation',
   '0089': 'relationship_authorization_lockdown',
@@ -41,6 +43,8 @@ export const RESERVED_NUMBERS = {
   '0105': 'squad_invite_photo_day_staff_controls',
   '0106': 'squad_invite_photo_day_parent_consent',
   '0107': 'squad_invite_photo_day_retention',
+  '0108': 'my_season_focus_and_observations',
+  '0109': 'my_season_parent_coach_withdrawal_guard',
 };
 
 // Retired numbers may never be used. A gap number below the applied

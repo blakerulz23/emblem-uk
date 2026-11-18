@@ -13,6 +13,8 @@ import type { CoachAssignmentState } from '@/lib/coach-assignment';
 import { parseOsView, resolveOsView } from '@/lib/os-view';
 import type { OsView, TeamRequestSummary } from '@/lib/os-view';
 import { readDeletionReview, type DeletionReviewState } from '@/lib/coach-review-status';
+import { isSeasonDeployKillSwitchOn } from '@/lib/season-feature';
+import { MY_SEASON_UNKNOWN_STATE, isMissingMySeasonFunction, parentViewFromRaw, type MySeasonParentState } from '@/lib/my-season';
 
 type CardDefinitionDbRow = {
   id: string;
@@ -394,6 +396,10 @@ async function getParentOsData(
       cardPhotoUrl: null,
     };
   }
+
+  // My Season (Phase 1): started alongside the queries below, never
+  // awaited when the deploy kill switch is on (no RPC call at all).
+  const mySeasonPromise = loadParentMySeason(supabase, playerId);
 
   const [{ data: rawPlayer }, { data: snapshots }, { data: momentRows }, { data: guardianRows }, { data: goalRows }, { data: claimedPlayerRows }, { data: seasonRows }, { data: cardRow }, { data: seasonFocusRows }, { data: strengthRows }, { data: assessmentRows }] = await Promise.all([
     // Explicit column list, not select('*') — date_of_birth has SELECT
@@ -816,7 +822,32 @@ async function getParentOsData(
     // Overridden by getOsData()'s outer spread, same as emptyConnections above.
     storyUpdates: [],
     unreadStoryUpdateCount: 0,
+    mySeason: await mySeasonPromise,
   };
+}
+
+/**
+ * The parent view's My Season for the active player. Null only when it is
+ * confirmed off: the feature is off for the player's team, the deploy kill
+ * switch is on, or the RPC is missing (app deployed before 0108). An answer
+ * that says "on" but cannot be used gives the "unavailable" marker (the My
+ * Season error with Retry). Any other failure says nothing about the flag and
+ * gives the "unknown" state: most families have the feature off, so nothing
+ * mentions My Season, the legacy focuses stay readable and only their Add
+ * waits for a Retry. Never throws: My Season must not be able to break Home.
+ */
+export async function loadParentMySeason(
+  supabase: Pick<ReturnType<typeof createClient>, 'rpc'>,
+  playerId: string
+): Promise<MySeasonParentState | null> {
+  if (isSeasonDeployKillSwitchOn()) return null;
+  try {
+    const { data, error } = await supabase.rpc('my_season_for_player', { p_player_id: playerId });
+    if (error) return isMissingMySeasonFunction(error) ? null : MY_SEASON_UNKNOWN_STATE;
+    return parentViewFromRaw(data);
+  } catch {
+    return MY_SEASON_UNKNOWN_STATE;
+  }
 }
 
 async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId: string): Promise<OsData> {
@@ -1093,5 +1124,9 @@ async function getCoachOsData(supabase: ReturnType<typeof createClient>, userId:
     strengths: [],
     assessments: [],
     claimedPlayers: [],
+    // No server call here (that would be one RPC per squad player):
+    // CoachPlayerDetail asks GET /api/os/my-season for one player on open,
+    // and only when the deploy kill switch is off.
+    mySeasonCoachLookup: !isSeasonDeployKillSwitchOn(),
   };
 }

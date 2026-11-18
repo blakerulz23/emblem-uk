@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DEMO_PLAYER_PHOTO } from '../data';
 import { useOsData, useRefreshOsData } from '../OsDataContext';
+import { legacyFocusAddError } from '@/lib/my-season';
 import { CardFace } from '@/lib/card-definition';
 import { onActivateKey } from '../a11y';
 import { usePresenceHeartbeat } from '../usePresenceHeartbeat';
@@ -14,6 +15,8 @@ import type { OsState } from '../types';
 import { formatFoot, formatFootballAgeGroup, formatHeightCm, positionLabel } from '../coachFields';
 import { positionCardLabel } from '@/lib/player-position';
 import { useOsPhotoUpload } from '../useOsPhotoUpload';
+import { LegacyFocusAddError, MySeasonError, SeasonCheckFailed } from '../mySeasonUi';
+import { MS_IDS, focusElementById } from '../mySeasonFlows';
 
 /**
  * The digital twin of the physical collectible, present-tense only
@@ -44,8 +47,16 @@ function TargetIcon(c: string) {
 }
 
 export default function CardScreen({ state, actions }: { state: OsState; actions: OsActions }) {
-  const { mode, playerId, playerProfile: PLAYER_PROFILE, cardDefinition, cardPhotoUrl, seasonFocus, strengths, assessments } = useOsData();
+  const { mode, playerId, playerProfile: PLAYER_PROFILE, cardDefinition, cardPhotoUrl, seasonFocus, strengths, assessments, mySeason } = useOsData();
+  // My Season replaces the legacy Season Focus section only for a player
+  // whose team has the feature enabled; everyone else sees it unchanged.
+  const hideLegacySeasonFocus = mySeason?.enabled === true;
   const isReal = mode !== 'demo';
+  // The feature is on but its view was unusable: its error, with a Retry.
+  const mySeasonUnavailable = isReal && mySeason?.enabled === true && mySeason.access === 'none' && mySeason.reason === 'unavailable';
+  // The lookup itself failed: nobody knows whether the feature applies, and for
+  // most families it does not. The focuses stay readable; only Add waits.
+  const seasonCheckFailed = isReal && mySeason?.enabled === 'unknown';
   /** The demo profile has no photoUrl of its own, so fall back to its sample player photo rather than to a pair of initials. */
   const aboutPhotoUrl = PLAYER_PROFILE.photoUrl ?? (isReal ? null : DEMO_PLAYER_PHOTO);
   const router = useRouter();
@@ -59,6 +70,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
   const [showAddFocus, setShowAddFocus] = useState(false);
   const [focusBusy, setFocusBusy] = useState(false);
   const [focusError, setFocusError] = useState('');
+  const [seasonCheckBusy, setSeasonCheckBusy] = useState(false);
   const activeFocusCount = seasonFocus.filter((f) => f.status === 'active').length;
 
   // Live sync: while a guardian is actually looking at About, an assessment
@@ -82,7 +94,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
   const addFocus = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = focusDraft.trim();
-    if (!trimmed || !playerId || activeFocusCount >= 3 || focusBusy) return;
+    if (!trimmed || !playerId || activeFocusCount >= 3 || focusBusy || seasonCheckFailed) return;
     setFocusBusy(true);
     setFocusError('');
     try {
@@ -93,7 +105,7 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
       });
       const data = await res.json();
       if (!res.ok) {
-        setFocusError(data.error || 'Could not add that focus');
+        setFocusError(legacyFocusAddError(data, 'family'));
         return;
       }
       setFocusDraft('');
@@ -101,6 +113,17 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
       router.refresh();
     } finally {
       setFocusBusy(false);
+    }
+  };
+
+  const retrySeasonCheck = async () => {
+    // Retry goes away with a good answer, so focus moves first.
+    focusElementById(MS_IDS.seasonSection);
+    setSeasonCheckBusy(true);
+    try {
+      await refreshOsData();
+    } finally {
+      setSeasonCheckBusy(false);
     }
   };
 
@@ -259,6 +282,14 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
 
       {/* Shared, with attribution — the one write affordance on this face: a guardian can add a Season Focus, same as a coach can from their own screen.
           Empty state reads label → icon → hero title → supporting copy → the (unchanged) CTA below it, which reads as dominant simply because everything above it is now quiet. Populated rows read label(above) → focus text as hero → status as a small "progress" pill → author/date as the smallest supporting line. */}
+      <div id={MS_IDS.seasonSection} tabIndex={-1} className="os-ms-focus">
+      {mySeasonUnavailable && (
+        <div style={sectionCard} data-testid="season-focus-unavailable">
+          <div style={sectionLabel}>THIS SEASON</div>
+          <MySeasonError onRetry={() => void refreshOsData()} />
+        </div>
+      )}
+      {!hideLegacySeasonFocus && (
       <div style={sectionCard}>
         <div style={sectionLabel}>SEASON FOCUS {seasonFocus.length > 0 ? `(${activeFocusCount}/3 active)` : ''}</div>
         {seasonFocus.length === 0 ? (
@@ -287,7 +318,8 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
             </div>
           ))
         )}
-        {isReal && (
+        {seasonCheckFailed && <SeasonCheckFailed onRetry={() => void retrySeasonCheck()} busy={seasonCheckBusy} />}
+        {isReal && !seasonCheckFailed && (
           <div style={{ marginTop: showAddFocus ? 0 : 8 }}>
             {!showAddFocus ? (
               <div
@@ -317,11 +349,13 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
                 >
                   {focusBusy ? 'Adding…' : 'Add Season Focus'}
                 </button>
-                {focusError && <p style={{ fontSize: 12.5, color: '#C0392B', margin: 0 }}>{focusError}</p>}
+                {focusError && <LegacyFocusAddError message={focusError} style={{ margin: 0 }} />}
               </form>
             )}
           </div>
         )}
+      </div>
+      )}
       </div>
     </div>
   );
