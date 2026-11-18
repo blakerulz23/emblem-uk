@@ -294,6 +294,15 @@ describe('POST /api/os/my-season/observations/[id]/withdraw', () => {
     }
   });
 
+  it('the author is now this child\'s guardian (EMS07): 403 own_child, with withdrawal wording and nothing from the database', async () => {
+    h.rpc.mockResolvedValue({ data: null, error: { ...LEAKY, code: 'EMS07' } });
+    const res = await withdraw(OBS);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: "You can't withdraw coach notes for your own child.", code: 'own_child' });
+    expect(h.rpc).toHaveBeenCalledTimes(1);
+    expect(h.rpc).toHaveBeenCalledWith('my_season_withdraw_observation', { p_observation_id: OBS });
+  });
+
   it('bad id 400, signed out 401, cross-origin 403, kill switch 404', async () => {
     expect((await withdraw('not-a-uuid')).status).toBe(400);
     h.user = null;

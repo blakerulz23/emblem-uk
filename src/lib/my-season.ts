@@ -422,6 +422,12 @@ export const MY_SEASON_ERRORS: Record<MySeasonErrorCode, MySeasonError> = {
   failed: { status: 500, code: 'failed', message: 'Something went wrong. Try again.' },
 };
 
+/** EMS07 from the withdraw RPC: the shared own_child code, with wording about withdrawing. */
+export const MY_SEASON_OWN_CHILD_WITHDRAW_ERROR: MySeasonError = {
+  ...MY_SEASON_ERRORS.own_child,
+  message: "You can't withdraw coach notes for your own child.",
+};
+
 const SQLSTATE_TO_CODE: Record<string, MySeasonErrorCode> = {
   EMS01: 'sign_in_required',
   EMS02: 'not_available',

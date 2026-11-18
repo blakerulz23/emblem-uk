@@ -4,15 +4,15 @@
 // 0102 (migration_production_order_photo_day_test.mjs). 0099 is a reserved
 // number below them, so it reaches production after 0107, followed by 0108.
 // This suite builds exactly that order:
-//   … 0096, 0101, 0103, 0104, 0105, 0106, 0107, 0097, 0098, 0102, 0099, 0108
+//   … 0096, 0101, 0103, 0104, 0105, 0106, 0107, 0097, 0098, 0102, 0099, 0108, 0109
 // and proves:
 //   1. before 0099 the catalog equals a filename-order build without 0099/0108;
 //   2. after 0099 and 0108 the catalog equals a filename-order build of the
 //      whole chain (the database every other suite tests);
 //   3. no pre-existing table's data changes when 0099 and 0108 apply;
 //   4. a My Season round trip works on the production-order database;
-//   5. rollback 0108 then 0099 returns to the step-1 catalog, and both
-//      re-apply to the final catalog.
+//   5. rollback 0109, 0108 then 0099 returns to the step-1 catalog, and all
+//      three re-apply to the final catalog.
 //
 // Run: node --no-warnings supabase/tests/authz/my_season_production_order_test.mjs
 import crypto from 'crypto';
@@ -25,7 +25,7 @@ import { diffCatalog, snapshotCatalog } from './catalog.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const read = (p) => fs.readFileSync(path.resolve(HERE, '../..', p), 'utf8');
 const migration = (n) => fs.readFileSync(path.join(MIGRATIONS_DIR, listMigrations().find((m) => m.version === n).file), 'utf8');
-const PRODUCTION_ORDER = ['0101', '0103', '0104', '0105', '0106', '0107', '0097', '0098', '0102', '0099', '0108'];
+const PRODUCTION_ORDER = ['0101', '0103', '0104', '0105', '0106', '0107', '0097', '0098', '0102', '0099', '0108', '0109'];
 const COMMIT = 'a1b2c3d4e5f6a7b8c9d0a1b2c3d4e5f6a7b8c9d0';
 
 const results = [];
@@ -77,7 +77,7 @@ async function dataHash(db, exclude = []) {
 const filenameFull = await readyDatabase();
 const finalCatalog = await snapshotCatalog(filenameFull);
 await filenameFull.close();
-const filenameWithout = await readyDatabase({ skip: ['0099', '0108'] });
+const filenameWithout = await readyDatabase({ skip: ['0099', '0108', '0109'] });
 const withoutCatalog = await snapshotCatalog(filenameWithout);
 await filenameWithout.close();
 
@@ -94,17 +94,18 @@ try {
   await db.query(`insert into guardians (player_id, profile_id) values ($1, $2)`, [player, g]);
   await db.query(`insert into coach_team (team_id, profile_id) values ($1, $2)`, [team, c]);
 
-  for (const n of PRODUCTION_ORDER.slice(0, -2)) await db.exec(migration(n));
+  for (const n of PRODUCTION_ORDER.slice(0, -3)) await db.exec(migration(n));
   const before = await snapshotCatalog(db);
   check('production order through 0102 equals a filename-order build without 0099/0108', catalogDiff(withoutCatalog, before).length === 0, catalogDiff(withoutCatalog, before));
   const dataBefore = await dataHash(db);
 
   await db.exec(migration('0099'));
   await db.exec(migration('0108'));
+  await db.exec(migration('0109'));
   const after = await snapshotCatalog(db);
-  check('production order (… 0107, 0097, 0098, 0102, 0099, 0108) equals the filename-order catalog', catalogDiff(finalCatalog, after).length === 0, catalogDiff(finalCatalog, after));
+  check('production order (… 0107, 0097, 0098, 0102, 0099, 0108, 0109) equals the filename-order catalog', catalogDiff(finalCatalog, after).length === 0, catalogDiff(finalCatalog, after));
   const newTables = ['season_feature_global', 'season_feature_team_states', 'my_season_focuses', 'my_season_coach_observations', 'my_season_audit_events', 'my_season_observation_staff_removals'];
-  check('applying 0099 and 0108 changes no existing table\'s data', (await dataHash(db, newTables)) === dataBefore);
+  check('applying 0099, 0108 and 0109 changes no existing table\'s data', (await dataHash(db, newTables)) === dataBefore);
 
   // Round trip.
   await db.query(`update season_feature_global set kill_switch = false`);
@@ -119,13 +120,16 @@ try {
   const v = (await as(g, `select my_season_for_player($1) v`, [player]))[0].v;
   check('round trip on the production-order database', v.enabled && v.access === 'guardian' && v.activeFocus?.title === 'Fictional focus' && v.observations.length === 1, v);
 
+  const r109 = await rollBack(db, read('rollback/0109_rollback.sql'), ['emblem.acknowledge_0109_rollback', 'reopen parent coach withdrawal']);
+  check('rollback 0109 succeeds first', r109 === null, r109);
   const r108 = await rollBack(db, read('rollback/0108_rollback.sql'), ['emblem.acknowledge_0108_rollback', 'drop my season data']);
   const r99 = await rollBack(db, read('rollback/0099_rollback.sql'), ['emblem.acknowledge_0099_rollback', 'drop season feature states']);
-  check('rollback 0108 then 0099 returns to the exact pre-0099 production catalog', r108 === null && r99 === null && catalogDiff(before, await snapshotCatalog(db)).length === 0, [r108, r99]);
+  check('rollback 0109, 0108 then 0099 returns to the exact pre-0099 production catalog', r108 === null && r99 === null && catalogDiff(before, await snapshotCatalog(db)).length === 0, [r108, r99]);
   check('…with every existing table\'s data unchanged', (await dataHash(db)) === dataBefore);
   await db.exec(migration('0099'));
   await db.exec(migration('0108'));
-  check('0099 and 0108 re-apply to the exact final catalog', catalogDiff(finalCatalog, await snapshotCatalog(db)).length === 0);
+  await db.exec(migration('0109'));
+  check('0099, 0108 and 0109 re-apply to the exact final catalog', catalogDiff(finalCatalog, await snapshotCatalog(db)).length === 0);
 } catch (e) {
   check('production order', false, e.stack);
 }

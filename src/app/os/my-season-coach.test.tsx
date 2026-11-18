@@ -124,6 +124,17 @@ describe('Coach My Season panel', () => {
     expect(html).toContain('As a parent or guardian you can change the focus. You can&#x27;t add or withdraw coach notes for your own child, but another coach on the team can add them.');
   });
 
+  it('a withdrawal refused because the coach is now a guardian reloads, and the message outlives the confirm step', async () => {
+    const reload = vi.fn(async () => null), ui: Partial<CoachPanelUi>[] = [];
+    const ok = await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: async () => ({ ok: false, error: "You can't withdraw coach notes for your own child.", code: 'own_child', status: 403 }), erase: vi.fn(), reload, focusNext: vi.fn() });
+    expect(ok).toBe(false);
+    expect(reload).toHaveBeenCalledTimes(1);
+    const html = renderToStaticMarkup(panel(ready(msContent({ access: 'guardian', canAddNote: false, observations: [msNote({ mine: true })] })), { confirmingWithdrawId: 'o1', withdrawError: "You can't withdraw coach notes for your own child." }));
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('You can&#x27;t withdraw coach notes for your own child.');
+    expect(html).not.toContain('>Withdraw note<');
+  });
+
   it.each([
     ['private_coach', "My Season notes are only for coaches on Riley&#x27;s team. You&#x27;re connected to Riley directly, so you can&#x27;t add notes or change the focus."],
     ['former_coach', 'You can&#x27;t add notes for Riley any more. Only coaches currently on Riley&#x27;s team can add notes or change the focus.'],

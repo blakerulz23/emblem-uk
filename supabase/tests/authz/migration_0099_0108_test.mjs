@@ -92,14 +92,14 @@ async function fixtures(db) {
   return { g, c, team, player };
 }
 
-// --- reference: the full chain in filename order ------------------------------------------
-const ref = await readyDatabase();
+// --- reference: the full chain in filename order, up to 0108 (0109 has its own suite) -------
+const ref = await readyDatabase({ skip: ['0109'] });
 const finalCatalog = await snapshotCatalog(ref);
 await ref.close();
 
 // --- apply on top of the full chain (everything but 0099/0108) ------------------------------
 {
-  const db = await readyDatabase({ skip: ['0099', '0108'] });
+  const db = await readyDatabase({ skip: ['0099', '0108', '0109'] });
   try {
     const fx = await fixtures(db);
     const pre0099 = await snapshotCatalog(db);

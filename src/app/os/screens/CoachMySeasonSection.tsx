@@ -259,7 +259,7 @@ export async function withdrawFlow(observationId: string, deps: WithdrawDeps): P
     // Refused: the note may have changed under us (staff may have removed it),
     // so show what is true now, which also drops any erased text. If that
     // closes the confirm step, its message and focus move to the list's notice.
-    if (result.code === 'not_allowed') {
+    if (result.code === 'not_allowed' || result.code === 'own_child') {
       void Promise.resolve(deps.reload())
         .catch(() => {})
         .then(() => deps.focusNext(WITHDRAW_FOCUS.refused()));
@@ -472,7 +472,7 @@ export function CoachMySeasonPanel({
   // A refused withdrawal whose note can no longer be confirmed (staff removed
   // it): the message outlives the confirm step that was showing it.
   const refusedNote = view.observations.find((n) => n.id === ui.confirmingWithdrawId);
-  const orphanedWithdrawError = ui.confirmingWithdrawId && ui.withdrawError && !(refusedNote && refusedNote.mine && !refusedNote.withdrawn) ? ui.withdrawError : null;
+  const orphanedWithdrawError = ui.confirmingWithdrawId && ui.withdrawError && !(refusedNote && refusedNote.mine && !refusedNote.withdrawn && view.canAddNote) ? ui.withdrawError : null;
 
   return wrap(
     <>
