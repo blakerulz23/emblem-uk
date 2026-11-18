@@ -10,7 +10,7 @@ const PLAYER_ID = '30000000-0000-4000-8000-000000000001';
 /** A tiny stand-in for OsApp's patch(): applies partials/updaters to a local state object. */
 function harness(initial: Partial<RecognitionSheetState> = {}, isDemo = false) {
   const store: { state: RecognitionSheetState } = {
-    state: { celeb: PLAYER_ID, award: 'Man of the Match', coachMsg: 'Brilliant today', celebSending: false, celebError: false, sent: false, ...initial },
+    state: { celeb: PLAYER_ID, award: 'Great Teammate', coachMsg: 'Brilliant today', celebSending: false, celebError: false, sent: false, ...initial },
   };
   const patch = (p: Partial<RecognitionSheetState> | ((s: RecognitionSheetState) => Partial<RecognitionSheetState>)) => {
     store.state = { ...store.state, ...(typeof p === 'function' ? p(store.state) : p) };
@@ -40,7 +40,7 @@ describe('Celebrate: sendRecognitionFlow', () => {
 
     pending.resolve('saved');
     expect(await run).toBe('saved');
-    expect(submit).toHaveBeenCalledWith({ playerId: PLAYER_ID, award: 'Man of the Match', message: 'Brilliant today' });
+    expect(submit).toHaveBeenCalledWith({ playerId: PLAYER_ID, award: 'Great Teammate', message: 'Brilliant today' });
     expect(h.store.state).toMatchObject({ celeb: null, award: null, coachMsg: '', celebSending: false, celebError: false, sent: true });
     expect(h.onSent).toHaveBeenCalledTimes(1);
     expect(h.onSaved).toHaveBeenCalledTimes(1);
@@ -50,7 +50,7 @@ describe('Celebrate: sendRecognitionFlow', () => {
     const h = harness();
     const result = await sendRecognitionFlow(h.store.state, { ...h, submit: vi.fn().mockResolvedValue('failed') });
     expect(result).toBe('failed');
-    expect(h.store.state).toMatchObject({ celeb: PLAYER_ID, award: 'Man of the Match', coachMsg: 'Brilliant today', celebSending: false, celebError: true, sent: false });
+    expect(h.store.state).toMatchObject({ celeb: PLAYER_ID, award: 'Great Teammate', coachMsg: 'Brilliant today', celebSending: false, celebError: true, sent: false });
     expect(h.onSent).not.toHaveBeenCalled();
     expect(h.onSaved).not.toHaveBeenCalled();
   });
@@ -114,7 +114,7 @@ describe('Celebrate: sendRecognitionFlow', () => {
 
 describe('Celebrate sheet rendering', () => {
   const actions = { closeCeleb: () => {}, pickAward: () => {}, setCoachMsg: () => {}, sendRecognition: () => {} } as unknown as OsActions;
-  const render = (s: Partial<OsState>) => renderToStaticMarkup(<CelebrateSheet state={{ ...initialOsState, celeb: 'x', award: 'Man of the Match', ...s }} actions={actions} />);
+  const render = (s: Partial<OsState>) => renderToStaticMarkup(<CelebrateSheet state={{ ...initialOsState, celeb: 'x', award: 'Great Teammate', ...s }} actions={actions} />);
 
   it('shows "Sending…" and a disabled button while saving', () => {
     const html = render({ celebSending: true });
@@ -131,5 +131,14 @@ describe('Celebrate sheet rendering', () => {
 
   it('shows no error in the normal state', () => {
     expect(render({})).not.toContain('role="alert"');
+  });
+
+  it('offers exactly the four active categories, two Match and two Character, and none of the retired ones', () => {
+    const html = render({ award: null });
+    for (const label of ['Hat Trick', 'Clean Sheet', 'Great Teammate', 'Leadership']) expect(html).toContain(`>${label}</span>`);
+    for (const label of ['Player of the Match', 'First Goal', 'Hardest Worker', 'Most Improved', 'Coach&#x27;s Award', "Coach's Award"]) expect(html).not.toContain(label);
+    expect(html.match(/<span style="font-size:24px;line-height:1">/g)).toHaveLength(4);
+    expect(html).toContain('>MATCH</div>');
+    expect(html).toContain('>CHARACTER</div>');
   });
 });

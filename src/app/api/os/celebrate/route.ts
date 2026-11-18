@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateStoryUpdate } from '@/lib/story-updates';
+import { isActiveCelebrateLabel } from '@/lib/celebrate-categories';
 
 export const runtime = 'nodejs';
 
@@ -37,6 +38,13 @@ export async function POST(request: NextRequest) {
 
   if (!UUID_PATTERN.test(playerId) || !award) {
     return NextResponse.json({ error: 'playerId and award are required' }, { status: 400 });
+  }
+
+  // Only the active Celebrate categories can be given as new recognitions;
+  // checked before any database call. Retired titles already saved on
+  // moments are untouched and keep displaying.
+  if (!isActiveCelebrateLabel(award)) {
+    return NextResponse.json({ error: 'Unknown recognition category' }, { status: 400 });
   }
 
   const since = new Date(Date.now() - DUPLICATE_WINDOW_MS).toISOString();

@@ -14,6 +14,7 @@ import type {
   TrustSource,
   VerifyItem,
 } from './types';
+import { CELEBRATE_GROUPS } from '@/lib/celebrate-categories';
 
 const assetPath = '/assets/emblem-os';
 export const osAssetPath = assetPath;
@@ -128,10 +129,13 @@ export const SQUAD: SquadPlayer[] = [
   { id: 'theo', name: 'Theo Nkosi', num: 11, pos: 'Forward', status: 'Add recognition', guardianStatus: 'none', guardianCount: 0, latestInviteExpiresAt: null, hasManageableInvite: false, secondaryPosition: null, footballAgeGroup: null, heightCm: null, preferredFoot: null, coachFieldsUpdatedAt: null, seasonFocus: [], strengths: [], assessments: [], teamId: 'demo-team-u10' },
 ];
 
-export const CELEBRATE_CATS: CelebrateGroup[] = [
-  { group: 'Match', items: [['Player of the Match', '⭐'], ['First Goal', '⚽'], ['Hat Trick', '🎩'], ['Clean Sheet', '🧤']] },
-  { group: 'Character', items: [['Great Teammate', '❤️'], ['Leadership', '🧠'], ['Hardest Worker', '💪'], ['Most Improved', '📈'], ["Coach's Award", '🎯']] },
-];
+// Derived from the shared list the celebrate API route also enforces, so
+// the sheet can only offer what the server accepts. Retired categories
+// (e.g. Player of the Match) still display on moments already saved.
+export const CELEBRATE_CATS: CelebrateGroup[] = CELEBRATE_GROUPS.map(({ group, items }) => ({
+  group,
+  items: items.map(({ label, emoji }): [string, string] => [label, emoji]),
+}));
 
 export const VERIFY_QUEUE: VerifyItem[] = [
   { id: 'v1', player: 'Riley Hart', playerId: 'ollie', moment: 'First Goal', thumb: `${assetPath}/demo-riley-first-goal.webp`, by: 'Sam Hart (Parent)', date: '12 March 2025', note: 'His first goal: arrived late in the box and finished low into the corner!', mediaKind: 'photo' },
@@ -140,7 +144,7 @@ export const VERIFY_QUEUE: VerifyItem[] = [
 ];
 
 export const COACH_ACTIVITY: CoachActivityItem[] = [
-  { text: "You celebrated Riley Hart's Player of the Match", when: '2h ago', ic: 'star' },
+  { text: 'You celebrated Riley Hart as a Great Teammate', when: '2h ago', ic: 'star' },
   { text: "You verified Reuben Clarke's First Assist", when: 'Yesterday', ic: 'shield' },
   { text: 'You added a team photo', when: '2 days ago', ic: 'camera' },
 ];
@@ -217,9 +221,10 @@ export const ADD_EVENTS: AddEvent[] = [
   { id: 'custom', label: 'Custom', emoji: '➕' },
 ];
 
+// Player of the Match was removed in Phase 0 (see src/lib/add-moment-titles.ts);
+// moments already saved with that title still display as saved.
 export const ADD_ACH: AddAchievement[] = [
   { id: 'goal', label: 'First Goal', emoji: '⚽', rank: 'e1' },
-  { id: 'potm', label: 'Player of the Match', emoji: '⭐', rank: 'e4' },
   { id: 'tournament', label: 'Tournament Winner', emoji: '🏆', rank: 'e6' },
   { id: 'photo', label: 'Team Photo', emoji: '📸', rank: 'e2' },
   { id: 'captain', label: 'Captain', emoji: '🧢', rank: 'e5' },
@@ -236,7 +241,7 @@ export const ADD_ACH: AddAchievement[] = [
 // this player, 'recognized' = coach-verified but not a first, 'standard' =
 // everything else. Most are honestly firsts (a small early collection
 // naturally is mostly milestones) — e7/e8 are deliberately repeat titles
-// (a second Team Photo, a second Player of the Match) so the demo actually
+// (a second Team Photo, a second Leadership award) so the demo actually
 // demonstrates all three tiers, the same way a real family's collection
 // only starts showing 'recognized'/'standard' moments once repeats occur.
 // careerOrdinal mirrors RealMoment.careerOrdinal — a real, ever-counting
@@ -285,14 +290,14 @@ export const MOMENTS: Record<string, Moment> = {
     },
   },
   e4: {
-    id: 'e4', year: '2025/26', ageGroup: 'U9', title: 'Player of the Match', date: '19 October 2025', occurredOn: '2025-10-19', ic: 'star',
+    id: 'e4', year: '2025/26', ageGroup: 'U9', title: 'Leadership', date: '19 October 2025', occurredOn: '2025-10-19', ic: 'star',
     thumb: `${assetPath}/demo-riley-potm-u9.webp`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
     note: 'Led the press from the front, won the ball back high and kept the team moving all game.', media: true,
     match: { competition: 'U9 League', opponent: 'Millbrook Rangers', score: '2 – 2', venue: 'Away' },
     rarity: { label: 'MILESTONE', color: '#E8B23A', tier: 'foil' },
     reward: {
-      rank: 'milestone', sub: 'Player of the Match',
+      rank: 'milestone', sub: 'Leadership',
       rewards: [
         { ic: 'star', label: 'Award Cabinet', sub: '+1 award', lit: true },
         { ic: 'trophy', label: 'First Award', sub: 'Unlocked', lit: true },
@@ -354,14 +359,14 @@ export const MOMENTS: Record<string, Moment> = {
     },
   },
   e8: {
-    id: 'e8', year: '2026/27', ageGroup: 'U10', title: 'Player of the Match', date: '11 October 2026', occurredOn: '2026-10-11', ic: 'star',
+    id: 'e8', year: '2026/27', ageGroup: 'U10', title: 'Leadership', date: '11 October 2026', occurredOn: '2026-10-11', ic: 'star',
     thumb: `${assetPath}/demo-riley-potm-u10.webp`,
     trust: 'coach', source: 'Coach Danny', uploadedBy: 'Coach Danny', verifiedBy: 'Coach Danny',
-    note: 'A second Player of the Match award, with two assists from up front.', media: true,
+    note: 'A second Leadership award: organised the front line and set up two goals.', media: true,
     match: { competition: 'U10 League', opponent: 'Millbrook Rangers', score: '4 – 2', venue: 'Home' },
     rarity: { label: 'RECOGNIZED', color: '#E97435', tier: 'metallic' },
     reward: {
-      rank: 'recognized', sub: 'Player of the Match',
+      rank: 'recognized', sub: 'Leadership',
       rewards: [
         { ic: 'star', label: 'Award Cabinet', sub: '+1 award', lit: true },
       ],

@@ -3,6 +3,7 @@ import { getSignedDownloadUrl, AUTHENTICATED_OS_MEDIA_EXPIRY_SEC } from '@/lib/s
 import { createClient } from '@/lib/supabase/server';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
+import { isRetiredAddMomentTitle } from '@/lib/add-moment-titles';
 
 export const runtime = 'nodejs';
 
@@ -40,6 +41,12 @@ export async function POST(request: NextRequest) {
 
   if (!playerId || !title) {
     return NextResponse.json({ error: 'playerId and title are required' }, { status: 400 });
+  }
+
+  // Retired Add-a-moment labels (e.g. Player of the Match) can't start a NEW
+  // moment; saved ones are untouched. Checked before any database call.
+  if (isRetiredAddMomentTitle(title)) {
+    return NextResponse.json({ error: 'This moment type is no longer available' }, { status: 400 });
   }
 
   const { data: player } = await supabase
