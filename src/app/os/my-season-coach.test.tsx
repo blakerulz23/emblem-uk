@@ -14,7 +14,7 @@ vi.mock('@/app/os/screens/CoachMySeasonSection', async (importOriginal) => {
     ...real,
     useCoachMySeason: (a: unknown) => {
       hook.args.push(a);
-      return { state: hook.state, reload: async () => null, eraseWithdrawn: () => {}, enabled: real.coachMySeasonEnabled(hook.state) };
+      return { state: hook.state, reload: async () => null, eraseWithdrawn: () => {}, enabled: real.coachMySeasonEnabled(hook.state), lookup: real.coachLookupStatus(true, hook.state) };
     },
   };
 });

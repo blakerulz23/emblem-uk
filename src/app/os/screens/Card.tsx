@@ -14,6 +14,7 @@ import type { OsState } from '../types';
 import { formatFoot, formatFootballAgeGroup, formatHeightCm, positionLabel } from '../coachFields';
 import { positionCardLabel } from '@/lib/player-position';
 import { useOsPhotoUpload } from '../useOsPhotoUpload';
+import { MySeasonError } from '../mySeasonUi';
 
 /**
  * The digital twin of the physical collectible, present-tense only
@@ -49,6 +50,8 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
   // whose team has the feature enabled; everyone else sees it unchanged.
   const hideLegacySeasonFocus = mySeason?.enabled === true;
   const isReal = mode !== 'demo';
+  // The lookup failed, so nobody knows which section applies: no legacy Add, and a Retry.
+  const mySeasonUnavailable = isReal && mySeason?.enabled === true && mySeason.access === 'none' && mySeason.reason === 'unavailable';
   /** The demo profile has no photoUrl of its own, so fall back to its sample player photo rather than to a pair of initials. */
   const aboutPhotoUrl = PLAYER_PROFILE.photoUrl ?? (isReal ? null : DEMO_PLAYER_PHOTO);
   const router = useRouter();
@@ -262,6 +265,12 @@ export default function CardScreen({ state, actions }: { state: OsState; actions
 
       {/* Shared, with attribution — the one write affordance on this face: a guardian can add a Season Focus, same as a coach can from their own screen.
           Empty state reads label → icon → hero title → supporting copy → the (unchanged) CTA below it, which reads as dominant simply because everything above it is now quiet. Populated rows read label(above) → focus text as hero → status as a small "progress" pill → author/date as the smallest supporting line. */}
+      {mySeasonUnavailable && (
+        <div style={sectionCard} data-testid="season-focus-unavailable">
+          <div style={sectionLabel}>THIS SEASON</div>
+          <MySeasonError onRetry={() => void refreshOsData()} />
+        </div>
+      )}
       {!hideLegacySeasonFocus && (
       <div style={sectionCard}>
         <div style={sectionLabel}>SEASON FOCUS {seasonFocus.length > 0 ? `(${activeFocusCount}/3 active)` : ''}</div>

@@ -214,11 +214,16 @@ export type MySeasonActiveObservation = MySeasonObservationBase & {
   body: string;
 };
 
-/** Withdrawing erases the content: only its author gets this row, with no text or category. */
+/**
+ * Withdrawing (or staff removal) erases the content: only its author gets
+ * this row, with no text or category. `removedByStaff` is present, and true,
+ * only when Emblem staff removed it.
+ */
 export type MySeasonWithdrawnObservation = MySeasonObservationBase & {
   withdrawn: true;
   category: null;
   body: null;
+  removedByStaff?: true;
 };
 
 export type MySeasonObservation = MySeasonActiveObservation | MySeasonWithdrawnObservation;
@@ -281,11 +286,15 @@ function parseObservation(raw: unknown): MySeasonObservation | null {
     formerCoach: o.formerCoach,
     mine: o.mine,
   };
+  const removed = o.removedByStaff ?? false;
+  if (!isBool(removed)) return null;
   if (o.withdrawn) {
     // Exactly null: a withdrawn row that carries any content is refused.
     if (o.category !== null || o.body !== null) return null;
-    return { ...base, withdrawn: true, category: null, body: null };
+    return removed ? { ...base, withdrawn: true, category: null, body: null, removedByStaff: true } : { ...base, withdrawn: true, category: null, body: null };
   }
+  // Removal erases the note, so a "removed" row with content breaks the contract.
+  if (removed) return null;
   if (!isMySeasonCategory(o.category) || !isStr(o.body) || !o.body) return null;
   return { ...base, withdrawn: false, category: o.category, body: o.body };
 }
@@ -338,13 +347,18 @@ export function rawViewSaysEnabled(raw: unknown): boolean {
 }
 
 /**
- * The parent load: an enabled view, the "unavailable" marker when the server
- * said enabled but the view is malformed, otherwise null (off, or unknown).
+ * The parent load: an enabled view, null only when the server confirmed the
+ * feature is off, otherwise the "unavailable" marker. Anything unreadable
+ * says nothing about the flag, so the legacy Add must not become actionable.
  */
 export function parentViewFromRaw(raw: unknown): MySeasonView | null {
   const view = parseMySeasonView(raw);
-  if (view) return enabledViewOrNull(view);
-  return rawViewSaysEnabled(raw) ? MY_SEASON_UNAVAILABLE_VIEW : null;
+  return view ? enabledViewOrNull(view) : MY_SEASON_UNAVAILABLE_VIEW;
+}
+
+/** The RPC does not exist yet (0108 not applied): PostgREST or Postgres wording. */
+export function isMissingMySeasonFunction(error: { code?: string | null } | null | undefined): boolean {
+  return error?.code === 'PGRST202' || error?.code === '42883';
 }
 
 // ---------------------------------------------------------------------------
@@ -354,6 +368,7 @@ export function parentViewFromRaw(raw: unknown): MySeasonView | null {
 export type MySeasonErrorCode =
   | 'sign_in_required'
   | 'not_available'
+  | 'deploy_off'
   | 'not_allowed'
   | 'account_review'
   | 'invalid_input'
@@ -367,6 +382,9 @@ export type MySeasonError = { status: number; code: MySeasonErrorCode; message: 
 export const MY_SEASON_ERRORS: Record<MySeasonErrorCode, MySeasonError> = {
   sign_in_required: { status: 401, code: 'sign_in_required', message: 'Sign in required.' },
   not_available: { status: 404, code: 'not_available', message: "My Season isn't available for this player." },
+  // The deploy kill switch is on. Its own code: clients treat exactly this 404
+  // as "confirmed off", and every other 404 as a failed lookup.
+  deploy_off: { status: 404, code: 'deploy_off', message: "My Season isn't available for this player." },
   not_allowed: { status: 403, code: 'not_allowed', message: "You can't make this change for this player." },
   account_review: { status: 403, code: 'account_review', message: 'My Season is paused while your account is being reviewed.' },
   invalid_input: { status: 400, code: 'invalid_input', message: "Check what you've written and try again." },
@@ -395,6 +413,94 @@ const SQLSTATE_TO_CODE: Record<string, MySeasonErrorCode> = {
 export function mySeasonErrorFor(error: { code?: string | null } | null | undefined): MySeasonError {
   const code = error?.code ? SQLSTATE_TO_CODE[error.code] : undefined;
   return MY_SEASON_ERRORS[code ?? 'failed'];
+}
+
+// ---------------------------------------------------------------------------
+// Staff removal (internal staff tool; mirrors section 6 of 0108)
+// ---------------------------------------------------------------------------
+
+export const STAFF_REASON_MIN = 3;
+export const STAFF_REASON_MAX = 500;
+
+export type StaffReasonCheck = { value: string; length: number; tooShort: boolean; tooLong: boolean; valid: boolean };
+
+export function checkStaffRemovalReason(raw: string): StaffReasonCheck {
+  const value = raw.trim();
+  const length = charLength(value);
+  const tooShort = length < STAFF_REASON_MIN;
+  const tooLong = length > STAFF_REASON_MAX;
+  return { value, length, tooShort, tooLong, valid: !tooShort && !tooLong && !hasUnstorableText(value) };
+}
+
+/** The POST body: exactly a usable `reason`. The refusal never says why or repeats it. */
+export function validateStaffRemovalBody(raw: unknown): { ok: true; reason: string } | { ok: false } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { ok: false };
+  const reason = (raw as Record<string, unknown>).reason;
+  if (typeof reason !== 'string') return { ok: false };
+  const check = checkStaffRemovalReason(reason);
+  return check.valid ? { ok: true, reason: check.value } : { ok: false };
+}
+
+type StaffObservationBase = { id: string; createdAt: string; coachName: string | null; formerCoach: boolean };
+export type MySeasonStaffActiveObservation = StaffObservationBase & { state: 'active'; category: MySeasonCategoryKey; body: string };
+export type MySeasonStaffClosedObservation = StaffObservationBase & { state: 'withdrawn' | 'removed'; category: null; body: null };
+export type MySeasonStaffObservation = MySeasonStaffActiveObservation | MySeasonStaffClosedObservation;
+
+function parseStaffObservation(raw: unknown): MySeasonStaffObservation | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  if (!isUuid(o.id) || !isStr(o.createdAt) || !isStrOrNull(o.coachName ?? null) || !isBool(o.formerCoach)) return null;
+  const base: StaffObservationBase = { id: o.id, createdAt: o.createdAt, coachName: (o.coachName ?? null) as string | null, formerCoach: o.formerCoach };
+  if (o.state === 'active') {
+    if (!isMySeasonCategory(o.category) || !isStr(o.body) || !o.body) return null;
+    return { ...base, state: 'active', category: o.category, body: o.body };
+  }
+  if (o.state !== 'withdrawn' && o.state !== 'removed') return null;
+  // A closed note has no content: any text or category breaks the contract.
+  if ((o.category ?? null) !== null || (o.body ?? null) !== null) return null;
+  return { ...base, state: o.state, category: null, body: null };
+}
+
+/** Strict parse of my_season_staff_list_observations. Null = does not match the contract. */
+export function parseStaffObservationList(raw: unknown): MySeasonStaffObservation[] | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const list = (raw as Record<string, unknown>).observations;
+  if (!Array.isArray(list)) return null;
+  const parsed = list.map(parseStaffObservation);
+  return parsed.some((o) => !o) ? null : (parsed as MySeasonStaffObservation[]);
+}
+
+export type StaffRemovalStatus = 'removed' | 'already_removed';
+
+export function parseStaffRemovalStatus(raw: unknown): StaffRemovalStatus | null {
+  const status = raw && typeof raw === 'object' ? (raw as Record<string, unknown>).status : null;
+  return status === 'removed' || status === 'already_removed' ? status : null;
+}
+
+export type StaffMySeasonErrorCode = 'sign_in_required' | 'staff_required' | 'invalid_input' | 'invalid_reason' | 'not_found' | 'conflict' | 'failed';
+export type StaffMySeasonError = { status: number; code: StaffMySeasonErrorCode; message: string };
+
+export const STAFF_MY_SEASON_ERRORS: Record<StaffMySeasonErrorCode, StaffMySeasonError> = {
+  sign_in_required: { status: 401, code: 'sign_in_required', message: 'Sign in required.' },
+  staff_required: { status: 403, code: 'staff_required', message: 'Staff access required.' },
+  invalid_input: { status: 400, code: 'invalid_input', message: 'Check the ID and try again.' },
+  invalid_reason: { status: 400, code: 'invalid_reason', message: `Give a reason of ${STAFF_REASON_MIN} to ${STAFF_REASON_MAX} characters.` },
+  not_found: { status: 404, code: 'not_found', message: 'Nothing was found for that ID.' },
+  conflict: { status: 409, code: 'conflict', message: 'That changed while you were working. Reload and try again.' },
+  failed: { status: 500, code: 'failed', message: 'Something went wrong. Try again.' },
+};
+
+const STAFF_SQLSTATE_TO_CODE: Record<string, StaffMySeasonErrorCode> = {
+  EMS08: 'not_found',
+  EMS09: 'conflict',
+  EMS10: 'staff_required',
+  EMS11: 'invalid_reason',
+};
+
+/** Maps a staff RPC failure to fixed copy. The database message is never passed through. */
+export function staffMySeasonErrorFor(error: { code?: string | null } | null | undefined): StaffMySeasonError {
+  const code = error?.code ? STAFF_SQLSTATE_TO_CODE[error.code] : undefined;
+  return STAFF_MY_SEASON_ERRORS[code ?? 'failed'];
 }
 
 // ---------------------------------------------------------------------------

@@ -46,6 +46,8 @@ export async function loadMySeasonView(playerId: string, fetchImpl: FetchLike = 
     if (!res.ok) {
       if (res.status === 401) return { ok: false, signedOut: true };
       const data = (await res.json().catch(() => null)) as { code?: unknown } | null;
+      // The deploy kill switch's own 404 is a definite "off". Any other 404 is a failure.
+      if (res.status === 404 && data?.code === 'deploy_off') return { ok: true, view: { enabled: false } };
       return data?.code === 'view_invalid' ? { ok: false, signedOut: false, enabledInvalid: true } : { ok: false, signedOut: false };
     }
     const raw: unknown = await res.json();

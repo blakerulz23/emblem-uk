@@ -103,7 +103,7 @@ try {
   await db.exec(migration('0108'));
   const after = await snapshotCatalog(db);
   check('production order (… 0107, 0097, 0098, 0102, 0099, 0108) equals the filename-order catalog', catalogDiff(finalCatalog, after).length === 0, catalogDiff(finalCatalog, after));
-  const newTables = ['season_feature_global', 'season_feature_team_states', 'my_season_focuses', 'my_season_coach_observations', 'my_season_audit_events'];
+  const newTables = ['season_feature_global', 'season_feature_team_states', 'my_season_focuses', 'my_season_coach_observations', 'my_season_audit_events', 'my_season_observation_staff_removals'];
   check('applying 0099 and 0108 changes no existing table\'s data', (await dataHash(db, newTables)) === dataBefore);
 
   // Round trip.

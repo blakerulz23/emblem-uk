@@ -21,10 +21,11 @@
 //      every table exists and the signals exist.
 // My Season Phase 1 (0099 + 0108) reaches production after 0102. Until then
 // the app's My Season RPCs (my_season_for_player, my_season_set_focus,
-// my_season_add_observation, my_season_withdraw_observation) are missing
-// too; they may be called only from the My Season routes, src/lib/my-season*
-// and src/lib/os-data.ts, which skip the call while the deploy kill switch is
-// on and treat any error as "My Season unavailable". The app never reads or
+// my_season_add_observation, my_season_withdraw_observation and the two
+// my_season_staff_* functions) are missing too; they may be called only from
+// the My Season routes (family and staff), src/lib/my-season* and
+// src/lib/os-data.ts, which treat a missing function as "off" (family) or a
+// fixed failure (staff). The app never reads or
 // writes a My Season or season feature table directly (no .from()). The final
 // state applies 0099 and 0108 after 0102.
 //
@@ -54,8 +55,8 @@ const NEW_FUNCTION_CALLERS = ['src/lib/supabase/middleware.ts', 'src/app/api/os/
   'src/app/api/staff/account-deletions/[id]/retry-sign-in/route.ts', 'src/app/staff/account-deletions/page.tsx',
   'src/lib/remove-account-sign-in.ts', 'src/lib/coach-review-status.ts'];
 const NEW_TABLES = ['account_deletion_staff_actions', 'deletion_review_access_suspensions', 'erased_accounts'];
-const MY_SEASON_FUNCTIONS = ['my_season_add_observation', 'my_season_for_player', 'my_season_set_focus', 'my_season_withdraw_observation'];
-const isMySeasonCaller = (rel) => rel === 'src/lib/os-data.ts' || rel.startsWith('src/app/api/os/my-season/') || rel.startsWith('src/lib/my-season');
+const MY_SEASON_FUNCTIONS = ['my_season_add_observation', 'my_season_for_player', 'my_season_set_focus', 'my_season_staff_list_observations', 'my_season_staff_remove_observation', 'my_season_withdraw_observation'];
+const isMySeasonCaller = (rel) => rel === 'src/lib/os-data.ts' || rel.startsWith('src/app/api/os/my-season/') || rel.startsWith('src/app/api/staff/my-season/') || rel.startsWith('src/lib/my-season');
 const NEW_TABLE_CALLERS =['src/app/staff/account-deletions/page.tsx', 'src/app/api/staff/account-deletions/[id]/retry-sign-in/route.ts'];
 
 const results = [];
@@ -186,7 +187,7 @@ async function assess(db, label, final) {
 }
 {
   const unknownMs = [...new Set(rpcCalls.filter((c) => /^(my_season|season_feature)/.test(c.fn) && !MY_SEASON_FUNCTIONS.includes(c.fn)).map((c) => c.fn))];
-  check('the app calls no My Season or season feature function other than the four My Season RPCs', unknownMs.length === 0, unknownMs);
+  check('the app calls no My Season or season feature function other than the six My Season RPCs', unknownMs.length === 0, unknownMs);
   const direct = tableUses.filter((u) => /^(my_season|season_feature)/.test(u.table));
   check('the app never reads or writes a My Season or season feature table directly (.from)', direct.length === 0, direct);
   console.log(`  · My Season RPCs called by the app: ${MY_SEASON_FUNCTIONS.filter((fn) => rpcCalls.some((c) => c.fn === fn)).join(', ') || 'none yet'}`);

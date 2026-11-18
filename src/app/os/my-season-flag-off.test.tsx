@@ -74,12 +74,21 @@ describe('flag off: identical rendering', () => {
     expect(cardBack({ ...REAL_PARENT, mySeason: { enabled: false } })).toBe(baseline);
   });
 
-  it('CoachPlayerDetail renders the same whether or not lookups are allowed, with the legacy Season Focus section', () => {
+  it('CoachPlayerDetail with no lookup needed renders the legacy Season Focus section exactly as before', () => {
     const baseline = coachDetail(withoutKeys(REAL_COACH));
     expect(baseline).toContain('Season Focus');
     expect(baseline).not.toContain('My Season');
+    expect(baseline).not.toContain('legacy-focus-');
     expect(coachDetail({ ...REAL_COACH, mySeasonCoachLookup: false })).toBe(baseline);
-    expect(coachDetail({ ...REAL_COACH, mySeasonCoachLookup: true })).toBe(baseline);
+  });
+
+  it('while the lookup is unanswered the legacy section stays readable, with its Add disabled and a status', () => {
+    const html = coachDetail({ ...REAL_COACH, mySeasonCoachLookup: true });
+    expect(html).toContain('Season Focus');
+    expect(html).not.toContain('My Season');
+    expect(html).toContain('data-testid="legacy-focus-checking"');
+    expect(html).toContain('Checking this player&#x27;s season...');
+    expect(html).toMatch(/placeholder="e\.g\. First touch under pressure" disabled=""/);
   });
 });
 
@@ -138,10 +147,23 @@ describe('os-data parent load', () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it('null when disabled, on an error (e.g. app deployed before 0108), on a malformed answer or a throw', async () => {
-    for (const r of [{ data: { enabled: false }, error: null }, { data: null, error: { code: 'PGRST202', message: 'function not found' } }, { data: { enabled: 'yes' }, error: null }, new Error('network')]) {
+  it('null only when confirmed off: disabled, or the function is missing (app deployed before 0108)', async () => {
+    for (const r of [{ data: { enabled: false }, error: null }, { data: null, error: { code: 'PGRST202', message: 'function not found' } }, { data: null, error: { code: '42883', message: 'undefined function' } }]) {
       expect(await loadParentMySeason(rpcClient(r).client, MS_PLAYER_ID)).toBeNull();
     }
+  });
+
+  it('an unexpected RPC failure, a throw or an unreadable answer gives the unavailable marker, never "off"', async () => {
+    for (const r of [{ data: null, error: { code: '57014', message: 'timeout' } }, { data: null, error: { code: 'XX000', message: 'boom' } }, { data: { enabled: 'yes' }, error: null }, { data: null, error: null }, new Error('network')]) {
+      expect(await loadParentMySeason(rpcClient(r).client, MS_PLAYER_ID)).toEqual({ enabled: true, access: 'none', reason: 'unavailable' });
+    }
+  });
+
+  it('with the marker the Card back has no legacy Add, and offers Retry', () => {
+    const html = cardBack({ ...REAL_PARENT, mySeason: { enabled: true, access: 'none', reason: 'unavailable' } });
+    expect(html).toContain('data-testid="season-focus-unavailable"');
+    expect(html).toContain('Retry');
+    expect(html).not.toContain('Add a Season Focus');
   });
 
   it('a malformed view that claims the feature is on keeps the legacy section hidden', async () => {

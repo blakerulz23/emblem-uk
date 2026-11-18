@@ -68,6 +68,7 @@ export const MY_SEASON_COPY = {
     `${first}'s family will see this with your name. It is never public and never compared with teammates. You can withdraw it later.`,
   sentToast: (first: string) => `Sent. ${first}'s family can see it in My Season.`,
   withdrawnNote: 'Withdrawn. The family no longer sees this.',
+  removedByStaffNote: 'Removed by Emblem staff. The family no longer sees this.',
   withdrawConfirm: 'Withdraw this note? The family will no longer see it, and the text will be permanently deleted.',
   ownChild: "You can't add notes for your own child. Another coach on the team can.",
   privateCoach: (first: string) =>

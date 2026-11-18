@@ -133,7 +133,7 @@ console.log('\n=== 1. Authorization matrix ===');
     const shapeKeys = Object.keys(g.activeFocus).sort().join(',');
     check('1: focus JSON has exactly the contract keys', shapeKeys === 'authorName,authorRole,endedAt,id,startedOn,title,whatItLooksLike,whyItMatters', shapeKeys);
     const obsKeys = Object.keys(g.observations[0]).sort().join(',');
-    check('1: observation JSON has exactly the contract keys', obsKeys === 'body,category,coachName,createdAt,formerCoach,id,mine,withdrawn', obsKeys);
+    check('1: observation JSON has exactly the contract keys', obsKeys === 'body,category,coachName,createdAt,formerCoach,id,mine,removedByStaff,withdrawn', obsKeys);
     const c = await w.view(P.coach, child1);
     check('1: active team coach reads: access coach, canAddNote, own note mine', c.access === 'coach' && c.canEditFocus && c.canAddNote && c.observations[0].mine === true, c);
 
@@ -219,8 +219,8 @@ console.log('\n=== 1. Authorization matrix ===');
       reviewCoach: code(await w.withdraw(P.reviewCoach, obsId)), reviewCoachUnknown: code(await w.withdraw(P.reviewCoach, id())) };
     check('1: withdraw by anyone but the author refused (EMS03); an unknown id is EMS03 too (no existence oracle); under review EMS04 for any id',
       JSON.stringify(wCodes) === JSON.stringify({ g1: 'EMS03', parentCoach: 'EMS03', stranger: 'EMS03', unknown: 'EMS03', strangerUnknown: 'EMS03', reviewCoach: 'EMS04', reviewCoachUnknown: 'EMS04' }), wCodes);
-    const ems08 = (await w.db.query(`select count(*)::int n from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname like 'my_season%' and p.prosrc like '%EMS08%'`)).rows[0].n;
-    check('1: no My Season function raises EMS08 any more', ems08 === 0, ems08);
+    const ems08 = (await w.db.query(`select string_agg(p.proname, ',' order by p.proname) n from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname like 'my_season%' and p.prosrc like '%EMS08%'`)).rows[0].n;
+    check('1: only the staff RPCs raise EMS08 (never a family or coach path)', ems08 === 'my_season_staff_list_observations,my_season_staff_remove_observation', ems08);
 
     // anon: no grants at all.
     const anonExec = (await w.db.query(`select bool_or(has_function_privilege('anon', p.oid, 'execute')) x from pg_proc p join pg_namespace s on s.oid = p.pronamespace
@@ -534,7 +534,7 @@ async function pastTriggers(db, sql, params) {
     check('4b: the guardian and another coach never receive it', !family.observations.some((x) => x.id === o) && !peer.observations.some((x) => x.id === o));
     const m = author.observations.find((x) => x.id === o);
     check('4b: its author gets it with body null, category null, withdrawn true', m && m.body === null && m.category === null && m.withdrawn === true && m.mine === true
-      && Object.keys(m).sort().join() === 'body,category,coachName,createdAt,formerCoach,id,mine,withdrawn', m);
+      && m.removedByStaff === false && Object.keys(m).sort().join() === 'body,category,coachName,createdAt,formerCoach,id,mine,removedByStaff,withdrawn', m);
     check('4b: the read never returns the marker to anyone', ![family, peer, author].some((v) => JSON.stringify(v).includes(MARK)));
 
     // Nobody can put content back.
@@ -650,7 +650,7 @@ async function pastTriggers(db, sql, params) {
     const fnSrc = (await db.query(`select string_agg(prosrc, ' ') s from pg_proc where pronamespace = 'public'::regnamespace and proname like 'my_season%'`)).rows[0].s;
     const raises = fnSrc.match(/raise exception[^;]*;/g) ?? [];
     check('4b: every My Season RAISE is a fixed errcode + message with no parameters, DETAIL or HINT',
-      raises.length > 10 && raises.every((r) => /^raise exception using errcode = 'EMS0\d', message = 'my_season_[a-z_]+';$/.test(r)), raises.filter((r) => !/^raise exception using errcode = 'EMS0\d', message = 'my_season_[a-z_]+';$/.test(r)));
+      raises.length > 10 && raises.every((r) => /^raise exception using errcode = 'EMS\d\d', message = 'my_season_[a-z_]+';$/.test(r)), raises.filter((r) => !/^raise exception using errcode = 'EMS\d\d', message = 'my_season_[a-z_]+';$/.test(r)));
 
     // Removed with the child; other children untouched.
     const o2 = (await w.addObs(P.coach, child2, mine)).rows[0].id;
@@ -927,6 +927,296 @@ async function emailHitsInNewTables(db) {
         && await w.n(`select count(*) n from public.my_season_coach_observations where id = $1 and author_id = $2`, [o, P.coach]) === 1);
   } catch (e) {
     check('6b: review', false, e.stack);
+  }
+  await db.close();
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n=== 7. Audited staff removal ===');
+const REMOVALS = 'public.my_season_observation_staff_removals';
+const NOTES = 'public.my_season_coach_observations';
+const AUDIT = 'public.my_season_audit_events';
+const staffRemove = (w, uid, obs, reason = 'Reported by the family') => w.user(uid, `select public.my_season_staff_remove_observation($1, $2) r`, [obs, reason]);
+const staffList = (w, uid, player) => w.user(uid, `select public.my_season_staff_list_observations($1) r`, [player]);
+const status = (r) => (r.ok ? r.rows[0].r.status : r.code);
+async function addTeamCoach(w, name) {
+  const uid = id();
+  await w.db.query(`insert into auth.users (id, email) values ($1, $2)`, [uid, `ms-${uid.slice(0, 8)}@example.test`]);
+  await w.db.query(`insert into public.profiles (id, display_name) values ($1, $2)`, [uid, name]);
+  await w.db.query(`insert into public.coach_team (team_id, profile_id) values ($1, $2)`, [w.T, uid]);
+  return uid;
+}
+async function addStaff(w, name) {
+  const uid = id();
+  await w.db.query(`insert into auth.users (id, email) values ($1, $2)`, [uid, `ms-${uid.slice(0, 8)}@example.test`]);
+  await w.db.query(`insert into public.profiles (id, display_name) values ($1, $2)`, [uid, name]);
+  await w.db.query(`insert into public.staff_accounts (profile_id) values ($1)`, [uid]);
+  return uid;
+}
+// As the superuser/owner, with the staff member's id forged into the claim and no role set.
+async function asOwnerForging(w, uid, sql, params) {
+  await w.db.exec('begin;');
+  try {
+    await w.db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [uid]);
+    const r = await w.db.query(sql, params);
+    await w.db.exec('commit;');
+    return { ok: true, rows: r.rows };
+  } catch (e) {
+    await w.db.exec('rollback;');
+    return { ok: false, code: e.code, message: e.message, detail: e.detail, hint: e.hint, where: e.where };
+  }
+}
+const ownerDo = (db, sql, params) => db.query(sql, params).then(() => ({ ok: true }), (e) => ({ ok: false, code: e.code, message: e.message, detail: e.detail, hint: e.hint }));
+const noteRow = async (w, obs) => (await w.db.query(`select body, category, withdrawn_at, withdrawn_by, author_id, author_account_deleted_at from ${NOTES} where id = $1`, [obs])).rows[0];
+const removalRow = async (w, obs) => (await w.db.query(`select * from ${REMOVALS} where observation_id = $1`, [obs])).rows[0];
+const auditFor = async (w, obs, event) => (await w.db.query(`select actor_profile_id, actor_role, player_id from ${AUDIT} where subject_id = $1 and event = $2`, [obs, event])).rows;
+// Every text-like column of every public table, as text.
+async function hitsEverywhere(db, marker) {
+  const tables = (await db.query(`select tablename t from pg_tables where schemaname = 'public'`)).rows.map((r) => r.t);
+  const hits = [];
+  for (const t of tables) if (Number((await db.query(`select count(*) n from public."${t}" x where x::text like $1`, [`%${marker}%`])).rows[0].n)) hits.push(t);
+  return hits;
+}
+{
+  const w = await world();
+  const { P, child1, db } = w;
+  try {
+    const NOTE_MARK = `ZQNOTE${crypto.randomBytes(5).toString('hex')}`, REASON_MARK = `ZQREASON${crypto.randomBytes(5).toString('hex')}`;
+    const obs = (await w.addObs(P.coach, child1, { body: `${NOTE_MARK} kept going after the goal.`, category: 'spoke_up' })).rows[0].id;
+    const r = await staffRemove(w, P.staff, obs, `  ${REASON_MARK} family asked  `);
+    check('7: staff removal returns exactly {"status":"removed"}', r.ok && JSON.stringify(r.rows[0].r) === '{"status": "removed"}' || JSON.stringify(r.rows?.[0]?.r) === '{"status":"removed"}', r);
+    const row = await noteRow(w, obs);
+    check('7: as superuser the row has no text or category, and records the staff member', row.body === null && row.category === null && row.withdrawn_at !== null && row.withdrawn_by === P.staff && row.author_id === P.coach, row);
+    const rem = await removalRow(w, obs);
+    check('7: one removal row with the trimmed reason, the actor and no marker', rem?.reason === `${REASON_MARK} family asked` && rem.player_id === child1 && rem.removed_by === P.staff && rem.removed_by_account_deleted_at === null && rem.removed_at !== null, rem);
+    const ev = await auditFor(w, obs, 'observation_staff_removed');
+    check('7: exactly one audit event, staff actor and role', ev.length === 1 && ev[0].actor_profile_id === P.staff && ev[0].actor_role === 'staff' && ev[0].player_id === child1, ev);
+    check('7: the audit columns are exactly the content-free set', (await db.query(`select string_agg(column_name, ',' order by column_name) c from information_schema.columns where table_schema='public' and table_name='my_season_audit_events'`)).rows[0].c === 'actor_profile_id,actor_role,event,id,occurred_at,player_id,subject_id');
+    check('7: note marker is nowhere in any public table', (await hitsEverywhere(db, NOTE_MARK)).length === 0, await hitsEverywhere(db, NOTE_MARK));
+    const reasonHits = await hitsEverywhere(db, REASON_MARK);
+    check('7: reason marker is only in the removals table', reasonHits.length === 1 && reasonHits[0] === 'my_season_observation_staff_removals', reasonHits);
+
+    const gv = await w.view(P.g1, child1), ov = await w.view(P.parentCoach, child1), av = await w.view(P.coach, child1);
+    check('7: gone for the guardian and for other coaches', gv.observations.length === 0 && ov.observations.length === 0, [gv.observations, ov.observations]);
+    const mine = av.observations.find((o) => o.id === obs);
+    check('7: its author gets a metadata-only row with removedByStaff', mine?.removedByStaff === true && mine.withdrawn === true && mine.body === null && mine.category === null && mine.mine === true, mine);
+    check('7: nothing returned to anyone holds the note or the reason', ![gv, ov, av].some((v) => JSON.stringify(v).includes(NOTE_MARK) || JSON.stringify(v).includes(REASON_MARK)));
+    const again = await w.withdraw(P.coach, obs);
+    check('7: the author cannot withdraw it again (EMS03), and nothing changes', code(again) === 'EMS03' && (await noteRow(w, obs)).withdrawn_by === P.staff && (await auditFor(w, obs, 'observation_withdrawn')).length === 0, again);
+
+    const retry = await staffRemove(w, P.staff, obs, `${REASON_MARK} retry`);
+    const other = await addStaff(w, 'Second Staff');
+    const diff = await staffRemove(w, other, obs, 'A different reason entirely');
+    check('7: retry and a different reason or staff member: already_removed', status(retry) === 'already_removed' && status(diff) === 'already_removed', [retry, diff]);
+    check('7: no new rows; the first reason and actor stay', (await removalRow(w, obs)).reason === `${REASON_MARK} family asked` && (await removalRow(w, obs)).removed_by === P.staff
+      && (await auditFor(w, obs, 'observation_staff_removed')).length === 1 && await w.n(`select count(*) n from ${REMOVALS}`) === 1);
+
+    const restore = {
+      body: await ownerDo(db, `update ${NOTES} set body = 'Restored text of twenty chars.', category = 'spoke_up' where id = $1`, [obs]),
+      unwithdraw: await ownerDo(db, `update ${NOTES} set withdrawn_at = null where id = $1`, [obs]),
+    };
+    check('7: nothing can restore content, even the owner (EMS09)', restore.body.code === 'EMS09' && restore.unwithdraw.code === 'EMS09', restore);
+    const noTrigger = await (async () => {
+      await db.exec('begin;');
+      try {
+        await db.exec(`alter table ${NOTES} disable trigger user;`);
+        await db.query(`update ${NOTES} set body = 'Restored text of twenty chars.' where id = $1`, [obs]);
+        return 'updated';
+      } catch (e) { return e.code; } finally { await db.exec('rollback;'); }
+    })();
+    check('7: with triggers off the CHECK constraint still refuses text on a removed row', noTrigger === '23514', noTrigger);
+
+    // Privileges on the removals table.
+    const sr = (sql, p) => w.as('service_role', null, sql, p);
+    const anon = (sql, p) => w.as('anon', null, sql, p);
+    const direct = {};
+    for (const [label, run] of [['auth', (s, p) => w.user(P.staff, s, p)], ['sr', sr], ['anon', anon]]) {
+      direct[label] = [
+        code(await run(`select reason from ${REMOVALS}`)), code(await run(`select count(*) from ${REMOVALS}`)),
+        code(await run(`update ${REMOVALS} set reason = 'Changed'`)), code(await run(`delete from ${REMOVALS}`)),
+        code(await run(`truncate ${REMOVALS}`)),
+        code(await run(`insert into ${REMOVALS} (observation_id, player_id, removed_by, reason) values ($1, $2, $3, 'Reason')`, [obs, child1, P.staff])),
+      ].join();
+    }
+    check('7: authenticated, service_role and anon cannot read or alter removals (42501)', Object.values(direct).every((x) => x.split(',').every((c) => c === '42501')), direct);
+    const own = {
+      upd: await ownerDo(db, `update ${REMOVALS} set reason = 'Changed' where observation_id = $1`, [obs]),
+      nullReason: await ownerDo(db, `update ${REMOVALS} set reason = null where observation_id = $1`, [obs]),
+      actor: await ownerDo(db, `update ${REMOVALS} set removed_by = null where observation_id = $1`, [obs]),
+      del: await ownerDo(db, `delete from ${REMOVALS} where observation_id = $1`, [obs]),
+      trunc: await ownerDo(db, `truncate ${REMOVALS}`),
+    };
+    check('7: removals are append-only for the owner too (EMS09, no row echoed)', Object.values(own).every((o) => o.code === 'EMS09' && !o.detail && !o.hint), own);
+    const obs2 = (await w.addObs(P.coach, child1)).rows[0].id;
+    const shapes = {
+      nullReason: await ownerDo(db, `insert into ${REMOVALS} (observation_id, player_id, removed_by, reason) values ($1, $2, $3, null)`, [obs2, child1, P.staff]),
+      shortReason: await ownerDo(db, `insert into ${REMOVALS} (observation_id, player_id, removed_by, reason) values ($1, $2, $3, 'x')`, [obs2, child1, P.staff]),
+      nullActor: await ownerDo(db, `insert into ${REMOVALS} (observation_id, player_id, reason) values ($1, $2, $3)`, [obs2, child1, REASON_MARK]),
+      activeNote: await ownerDo(db, `insert into ${REMOVALS} (observation_id, player_id, removed_by, reason) values ($1, $2, $3, $4)`, [obs2, child1, P.staff, REASON_MARK]),
+      nullWhen: await ownerDo(db, `insert into ${REMOVALS} (observation_id, player_id, removed_by, removed_at, reason) values ($1, $2, $3, null, $4)`, [obs, child1, P.staff, REASON_MARK]),
+    };
+    check('7: a bad direct insert gets the fixed EMS09 with no row in the error', Object.values(shapes).every((o) => o.code === 'EMS09' && o.message === 'my_season_insert_shape' && !o.detail && !JSON.stringify(o).includes(REASON_MARK)), shapes);
+    check('7: statistics are off for the reason, and no index covers it', (await db.query(`select attstattarget t from pg_attribute where attrelid = '${REMOVALS}'::regclass and attname = 'reason'`)).rows[0].t === 0
+      && await w.n(`select count(*) n from pg_indexes where schemaname = 'public' and tablename = 'my_season_observation_staff_removals' and indexdef ~ '\\mreason\\M'`) === 0);
+    const readers = (await db.query(`select p.proname n, p.prosrc s from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosrc like '%my_season_observation_staff_removals%'`)).rows;
+    const leaks = readers.filter((f) => /\.reason\b/.test(f.s) || /select[^;]*\breason\b/i.test(f.s)).map((f) => f.n);
+    check('7: no function reads the reason (only the removal RPC mentions it, to insert)', readers.some((f) => f.n === 'my_season_for_player') && leaks.length === 0, leaks);
+    const exec = (await db.query(`select r, f, has_function_privilege(r, f, 'execute') x from unnest(array['anon','service_role','public','authenticated']) r
+       cross join unnest(array['public.my_season_staff_remove_observation(uuid, text)', 'public.my_season_staff_list_observations(uuid)']) f`)).rows;
+    check('7: both staff RPCs: EXECUTE for authenticated only', exec.every((e) => e.x === (e.r === 'authenticated')), exec);
+    const defs = (await db.query(`select proname n, prosecdef d, proconfig c from pg_proc where pronamespace = 'public'::regnamespace and proname in ('my_season_staff_remove_observation', 'my_season_staff_list_observations', 'my_season_require_staff')`)).rows;
+    check('7: SECURITY DEFINER with a pinned search_path', defs.length === 3 && defs.every((d) => d.d && String(d.c).includes('search_path=public, pg_temp')), defs);
+    check('7: the helper is not callable by authenticated', code(await w.user(P.staff, `select public.my_season_require_staff()`)) === '42501');
+    const args = (await db.query(`select pg_get_function_identity_arguments('public.my_season_staff_remove_observation(uuid, text)'::regprocedure) a`)).rows[0].a;
+    check('7: no argument names the staff member', args === 'p_observation_id uuid, p_reason text', args);
+  } catch (e) {
+    check('7: core', false, e.stack);
+  }
+  await db.close();
+}
+{
+  // Whatever happened to the coach, and whatever the flag says.
+  const w = await world();
+  const { P, child1, db } = w;
+  try {
+    const mk = async (name) => { const c = await addTeamCoach(w, name); return { c, o: (await w.addObs(c, child1)).rows[0].id }; };
+    const left = await mk('Left Coach'), review = await mk('Review Coach'), gone = await mk('Gone Coach'), offNote = await mk('Off Coach');
+    await db.query(`update public.coach_team set ended_at = now(), ended_by = $1, end_reason = 'Left' where profile_id = $2`, [P.staff, left.c]);
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, blocking_reason) values ($1, 'coach_authored_player_records')`, [review.c]);
+    const d = await deleteAccount(w, gone.c);
+    check('7b: setup: the third coach really deleted their account', d.ok && d.result.canDeleteIdentity === true && (await noteRow(w, gone.o)).author_id === null, d);
+    for (const [label, n] of [['left the team', left], ['under deletion review', review], ['deleted', gone]]) {
+      const r = await staffRemove(w, P.staff, n.o);
+      const row = await noteRow(w, n.o);
+      check(`7b: works when the coach has ${label}`, status(r) === 'removed' && row.body === null && row.category === null && row.withdrawn_by === P.staff && (await auditFor(w, n.o, 'observation_staff_removed')).length === 1, [r, row]);
+    }
+    await db.query(`update public.season_feature_global set kill_switch = true`);
+    const off = await staffRemove(w, P.staff, offNote.o);
+    check('7b: works with the feature switched off', status(off) === 'removed' && (await noteRow(w, offNote.o)).body === null, off);
+    const offList = await staffList(w, P.staff, child1);
+    check('7b: the list works with the feature off', offList.ok && offList.rows[0].r.observations.length === 4, offList);
+  } catch (e) {
+    check('7b: coach states', false, e.stack);
+  }
+  await db.close();
+}
+{
+  // Refusals.
+  const w = await world();
+  const { P, child1, db } = w;
+  try {
+    const obs = (await w.addObs(P.coach, child1)).rows[0].id;
+    const unknown = id();
+    const removedStaff = await addStaff(w, 'Removed Staff');
+    await db.query(`delete from public.staff_accounts where profile_id = $1`, [removedStaff]);
+    const reviewStaff = await addStaff(w, 'Review Staff');
+    await db.query(`insert into public.pending_profile_deletions (auth_user_id, blocking_reason) values ($1, 'coach_authored_player_records')`, [reviewStaff]);
+    const refused = { guardian: P.g1, coach: P.coach2, author: P.coach, stranger: P.stranger, signedOut: null, removedStaff, reviewStaff };
+    const same = {};
+    for (const [label, uid] of Object.entries(refused)) {
+      const a = await staffRemove(w, uid, obs), b = await staffRemove(w, uid, unknown), c = await staffList(w, uid, child1), e = await staffList(w, uid, unknown);
+      same[label] = [a, b, c, e].every((x) => x.code === 'EMS10' && x.message === 'my_season_staff_only' && !x.detail && !x.hint);
+    }
+    check('7c: non-staff, removed staff and staff under review: one identical EMS10 whether or not the id exists', Object.values(same).every(Boolean), same);
+    const anon = await w.as('anon', P.staff, `select public.my_season_staff_remove_observation($1, 'A reason')`, [obs]);
+    const sr = await w.as('service_role', P.staff, `select public.my_season_staff_remove_observation($1, 'A reason')`, [obs]);
+    const srList = await w.as('service_role', P.staff, `select public.my_season_staff_list_observations($1)`, [child1]);
+    check('7c: anon and service_role with a forged staff sub have no EXECUTE (42501)', [anon, sr, srList].every((x) => code(x) === '42501'), [anon, sr, srList]);
+    const forged = await asOwnerForging(w, P.staff, `select public.my_season_staff_remove_observation($1, 'A reason')`, [obs]);
+    const forgedRole = await w.as('postgres', P.staff, `select public.my_season_staff_remove_observation($1, 'A reason')`, [obs]);
+    check('7c: the owner with a forged staff sub is refused by the role check (EMS10)', code(forged) === 'EMS10' && code(forgedRole) === 'EMS10', [forged, forgedRole]);
+    check('7c: after all of that the note is untouched', (await noteRow(w, obs)).body !== null && await w.n(`select count(*) n from ${REMOVALS}`) === 0
+      && await w.n(`select count(*) n from ${AUDIT} where actor_role = 'staff'`) === 0);
+
+    const MARK = `ZQBAD${crypto.randomBytes(4).toString('hex')}`;
+    const bad = { blank: '', spaces: '     ', short: 'ab', nul: null, long: `${MARK}${'x'.repeat(500)}` };
+    const results2 = {};
+    for (const [k, v] of Object.entries(bad)) results2[k] = await staffRemove(w, P.staff, obs, v);
+    check('7c: blank, short, null and long reasons: EMS11, fixed text, no echo', Object.values(results2).every((x) => x.code === 'EMS11' && x.message === 'my_season_invalid_reason' && !x.detail && !x.hint && !JSON.stringify(x).includes(MARK)), results2);
+    const nul = await staffRemove(w, P.staff, obs, `${MARK}\u0000 tail`);
+    check('7c: a NUL in the reason never reaches a row and is not echoed', !nul.ok && !JSON.stringify(nul).includes(MARK), nul);
+    check('7c: exactly 3 and exactly 500 characters are accepted (boundary, on separate notes)',
+      status(await staffRemove(w, P.staff, (await w.addObs(P.coach, child1)).rows[0].id, 'abc')) === 'removed'
+        && status(await staffRemove(w, P.staff, (await w.addObs(P.coach, child1)).rows[0].id, 'y'.repeat(500))) === 'removed');
+    check('7c: refused reasons wrote nothing for that note', (await noteRow(w, obs)).body !== null && !(await removalRow(w, obs)));
+    const nf = await staffRemove(w, P.staff, unknown);
+    check('7c: unknown id for real staff: the fixed not-found code', code(nf) === 'EMS08' && nf.message === 'my_season_not_found', nf);
+    check('7c: unknown player on the list: not found, no audit', code(await staffList(w, P.staff, unknown)) === 'EMS08' && await w.n(`select count(*) n from ${AUDIT} where event = 'observation_staff_viewed'`) === 0);
+
+    // Already withdrawn by the coach.
+    const wd = (await w.addObs(P.coach, child1)).rows[0].id;
+    await w.withdraw(P.coach, wd);
+    const already = await staffRemove(w, P.staff, wd);
+    const wr = await noteRow(w, wd);
+    check('7c: a coach-withdrawn note: already_removed, no removal row, no staff event, the coach stays recorded',
+      status(already) === 'already_removed' && !(await removalRow(w, wd)) && (await auditFor(w, wd, 'observation_staff_removed')).length === 0 && wr.withdrawn_by === P.coach, [already, wr]);
+    const av = await w.view(P.coach, child1);
+    check('7c: the author still sees a plain withdrawal there', av.observations.find((o) => o.id === wd)?.removedByStaff === false);
+    const noop = await w.withdraw(P.coach, wd);
+    check('7c: the coach\'s own repeat withdrawal stays a silent no-op', noop.ok, noop);
+  } catch (e) {
+    check('7c: refusals', false, e.stack);
+  }
+  await db.close();
+}
+{
+  // The staff list.
+  const w = await world();
+  const { P, child1, child2, db } = w;
+  try {
+    const leaving = await addTeamCoach(w, 'Leaving Coach');
+    const a = (await w.addObs(P.coach, child1, { body: 'ZQACTIVE active note text stays.', category: 'kept_going' })).rows[0].id;
+    await db.query(`select pg_sleep(0.01)`);
+    const b = (await w.addObs(P.coach, child1, { body: 'ZQWITHDRAWN note text is erased.' })).rows[0].id;
+    await db.query(`select pg_sleep(0.01)`);
+    const c = (await w.addObs(P.coach, child1, { body: 'ZQREMOVED note text is erased too.' })).rows[0].id;
+    await db.query(`select pg_sleep(0.01)`);
+    const d = (await w.addObs(leaving, child1)).rows[0].id;
+    await w.withdraw(P.coach, b);
+    await staffRemove(w, P.staff, c);
+    await db.query(`update public.coach_team set ended_at = now(), ended_by = $1, end_reason = 'Left' where profile_id = $2`, [P.staff, leaving]);
+    const before = await w.n(`select count(*) n from ${AUDIT} where event = 'observation_staff_viewed'`);
+    const res = await staffList(w, P.staff, child1);
+    const list = res.rows?.[0].r.observations ?? [];
+    check('7d: newest first', JSON.stringify(list.map((o) => o.id)) === JSON.stringify([d, c, b, a]), list);
+    const by = Object.fromEntries(list.map((o) => [o.id, o]));
+    check('7d: active note: text, category and state', by[a].state === 'active' && by[a].body === 'ZQACTIVE active note text stays.' && by[a].category === 'kept_going' && by[a].coachName === 'Name coach' && by[a].formerCoach === false, by[a]);
+    check('7d: withdrawn and removed: metadata only, no such keys at all', by[b].state === 'withdrawn' && by[c].state === 'removed'
+      && [b, c].every((k) => Object.keys(by[k]).sort().join() === 'coachName,createdAt,formerCoach,id,state'), [by[b], by[c]]);
+    check('7d: a coach who left is flagged', by[d].formerCoach === true, by[d]);
+    check('7d: no erased text and no reason in the answer', !/ZQWITHDRAWN|ZQREMOVED|Reported by the family/.test(JSON.stringify(res.rows[0].r)));
+    const ev = (await db.query(`select subject_id, actor_profile_id, actor_role, player_id from ${AUDIT} where event = 'observation_staff_viewed'`)).rows;
+    check('7d: one content-free audit event per lookup, subject = the player', before === 0 && ev.length === 1 && ev[0].subject_id === child1 && ev[0].player_id === child1 && ev[0].actor_profile_id === P.staff && ev[0].actor_role === 'staff', ev);
+    await staffList(w, P.staff, child1);
+    check('7d: a second lookup is a second event', await w.n(`select count(*) n from ${AUDIT} where event = 'observation_staff_viewed'`) === 2);
+    for (let i = 0; i < 101; i++) await w.addObs(P.coach, child2, { body: `Note number ${i} for the list limit.` });
+    check('7d: at most 100 notes', (await staffList(w, P.staff, child2)).rows[0].r.observations.length === 100);
+  } catch (e) {
+    check('7d: list', false, e.stack);
+  }
+  await db.close();
+}
+{
+  // Erasure and account deletion.
+  const w = await world();
+  const { P, child1, child3, db } = w;
+  try {
+    const staffB = await addStaff(w, 'Leaving Staff');
+    const o1 = (await w.addObs(P.coach, child1)).rows[0].id;
+    const o3 = (await w.addObs(P.coach2, child3)).rows[0].id;
+    await staffRemove(w, staffB, o1, 'Reason about the first note');
+    await staffRemove(w, staffB, o3, 'Reason about the third child');
+    await db.query(`delete from public.staff_accounts where profile_id = $1`, [staffB]);
+    const del = await ownerDo(db, `delete from public.profiles where id = $1`, [staffB]);
+    const rem = await removalRow(w, o1), row = await noteRow(w, o1);
+    check('7e: deleting the staff account: actor null + marker, reason kept, note still erased', del.ok && rem.removed_by === null && rem.removed_by_account_deleted_at !== null && rem.reason === 'Reason about the first note' && row.withdrawn_by === null && row.body === null, [del, rem, row]);
+    check('7e: the audit actor is cleared', (await auditFor(w, o1, 'observation_staff_removed'))[0].actor_profile_id === null);
+    check('7e: the list still answers, with the note as removed', (await staffList(w, P.staff, child1)).rows[0].r.observations.find((o) => o.id === o1)?.state === 'removed');
+    const er = await db.query(`select public.erase_player_and_related_data($1)`, [child3]).then(() => 'ok', (e) => e.message);
+    check('7e: child erasure removes the note and its removal row; others stay', er === 'ok' && !(await removalRow(w, o3)) && !(await noteRow(w, o3)) && !!(await removalRow(w, o1)), er);
+    check('7e: no email in any My Season table', (await emailHitsInNewTables(db)).length === 0 || (await emailHitsInNewTables(db)).every((h) => !h.includes('removals')), await emailHitsInNewTables(db));
+  } catch (e) {
+    check('7e: deletion', false, e.stack);
   }
   await db.close();
 }

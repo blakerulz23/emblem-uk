@@ -133,7 +133,8 @@ await ref.close();
     const bools = Object.entries(post).filter(([, v]) => typeof v === 'boolean' && v === false && true).map(([k]) => k).filter((k) => k !== 'kill_switch_on');
     check('post-check: every boolean true', bools.length === 0, bools);
     check('post-check: fail-closed flag state and empty tables straight after applying', post.kill_switch_on === true && Number(post.global_rows) === 1
-      && Number(post.team_states_count) === 0 && Number(post.team_states_enabled) === 0 && Number(post.focus_rows) === 0 && Number(post.observation_rows) === 0 && Number(post.audit_rows) === 0, post);
+      && Number(post.team_states_count) === 0 && Number(post.team_states_enabled) === 0 && Number(post.focus_rows) === 0 && Number(post.observation_rows) === 0 && Number(post.audit_rows) === 0
+      && Number(post.staff_removal_rows) === 0 && Number(post.staff_removals_missing_note) === 0 && Number(post.staff_removals_note_not_erased) === 0, post);
     check('post-check is read-only', catalogDiff(post0108, await snapshotCatalog(db)).length === 0);
 
     // The post-check catches grant regressions (each applied and revoked again).
@@ -155,6 +156,19 @@ await ref.close();
       ['alter table public.my_season_focuses alter column title set statistics -1', 'alter table public.my_season_focuses alter column title set statistics 0', 'content_statistics_off'],
       ['create index zz_body on public.my_season_coach_observations (body)', 'drop index public.zz_body', 'content_not_indexed'],
       ['create index zz_cat on public.my_season_coach_observations (player_id) where category is not null', 'drop index public.zz_cat', 'content_not_indexed'],
+      ['create index zz_reason on public.my_season_observation_staff_removals (reason)', 'drop index public.zz_reason', 'content_not_indexed'],
+      ['alter table public.my_season_observation_staff_removals alter column reason set statistics 100', 'alter table public.my_season_observation_staff_removals alter column reason set statistics 0', 'content_statistics_off'],
+      ['grant select on public.my_season_observation_staff_removals to service_role', 'revoke select on public.my_season_observation_staff_removals from service_role', 'staff_removals_owner_only'],
+      ['grant select (reason) on public.my_season_observation_staff_removals to authenticated', 'revoke select (reason) on public.my_season_observation_staff_removals from authenticated', 'staff_removals_owner_only'],
+      ['create policy zz_p on public.my_season_observation_staff_removals for select to authenticated using (true)', 'drop policy zz_p on public.my_season_observation_staff_removals', 'staff_removals_no_policy'],
+      ['alter table public.my_season_observation_staff_removals disable row level security', 'alter table public.my_season_observation_staff_removals enable row level security', 'rls_enabled'],
+      ['alter table public.my_season_observation_staff_removals disable trigger my_season_staff_removals_before_update', 'alter table public.my_season_observation_staff_removals enable trigger my_season_staff_removals_before_update', 'triggers_enabled'],
+      ['grant execute on function public.my_season_staff_remove_observation(uuid, text) to service_role', 'revoke execute on function public.my_season_staff_remove_observation(uuid, text) from service_role', 'staff_rpcs_authenticated_only'],
+      ['grant execute on function public.my_season_staff_list_observations(uuid) to anon', 'revoke execute on function public.my_season_staff_list_observations(uuid) from anon', 'staff_rpcs_authenticated_only'],
+      ['revoke execute on function public.my_season_staff_list_observations(uuid) from authenticated', 'grant execute on function public.my_season_staff_list_observations(uuid) to authenticated', 'staff_rpcs_authenticated_only'],
+      ['grant execute on function public.my_season_require_staff() to authenticated', 'revoke execute on function public.my_season_require_staff() from authenticated', 'owner_only_functions_locked'],
+      ['alter function public.my_season_staff_remove_observation(uuid, text) security invoker', 'alter function public.my_season_staff_remove_observation(uuid, text) security definer', 'staff_rpcs_definer_safe_path'],
+      ['alter function public.my_season_staff_list_observations(uuid) reset search_path', 'alter function public.my_season_staff_list_observations(uuid) set search_path = public, pg_temp', 'staff_rpcs_definer_safe_path'],
       [`alter table public.my_season_coach_observations drop constraint my_season_coach_observations_content_state, add constraint my_season_coach_observations_content_state check (
          (withdrawn_at is null and category is not null
           and category in ('lifted_the_team', 'kept_going', 'tried_something_new', 'helped_someone_belong', 'spoke_up', 'came_back_stronger')
@@ -200,6 +214,23 @@ await ref.close();
       Number(postW.withdrawn_rows) === 1 && Number(postW.withdrawn_rows_with_content) === 0 && Number(postW.active_rows_without_content) === 0 && Number(postW.audit_rows) === 3, postW);
     check('post-check returns counts and booleans only (never note text)', Object.values(postW).every((v) => typeof v === 'boolean' || /^\d+$/.test(String(v))), postW);
 
+    // A staff removal, so the counts and the rollback cover the removals table.
+    const staffUser = id();
+    await db.query(`insert into auth.users (id, email) values ($1, 'mstaff@example.test')`, [staffUser]);
+    await db.query(`insert into profiles (id, display_name) values ($1, 'Fictional Staff')`, [staffUser]);
+    await db.query(`insert into staff_accounts (profile_id) values ($1)`, [staffUser]);
+    await db.exec('begin; set local role authenticated;');
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [fx.c]);
+    const staffObs = (await db.query(`select my_season_add_observation($1, 'kept_going', 'Kept going after the second goal went in.', $2) id`, [fx.player, id()])).rows[0].id;
+    await db.exec('commit; begin; set local role authenticated;');
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [staffUser]);
+    await db.query(`select my_season_staff_remove_observation($1, 'Reported by the family')`, [staffObs]);
+    await db.exec('commit;');
+    const postS = await verification(db, POST);
+    check('post-check after a staff removal: 1 removal row, its note erased, none missing',
+      Number(postS.staff_removal_rows) === 1 && Number(postS.staff_removals_missing_note) === 0 && Number(postS.staff_removals_note_not_erased) === 0 && Number(postS.withdrawn_rows_with_content) === 0, postS);
+    check('post-check after a staff removal: still counts and booleans only', Object.values(postS).every((v) => typeof v === 'boolean' || /^\d+$/.test(String(v))), postS);
+
     // The post-check notices a missing constraint and rows in either bad state.
     const c = 'public.my_season_coach_observations', badA = id(), badB = id();
     await db.exec(`alter table ${c} drop constraint my_season_coach_observations_content_state; alter table ${c} disable trigger user;`);
@@ -236,6 +267,10 @@ await ref.close();
     check('0099 rollback refuses without the acknowledgement', r99noack?.includes('0099 rollback refused'), r99noack);
     const r99 = await rollBack(db, RB0099, ACK_0099);
     check('0099 rollback restores the exact pre-0099 catalog', r99 === null && catalogDiff(pre0099, await snapshotCatalog(db)).length === 0, r99 ?? catalogDiff(pre0099, await snapshotCatalog(db)));
+    // The staff fixture lives in the older tables; take it out before comparing them.
+    await db.query(`delete from staff_accounts where profile_id = $1`, [staffUser]);
+    await db.query(`delete from profiles where id = $1`, [staffUser]);
+    await db.query(`delete from auth.users where id = $1`, [staffUser]);
     check('rollbacks leave every other table\'s data unchanged', (await dataHash(db)) === dataBefore);
     const ackLeft99 = (await db.query(`select coalesce(current_setting('emblem.acknowledge_0099_rollback', true), '') a`)).rows[0].a;
     check('the 0099 acknowledgement does not persist', ackLeft99 === '', ackLeft99);
@@ -244,7 +279,9 @@ await ref.close();
     const re99 = await apply(db, M0099), re108 = await apply(db, M0108);
     check('re-apply after rollback works and reaches the exact final catalog', re99 === null && re108 === null && catalogDiff(finalCatalog, await snapshotCatalog(db)).length === 0, [re99, re108]);
     const post3 = await verification(db, POST);
-    check('after re-entry the flag is fail-closed again and tables are empty', post3.kill_switch_on === true && Number(post3.team_states_count) === 0 && Number(post3.focus_rows) === 0, post3);
+    check('after re-entry the flag is fail-closed again and tables are empty', post3.kill_switch_on === true && Number(post3.team_states_count) === 0 && Number(post3.focus_rows) === 0 && Number(post3.staff_removal_rows) === 0, post3);
+    const leftovers = (await db.query(`select count(*) n from pg_class where relnamespace = 'public'::regnamespace and relname like 'my_season%' and relkind = 'r'`)).rows[0].n;
+    check('after re-entry exactly the four My Season tables exist', Number(leftovers) === 4, leftovers);
   } catch (e) {
     check('apply / rollback', false, e.stack);
   }

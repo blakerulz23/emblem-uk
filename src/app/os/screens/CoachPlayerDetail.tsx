@@ -13,7 +13,7 @@ import EmptyState from './EmptyState';
 import type { PreferredFoot } from '../coachFields';
 import { AGE_GROUP_OPTIONS, FOOT_OPTIONS, POSITION_OPTIONS, positionLabel, validateHeightCm } from '../coachFields';
 import { positionDisplayLabel } from '@/lib/player-position';
-import CoachMySeasonSection, { useCoachMySeason } from './CoachMySeasonSection';
+import CoachMySeasonSection, { LegacyFocusNotice, legacyFocusGate, useCoachMySeason } from './CoachMySeasonSection';
 
 /** "15 Aug 2026" — matches RealCollection/PlayerHome's date convention. */
 function formatDate(iso: string): string {
@@ -50,10 +50,12 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
 
   // My Season (Phase 1): one GET for this player on open, only when the
   // deploy kill switch is off and the player is on a team. The legacy
-  // Season Focus section below is hidden only once the server says My
-  // Season is enabled for this player (including "enabled, but its view
-  // could not be used"); otherwise this screen is unchanged.
+  // Season Focus section below is hidden once the server says My Season is
+  // enabled for this player (including "enabled, but its view could not be
+  // used"). Its Add works only when no lookup is needed or the server has
+  // confirmed the feature is off; until then it stays disabled.
   const mySeason = useCoachMySeason({ playerId, isReal, lookup: mySeasonCoachLookup, teamId: player?.teamId });
+  const legacyGate = legacyFocusGate(mySeason.lookup);
 
   // A guardian adding/updating a Season Focus, or a fresh assessment
   // resolved elsewhere, appears here immediately while a coach is already
@@ -312,7 +314,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
 
   const addFocus = async () => {
     const trimmed = focusDraft.trim();
-    if (!trimmed || activeFocusCount >= 3) return;
+    if (!trimmed || activeFocusCount >= 3 || !legacyGate.canAdd) return;
     setFocusBusy(true);
     setFocusError('');
     try {
@@ -624,7 +626,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
         <CoachMySeasonSection playerId={playerId} playerName={player.name} state={mySeason.state} reload={mySeason.reload} eraseWithdrawn={mySeason.eraseWithdrawn} />
       )}
       {!mySeason.enabled && (
-      <div style={sectionCard}>
+      <div style={legacyGate.notice === 'checking' ? { ...sectionCard, position: 'relative' } : sectionCard}>
         <div style={sectionTitle}>Season Focus <span style={{ color: 'var(--os-muted)', fontWeight: 600 }}>({activeFocusCount}/3 active)</span></div>
         {player.seasonFocus.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '6px 4px 2px' }}>
@@ -658,15 +660,16 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
               value={focusDraft}
               onChange={(e) => setFocusDraft(e.target.value)}
               placeholder={activeFocusCount >= 3 ? '3 active already. Complete one first' : 'e.g. First touch under pressure'}
-              disabled={activeFocusCount >= 3}
+              disabled={activeFocusCount >= 3 || !legacyGate.canAdd}
               style={{ ...inputStyle, flex: 1 }}
             />
-            <button type="button" onClick={addFocus} disabled={focusBusy || !focusDraft.trim() || activeFocusCount >= 3} style={{ ...addButtonStyle(focusBusy || !focusDraft.trim() || activeFocusCount >= 3), marginTop: 0, flex: '0 0 auto' }}>
+            <button type="button" onClick={addFocus} disabled={focusBusy || !focusDraft.trim() || activeFocusCount >= 3 || !legacyGate.canAdd} style={{ ...addButtonStyle(focusBusy || !focusDraft.trim() || activeFocusCount >= 3 || !legacyGate.canAdd), marginTop: 0, flex: '0 0 auto' }}>
               {focusBusy ? 'Adding…' : 'Add'}
             </button>
           </div>
         )}
         {focusError && <p role="alert" style={{ color: '#C0392B', fontSize: 12.5, marginTop: 6 }}>{focusError}</p>}
+        <LegacyFocusNotice gate={legacyGate} onRetry={() => void mySeason.reload()} />
       </div>
       )}
 

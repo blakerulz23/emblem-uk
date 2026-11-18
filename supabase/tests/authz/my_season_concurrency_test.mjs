@@ -30,6 +30,11 @@
 //   j. A write racing child erasure ends in EMS03, never a raw 23503.
 //   k. A withdrawal racing the coach's own account deletion ends in EMS03 with
 //      no audit event, and the note survives as a former coach's.
+//   l. Staff removal: two staff and 8-way bursts give one erasure, one audit
+//      event and one reason row; racing a coach withdrawal gives one winner;
+//      racing coach account deletion and child erasure, in both orders, ends
+//      cleanly (forced waits proven from pg_stat_activity); neither the note
+//      nor the reason reaches the server log, on any path.
 //
 // WHAT THIS DOES NOT PROVE: anything about PostgREST, Supabase's log settings
 // or what remains physically on disk. Erasure here means no SQL query can
@@ -568,6 +573,197 @@ try {
     const family = (await rpc(clients[7], guardian, `select public.my_season_for_player($1) as v`, [p])).v.observations;
     check('k: the family still sees it as a former coach\'s note',
       family.length === 1 && family[0].id === o && family[0].withdrawn === false && family[0].coachName === null && family[0].formerCoach === true && family[0].body === noteText(), family);
+  }
+
+  console.log('\n=== l. Staff removal ===');
+  {
+    const staff1 = await person('Staff One'), staff2 = await person('Staff Two');
+    await mig.query(`insert into public.staff_accounts (profile_id) values ($1), ($2)`, [staff1, staff2]);
+    const REASON_MARK = `ZQREASON${crypto.randomBytes(6).toString('hex')}`;
+    const NOTE_MARK = `ZQSTAFFNOTE${crypto.randomBytes(6).toString('hex')}`;
+    const R = 'public.my_season_observation_staff_removals';
+    const remove = (c, uid, obs, reason, o = {}) => rpc(c, uid, `select public.my_season_staff_remove_observation($1, $2) as r`, [obs, reason], o).then((r) => r.r.status);
+    const newNote = async (p, by = coach) => add(A, by, p, id(), { body: `${NOTE_MARK} kept going after the goal.` });
+    const reasons = async (o) => (await mig.query(`select reason, removed_by from ${R} where observation_id = $1`, [o])).rows;
+    const staffEvents = (p) => audits(p, 'observation_staff_removed');
+    const erased = (row) => row.body === null && row.category === null && row.withdrawn_at !== null;
+    const fixed = (r, c, m) => r.code === c && r.message === m && !r.detail && !r.hint;
+
+    {
+      const p = await child(), o = await newNote(p);
+      await remove(A, staff1, o, `${REASON_MARK} first`, { hold: true });
+      const second = outcome(remove(B, staff2, o, `${REASON_MARK} second`));
+      const waited = await waitsOnLock(O, B);
+      await A.query('commit');
+      const r = await second;
+      const rs = await reasons(o), [row] = await obsRows(p);
+      check('l: two staff, forced: the second waits, then already_removed', waited && r.id === 'already_removed', { waited, r });
+      check('l: one erasure by the first, one audit event, one reason row (the first)', erased(row) && row.withdrawn_by === staff1 && await staffEvents(p) === 1 && rs.length === 1 && rs[0].reason === `${REASON_MARK} first` && rs[0].removed_by === staff1, rs.length);
+      check('l: retry after commit: already_removed, nothing new', (await outcome(remove(A, staff1, o, 'Another reason'))).id === 'already_removed' && await staffEvents(p) === 1 && (await reasons(o)).length === 1);
+    }
+    {
+      const p = await child(), o = await newNote(p);
+      await remove(A, staff1, o, `${REASON_MARK} rolled back`, { hold: true });
+      const second = outcome(remove(B, staff2, o, `${REASON_MARK} survivor`));
+      const waited = await waitsOnLock(O, B);
+      await A.query('rollback');
+      const r = await second;
+      const rs = await reasons(o);
+      check('l: the first rolls back: the waiter removes it, with its own reason only', waited && r.id === 'removed' && rs.length === 1 && rs[0].reason === `${REASON_MARK} survivor` && rs[0].removed_by === staff2 && await staffEvents(p) === 1, { waited, r });
+    }
+    {
+      let ok = true; const problems = [];
+      for (let round = 0; round < 5; round++) {
+        const p = await child(), o = await newNote(p);
+        const rs = await Promise.all(clients.map((c, i) => outcome(remove(c, i % 2 ? staff1 : staff2, o, `${REASON_MARK} burst ${i}`))));
+        const won = rs.filter((r) => r.id === 'removed').length, lost = rs.filter((r) => r.id === 'already_removed').length;
+        const [row] = await obsRows(p);
+        if (won !== 1 || lost !== 7 || !erased(row) || await staffEvents(p) !== 1 || (await reasons(o)).length !== 1) { ok = false; problems.push(rs); }
+      }
+      check('l: 8-way burst x5: one removed, seven already_removed, one audit event, one reason row', ok, problems);
+    }
+
+    // Staff removal against the coach's own withdrawal.
+    {
+      const p = await child(), o = await newNote(p);
+      await remove(A, staff1, o, `${REASON_MARK} staff first`, { hold: true });
+      const w = outcome(withdraw(B, coach, o));
+      const waited = await waitsOnLock(O, B);
+      await A.query('commit');
+      const r = await w;
+      const [row] = await obsRows(p);
+      check('l: staff wins: the withdrawal waits, then a fixed EMS03; staff is the only recorded winner',
+        waited && fixed(r, 'EMS03', 'my_season_not_allowed') && row.withdrawn_by === staff1 && await staffEvents(p) === 1 && await audits(p, 'observation_withdrawn') === 0, { waited, r });
+    }
+    {
+      const p = await child(), o = await newNote(p);
+      await withdraw(A, coach, o, { hold: true });
+      const s = outcome(remove(B, staff1, o, `${REASON_MARK} coach first`));
+      const waited = await waitsOnLock(O, B);
+      await A.query('commit');
+      const r = await s;
+      const [row] = await obsRows(p);
+      check('l: coach wins: staff waits, then already_removed; no staff event, no reason row', waited && r.id === 'already_removed' && row.withdrawn_by === coach && await audits(p, 'observation_withdrawn') === 1 && await staffEvents(p) === 0 && (await reasons(o)).length === 0, { waited, r });
+    }
+    {
+      let ok = true; const problems = [];
+      for (let round = 0; round < 6; round++) {
+        const p = await child(), o = await newNote(p);
+        const rs = await Promise.all(clients.map((c, i) => (i % 2 ? outcome(withdraw(c, coach, o)).then((r) => ({ who: 'coach', ...r })) : outcome(remove(c, staff1, o, `${REASON_MARK} mix ${i}`)).then((r) => ({ who: 'staff', ...r })))));
+        const [row] = await obsRows(p);
+        const staffWon = await staffEvents(p), coachWon = await audits(p, 'observation_withdrawn');
+        const staffOk = rs.filter((r) => r.who === 'staff').every((r) => r.id === 'removed' || r.id === 'already_removed');
+        const removedCalls = rs.filter((r) => r.id === 'removed').length;
+        // Staff won: no coach call may claim success. Coach won: every coach call succeeds.
+        const coachOk = rs.filter((r) => r.who === 'coach').every((r) => (staffWon ? r.code === 'EMS03' : r.id === o));
+        if (staffWon + coachWon !== 1 || !erased(row) || removedCalls !== staffWon || (await reasons(o)).length !== staffWon || !staffOk || !coachOk
+          || row.withdrawn_by !== (staffWon ? staff1 : coach)) { ok = false; problems.push({ rs, staffWon, coachWon }); }
+      }
+      check('l: mixed burst x6: exactly one winner, and the row, events and reason agree with it', ok, problems);
+    }
+
+    // Staff removal against the coach's account deletion, both orders.
+    {
+      const leaving = await person('Leaving Coach A');
+      await mig.query(`insert into public.coach_team (team_id, profile_id) values ($1, $2)`, [team, leaving]);
+      const p = await child(), o = await newNote(p, leaving);
+      await O.query('begin');
+      await O.query('delete from public.profiles where id = $1', [leaving]);
+      const s = outcome(remove(B, staff1, o, `${REASON_MARK} during deletion`));
+      const waited = await waitsOnLock(mig, B);
+      await O.query('commit');
+      const r = await s;
+      const [row] = await obsRows(p);
+      check('l: account deletion first: staff waits, then removes the note, which keeps the deleted-author state',
+        waited && r.id === 'removed' && erased(row) && row.author_id === null && row.withdrawn_by === staff1 && await staffEvents(p) === 1, { waited, r, row });
+    }
+    {
+      const leaving = await person('Leaving Coach B');
+      await mig.query(`insert into public.coach_team (team_id, profile_id) values ($1, $2)`, [team, leaving]);
+      const p = await child(), o = await newNote(p, leaving);
+      await remove(A, staff1, o, `${REASON_MARK} before deletion`, { hold: true });
+      await O.query('begin');
+      const del = O.query('delete from public.profiles where id = $1', [leaving]).then(() => 'ok', (e) => e.code);
+      const waited = await waitsOnLock(mig, O);
+      await A.query('commit');
+      const dr = await del;
+      await O.query('commit');
+      const [row] = await obsRows(p);
+      check('l: removal first: the deletion waits, then completes; the note stays erased with no author', waited && dr === 'ok' && erased(row) && row.author_id === null && row.withdrawn_by === staff1 && (await reasons(o)).length === 1, { waited, dr, row });
+    }
+
+    // Staff removal against child erasure, both orders: no deadlock, no raw FK error.
+    {
+      const p = await child(), o = await newNote(p);
+      await O.query('begin');
+      await O.query('delete from public.players where id = $1', [p]);
+      const s = outcome(remove(B, staff1, o, `${REASON_MARK} during erasure`));
+      const waited = await waitsOnLock(mig, B);
+      await O.query('commit');
+      const r = await s;
+      check('l: erasure first: staff waits, then the fixed EMS09 (no 23503, no deadlock)', waited && fixed(r, 'EMS09', 'my_season_conflict'), { waited, r });
+      check('l: nothing is left behind', await n(`select (select count(*) from ${R} where player_id = $1) + (select count(*) from public.my_season_coach_observations where player_id = $1) + (select count(*) from public.my_season_audit_events where player_id = $1) n`, [p]) === 0);
+    }
+    {
+      const p = await child(), o = await newNote(p);
+      await remove(A, staff1, o, `${REASON_MARK} before erasure`, { hold: true });
+      await O.query('begin');
+      const del = O.query('delete from public.players where id = $1', [p]).then(() => 'ok', (e) => e.code);
+      const waited = await waitsOnLock(mig, O);
+      await A.query('commit');
+      const dr = await del;
+      await O.query('commit');
+      check('l: removal first: the erasure waits, then removes the note and the reason row', waited && dr === 'ok' && (await reasons(o)).length === 0 && (await obsRows(p)).length === 0, { waited, dr });
+    }
+
+    {
+      // The narrow window: the note's row is already updated and the audit
+      // insert has not run. A test-only trigger parks the removal exactly
+      // there. The child's row is key-share locked first, so the erasure
+      // queues behind the removal. Without that lock the two would deadlock.
+      const PARK = 740108;
+      await mig.query(`create function public.zz_park() returns trigger language plpgsql as $f$
+        begin if new.event = 'observation_staff_removed' then perform pg_advisory_xact_lock(${PARK}); end if; return new; end $f$`);
+      await mig.query(`create trigger zz_park before insert on public.my_season_audit_events for each row execute function public.zz_park()`);
+      try {
+        const p = await child(), o = await newNote(p);
+        const eraser = clients[2];
+        await O.query('begin');
+        await O.query(`select pg_advisory_xact_lock(${PARK})`);
+        const s = outcome(remove(B, staff1, o, `${REASON_MARK} parked`));
+        const parked = await waitsOnLock(mig, B);
+        const del = eraser.query('delete from public.players where id = $1', [p]).then(() => 'ok', (e) => e.code);
+        const eraserWaits = await waitsOnLock(mig, eraser);
+        await O.query('commit');
+        const [r, dr] = await Promise.all([s, del]);
+        check('l: erasure arriving mid-removal: it queues, the removal completes, the erasure then succeeds (no deadlock)',
+          parked && eraserWaits && r.id === 'removed' && dr === 'ok' && (await reasons(o)).length === 0 && (await obsRows(p)).length === 0, { parked, eraserWaits, r, dr });
+      } finally {
+        await mig.query('drop trigger zz_park on public.my_season_audit_events');
+        await mig.query('drop function public.zz_park()');
+      }
+    }
+
+    // Nothing reaches the log.
+    {
+      const p = await child(), o = await newNote(p);
+      await outcome(remove(A, staff1, o, `${REASON_MARK} ${'x'.repeat(600)}`));
+      await outcome(remove(A, coach, o, `${REASON_MARK} not staff`));
+      await outcome(remove(A, staff1, id(), `${REASON_MARK} unknown`));
+      const bad = await mig.query(`insert into ${R} (observation_id, player_id, removed_by, reason) values ($1, $2, null, $3)`, [o, p, REASON_MARK]).then(() => 'inserted', (e) => e);
+      check('l: a direct bad insert gets EMS09 with no row in the error', bad.code === 'EMS09' && !bad.detail && !JSON.stringify({ ...bad, message: bad.message }).includes(REASON_MARK), bad);
+      const badUpd = await remove(A, staff1, o, `${REASON_MARK} accepted`).then(() => mig.query(`update ${R} set reason = null, removed_at = null where observation_id = $1`, [o])).then(() => 'updated', (e) => e);
+      check('l: a direct update that breaks NOT NULL gets EMS09 with no row in the error', badUpd.code === 'EMS09' && !badUpd.detail, badUpd);
+      await mig.query(`select 1/0 as my_season_staff_log_canary`).catch(() => {});
+      await new Promise((res) => setTimeout(res, 300));
+      const log = serverLog.join('');
+      check('l: control: the log recorded these failures', log.includes('my_season_staff_log_canary') && log.includes('my_season_invalid_reason') && log.includes('my_season_staff_only'));
+      check('l: neither the reason nor the note text is anywhere in the server log', !log.includes(REASON_MARK) && !log.includes(NOTE_MARK) && !log.includes('Failing row contains'));
+      const tables = (await mig.query(`select tablename from pg_tables where schemaname = 'public' order by 1`)).rows.map((r) => r.tablename);
+      const reasonHits = [];
+      for (const t of tables) if (await n(`select count(*) n from public."${t}" x where x::text like $1`, [`%${REASON_MARK}%`])) reasonHits.push(t);
+      check('l: the reason marker is only in the removals table', reasonHits.join() === 'my_season_observation_staff_removals', reasonHits);
+    }
   }
 } catch (e) {
   check('concurrency suite', false, e.stack);

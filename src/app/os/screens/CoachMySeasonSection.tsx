@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { eraseObservationFromView, formatMySeasonDate, type MySeasonView } from '@/lib/my-season';
-import { loadMySeasonView, shouldLookUpCoachMySeason, withdrawMySeasonObservation, type LoadResult, type WriteResult } from '../mySeasonClient';
+import { MY_SEASON_SESSION_ENDED, loadMySeasonView, shouldLookUpCoachMySeason, withdrawMySeasonObservation, type LoadResult, type WriteResult } from '../mySeasonClient';
 import {
   MS_IDS,
   NOTE_ALREADY_WITHDRAWN,
@@ -30,12 +30,14 @@ import {
  *
  * useCoachMySeason asks GET /api/os/my-season for this one player when the
  * screen opens, and only when shouldLookUpCoachMySeason allows it (real
- * mode, deploy kill switch off, player on a team). The legacy Season Focus
- * stays until the server has said the feature is on: while the first answer
- * is on its way, and after a failed request that says nothing either way, so
- * teams without the feature never change. Once the server has said it is on,
- * including "on, but the view was unusable", the legacy section stays hidden
- * and failures show the error state with Retry.
+ * mode, deploy kill switch off, player on a team). coachLookupStatus turns
+ * that into one explicit state, and legacyFocusGate decides what the legacy
+ * Season Focus may do in it: its Add works only when no lookup is needed or
+ * the server has confirmed the feature is off. While the answer is on its
+ * way the existing focuses stay readable and Add is disabled; after a failed
+ * lookup Add stays disabled and Retry is offered. Once the server has said it
+ * is on, including "on, but the view was unusable", the legacy section is
+ * hidden and failures show the My Season error state with Retry.
  */
 
 export type CoachMySeasonState = {
@@ -44,6 +46,8 @@ export type CoachMySeasonState = {
   signedOut?: boolean;
   /** The server has said the feature is on for this player, even if no view is held. */
   knownEnabled?: boolean;
+  /** Whose answer this is. A state for another player says nothing about this one. */
+  playerId?: string;
 };
 
 /** My Season replaces the legacy section for this player. */
@@ -51,15 +55,87 @@ export function coachMySeasonEnabled(state: CoachMySeasonState): boolean {
   return state.view?.enabled === true || state.knownEnabled === true;
 }
 
+export type CoachLookupStatus = 'not-needed' | 'loading' | 'confirmed-off' | 'enabled' | 'failed' | 'session-ended';
+
+/**
+ * The state as it applies to `playerId`. The screen re-renders with a new
+ * player before its effect starts the new lookup, so an answer about the
+ * previous player must read as "still loading", never as this player's.
+ */
+export function coachStateForPlayer(state: CoachMySeasonState, playerId: string, allowed: boolean): CoachMySeasonState {
+  if (!allowed) return { status: 'idle', view: null };
+  return state.playerId === playerId ? state : { status: 'loading', view: null, playerId };
+}
+
+/** The one explicit answer to "do we know whether My Season applies here?". */
+export function coachLookupStatus(allowed: boolean, state: CoachMySeasonState): CoachLookupStatus {
+  if (!allowed) return 'not-needed';
+  if (state.view?.enabled === true) return 'enabled';
+  if (state.status === 'idle' || state.status === 'loading') return 'loading';
+  if (state.status === 'error') return state.signedOut ? 'session-ended' : 'failed';
+  return state.view?.enabled === false ? 'confirmed-off' : 'failed';
+}
+
+export const LEGACY_FOCUS_COPY = {
+  checking: "Checking this player's season...",
+  failed: "We couldn't check this player's season. Check your connection and try again.",
+  sessionEnded: MY_SEASON_SESSION_ENDED,
+} as const;
+
+export type LegacyFocusGate = { canAdd: boolean; notice: 'checking' | 'failed' | 'session-ended' | null };
+
+/** What the legacy Season Focus may do: only a settled "no My Season here" leaves Add working. */
+export function legacyFocusGate(status: CoachLookupStatus): LegacyFocusGate {
+  switch (status) {
+    case 'not-needed':
+    case 'confirmed-off':
+      return { canAdd: true, notice: null };
+    case 'loading':
+      return { canAdd: false, notice: 'checking' };
+    case 'session-ended':
+      return { canAdd: false, notice: 'session-ended' };
+    default:
+      return { canAdd: false, notice: 'failed' };
+  }
+}
+
+/**
+ * The legacy section's status line. "Checking" sits in the card's bottom
+ * padding (the card is position: relative while it shows), so the card does
+ * not change height when the answer arrives.
+ */
+export function LegacyFocusNotice({ gate, onRetry }: { gate: LegacyFocusGate; onRetry: () => void }) {
+  if (gate.notice === 'checking') {
+    return (
+      <p role="status" data-testid="legacy-focus-checking" style={{ position: 'absolute', left: 16, right: 16, bottom: 1, margin: 0, fontSize: 11.5, lineHeight: '14px', color: 'var(--os-muted)' }}>
+        {LEGACY_FOCUS_COPY.checking}
+      </p>
+    );
+  }
+  if (gate.notice === 'session-ended') {
+    return <p role="alert" data-testid="legacy-focus-session-ended" style={{ color: '#C0392B', fontSize: 12.5, margin: '10px 0 0' }}>{LEGACY_FOCUS_COPY.sessionEnded}</p>;
+  }
+  if (gate.notice === 'failed') {
+    return (
+      <div role="alert" data-testid="legacy-focus-failed" style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+        <p style={{ color: '#C0392B', fontSize: 12.5, margin: 0 }}>{LEGACY_FOCUS_COPY.failed}</p>
+        <MsButton variant="ghost" onClick={onRetry} style={{ justifySelf: 'start' }}>Retry</MsButton>
+      </div>
+    );
+  }
+  return null;
+}
+
 /** The state after a load finished. */
 export function nextCoachState(s: CoachMySeasonState, result: LoadResult, keepView: boolean): CoachMySeasonState {
-  if (result.ok) return { status: 'ready', view: result.view, knownEnabled: result.view.enabled === true };
+  if (result.ok) return { status: 'ready', view: result.view, knownEnabled: result.view.enabled === true, playerId: s.playerId };
   const view = keepView ? s.view : null;
   return {
     status: 'error',
     view,
     signedOut: result.signedOut,
     knownEnabled: result.enabledInvalid === true || (keepView && coachMySeasonEnabled(s)),
+    playerId: s.playerId,
   };
 }
 
@@ -77,7 +153,11 @@ export function createCoachSeasonLoader(deps: {
   return {
     async run(playerId: string, keepView: boolean): Promise<LoadResult> {
       const mine = ++seq;
-      deps.setState((s) => ({ status: 'loading', view: keepView ? s.view : null, knownEnabled: keepView && coachMySeasonEnabled(s) }));
+      deps.setState((s) => {
+        // Never carry another player's view or "enabled" into this load.
+        const keep = keepView && (s.playerId === undefined || s.playerId === playerId);
+        return { status: 'loading', view: keep ? s.view : null, knownEnabled: keep && coachMySeasonEnabled(s), playerId };
+      });
       const result = await deps.load(playerId);
       if (deps.isCurrentPlayer(playerId) && mine === seq) deps.setState((s) => nextCoachState(s, result, keepView));
       return result;
@@ -114,7 +194,8 @@ export function scheduleToastClear(toast: string | null, clear: () => void, ms: 
 
 export function useCoachMySeason({ playerId, isReal, lookup, teamId }: { playerId: string; isReal: boolean; lookup: boolean | undefined; teamId: string | null | undefined }) {
   const allowed = shouldLookUpCoachMySeason({ isReal, lookup, teamId });
-  const [state, setState] = useState<CoachMySeasonState>({ status: 'idle', view: null });
+  const [rawState, setState] = useState<CoachMySeasonState>({ status: 'idle', view: null });
+  const state = coachStateForPlayer(rawState, playerId, allowed);
   const latestPlayer = useRef(playerId);
   latestPlayer.current = playerId;
   const loader = useRef<ReturnType<typeof createCoachSeasonLoader> | null>(null);
@@ -133,7 +214,7 @@ export function useCoachMySeason({ playerId, isReal, lookup, teamId }: { playerI
 
   const eraseWithdrawn = useCallback((observationId: string) => loader.current!.erase(observationId), []);
 
-  return { state, reload, eraseWithdrawn, enabled: coachMySeasonEnabled(state) };
+  return { state, reload, eraseWithdrawn, enabled: coachMySeasonEnabled(state), lookup: coachLookupStatus(allowed, state) };
 }
 
 export type CoachPanelUi = {
@@ -174,6 +255,9 @@ export async function withdrawFlow(observationId: string, deps: WithdrawDeps): P
     // No usable answer: the withdraw-specific message, not the generic save one.
     deps.setUi({ withdrawBusy: false, withdrawError: result.unknown ? WITHDRAW_FAILED : result.error });
     deps.focusNext(WITHDRAW_FOCUS.failed(observationId));
+    // Refused: the note may have changed under us (staff may have removed it),
+    // so show what is true now, which also drops any erased text.
+    if (result.code === 'not_allowed') deps.reload();
     return false;
   }
   deps.erase(observationId);
@@ -433,7 +517,7 @@ export function CoachMySeasonPanel({
             if (n.withdrawn) {
               return (
                 <p id={MS_IDS.withdrawn(n.id)} tabIndex={-1} className="os-ms-soft os-ms-focus" style={{ margin: '6px 0 0', fontSize: 13, fontStyle: 'italic' }}>
-                  {MY_SEASON_COPY.withdrawnNote} Written {formatMySeasonDate(n.createdAt)}.
+                  {n.removedByStaff ? MY_SEASON_COPY.removedByStaffNote : MY_SEASON_COPY.withdrawnNote} Written {formatMySeasonDate(n.createdAt)}.
                 </p>
               );
             }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { MY_SEASON_ERRORS, isUuid, parseMySeasonView, rawViewSaysEnabled } from '@/lib/my-season';
+import { MY_SEASON_ERRORS, isMissingMySeasonFunction, isUuid, parseMySeasonView, rawViewSaysEnabled } from '@/lib/my-season';
 import { guardMySeasonRequest, mySeasonJsonError, mySeasonRpcError } from '@/lib/my-season-api';
 
 export const runtime = 'nodejs';
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   // Before migration 0108 is applied the function doesn't exist yet
   // (PostgREST PGRST202 / Postgres 42883). That is "My Season off", not a
   // server error: coaches open player screens all day and must not log 5xx.
-  if (error && (error.code === 'PGRST202' || error.code === '42883')) {
+  if (error && isMissingMySeasonFunction(error)) {
     return NextResponse.json({ enabled: false }, { headers: { 'Cache-Control': 'no-store' } });
   }
   if (error) return mySeasonRpcError(error);

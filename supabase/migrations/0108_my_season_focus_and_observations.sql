@@ -13,6 +13,8 @@
 --     transaction it is hidden and its text and category are permanently
 --     erased from the row. Only non-content metadata stays.
 --   - An append-only audit of every write.
+--   - Audited staff removal: a signed-in Emblem staff member, with a reason,
+--     can erase a note under the same rules as a withdrawal (section 6).
 -- Nothing is public: no visibility column, no anon grant, never read by any
 -- public-profile or share code. Nothing is ranked, scored or compared.
 -- The legacy Season Focus (player_season_focus, 0023) is untouched.
@@ -95,12 +97,41 @@
 --              is written. A withdrawn note's content is gone, so its retry
 --              just gets the original id)
 --        EMS07 my_season_own_child
---        EMS08 not raised (reserved; formerly "not found" on withdraw)
+--        EMS08 my_season_not_found (staff RPCs only: unknown note or player,
+--              answered only after the caller is proven to be staff)
 --        EMS09 my_season_conflict (set_focus lost a race for the one-active
---              index, or an observation's request row vanished with its child
---              mid-call; nothing was written) and the section 2
---              triggers: my_season_immutable / my_season_insert_shape /
---              my_season_audit_append_only
+--              index, an observation's request row vanished with its child
+--              mid-call, or a staff action raced child erasure; nothing was
+--              written) and the section 2 triggers: my_season_immutable /
+--              my_season_insert_shape / my_season_audit_append_only
+--        EMS10 my_season_staff_only (every refusal of a staff RPC's caller)
+--        EMS11 my_season_invalid_reason (the staff removal reason)
+--   6. Staff removal: my_season_observation_staff_removals (the one place a
+--      reason is stored), its triggers, my_season_require_staff (owner only),
+--      my_season_staff_remove_observation, my_season_staff_list_observations.
+--
+-- Staff removal. Authority comes only from auth.uid() having a staff_accounts
+-- row now and no pending deletion review, in a request whose database role is
+-- `authenticated`. No argument names the staff member. The role check reads
+-- the `role` setting, which PostgREST sets from the JWT's role claim and which
+-- a SECURITY DEFINER call does not change; the owner or a superuser with a
+-- forged sub is refused by it, and service_role and anon have no EXECUTE at
+-- all. It does not depend on the feature flag or on the note's author (who may
+-- have left, be under review or be deleted). One guarded UPDATE erases the
+-- note under the withdrawal rules (withdrawn_by = the staff member); only if
+-- it matched are one content-free audit event and the reason row written, so
+-- retries and races leave one of each and the first reason stands. A note
+-- already withdrawn or removed answers already_removed and writes nothing.
+-- The child's row is key-share locked first, so an erasure waits for the
+-- removal (or wins, giving EMS09) rather than deadlocking with it.
+-- The reason is stored only in my_season_observation_staff_removals: RLS on,
+-- no policy, no privilege for anyone but the owner, statistics 0, no index,
+-- append-only. It is never in the audit table, any error, or any RPC result,
+-- and no function reads it back. Staff find a note with
+-- my_season_staff_list_observations, which returns text only for ACTIVE notes
+-- (they need it to confirm the right note) and audits each lookup without
+-- content. The author of a removed note sees a metadata-only row with
+-- removedByStaff = true and cannot withdraw it (EMS03).
 --
 -- Withdrawal ERASES content (decision of 18 Nov 2026). One UPDATE sets
 -- withdrawn_at / withdrawn_by and nulls body and category (category says what
@@ -173,6 +204,7 @@ begin
   if to_regclass('public.my_season_focuses') is not null
      or to_regclass('public.my_season_coach_observations') is not null
      or to_regclass('public.my_season_audit_events') is not null
+     or to_regclass('public.my_season_observation_staff_removals') is not null
      or to_regprocedure('public.my_season_for_player(uuid)') is not null then
     raise exception '0108 refused: a My Season object already exists (0108 already applied)';
   end if;
@@ -251,10 +283,11 @@ create table public.my_season_audit_events (
   id bigint generated always as identity primary key,
   occurred_at timestamptz not null default now(),
   player_id uuid not null references public.players (id) on delete cascade,
-  event text not null check (event in ('focus_set', 'focus_ended', 'observation_added', 'observation_withdrawn')),
+  event text not null check (event in ('focus_set', 'focus_ended', 'observation_added', 'observation_withdrawn',
+                                       'observation_staff_removed', 'observation_staff_viewed')),
   subject_id uuid not null,
   actor_profile_id uuid references public.profiles (id) on delete set null,
-  actor_role text not null check (actor_role in ('guardian', 'coach'))
+  actor_role text not null check (actor_role in ('guardian', 'coach', 'staff'))
 );
 
 create index my_season_audit_events_player on public.my_season_audit_events (player_id, occurred_at);
@@ -868,12 +901,15 @@ begin
     returning id into v_withdrawn;
 
     if v_withdrawn is null then
-      -- Matching nothing is success only if this author's note really is
-      -- withdrawn. It may instead have lost its author to an account deletion
-      -- the update waited on, with the text still there: never report that
-      -- as done. Every other outcome is the same EMS03 as any other denial.
+      -- Matching nothing is success only if this author withdrew the note. It
+      -- may instead have lost its author to an account deletion the update
+      -- waited on, with the text still there, or have been removed by staff
+      -- (the author cannot withdraw that): never report either as done. Every
+      -- other outcome is the same EMS03 as any other denial.
       if exists (select 1 from public.my_season_coach_observations o
-                  where o.id = p_observation_id and o.author_id = v_uid and o.withdrawn_at is not null) then
+                  where o.id = p_observation_id and o.author_id = v_uid and o.withdrawn_at is not null)
+         and not exists (select 1 from public.my_season_observation_staff_removals r
+                          where r.observation_id = p_observation_id) then
         return; -- already withdrawn: a silent no-op
       end if;
       raise exception using errcode = 'EMS03', message = 'my_season_not_allowed';
@@ -954,15 +990,20 @@ begin
 
   -- formerCoach: the author's account was deleted, or they are no longer an
   -- active coach of the player's current team. A withdrawn row reaches only
-  -- its author, with category and body null (the content no longer exists).
+  -- its author, with category and body null (the content no longer exists);
+  -- removedByStaff says it was staff who removed it. Only the removal row's
+  -- key is read here, never its reason.
   select coalesce(jsonb_agg(x.j order by x.created_at desc, x.id desc), '[]'::jsonb) into v_obs
     from (select o.created_at, o.id,
                  jsonb_build_object('id', o.id, 'category', o.category, 'body', o.body, 'createdAt', o.created_at,
                    'coachName', case when o.author_id is null then null else pr.display_name end,
                    'formerCoach', (o.author_id is null or not public.my_season_is_team_coach(p_player_id, o.author_id)),
                    'mine', coalesce(o.author_id = v_uid, false),
-                   'withdrawn', o.withdrawn_at is not null) as j
-            from public.my_season_coach_observations o left join public.profiles pr on pr.id = o.author_id
+                   'withdrawn', o.withdrawn_at is not null,
+                   'removedByStaff', sr.observation_id is not null) as j
+            from public.my_season_coach_observations o
+            left join public.profiles pr on pr.id = o.author_id
+            left join public.my_season_observation_staff_removals sr on sr.observation_id = o.id
            where o.player_id = p_player_id and (o.withdrawn_at is null or o.author_id = v_uid)
            order by o.created_at desc, o.id desc
            limit 50) x;
@@ -990,5 +1031,272 @@ grant execute on function public.my_season_set_focus(uuid, text, text, text, dat
 grant execute on function public.my_season_add_observation(uuid, text, text, uuid) to authenticated;
 grant execute on function public.my_season_withdraw_observation(uuid) to authenticated;
 grant execute on function public.my_season_for_player(uuid) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 6. Audited staff removal
+-- ----------------------------------------------------------------------------
+
+-- The only place a removal reason is stored. Nobody but the owner has any
+-- privilege, no policy exists, and no function reads the reason back.
+create table public.my_season_observation_staff_removals (
+  observation_id uuid primary key references public.my_season_coach_observations (id) on delete cascade,
+  player_id uuid not null references public.players (id) on delete cascade,
+  removed_by uuid references public.profiles (id) on delete set null,
+  removed_by_account_deleted_at timestamptz,
+  removed_at timestamptz not null default now(),
+  reason text not null,
+  constraint my_season_staff_removals_actor_or_marker check ((removed_by is null) = (removed_by_account_deleted_at is not null)),
+  constraint my_season_staff_removals_reason_shape check (reason = btrim(reason) and char_length(reason) between 3 and 500)
+);
+
+create index my_season_staff_removals_player on public.my_season_observation_staff_removals (player_id);
+
+comment on table public.my_season_observation_staff_removals is
+  'My Season: why staff removed a coach note (0108). Restricted: no role but the owner can read it; append-only; removed only with the note or child.';
+
+alter table public.my_season_observation_staff_removals alter column reason set statistics 0;
+alter table public.my_season_observation_staff_removals enable row level security;
+revoke all on public.my_season_observation_staff_removals from public, anon, authenticated, service_role;
+
+-- A new row must be complete, must carry no deleted-actor marker, and must
+-- match a note this same actor has just erased. Checked here first so a bad
+-- insert gets the fixed EMS09: a NOT NULL or CHECK failure would put the whole
+-- row, the reason included, in its DETAIL.
+create function public.my_season_staff_removals_before_insert()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if new.observation_id is null or new.player_id is null or new.removed_by is null
+     or new.removed_by_account_deleted_at is not null or new.removed_at is null
+     or new.reason is null or new.reason <> btrim(new.reason) or char_length(new.reason) not between 3 and 500
+     or not exists (select 1 from public.my_season_coach_observations o
+                     where o.id = new.observation_id and o.player_id = new.player_id
+                       and o.withdrawn_at is not null and o.withdrawn_by = new.removed_by
+                       and o.body is null and o.category is null) then
+    raise exception using errcode = 'EMS09', message = 'my_season_insert_shape';
+  end if;
+  return new;
+end;
+$$;
+
+-- Append-only: only the ON DELETE SET NULL of a deleted staff account, which
+-- stamps the marker. Comparing every column first means no other UPDATE can
+-- reach a NOT NULL or CHECK failure that would echo the row.
+create function public.my_season_staff_removals_before_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if old.removed_by is not null and new.removed_by is null
+     and not exists (select 1 from public.profiles where id = old.removed_by)
+     and new.observation_id is not distinct from old.observation_id
+     and new.player_id is not distinct from old.player_id
+     and new.removed_at is not distinct from old.removed_at
+     and new.reason is not distinct from old.reason
+     and new.removed_by_account_deleted_at is not distinct from old.removed_by_account_deleted_at then
+    new.removed_by_account_deleted_at := now();
+    return new;
+  end if;
+  raise exception using errcode = 'EMS09', message = 'my_season_audit_append_only';
+end;
+$$;
+
+-- Only the cascade from the note or the child (erasure).
+create function public.my_season_staff_removals_before_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if exists (select 1 from public.players where id = old.player_id)
+     and exists (select 1 from public.my_season_coach_observations where id = old.observation_id) then
+    raise exception using errcode = 'EMS09', message = 'my_season_audit_append_only';
+  end if;
+  return old;
+end;
+$$;
+
+create function public.my_season_staff_removals_refuse_truncate()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  raise exception using errcode = 'EMS09', message = 'my_season_audit_append_only';
+end;
+$$;
+
+create trigger my_season_staff_removals_before_insert
+  before insert on public.my_season_observation_staff_removals
+  for each row execute function public.my_season_staff_removals_before_insert();
+create trigger my_season_staff_removals_before_update
+  before update on public.my_season_observation_staff_removals
+  for each row execute function public.my_season_staff_removals_before_update();
+create trigger my_season_staff_removals_before_delete
+  before delete on public.my_season_observation_staff_removals
+  for each row execute function public.my_season_staff_removals_before_delete();
+create trigger my_season_staff_removals_refuse_truncate
+  before truncate on public.my_season_observation_staff_removals
+  for each statement execute function public.my_season_staff_removals_refuse_truncate();
+
+-- The caller's staff authority, or the one fixed refusal. Nothing is looked
+-- up about any note or child before this has passed, so a non-staff caller
+-- gets the same answer whatever id they send. The key-share lock holds the
+-- staff_accounts row until the transaction ends, so authority cannot be
+-- revoked between this check and the write.
+create function public.my_season_require_staff()
+returns uuid
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_uid uuid;
+begin
+  if coalesce(current_setting('role', true), '') <> 'authenticated' then
+    raise exception using errcode = 'EMS10', message = 'my_season_staff_only';
+  end if;
+  v_uid := auth.uid();
+  if v_uid is null then
+    raise exception using errcode = 'EMS10', message = 'my_season_staff_only';
+  end if;
+  perform 1 from public.staff_accounts s where s.profile_id = v_uid for key share;
+  if not found or public.profile_has_pending_deletion_review(v_uid) then
+    raise exception using errcode = 'EMS10', message = 'my_season_staff_only';
+  end if;
+  return v_uid;
+end;
+$$;
+
+-- Erase one note, once. Returns {"status":"removed"} or {"status":"already_removed"}.
+create function public.my_season_staff_remove_observation(p_observation_id uuid, p_reason text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_staff uuid := public.my_season_require_staff();
+  v_reason text := public.my_season_trim(p_reason);
+  v_player uuid;
+  v_removed uuid;
+begin
+  if v_reason is null or char_length(v_reason) not between 3 and 500 then
+    raise exception using errcode = 'EMS11', message = 'my_season_invalid_reason';
+  end if;
+
+  select o.player_id into v_player from public.my_season_coach_observations o where o.id = p_observation_id;
+  if v_player is null then
+    raise exception using errcode = 'EMS08', message = 'my_season_not_found';
+  end if;
+
+  -- Taken before the note's row: child erasure deletes the player first and
+  -- the note by cascade, so the opposite order could deadlock with it.
+  perform 1 from public.players p where p.id = v_player for key share;
+  if not found then
+    raise exception using errcode = 'EMS09', message = 'my_season_conflict';
+  end if;
+
+  begin
+    -- One atomic statement. A concurrent removal or withdrawal waits on the
+    -- row, re-checks withdrawn_at and matches nothing.
+    update public.my_season_coach_observations
+       set withdrawn_at = now(), withdrawn_by = v_staff, body = null, category = null
+     where id = p_observation_id and withdrawn_at is null
+    returning id into v_removed;
+
+    if v_removed is null then
+      if exists (select 1 from public.my_season_coach_observations o where o.id = p_observation_id) then
+        return jsonb_build_object('status', 'already_removed');
+      end if;
+      raise exception using errcode = 'EMS09', message = 'my_season_conflict';
+    end if;
+
+    insert into public.my_season_audit_events (player_id, event, subject_id, actor_profile_id, actor_role)
+    values (v_player, 'observation_staff_removed', v_removed, v_staff, 'staff');
+
+    insert into public.my_season_observation_staff_removals (observation_id, player_id, removed_by, reason)
+    values (v_removed, v_player, v_staff, v_reason);
+  exception when foreign_key_violation then
+    -- The child or the staff member's profile went after the checks above.
+    raise exception using errcode = 'EMS09', message = 'my_season_conflict';
+  end;
+
+  return jsonb_build_object('status', 'removed');
+end;
+$$;
+
+-- What staff need to pick the right note: newest first, at most 100. Text and
+-- category for ACTIVE notes only; withdrawn and removed rows are metadata.
+-- Each lookup writes one content-free audit event about the player.
+create function public.my_season_staff_list_observations(p_player_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_staff uuid := public.my_season_require_staff();
+  v_notes jsonb;
+begin
+  perform 1 from public.players p where p.id = p_player_id for key share;
+  if not found then
+    raise exception using errcode = 'EMS08', message = 'my_season_not_found';
+  end if;
+
+  select coalesce(jsonb_agg(x.j order by x.created_at desc, x.id desc), '[]'::jsonb) into v_notes
+    from (select o.created_at, o.id,
+                 jsonb_build_object('id', o.id, 'createdAt', o.created_at,
+                   'state', case when sr.observation_id is not null then 'removed'
+                                 when o.withdrawn_at is not null then 'withdrawn'
+                                 else 'active' end,
+                   'coachName', case when o.author_id is null then null else pr.display_name end,
+                   'formerCoach', (o.author_id is null or not public.my_season_is_team_coach(p_player_id, o.author_id)))
+                 || case when o.withdrawn_at is null
+                         then jsonb_build_object('category', o.category, 'body', o.body)
+                         else '{}'::jsonb end as j
+            from public.my_season_coach_observations o
+            left join public.profiles pr on pr.id = o.author_id
+            left join public.my_season_observation_staff_removals sr on sr.observation_id = o.id
+           where o.player_id = p_player_id
+           order by o.created_at desc, o.id desc
+           limit 100) x;
+
+  begin
+    insert into public.my_season_audit_events (player_id, event, subject_id, actor_profile_id, actor_role)
+    values (p_player_id, 'observation_staff_viewed', p_player_id, v_staff, 'staff');
+  exception when foreign_key_violation then
+    raise exception using errcode = 'EMS09', message = 'my_season_conflict';
+  end;
+
+  return jsonb_build_object('observations', v_notes);
+end;
+$$;
+
+do $$
+declare
+  f text;
+begin
+  foreach f in array array[
+    'my_season_staff_removals_before_insert()', 'my_season_staff_removals_before_update()',
+    'my_season_staff_removals_before_delete()', 'my_season_staff_removals_refuse_truncate()',
+    'my_season_require_staff()'] loop
+    execute format('alter function public.%s owner to postgres', f);
+    execute format('revoke all on function public.%s from public, anon, authenticated, service_role', f);
+  end loop;
+  foreach f in array array[
+    'my_season_staff_remove_observation(uuid, text)', 'my_season_staff_list_observations(uuid)'] loop
+    execute format('alter function public.%s owner to postgres', f);
+    execute format('revoke all on function public.%s from public, anon, authenticated, service_role', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end;
+$$;
 
 commit;

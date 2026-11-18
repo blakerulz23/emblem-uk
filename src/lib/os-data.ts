@@ -14,7 +14,7 @@ import { parseOsView, resolveOsView } from '@/lib/os-view';
 import type { OsView, TeamRequestSummary } from '@/lib/os-view';
 import { readDeletionReview, type DeletionReviewState } from '@/lib/coach-review-status';
 import { isSeasonDeployKillSwitchOn } from '@/lib/season-feature';
-import { parentViewFromRaw, type MySeasonView } from '@/lib/my-season';
+import { MY_SEASON_UNAVAILABLE_VIEW, isMissingMySeasonFunction, parentViewFromRaw, type MySeasonView } from '@/lib/my-season';
 
 type CardDefinitionDbRow = {
   id: string;
@@ -827,12 +827,13 @@ async function getParentOsData(
 }
 
 /**
- * The parent view's My Season for the active player, or null when the
- * feature is off for the player's team, the deploy kill switch is on, the
- * RPC is missing (app deployed before 0108) or the answer says nothing
- * usable. A view that claims the feature is on but breaks the contract gives
- * the "unavailable" marker, so the legacy Season Focus stays hidden for that
- * team. Never throws: My Season must not be able to break Home.
+ * The parent view's My Season for the active player. Null only when it is
+ * confirmed off: the feature is off for the player's team, the deploy kill
+ * switch is on, or the RPC is missing (app deployed before 0108). Any other
+ * failure, or an answer that cannot be read, says nothing about the flag and
+ * gives the "unavailable" marker: the legacy Season Focus (and its Add) stays
+ * hidden and Retry is offered. Never throws: My Season must not be able to
+ * break Home.
  */
 export async function loadParentMySeason(
   supabase: Pick<ReturnType<typeof createClient>, 'rpc'>,
@@ -841,10 +842,10 @@ export async function loadParentMySeason(
   if (isSeasonDeployKillSwitchOn()) return null;
   try {
     const { data, error } = await supabase.rpc('my_season_for_player', { p_player_id: playerId });
-    if (error) return null;
+    if (error) return isMissingMySeasonFunction(error) ? null : MY_SEASON_UNAVAILABLE_VIEW;
     return parentViewFromRaw(data);
   } catch {
-    return null;
+    return MY_SEASON_UNAVAILABLE_VIEW;
   }
 }
 

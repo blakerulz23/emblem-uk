@@ -19,7 +19,9 @@ select
   to_regclass('public.my_season_focuses') is null
     and to_regclass('public.my_season_coach_observations') is null
     and to_regclass('public.my_season_audit_events') is null
-    and to_regprocedure('public.my_season_for_player(uuid)') is null as guard_0108_not_applied,
+    and to_regclass('public.my_season_observation_staff_removals') is null
+    and to_regprocedure('public.my_season_for_player(uuid)') is null
+    and to_regprocedure('public.my_season_staff_remove_observation(uuid, text)') is null as guard_0108_not_applied,
   -- Prerequisites.
   to_regprocedure('public.coach_assignment_is_active(timestamptz, timestamptz)') is not null
     and to_regprocedure('public.is_authorized_coach_for_player(uuid)') is not null as has_0088_0089_lockdown,
@@ -27,6 +29,7 @@ select
           and column_name = 'verifier_account_deleted_at') as has_0097,
   to_regprocedure('public.profile_has_pending_deletion_review(uuid)') is not null as has_0098,
   to_regprocedure('public.erase_player_and_related_data(uuid)') is not null as has_child_erasure,
+  to_regclass('public.staff_accounts') is not null as has_staff_accounts,
   -- The legacy Season Focus stays as it is.
   to_regclass('public.player_season_focus') is not null as legacy_season_focus_present,
   (select count(*) from public.teams) as teams_count;
