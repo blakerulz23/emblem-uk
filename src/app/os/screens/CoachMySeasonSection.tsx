@@ -536,7 +536,8 @@ export function CoachMySeasonPanel({
                 </p>
               );
             }
-            if (!n.mine) return null;
+            // canAddNote is false on your own child: no note actions there, even on a note you wrote.
+            if (!n.mine || !view.canAddNote) return null;
             if (ui.confirmingWithdrawId === n.id) {
               return (
                 <div style={{ marginTop: 8, display: 'grid', gap: 8 }} data-testid="withdraw-confirm">

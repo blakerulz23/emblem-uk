@@ -15,9 +15,10 @@ export default function MySeasonHomeCard({ view, onOpen, openRef }: { view: MySe
     <section
       aria-labelledby="ms-home-h"
       data-testid="my-season-home-card"
-      style={{ background: 'var(--os-card)', borderRadius: 18, padding: 16, marginTop: 12, boxShadow: '0 8px 20px -16px rgba(0,0,0,.2)', display: 'grid', gap: 10 }}
+      // minmax(0, 1fr): a long unbroken title or note must not widen the column.
+      style={{ background: 'var(--os-card)', borderRadius: 18, padding: 16, marginTop: 12, boxShadow: '0 8px 20px -16px rgba(0,0,0,.2)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10, minWidth: 0 }}
     >
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, minWidth: 0 }}>
         <h3 id="ms-home-h" style={{ margin: 0, fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>My Season</h3>
         <span className="os-ms-accent" style={{ ...msEyebrow, fontSize: 11.5 }}>My Focus</span>
       </div>
@@ -25,14 +26,14 @@ export default function MySeasonHomeCard({ view, onOpen, openRef }: { view: MySe
         {view.activeFocus ? view.activeFocus.title : MY_SEASON_COPY.noFocus}
       </div>
       {latest && cat ? (
-        <div style={{ borderTop: '1px solid var(--os-border)', paddingTop: 10 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--os-ink)' }}>
+        <div style={{ borderTop: '1px solid var(--os-border)', paddingTop: 10, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--os-ink)', ...msWrap }}>
             <span aria-hidden="true">{cat.emoji}</span> {cat.label}
           </div>
-          <q style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', margin: '2px 0 4px', fontSize: 14, lineHeight: 1.4, color: 'var(--os-ink)' }}>
+          <q style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', margin: '2px 0 4px', fontSize: 14, lineHeight: 1.4, color: 'var(--os-ink)', ...msWrap }}>
             {latest.body}
           </q>
-          <div className="os-ms-soft" style={{ fontSize: 12.5 }}>
+          <div className="os-ms-soft" style={{ fontSize: 12.5, ...msWrap }}>
             {observationAuthor(latest)} · {formatMySeasonDate(latest.createdAt)}
           </div>
         </div>

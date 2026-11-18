@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { STAFF_MY_SEASON_ERRORS, checkStaffRemovalReason, parseStaffObservationList, parseStaffRemovalStatus, type MySeasonStaffObservation } from '@/lib/my-season';
-import { STAFF_MS_IDS, StaffMySeasonView, staffFocusCandidates } from './StaffMySeasonPanel';
+import { FIND_NOTES_COLOURS, STAFF_MS_IDS, StaffMySeasonView, findNotesButton, staffFocusCandidates } from './StaffMySeasonPanel';
 import {
   INITIAL_STAFF_PAGE,
   STAFF_MY_SEASON_COPY,
@@ -267,5 +267,31 @@ describe('the flows', () => {
     expect(t.get().list).toBe('error');
     expect(JSON.stringify(t.get().notes)).not.toContain('ZQNOTE');
     expect(html(t.get())).toContain('>Retry<');
+  });
+});
+
+describe('Find notes button contrast', () => {
+  const luminance = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const contrast = (a: string, b: string) => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  it.each(Object.entries(FIND_NOTES_COLOURS))('%s colours reach 4.5:1 and use fixed values, not theme variables', (_state, c) => {
+    expect(contrast(c.color, c.background)).toBeGreaterThanOrEqual(4.5);
+    expect(c.background).toMatch(/^#[0-9A-F]{6}$/);
+    expect(c.color).toMatch(/^#[0-9A-F]{6}$/);
+  });
+
+  it('ready, loading and removal-busy each render the right colours', () => {
+    const style = (on: boolean) => findNotesButton(on);
+    expect(style(false)).toMatchObject(FIND_NOTES_COLOURS.enabled);
+    expect(style(true)).toMatchObject(FIND_NOTES_COLOURS.disabled);
+    expect(html(INITIAL_STAFF_PAGE)).toMatch(/background:#B34715;[^"]*">Find notes</);
+    expect(html({ ...INITIAL_STAFF_PAGE, list: 'loading' })).toMatch(/background:#E8E8EC;[^"]*">Loading…</);
+    expect(html({ ...INITIAL_STAFF_PAGE, list: 'ready', notes: [active], removal: { id: OBS, reason: 'A reason', confirmed: true, busy: true, error: null } })).toMatch(/background:#E8E8EC;[^"]*">Find notes</);
   });
 });

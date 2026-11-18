@@ -19,6 +19,19 @@ const btn = (bg: string, color: string, disabled = false): CSSProperties => ({
   fontFamily: heading, fontWeight: 700, fontSize: 13, color: disabled ? '#fff' : color, background: disabled ? 'var(--ink-faint)' : bg,
   padding: '9px 14px', borderRadius: 10, border: 'none', cursor: disabled ? 'default' : 'pointer', whiteSpace: 'nowrap',
 });
+/**
+ * Fixed colours, not theme variables, so every state of Find notes keeps at
+ * least 4.5:1 contrast whatever the page theme. Loading is a disabled state.
+ */
+export const FIND_NOTES_COLOURS = {
+  enabled: { background: '#B34715', color: '#FFFFFF' },
+  disabled: { background: '#E8E8EC', color: '#4A4C55' },
+} as const;
+export const findNotesButton = (disabled: boolean): CSSProperties => ({
+  ...btn('', '', false),
+  ...(disabled ? FIND_NOTES_COLOURS.disabled : FIND_NOTES_COLOURS.enabled),
+  cursor: disabled ? 'default' : 'pointer',
+});
 const fieldStyle: CSSProperties = { fontFamily: font, fontSize: 14, padding: '9px 11px', borderRadius: 8, border: '1px solid var(--border)', width: '100%', boxSizing: 'border-box' };
 
 export const STAFF_MS_IDS = {
@@ -159,7 +172,7 @@ export function StaffMySeasonView({
             spellCheck={false}
             style={{ ...fieldStyle, flex: '1 1 280px', width: 'auto' }}
           />
-          <button type="submit" disabled={loading || !!removal?.busy} style={btn('var(--accent)', '#fff', loading || !!removal?.busy)}>{loading ? 'Loading…' : 'Find notes'}</button>
+          <button type="submit" disabled={loading || !!removal?.busy} style={findNotesButton(loading || !!removal?.busy)}>{loading ? 'Loading…' : 'Find notes'}</button>
         </div>
       </form>
 

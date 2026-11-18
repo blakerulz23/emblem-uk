@@ -46,6 +46,17 @@ describe('Home: My Season card (guardian, enabled)', () => {
     expect(html.indexOf('This Season')).toBeLessThan(html.indexOf('my-season-home-card'));
   });
 
+  it('long unbroken text wraps inside the card, and ordinary text is not cut by the wrap rules', () => {
+    const word = 'https://example.test/'.padEnd(160, 'x');
+    const html = renderToStaticMarkup(<MySeasonHomeCard view={msContent({ activeFocus: { ...msContent().activeFocus!, title: 'W'.repeat(60) }, observations: [msNote({ body: word })] })} onOpen={() => {}} />);
+    expect(html).toContain('grid-template-columns:minmax(0, 1fr)');
+    expect(html).toMatch(/<q style="[^"]*overflow-wrap:anywhere[^"]*min-width:0/);
+    expect(html).toMatch(/font-size:18px[^"]*overflow-wrap:anywhere/);
+    expect(html).toContain(word);
+    expect(html).not.toContain('text-overflow');
+    expect(html).not.toContain('white-space:nowrap');
+  });
+
   it('empty focus and no notes', () => {
     const html = renderToStaticMarkup(<MySeasonHomeCard view={msContent({ activeFocus: null, observations: [] })} onOpen={() => {}} />);
     expect(html).toContain('No focus set yet');

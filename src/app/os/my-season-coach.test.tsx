@@ -115,11 +115,13 @@ describe('Coach My Season panel', () => {
     expect(html.match(/>Withdraw</g)).toHaveLength(1);
   });
 
-  it('own child (parent-coach): can change the focus, composer replaced by the explanation', () => {
-    const html = renderToStaticMarkup(panel(ready(msContent({ access: 'guardian', canEditFocus: true, canAddNote: false }))));
+  it('own child (parent-coach): keeps Change focus, cannot add or withdraw notes, and is told why', () => {
+    const html = renderToStaticMarkup(panel(ready(msContent({ access: 'guardian', canEditFocus: true, canAddNote: false, observations: [msNote({ mine: true })] }))));
     expect(html).toContain('>Change focus<');
     expect(html).not.toContain('>Add a note<');
-    expect(html).toContain('You can&#x27;t add notes for your own child. Another coach on the team can.');
+    // Even a note they wrote before becoming this child's guardian has no Withdraw.
+    expect(html).not.toContain('>Withdraw<');
+    expect(html).toContain('As a parent or guardian you can change the focus. You can&#x27;t add or withdraw coach notes for your own child, but another coach on the team can add them.');
   });
 
   it.each([

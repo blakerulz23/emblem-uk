@@ -219,6 +219,10 @@ console.log('\n=== 1. Authorization matrix ===');
       reviewCoach: code(await w.withdraw(P.reviewCoach, obsId)), reviewCoachUnknown: code(await w.withdraw(P.reviewCoach, id())) };
     check('1: withdraw by anyone but the author refused (EMS03); an unknown id is EMS03 too (no existence oracle); under review EMS04 for any id',
       JSON.stringify(wCodes) === JSON.stringify({ g1: 'EMS03', parentCoach: 'EMS03', stranger: 'EMS03', unknown: 'EMS03', strangerUnknown: 'EMS03', reviewCoach: 'EMS04', reviewCoachUnknown: 'EMS04' }), wCodes);
+    const ownChildNote = (await w.addObs(P.coach, child2)).rows[0].id;
+    check("1: parent-coach cannot withdraw another coach's note about their own child (EMS03), and can still change the focus",
+      code(await w.withdraw(P.parentCoach, ownChildNote)) === 'EMS03' && code(await w.setFocus(P.parentCoach, child2)) === 'ok');
+    check('1: that refused withdrawal left the note in place', await w.n(`select count(*) n from public.my_season_coach_observations where id = $1 and withdrawn_at is null and body is not null`, [ownChildNote]) === 1);
     const ems08 = (await w.db.query(`select string_agg(p.proname, ',' order by p.proname) n from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname like 'my_season%' and p.prosrc like '%EMS08%'`)).rows[0].n;
     check('1: only the staff RPCs raise EMS08 (never a family or coach path)', ems08 === 'my_season_staff_list_observations,my_season_staff_remove_observation', ems08);
 

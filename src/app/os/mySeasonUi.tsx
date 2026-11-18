@@ -70,7 +70,7 @@ export const MY_SEASON_COPY = {
   withdrawnNote: 'Withdrawn. The family no longer sees this.',
   removedByStaffNote: 'Removed by Emblem staff. The family no longer sees this.',
   withdrawConfirm: 'Withdraw this note? The family will no longer see it, and the text will be permanently deleted.',
-  ownChild: "You can't add notes for your own child. Another coach on the team can.",
+  ownChild: "As a parent or guardian you can change the focus. You can't add or withdraw coach notes for your own child, but another coach on the team can add them.",
   privateCoach: (first: string) =>
     `My Season notes are only for coaches on ${first}'s team. You're connected to ${first} directly, so you can't add notes or change the focus.`,
   formerCoach: (first: string) =>
