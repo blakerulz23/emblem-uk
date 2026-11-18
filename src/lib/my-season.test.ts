@@ -5,8 +5,10 @@ import {
   checkObservationBody,
   countSentences,
   enabledViewOrNull,
+  eraseObservationFromView,
   focusAuthorLine,
   focusDraftProblems,
+  hasUnstorableText,
   isMySeasonCategory,
   isValidFocusStart,
   mySeasonErrorFor,
@@ -15,8 +17,10 @@ import {
   parseMySeasonView,
   validateFocusInput,
   validateObservationInput,
+  type MySeasonActiveObservation,
+  type MySeasonContent,
   type MySeasonFocus,
-  type MySeasonObservation,
+  type MySeasonWithdrawnObservation,
 } from './my-season';
 
 const PLAYER = '30000000-0000-4000-8000-000000000001';
@@ -27,9 +31,13 @@ const focus = (o: Partial<MySeasonFocus> = {}): MySeasonFocus => ({
   id: 'f1', title: 'Talk more on the pitch', whyItMatters: 'So my teammates know where I am.', whatItLooksLike: 'Calling for the ball.',
   startedOn: '2026-09-06', endedAt: null, authorRole: 'coach', authorName: 'Coach Danny', ...o,
 });
-const obs = (o: Partial<MySeasonObservation> = {}): MySeasonObservation => ({
+const obs = (o: Partial<MySeasonActiveObservation> = {}): MySeasonActiveObservation => ({
   id: 'o1', category: 'spoke_up', body: 'Called for the ball twice in the second half.', createdAt: '2026-11-15T10:00:00Z',
   coachName: 'Coach Danny', formerCoach: false, mine: false, withdrawn: false, ...o,
+});
+const gone = (o: Partial<MySeasonWithdrawnObservation> = {}): MySeasonWithdrawnObservation => ({
+  id: 'o9', category: null, body: null, createdAt: '2026-11-15T10:00:00Z',
+  coachName: 'Coach Danny', formerCoach: false, mine: true, withdrawn: true, ...o,
 });
 
 describe('categories', () => {
@@ -118,6 +126,18 @@ describe('focus input', () => {
   });
 });
 
+describe('text the database cannot store is refused before the RPC', () => {
+  const ok = { playerId: PLAYER, category: 'kept_going', body: 'Chased every ball in the last minute.', requestId: REQ };
+  it('NUL and lone surrogates', () => {
+    expect(hasUnstorableText('Chased every ball 😀')).toBe(false);
+    expect(hasUnstorableText('a\u0000b')).toBe(true);
+    expect(hasUnstorableText('a\ud800b')).toBe(true);
+    expect(validateObservationInput({ ...ok, body: `${ok.body}\u0000 more` }).ok).toBe(false);
+    expect(validateObservationInput({ ...ok, body: `${ok.body}\ud800 more` }).ok).toBe(false);
+    expect(validateFocusInput({ title: 'Be\u0000 brave', whyItMatters: 'Why it is', whatItLooksLike: 'Looks like', startedOn: '2026-11-01', playerId: PLAYER, requestId: REQ }, NOW).ok).toBe(false);
+  });
+});
+
 describe('parseMySeasonView', () => {
   const content = {
     enabled: true, access: 'guardian', canEditFocus: true, canAddNote: false,
@@ -137,6 +157,31 @@ describe('parseMySeasonView', () => {
       { ...content, canAddNote: 'yes' }, { ...content, observations: [{ ...obs(), category: 'top_player' }] }, { ...content, activeFocus: { id: 1 } }]) {
       expect(parseMySeasonView(bad)).toBeNull();
     }
+  });
+
+  it('a withdrawn note is accepted only with null text and null category', () => {
+    expect(parseMySeasonView({ ...content, observations: [gone()] })).toMatchObject({ observations: [gone()] });
+    const without = (key: string) => Object.fromEntries(Object.entries(gone()).filter(([k]) => k !== key));
+    const noBody = without('body');
+    const noCategory = without('category');
+    for (const bad of [{ ...gone(), body: 'Called for the ball twice in the second half.' }, { ...gone(), category: 'spoke_up' }, { ...gone(), body: '' }, noBody, noCategory]) {
+      expect(parseMySeasonView({ ...content, observations: [bad] })).toBeNull();
+    }
+  });
+
+  it('an active note must have text and a valid category', () => {
+    for (const bad of [{ ...obs(), body: null }, { ...obs(), category: null }, { ...obs(), body: '' }, { ...obs(), category: 'top_player' }]) {
+      expect(parseMySeasonView({ ...content, observations: [bad] })).toBeNull();
+    }
+  });
+
+  it('eraseObservationFromView removes that note\'s content and leaves the others', () => {
+    const view = { ...content, observations: [obs({ mine: true }), obs({ id: 'o2' })] } as MySeasonContent;
+    const erased = eraseObservationFromView(view, 'o1') as MySeasonContent;
+    expect(erased.observations[0]).toEqual(gone({ id: 'o1' }));
+    expect(JSON.stringify(erased.observations[0])).not.toContain('Called for the ball');
+    expect(erased.observations[1]).toEqual(obs({ id: 'o2' }));
+    expect(eraseObservationFromView({ enabled: false }, 'o1')).toEqual({ enabled: false });
   });
 
   it('enabledViewOrNull keeps only enabled views', () => {
@@ -173,7 +218,7 @@ describe('display helpers', () => {
   });
 
   it('notes since this focus: created on/after the start date, withdrawn excluded', () => {
-    const list = [obs({ id: 'a', createdAt: '2026-09-07T09:00:00' }), obs({ id: 'b', createdAt: '2026-09-01T09:00:00' }), obs({ id: 'c', createdAt: '2026-10-01T09:00:00', withdrawn: true })];
+    const list = [obs({ id: 'a', createdAt: '2026-09-07T09:00:00' }), obs({ id: 'b', createdAt: '2026-09-01T09:00:00' }), gone({ id: 'c', createdAt: '2026-10-01T09:00:00' })];
     expect(notesSinceFocus(list, focus()).map((o) => o.id)).toEqual(['a']);
   });
 });

@@ -13,7 +13,7 @@ import { OsDataProvider } from './OsDataContext';
 import { initialOsState } from './types';
 import type { OsActions } from './OsApp';
 import type { OsData } from './osData';
-import { MS_PLAYER_ID, REAL_PARENT, buttonByText, expand, msContent, msNote } from './my-season-test-support';
+import { MS_PLAYER_ID, REAL_PARENT, buttonByText, expand, msContent, msNote, msWithdrawnNote } from './my-season-test-support';
 
 const actions = new Proxy({}, { get: () => vi.fn() }) as unknown as OsActions;
 const home = (data: OsData) => renderToStaticMarkup(<OsDataProvider value={data}><PlayerHome actions={actions} storyUpdates={[]} /></OsDataProvider>);
@@ -53,8 +53,8 @@ describe('Home: My Season card (guardian, enabled)', () => {
   });
 
   it('never previews a withdrawn note', () => {
-    const html = renderToStaticMarkup(<MySeasonHomeCard view={msContent({ observations: [msNote({ withdrawn: true, mine: true, body: 'Withdrawn words here for the test.' })] })} onOpen={() => {}} />);
-    expect(html).not.toContain('Withdrawn words');
+    const html = renderToStaticMarkup(<MySeasonHomeCard view={msContent({ observations: [msWithdrawnNote()] })} onOpen={() => {}} />);
+    expect(html).not.toContain('Withdrawn');
     expect(html).toContain('No coach notes yet.');
   });
 
@@ -123,8 +123,9 @@ describe('MySeasonScreen (family overlay)', () => {
   });
 
   it('withdrawn notes are never shown to the family', () => {
-    const html = renderToStaticMarkup(screenView({ status: 'ready', view: msContent({ observations: [msNote({ withdrawn: true, mine: true, body: 'Withdrawn words here for the test.' })] }) }));
-    expect(html).not.toContain('Withdrawn words');
+    const html = renderToStaticMarkup(screenView({ status: 'ready', view: msContent({ observations: [msWithdrawnNote()] }) }));
+    expect(html).not.toContain('Withdrawn');
+    expect(html).toContain('No notes yet.');
   });
 
   it('loading shows a skeleton (context line stays visible)', () => {

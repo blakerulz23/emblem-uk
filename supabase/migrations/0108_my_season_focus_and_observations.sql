@@ -9,8 +9,9 @@
 --     six fixed categories, written only by an ACTIVE coach of the player's
 --     CURRENT team (coach_team, coach_assignment_is_active), never by a
 --     direct-link coach and never by a coach about their own child. The
---     author may withdraw a note while still a team coach; it is then
---     hidden from everyone but the author and kept.
+--     author may withdraw a note while still a team coach; in that one
+--     transaction it is hidden and its text and category are permanently
+--     erased from the row. Only non-content metadata stays.
 --   - An append-only audit of every write.
 -- Nothing is public: no visibility column, no anon grant, never read by any
 -- public-profile or share code. Nothing is ranked, scored or compared.
@@ -28,14 +29,18 @@
 --      my_season_audit_events (indexes, checks).
 --   2. Triggers:
 --      - content tables, BEFORE INSERT: a new row never carries the
---        deleted-author marker, nor an end / withdrawal;
+--        deleted-author marker, nor an end / withdrawal; a new observation
+--        must also have valid content (refused with a fixed message, so
+--        PostgreSQL's "Failing row contains ..." detail is never produced);
 --      - content tables, BEFORE UPDATE: when the author column goes from a
 --        value to NULL (the ON DELETE SET NULL action when the author's
 --        profile is deleted) author_account_deleted_at is stamped now(); any
 --        other change is refused except ending a focus (ended_at/ended_by
---        from NULL), withdrawing an observation (withdrawn_at/withdrawn_by
---        from NULL) and the other ON DELETE SET NULL actions (ended_by,
---        withdrawn_by, team_id going to NULL). Applies to every role,
+--        from NULL), withdrawing an observation (active to withdrawn, with
+--        withdrawn_at/withdrawn_by set and body + category nulled together)
+--        and the other ON DELETE SET NULL actions (ended_by, withdrawn_by,
+--        team_id going to NULL). A withdrawn observation can never get
+--        content back. Applies to every role,
 --        including service_role and the owner. A column may go to NULL
 --        only once the row it referenced no longer exists, so a direct
 --        UPDATE cannot fake a deleted author (stricter than the design's
@@ -64,9 +69,10 @@
 --      for staff tooling (support lookups, exports, erasure checks). The
 --      section 2 triggers still bind it (content stays immutable apart from
 --      end / withdraw), but service_role bypasses RLS and can read every
---      row, including withdrawn notes and author ids. RESIDUAL RISK: anyone
---      holding the service-role key can read all My Season content; that key
---      is server-only and never shipped to a browser.
+--      row, including author ids and withdrawn rows' metadata (never their
+--      content, which is gone). RESIDUAL RISK: anyone holding the
+--      service-role key can read all ACTIVE My Season content; that key is
+--      server-only and never shipped to a browser.
 --   5. RPCs (authenticated only): my_season_set_focus,
 --      my_season_add_observation, my_season_withdraw_observation,
 --      my_season_for_player, plus the owner-only my_season_trim. Errors use
@@ -74,23 +80,44 @@
 --      messages that carry no data:
 --        EMS01 my_season_not_signed_in
 --        EMS02 my_season_not_enabled
---        EMS03 my_season_not_allowed (also an unknown observation id on
---              withdraw, so withdraw is not an existence oracle)
+--        EMS03 my_season_not_allowed (on withdraw also an unknown id and
+--              another coach's note, withdrawn or not, so withdraw is not an
+--              existence oracle)
 --        EMS04 my_season_account_under_review
 --        EMS05 my_season_invalid_input
---        EMS06 my_season_request_conflict (request_id already used)
+--        EMS06 my_season_request_conflict (request_id already used by another
+--              caller, for another child, or with different active content)
 --        EMS07 my_season_own_child
 --        EMS08 not raised (reserved; formerly "not found" on withdraw)
 --        EMS09 my_season_conflict (set_focus lost a race for the one-active
---              index; nothing was written, a retry works) and the section 2
+--              index, or an observation's request row vanished with its child
+--              mid-call; nothing was written) and the section 2
 --              triggers: my_season_immutable / my_season_insert_shape /
 --              my_season_audit_append_only
 --
--- Withdrawn notes are RETAINED (withdrawn_at / withdrawn_by set, row kept)
--- so the audit trail of what a family was shown stays complete. They are
--- removed only with the child (erasure cascade). How long withdrawn notes
--- are kept before purge is an OPEN DECISION for Blake (retention policy);
--- nothing in this migration purges them.
+-- Withdrawal ERASES content (decision of 18 Nov 2026). One UPDATE sets
+-- withdrawn_at / withdrawn_by and nulls body and category (category says what
+-- the child did, so it is content too). What stays: id, player_id, team_id,
+-- author_id / author_account_deleted_at, created_at, withdrawn_at,
+-- withdrawn_by, request_id, enough to prove a note existed and was withdrawn.
+-- The row goes only with the child (erasure cascade). The named CHECK
+-- my_season_coach_observations_content_state proves it: active = valid
+-- content, withdrawn = no content. Note text and category are never copied to
+-- my_season_audit_events (ids only), RAISE messages, DETAIL or HINT.
+--
+-- What "erased" means: no SQL query, by any role, can return the text after
+-- commit. PostgreSQL itself can still hold the old row version on disk until
+-- VACUUM reclaims it (and the bytes until the page is overwritten), and WAL,
+-- physical backups, point-in-time recovery and any statement logging that
+-- captured the original call are outside this migration's control; they age
+-- out under the platform's retention.
+--
+-- Duplicate protection: request_id is the client's idempotency key, UNIQUE
+-- under the named constraint my_season_coach_observations_request_id_key.
+-- my_season_add_observation inserts with ON CONFLICT (request_id) DO NOTHING
+-- and audits only a real insert, so simultaneous retries give one row, one
+-- observation_added event and the original id. Proven on real PostgreSQL in
+-- supabase/tests/authz/my_season_concurrency_test.mjs.
 --
 -- Trim: my_season_trim strips leading/trailing characters in the regex
 -- class [\s U+00A0 U+FEFF]. PostgreSQL's \s follows the database's ctype
@@ -114,7 +141,8 @@
 -- Rollback: supabase/rollback/0108_rollback.sql (DATA LOSS: drops the
 -- tables). Checks: supabase/verification/0108_precheck.sql / _postcheck.sql.
 -- Proven in supabase/tests/authz/my_season_test.mjs,
--- migration_0099_0108_test.mjs and my_season_production_order_test.mjs.
+-- migration_0099_0108_test.mjs, my_season_production_order_test.mjs and
+-- my_season_concurrency_test.mjs.
 -- ============================================================================
 
 begin;
@@ -180,16 +208,25 @@ create table public.my_season_coach_observations (
   id uuid primary key default gen_random_uuid(),
   player_id uuid not null references public.players (id) on delete cascade,
   team_id uuid references public.teams (id) on delete set null,
-  category text not null check (category in ('lifted_the_team', 'kept_going', 'tried_something_new',
-                                             'helped_someone_belong', 'spoke_up', 'came_back_stronger')),
-  body text not null check (body = btrim(body) and char_length(body) between 20 and 160),
+  -- body and category are NULL only on a withdrawn row (the content is erased).
+  category text,
+  body text,
   author_id uuid references public.profiles (id) on delete set null,
   author_account_deleted_at timestamptz,
   created_at timestamptz not null default now(),
   withdrawn_at timestamptz,
   withdrawn_by uuid references public.profiles (id) on delete set null,
-  request_id uuid not null unique,
-  constraint my_season_coach_observations_author_or_marker check ((author_id is null) = (author_account_deleted_at is not null))
+  request_id uuid not null constraint my_season_coach_observations_request_id_key unique,
+  constraint my_season_coach_observations_author_or_marker check ((author_id is null) = (author_account_deleted_at is not null)),
+  constraint my_season_coach_observations_content_state check (
+    (withdrawn_at is null
+     and category is not null
+     and category in ('lifted_the_team', 'kept_going', 'tried_something_new',
+                      'helped_someone_belong', 'spoke_up', 'came_back_stronger')
+     and body is not null and body = btrim(body) and char_length(body) between 20 and 160)
+    or
+    (withdrawn_at is not null and body is null and category is null)
+  )
 );
 
 create index my_season_coach_observations_player_created on public.my_season_coach_observations (player_id, created_at desc);
@@ -209,7 +246,7 @@ create index my_season_audit_events_player on public.my_season_audit_events (pla
 comment on table public.my_season_focuses is
   'My Season: a child''s focus (0108). One active per player. Private to guardians and active team coaches; never public.';
 comment on table public.my_season_coach_observations is
-  'My Season: notes from an active coach of the player''s team (0108). Private; withdrawn notes are kept but shown only to their author.';
+  'My Season: notes from an active coach of the player''s team (0108). Private. Withdrawing erases body and category; only metadata stays, shown only to the author.';
 comment on table public.my_season_audit_events is
   'My Season append-only audit (0108). Removed only with the player (child erasure).';
 
@@ -294,6 +331,16 @@ begin
      or new.withdrawn_at is not null or new.withdrawn_by is not null then
     raise exception using errcode = 'EMS09', message = 'my_season_insert_shape';
   end if;
+  -- The same rule as my_season_coach_observations_content_state, checked here
+  -- first so a bad insert gets this fixed message: a CHECK or NOT NULL failure
+  -- would put the whole row, note text included, in its DETAIL.
+  if new.category is null
+     or new.category not in ('lifted_the_team', 'kept_going', 'tried_something_new',
+                             'helped_someone_belong', 'spoke_up', 'came_back_stronger')
+     or new.body is null or new.body <> btrim(new.body) or char_length(new.body) not between 20 and 160
+     or new.player_id is null or new.request_id is null then
+    raise exception using errcode = 'EMS09', message = 'my_season_insert_shape';
+  end if;
   return new;
 end;
 $$;
@@ -315,16 +362,28 @@ begin
     raise exception using errcode = 'EMS09', message = 'my_season_immutable';
   end if;
 
-  if new.withdrawn_at is distinct from old.withdrawn_at and old.withdrawn_at is not null then
-    raise exception using errcode = 'EMS09', message = 'my_season_immutable';
-  end if;
-  if new.withdrawn_by is distinct from old.withdrawn_by then
-    if old.withdrawn_at is null and new.withdrawn_at is not null and old.withdrawn_by is null then
-      null; -- the withdrawal itself
-    elsif old.withdrawn_by is not null and new.withdrawn_by is null
-          and not exists (select 1 from public.profiles where id = old.withdrawn_by) then
-      null; -- ON DELETE SET NULL
-    else
+  if old.withdrawn_at is null then
+    if new.withdrawn_at is null then
+      -- Still active: the content and the withdrawal columns do not change.
+      if new.withdrawn_by is not null
+         or new.body is distinct from old.body
+         or new.category is distinct from old.category then
+        raise exception using errcode = 'EMS09', message = 'my_season_immutable';
+      end if;
+    elsif new.withdrawn_by is null or new.body is not null or new.category is not null then
+      -- The one transition: recorded by someone, both content columns nulled together.
+      raise exception using errcode = 'EMS09', message = 'my_season_immutable';
+    end if;
+  else
+    -- Withdrawn is final: the content never comes back, for any role.
+    if new.withdrawn_at is distinct from old.withdrawn_at
+       or new.body is not null or new.category is not null then
+      raise exception using errcode = 'EMS09', message = 'my_season_immutable';
+    end if;
+    -- withdrawn_by may only follow its ON DELETE SET NULL.
+    if new.withdrawn_by is distinct from old.withdrawn_by
+       and (old.withdrawn_by is null or new.withdrawn_by is not null
+            or exists (select 1 from public.profiles where id = old.withdrawn_by)) then
       raise exception using errcode = 'EMS09', message = 'my_season_immutable';
     end if;
   end if;
@@ -338,8 +397,6 @@ begin
 
   if new.id is distinct from old.id
      or new.player_id is distinct from old.player_id
-     or new.category is distinct from old.category
-     or new.body is distinct from old.body
      or new.request_id is distinct from old.request_id
      or new.created_at is distinct from old.created_at then
     raise exception using errcode = 'EMS09', message = 'my_season_immutable';
@@ -554,7 +611,6 @@ declare
   v_looks text := public.my_season_trim(p_looks_like);
   v_old uuid;
   v_new uuid;
-  v_constraint text;
 begin
   if v_uid is null then
     raise exception using errcode = 'EMS01', message = 'my_season_not_signed_in';
@@ -573,11 +629,17 @@ begin
   end if;
   v_role := case when v_is_guardian then 'guardian' else 'coach' end;
 
-  if p_request_id is null then
+  -- Validation runs on every call, before the idempotent return.
+  if p_request_id is null
+     or v_title is null or char_length(v_title) not between 3 and 60
+     or v_why is null or char_length(v_why) not between 3 and 160
+     or v_looks is null or char_length(v_looks) not between 3 and 160
+     or p_started_on is null or p_started_on > current_date + 1 or p_started_on < date '2000-01-01' then
     raise exception using errcode = 'EMS05', message = 'my_season_invalid_input';
   end if;
 
-  -- One writer per player at a time.
+  -- One writer per player at a time, so a same-key retry for this player
+  -- waits here and then finds the committed row below.
   perform pg_advisory_xact_lock(hashtext('my_season_focus:' || p_player_id::text));
 
   select f.id, f.player_id, f.created_by into v_existing from public.my_season_focuses f where f.request_id = p_request_id;
@@ -586,13 +648,6 @@ begin
       return v_existing.id;
     end if;
     raise exception using errcode = 'EMS06', message = 'my_season_request_conflict';
-  end if;
-
-  if v_title is null or char_length(v_title) not between 3 and 60
-     or v_why is null or char_length(v_why) not between 3 and 160
-     or v_looks is null or char_length(v_looks) not between 3 and 160
-     or p_started_on is null or p_started_on > current_date + 1 or p_started_on < date '2000-01-01' then
-    raise exception using errcode = 'EMS05', message = 'my_season_invalid_input';
   end if;
 
   update public.my_season_focuses set ended_at = now(), ended_by = v_uid
@@ -606,18 +661,19 @@ begin
   begin
     insert into public.my_season_focuses (player_id, title, why_it_matters, what_it_looks_like, started_on, created_by, author_role, request_id)
     values (p_player_id, v_title, v_why, v_looks, p_started_on, v_uid, v_role, p_request_id)
+    on conflict (request_id) do nothing
     returning id into v_new;
   exception when unique_violation then
-    get stacked diagnostics v_constraint = constraint_name;
-    if v_constraint = 'my_season_focuses_request_id_key' then
-      -- The same request_id used concurrently (another player or caller).
-      raise exception using errcode = 'EMS06', message = 'my_season_request_conflict';
-    end if;
     -- my_season_focuses_one_active: another active focus appeared despite
     -- the advisory lock (a writer that bypassed it). Nothing is written; the
     -- whole call rolls back and a retry works.
     raise exception using errcode = 'EMS09', message = 'my_season_conflict';
   end;
+  if v_new is null then
+    -- The same request_id was used at the same moment for another player
+    -- (a different lock). The raise also undoes the end of the old focus.
+    raise exception using errcode = 'EMS06', message = 'my_season_request_conflict';
+  end if;
 
   insert into public.my_season_audit_events (player_id, event, subject_id, actor_profile_id, actor_role)
   values (p_player_id, 'focus_set', v_new, v_uid, v_role);
@@ -663,38 +719,52 @@ begin
     raise exception using errcode = 'EMS02', message = 'my_season_not_enabled';
   end if;
 
-  if p_request_id is null then
-    raise exception using errcode = 'EMS05', message = 'my_season_invalid_input';
-  end if;
-
-  perform pg_advisory_xact_lock(hashtext('my_season_observation:' || p_request_id::text));
-
-  select o.id, o.player_id, o.author_id into v_existing from public.my_season_coach_observations o where o.request_id = p_request_id;
-  if v_existing.id is not null then
-    if v_existing.player_id = p_player_id and v_existing.author_id = v_uid then
-      return v_existing.id;
-    end if;
-    raise exception using errcode = 'EMS06', message = 'my_season_request_conflict';
-  end if;
-
-  if p_category is null
+  -- Validation runs on every call, before the idempotent return, and before
+  -- any write: nothing below can fail a CHECK and echo the note in a DETAIL.
+  if p_request_id is null
+     or p_category is null
      or p_category not in ('lifted_the_team', 'kept_going', 'tried_something_new', 'helped_someone_belong', 'spoke_up', 'came_back_stronger')
      or v_body is null or char_length(v_body) not between 20 and 160
      or (select count(*) from regexp_matches(v_body, '[.!?]+(\s|$)', 'g')) > 2 then
     raise exception using errcode = 'EMS05', message = 'my_season_invalid_input';
   end if;
 
+  -- A simultaneous duplicate waits here for the first transaction: if that
+  -- commits this inserts nothing, if it rolls back this inserts the row.
   insert into public.my_season_coach_observations (player_id, team_id, category, body, author_id, request_id)
   values (p_player_id, v_team, p_category, v_body, v_uid, p_request_id)
+  on conflict (request_id) do nothing
   returning id into v_new;
 
-  insert into public.my_season_audit_events (player_id, event, subject_id, actor_profile_id, actor_role)
-  values (p_player_id, 'observation_added', v_new, v_uid, 'coach');
-  return v_new;
+  if v_new is not null then
+    insert into public.my_season_audit_events (player_id, event, subject_id, actor_profile_id, actor_role)
+    values (p_player_id, 'observation_added', v_new, v_uid, 'coach');
+    return v_new;
+  end if;
+
+  -- The key is taken. No write happens on this path.
+  select o.id, o.player_id, o.author_id, o.category, o.body, o.withdrawn_at into v_existing
+    from public.my_season_coach_observations o where o.request_id = p_request_id;
+  if v_existing.id is null then
+    -- The row went between the two statements (its child was erased).
+    raise exception using errcode = 'EMS09', message = 'my_season_conflict';
+  end if;
+  if v_existing.player_id <> p_player_id or v_existing.author_id is distinct from v_uid then
+    raise exception using errcode = 'EMS06', message = 'my_season_request_conflict';
+  end if;
+  -- Withdrawn: the content can no longer be compared, and the note is never
+  -- recreated. The retry just learns the original id.
+  if v_existing.withdrawn_at is not null then
+    return v_existing.id;
+  end if;
+  if v_existing.category is distinct from p_category or v_existing.body is distinct from v_body then
+    raise exception using errcode = 'EMS06', message = 'my_season_request_conflict';
+  end if;
+  return v_existing.id;
 end;
 $$;
 
--- 5c. Withdraw one's own observation (idempotent).
+-- 5c. Withdraw one's own observation: hide it and erase its content, once.
 create function public.my_season_withdraw_observation(p_observation_id uuid)
 returns void
 language plpgsql
@@ -703,8 +773,9 @@ set search_path = public, pg_temp
 as $$
 declare
   v_uid uuid := auth.uid();
-  v_obs record;
+  v_player uuid;
   v_team uuid;
+  v_withdrawn uuid;
 begin
   if v_uid is null then
     raise exception using errcode = 'EMS01', message = 'my_season_not_signed_in';
@@ -716,25 +787,33 @@ begin
     raise exception using errcode = 'EMS04', message = 'my_season_account_under_review';
   end if;
 
-  select o.id, o.player_id, o.author_id, o.withdrawn_at into v_obs
-    from public.my_season_coach_observations o where o.id = p_observation_id for update;
-  -- An unknown id is refused exactly like someone else's note (EMS03), so
-  -- withdraw is not an existence oracle for observation ids.
-  if v_obs.id is null or v_obs.author_id is distinct from v_uid or not public.my_season_is_team_coach(v_obs.player_id, v_uid) then
+  -- Only the caller's own note is ever looked at (and nothing is locked yet):
+  -- an unknown id and another coach's note, withdrawn or not, take the same
+  -- path to the same EMS03, so withdraw is not an existence oracle.
+  select o.player_id into v_player
+    from public.my_season_coach_observations o
+   where o.id = p_observation_id and o.author_id = v_uid;
+  if v_player is null or not public.my_season_is_team_coach(v_player, v_uid) then
     raise exception using errcode = 'EMS03', message = 'my_season_not_allowed';
   end if;
-  select p.team_id into v_team from public.players p where p.id = v_obs.player_id;
+  select p.team_id into v_team from public.players p where p.id = v_player;
   if not public.season_feature_enabled_for_team(v_team) then
     raise exception using errcode = 'EMS02', message = 'my_season_not_enabled';
   end if;
 
-  if v_obs.withdrawn_at is not null then
-    return;
+  -- One atomic statement. A simultaneous withdrawal waits on the row lock,
+  -- re-checks withdrawn_at, matches nothing and adds no audit event.
+  update public.my_season_coach_observations
+     set withdrawn_at = now(), withdrawn_by = v_uid, body = null, category = null
+   where id = p_observation_id and author_id = v_uid and withdrawn_at is null
+  returning id into v_withdrawn;
+
+  if v_withdrawn is null then
+    return; -- already withdrawn: a silent no-op
   end if;
 
-  update public.my_season_coach_observations set withdrawn_at = now(), withdrawn_by = v_uid where id = v_obs.id;
   insert into public.my_season_audit_events (player_id, event, subject_id, actor_profile_id, actor_role)
-  values (v_obs.player_id, 'observation_withdrawn', v_obs.id, v_uid, 'coach');
+  values (v_player, 'observation_withdrawn', v_withdrawn, v_uid, 'coach');
 end;
 $$;
 
@@ -803,7 +882,8 @@ begin
            limit 10) x;
 
   -- formerCoach: the author's account was deleted, or they are no longer an
-  -- active coach of the player's current team.
+  -- active coach of the player's current team. A withdrawn row reaches only
+  -- its author, with category and body null (the content no longer exists).
   select coalesce(jsonb_agg(x.j order by x.created_at desc, x.id desc), '[]'::jsonb) into v_obs
     from (select o.created_at, o.id,
                  jsonb_build_object('id', o.id, 'category', o.category, 'body', o.body, 'createdAt', o.created_at,

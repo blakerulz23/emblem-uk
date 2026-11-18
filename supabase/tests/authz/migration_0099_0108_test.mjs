@@ -165,11 +165,37 @@ await ref.close();
     await db.query(`select my_season_set_focus($1, 'Fictional focus', 'Why it matters', 'What it looks like', current_date, $2)`, [fx.player, id()]);
     await db.exec('commit; begin; set local role authenticated;');
     await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [fx.c]);
-    await db.query(`select my_season_add_observation($1, 'spoke_up', 'Spoke up for a teammate at half time.', $2)`, [fx.player, id()]);
+    const obsId = (await db.query(`select my_season_add_observation($1, 'spoke_up', 'Spoke up for a teammate at half time.', $2) id`, [fx.player, id()])).rows[0].id;
     await db.exec('commit;');
     const post2 = await verification(db, POST);
     check('post-check counts after a pilot', post2.kill_switch_on === false && Number(post2.team_states_enabled) === 1 && Number(post2.focus_rows) === 1
       && Number(post2.observation_rows) === 1 && Number(post2.audit_rows) === 2, post2);
+    check('post-check: withdrawal columns: nothing withdrawn yet, no bad rows', Number(post2.withdrawn_rows) === 0 && Number(post2.withdrawn_rows_with_content) === 0 && Number(post2.active_rows_without_content) === 0, post2);
+    await db.exec('begin; set local role authenticated;');
+    await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [fx.c]);
+    await db.query(`select my_season_withdraw_observation($1)`, [obsId]);
+    await db.exec('commit;');
+    const postW = await verification(db, POST);
+    check('post-check after a withdrawal: 1 withdrawn row, 0 with content, 0 active without content, audit +1',
+      Number(postW.withdrawn_rows) === 1 && Number(postW.withdrawn_rows_with_content) === 0 && Number(postW.active_rows_without_content) === 0 && Number(postW.audit_rows) === 3, postW);
+    check('post-check returns counts and booleans only (never note text)', Object.values(postW).every((v) => typeof v === 'boolean' || /^\d+$/.test(String(v))), postW);
+
+    // The post-check notices a missing constraint and rows in either bad state.
+    const c = 'public.my_season_coach_observations', badA = id(), badB = id();
+    await db.exec(`alter table ${c} drop constraint my_season_coach_observations_content_state; alter table ${c} disable trigger user;`);
+    await db.query(`insert into ${c} (id, player_id, author_id, request_id, category, body, withdrawn_at) values ($1, $3, $4, $5, 'kept_going', 'Text left on a withdrawn row.', now()), ($2, $3, $4, $6, null, null, null)`, [badA, badB, fx.player, fx.c, id(), id()]);
+    const postBad = await verification(db, POST);
+    check('post-check catches a missing constraint, a withdrawn row with content and an active row without',
+      postBad.observation_content_constraint_present === false && Number(postBad.withdrawn_rows_with_content) === 1 && Number(postBad.active_rows_without_content) === 1, postBad);
+    await db.query(`delete from ${c} where id = any($1::uuid[])`, [[badA, badB]]);
+    await db.exec(`alter table ${c} enable trigger user;
+      alter table ${c} add constraint my_season_coach_observations_content_state check (
+        (withdrawn_at is null and category is not null
+         and category in ('lifted_the_team', 'kept_going', 'tried_something_new', 'helped_someone_belong', 'spoke_up', 'came_back_stronger')
+         and body is not null and body = btrim(body) and char_length(body) between 20 and 160)
+        or (withdrawn_at is not null and body is null and category is null));`);
+    check('...and the catalog is exact again once restored', catalogDiff(post0108, await snapshotCatalog(db)).length === 0, catalogDiff(post0108, await snapshotCatalog(db)));
+
     const pre2 = await verification(db, PRE);
     check('pre-check after applying reports both migrations present (guards false)', pre2.guard_0099_not_applied === false && pre2.guard_0108_not_applied === false, pre2);
 

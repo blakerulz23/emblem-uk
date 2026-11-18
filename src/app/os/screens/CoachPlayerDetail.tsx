@@ -620,7 +620,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
           rows read focus text as hero → status as a small "progress" pill →
           author/date as the smallest supporting line. */}
       {mySeason.enabled && (
-        <CoachMySeasonSection playerId={playerId} playerName={player.name} state={mySeason.state} reload={mySeason.reload} />
+        <CoachMySeasonSection playerId={playerId} playerName={player.name} state={mySeason.state} reload={mySeason.reload} eraseWithdrawn={mySeason.eraseWithdrawn} />
       )}
       {!mySeason.enabled && (
       <div style={sectionCard}>

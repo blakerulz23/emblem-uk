@@ -79,9 +79,18 @@ describe('GET /api/os/my-season', () => {
   });
 
   it('current team coach: canAddNote and own notes come straight through', async () => {
-    const v = content({ access: 'coach', canAddNote: true, observations: [{ ...note, mine: true }, { ...note, id: 'o2', mine: true, withdrawn: true }] });
+    const v = content({ access: 'coach', canAddNote: true, observations: [{ ...note, mine: true }, { ...note, id: 'o2', mine: true, withdrawn: true, body: null, category: null }] });
     h.rpc.mockResolvedValue({ data: v, error: null });
     expect(await (await get()).json()).toEqual(v);
+  });
+
+  it('a withdrawn note still carrying text or a category is refused, and never reaches the client', async () => {
+    for (const leak of [{ body: note.body, category: null }, { body: null, category: note.category }]) {
+      h.rpc.mockResolvedValue({ data: content({ observations: [{ ...note, mine: true, withdrawn: true, ...leak }] }), error: null });
+      const res = await get();
+      expect(res.status).toBe(500);
+      expect(JSON.stringify(await res.json())).not.toContain('Called for the ball');
+    }
   });
 
   it('former coach and private coach: access none with a reason and no content', async () => {
@@ -224,10 +233,19 @@ describe('POST /api/os/my-season/observations', () => {
   });
 
   it('bad input (category, length, three sentences, ids): 400 with no RPC', async () => {
-    for (const body of [obsBody({ category: 'top_player' }), obsBody({ body: 'Too short.' }), obsBody({ body: 'a'.repeat(161) }), obsBody({ body: 'One thing here. Two things here. Three things.' }), obsBody({ playerId: 'x' }), obsBody({ requestId: null }), 'nope']) {
+    for (const body of [obsBody({ category: 'top_player' }), obsBody({ body: 'Too short.' }), obsBody({ body: 'a'.repeat(161) }), obsBody({ body: 'One thing here. Two things here. Three things.' }), obsBody({ playerId: 'x' }), obsBody({ requestId: null }), obsBody({ requestId: undefined }), obsBody({ body: 'Chased every ball in\u0000 the last minute.' }), 'nope']) {
       expect((await post(body)).status).toBe(400);
     }
     expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it('a key conflict (EMS06) is a fixed 409 that repeats nothing from the request or database', async () => {
+    h.rpc.mockResolvedValue({ data: null, error: { code: 'EMS06', message: 'Chased every ball', details: 'Failing row contains (Chased every ball)' } });
+    const res = await post(obsBody());
+    expect(res.status).toBe(409);
+    const text = JSON.stringify(await res.json());
+    expect(text).toContain('request_conflict');
+    expect(text).not.toContain('Chased');
   });
 
   it('own child (EMS07), former/private coach (EMS03), review (EMS04)', async () => {

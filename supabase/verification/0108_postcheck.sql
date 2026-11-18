@@ -7,6 +7,8 @@
 --   global_rows = 1, kill_switch_on = true (fail closed),
 --   team_states_count = 0, team_states_enabled = 0,
 --   focus_rows = observation_rows = audit_rows = 0.
+-- At ALL times: withdrawn_rows_with_content = 0 and
+-- active_rows_without_content = 0 (counts only; no content is ever returned).
 -- Later runs (after a pilot is approved) expect kill_switch_on = false and
 -- team_states_enabled = the approved pilot teams only.
 -- On any failure: stop, and decide on supabase/rollback/0108_rollback.sql
@@ -47,6 +49,13 @@ select
     and (select count(*) from pg_policies where schemaname = 'public' and tablename like 'season_feature%') = 0 as policies_expected,
   (select count(*) from pg_trigger tg join pg_class c on c.oid = tg.tgrelid
     where c.relnamespace = 'public'::regnamespace and c.relname like 'my_season%' and not tg.tgisinternal) = 7 as triggers_present,
+  -- Withdrawal erases content; request_id is the idempotency key.
+  exists (select 1 from pg_constraint c where c.conrelid = 'public.my_season_coach_observations'::regclass
+           and c.conname = 'my_season_coach_observations_content_state' and c.contype = 'c' and c.convalidated) as observation_content_constraint_present,
+  exists (select 1 from pg_constraint c where c.conrelid = 'public.my_season_coach_observations'::regclass
+           and c.conname = 'my_season_coach_observations_request_id_key' and c.contype = 'u') as observation_request_id_unique_present,
+  (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'my_season_coach_observations'
+    and column_name in ('body', 'category') and is_nullable = 'YES') = 2 as observation_content_nullable,
   -- anon: nothing at all.
   not exists (select 1 from t where has_table_privilege('anon', 'public.' || name, 'select,insert,update,delete,truncate,references,trigger')) as anon_no_table_privileges,
   not exists (select 1 from rpc where has_function_privilege('anon', sig, 'execute'))
@@ -79,6 +88,11 @@ select
   -- Data.
   (select count(*) from public.my_season_focuses) as focus_rows,
   (select count(*) from public.my_season_coach_observations) as observation_rows,
+  (select count(*) from public.my_season_coach_observations where withdrawn_at is not null) as withdrawn_rows,
+  (select count(*) from public.my_season_coach_observations
+    where withdrawn_at is not null and (body is not null or category is not null)) as withdrawn_rows_with_content,
+  (select count(*) from public.my_season_coach_observations
+    where withdrawn_at is null and (body is null or category is null)) as active_rows_without_content,
   (select count(*) from public.my_season_audit_events) as audit_rows;
 
 commit;

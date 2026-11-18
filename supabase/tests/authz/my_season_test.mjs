@@ -1,6 +1,6 @@
 // My Season Phase 1 (0099 + 0108) on the final schema: who can read and
 // write, the feature flag, focus history and idempotency, input rules,
-// withdrawal, no public path, append-only audit, immutability (service_role
+// withdrawal (which erases the note), duplicate submissions, no public path, append-only audit, immutability (service_role
 // and owner included) and every deletion path (child erasure, guardian and
 // coach account deletion through the app's real route functions).
 //
@@ -74,7 +74,7 @@ async function world({ enable = true } = {}) {
       return { ok: true, rows: r.rows };
     } catch (e) {
       await db.exec('rollback;');
-      return { ok: false, code: e.code, message: e.message };
+      return { ok: false, code: e.code, message: e.message, detail: e.detail, hint: e.hint, where: e.where };
     }
   }
   const user = (uid, sql, params) => as('authenticated', uid, sql, params);
@@ -419,7 +419,7 @@ console.log('\n=== 4. Withdraw ===');
     const r1 = await w.withdraw(P.coach, o);
     const r2 = await w.withdraw(P.coach, o);
     check('4: the author withdraws; repeating is a no-op', r1.ok && r2.ok, [r1, r2]);
-    check('4: one observation_withdrawn audit row; row retained with withdrawn_at/by',
+    check('4: one observation_withdrawn audit row; row kept with withdrawn_at/by',
       await w.n(`select count(*) n from public.my_season_audit_events where event = 'observation_withdrawn' and subject_id = $1`, [o]) === 1
         && await w.n(`select count(*) n from public.my_season_coach_observations where id = $1 and withdrawn_at is not null and withdrawn_by = $2`, [o, P.coach]) === 1);
     const g = await w.view(P.g1, child1), other = await w.view(P.parentCoach, child1), mine = await w.view(P.coach, child1);
@@ -440,6 +440,248 @@ console.log('\n=== 4. Withdraw ===');
     check('4: the note of a coach who left stays visible, coachName kept, formerCoach true', fo?.coachName === 'Name coach' && fo?.formerCoach === true, fo);
   } catch (e) {
     check('4: withdraw', false, e.stack);
+  }
+  await db.close();
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n=== 4b. Withdrawal erases the note ===');
+const MARK = `ZQMARK${crypto.randomBytes(6).toString('hex')}`;
+const MARK_BODY = `${MARK} helped a new teammate join in.`;
+const MARK_CATEGORY = 'helped_someone_belong';
+const STATE_CONSTRAINT = 'my_season_coach_observations_content_state';
+const leaksMark = (r) => JSON.stringify([r.message, r.detail, r.hint, r.where]).includes(MARK);
+// Every row of every public table, all columns, as text.
+async function tablesHolding(db, needle) {
+  const tables = (await db.query(`select tablename from pg_tables where schemaname = 'public' order by 1`)).rows.map((r) => r.tablename);
+  const hits = [];
+  for (const t of tables) {
+    if (Number((await db.query(`select count(*) n from public."${t}" x where x::text like $1`, [`%${needle}%`])).rows[0].n)) hits.push(t);
+  }
+  return hits;
+}
+// A statement run as the owner with the table's triggers off, so it reaches
+// the CHECK constraints themselves. Always rolled back.
+async function pastTriggers(db, sql, params) {
+  await db.exec('begin; alter table public.my_season_coach_observations disable trigger user;');
+  try {
+    await db.query(sql, params);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, code: e.code, message: e.message };
+  } finally {
+    await db.exec('rollback;');
+  }
+}
+{
+  const w = await world();
+  const { P, child1, child2, db } = w;
+  try {
+    const mine = { category: MARK_CATEGORY, body: MARK_BODY };
+    const req = id();
+    const o = (await w.addObs(P.coach, child1, { ...mine, requestId: req })).rows[0].id;
+    const other = (await w.addObs(P.parentCoach, child1)).rows[0].id;
+    check('4b: before withdrawal the text is stored', (await tablesHolding(db, MARK)).join() === 'my_season_coach_observations');
+    const created = (await db.query(`select created_at, team_id from public.my_season_coach_observations where id = $1`, [o])).rows[0];
+
+    const first = await w.withdraw(P.coach, o);
+    const row = (await db.query(`select * from public.my_season_coach_observations where id = $1`, [o])).rows[0];
+    check('4b: the row read as superuser has no body and no category', first.ok && row.body === null && row.category === null, row);
+    check('4b: metadata stays: ids, team, author, created_at, withdrawn_at/by, request_id',
+      row.player_id === child1 && row.team_id === created.team_id && row.author_id === P.coach && row.author_account_deleted_at === null
+        && +row.created_at === +created.created_at && row.withdrawn_at && row.withdrawn_by === P.coach && row.request_id === req, row);
+    const sr = (await w.as('service_role', null, `select body, category from public.my_season_coach_observations where id = $1`, [o]));
+    check('4b: service_role reads no content either', sr.ok && sr.rows[0].body === null && sr.rows[0].category === null, sr);
+    check('4b: the marker is in no column of any public table', (await tablesHolding(db, MARK)).length === 0, await tablesHolding(db, MARK));
+    const auditCols = (await db.query(`select column_name c from information_schema.columns where table_schema = 'public' and table_name = 'my_season_audit_events' order by ordinal_position`)).rows.map((r) => r.c).join();
+    check('4b: the audit table has id-only columns', auditCols === 'id,occurred_at,player_id,event,subject_id,actor_profile_id,actor_role', auditCols);
+    const auditText = await w.n(`select count(*) n from public.my_season_audit_events x where x::text like $1 or x::text like $2`, [`%${MARK}%`, `%${MARK_CATEGORY}%`]);
+    check('4b: no audit row holds the text or the category', auditText === 0, auditText);
+
+    const audits = () => w.n(`select count(*) n from public.my_season_audit_events where event = 'observation_withdrawn' and subject_id = $1`, [o]);
+    const again = await w.withdraw(P.coach, o);
+    check('4b: withdrawing again is a silent no-op with no second audit row', again.ok && await audits() === 1, again);
+
+    // One indistinguishable refusal.
+    const refusal = (r) => `${r.code}|${r.message}|${r.detail ?? ''}|${r.hint ?? ''}`;
+    const activeOther = await w.withdraw(P.coach, other);
+    const unknown = await w.withdraw(P.coach, id());
+    const someoneWithdrawn = await w.withdraw(P.parentCoach, o);
+    const ineligible = await w.withdraw(P.stranger, o);
+    const ineligibleUnknown = await w.withdraw(P.stranger, id());
+    const guardianTry = await w.withdraw(P.g1, o);
+    const answers = [activeOther, unknown, someoneWithdrawn, ineligible, ineligibleUnknown, guardianTry].map(refusal);
+    check('4b: unknown id, another coach\'s note (active or withdrawn) and an ineligible caller get the identical EMS03',
+      new Set(answers).size === 1 && answers[0].startsWith('EMS03|my_season_not_allowed|'), answers);
+    const review = [await w.withdraw(P.reviewCoach, o), await w.withdraw(P.reviewCoach, other), await w.withdraw(P.reviewCoach, id())].map(refusal);
+    check('4b: an account under review gets the same EMS04 for any id', new Set(review).size === 1 && review[0].startsWith('EMS04|'), review);
+
+    const family = await w.view(P.g1, child1), peer = await w.view(P.parentCoach, child1), author = await w.view(P.coach, child1);
+    check('4b: the guardian and another coach never receive it', !family.observations.some((x) => x.id === o) && !peer.observations.some((x) => x.id === o));
+    const m = author.observations.find((x) => x.id === o);
+    check('4b: its author gets it with body null, category null, withdrawn true', m && m.body === null && m.category === null && m.withdrawn === true && m.mine === true
+      && Object.keys(m).sort().join() === 'body,category,coachName,createdAt,formerCoach,id,mine,withdrawn', m);
+    check('4b: the read never returns the marker to anyone', ![family, peer, author].some((v) => JSON.stringify(v).includes(MARK)));
+
+    // Nobody can put content back.
+    const restore = {};
+    const srUpd = (sql, params) => w.as('service_role', null, sql, params).then(code);
+    const own = (sql, params) => db.query(sql, params).then(() => 'ok', (e) => e.code);
+    restore.srBody = await srUpd(`update public.my_season_coach_observations set body = 'Text put back by a support tool.' where id = $1`, [o]);
+    restore.srCategory = await srUpd(`update public.my_season_coach_observations set category = 'spoke_up' where id = $1`, [o]);
+    restore.srBoth = await srUpd(`update public.my_season_coach_observations set body = 'Text put back by a support tool.', category = 'spoke_up' where id = $1`, [o]);
+    restore.srReopen = await srUpd(`update public.my_season_coach_observations set withdrawn_at = null, withdrawn_by = null, body = 'Text put back by a support tool.', category = 'spoke_up' where id = $1`, [o]);
+    restore.ownerBody = await own(`update public.my_season_coach_observations set body = 'Text put back by the owner role.' where id = $1`, [o]);
+    restore.ownerReopen = await own(`update public.my_season_coach_observations set withdrawn_at = null, withdrawn_by = null, body = 'Text put back by the owner role.', category = 'spoke_up' where id = $1`, [o]);
+    restore.ownerMoveDate = await own(`update public.my_season_coach_observations set withdrawn_at = now() - interval '1 day' where id = $1`, [o]);
+    check('4b: service_role and the owner cannot restore content or reopen a withdrawn note (EMS09)', Object.values(restore).every((c) => c === 'EMS09'), restore);
+    check('4b: ...and the row is still empty', await w.n(`select count(*) n from public.my_season_coach_observations where id = $1 and body is null and category is null and withdrawn_at is not null`, [o]) === 1);
+
+    // Partial withdrawals through normal SQL.
+    const partial = {
+      noErase: await own(`update public.my_season_coach_observations set withdrawn_at = now(), withdrawn_by = $2 where id = $1`, [other, P.parentCoach]),
+      bodyOnly: await own(`update public.my_season_coach_observations set withdrawn_at = now(), withdrawn_by = $2, body = null where id = $1`, [other, P.parentCoach]),
+      categoryOnly: await own(`update public.my_season_coach_observations set withdrawn_at = now(), withdrawn_by = $2, category = null where id = $1`, [other, P.parentCoach]),
+      noActor: await own(`update public.my_season_coach_observations set withdrawn_at = now(), body = null, category = null where id = $1`, [other]),
+      eraseOnly: await own(`update public.my_season_coach_observations set body = null, category = null where id = $1`, [other]),
+    };
+    check('4b: the only allowed transition nulls both content columns together with withdrawn_at/by', Object.values(partial).every((c) => c === 'EMS09'), partial);
+
+    // Inserts.
+    const ins = (cols, vals, params) => own(`insert into public.my_season_coach_observations (player_id, author_id, request_id, ${cols}) values ($1, $2, $3, ${vals})`, [child1, P.coach, id(), ...params]);
+    const inserts = {
+      nullBody: await ins('category, body', `'kept_going', null`, []),
+      nullCategory: await ins('category, body', `null, 'A perfectly valid note body.'`, []),
+      bothNull: await ins('category, body', `null, null`, []),
+      withdrawnEmpty: await ins('category, body, withdrawn_at, withdrawn_by', `null, null, now(), $2`, []),
+      badCategory: await ins('category, body', `'best_player', 'A perfectly valid note body.'`, []),
+      shortBody: await ins('category, body', `'kept_going', 'Too short'`, []),
+      padded: await ins('category, body', `'kept_going', '  A perfectly valid note body.'`, []),
+    };
+    check('4b: inserts cannot create withdrawn rows or rows without valid content (fixed EMS09)', Object.values(inserts).every((c) => c === 'EMS09'), inserts);
+    const direct = await db.query(`insert into public.my_season_coach_observations (player_id, author_id, request_id, category, body) values ($1, $2, $3, 'kept_going', $4)`, [child1, P.coach, id(), `${MARK} `]).then(() => null, (e) => e);
+    check('4b: a refused direct insert does not echo its text (no "Failing row contains")', direct?.code === 'EMS09' && !leaksMark(direct) && !/Failing row/.test(`${direct.detail}`), direct && { code: direct.code, detail: direct.detail });
+
+    // The constraint itself, reached with the triggers off (superuser).
+    const G = `'kept_going'`, B = `'A perfectly valid note body.'`;
+    const bad = {
+      insActiveNoBody: [`insert into public.my_season_coach_observations (player_id, author_id, request_id, category, body) values ($1, $2, $3, ${G}, null)`, [child1, P.coach, id()]],
+      insActiveNoCategory: [`insert into public.my_season_coach_observations (player_id, author_id, request_id, category, body) values ($1, $2, $3, null, ${B})`, [child1, P.coach, id()]],
+      insActiveBadCategory: [`insert into public.my_season_coach_observations (player_id, author_id, request_id, category, body) values ($1, $2, $3, 'best_player', ${B})`, [child1, P.coach, id()]],
+      insActivePadded: [`insert into public.my_season_coach_observations (player_id, author_id, request_id, category, body) values ($1, $2, $3, ${G}, ' A perfectly valid note body.')`, [child1, P.coach, id()]],
+      insActiveShort: [`insert into public.my_season_coach_observations (player_id, author_id, request_id, category, body) values ($1, $2, $3, ${G}, 'Too short')`, [child1, P.coach, id()]],
+      insActiveLong: [`insert into public.my_season_coach_observations (player_id, author_id, request_id, category, body) values ($1, $2, $3, ${G}, repeat('x', 161))`, [child1, P.coach, id()]],
+      insWithdrawnWithBody: [`insert into public.my_season_coach_observations (player_id, author_id, request_id, category, body, withdrawn_at) values ($1, $2, $3, null, ${B}, now())`, [child1, P.coach, id()]],
+      insWithdrawnWithCategory: [`insert into public.my_season_coach_observations (player_id, author_id, request_id, category, body, withdrawn_at) values ($1, $2, $3, ${G}, null, now())`, [child1, P.coach, id()]],
+      updRestoreBody: [`update public.my_season_coach_observations set body = ${B} where id = $1`, [o]],
+      updRestoreCategory: [`update public.my_season_coach_observations set category = ${G} where id = $1`, [o]],
+      updActiveNoErase: [`update public.my_season_coach_observations set withdrawn_at = now() where id = $1`, [other]],
+      updActiveNullBody: [`update public.my_season_coach_observations set body = null where id = $1`, [other]],
+    };
+    const constraintResults = {};
+    for (const [k, [sql, params]] of Object.entries(bad)) {
+      const r = await pastTriggers(db, sql, params);
+      constraintResults[k] = !r.ok && r.code === '23514' && r.message.includes(STATE_CONSTRAINT) ? 'refused' : r;
+    }
+    check(`4b: ${STATE_CONSTRAINT} refuses both bad states on direct superuser inserts and updates`, Object.values(constraintResults).every((v) => v === 'refused'), constraintResults);
+    const good = await pastTriggers(db, `insert into public.my_season_coach_observations (player_id, author_id, request_id, category, body, withdrawn_at) values ($1, $2, $3, null, null, now())`, [child1, P.coach, id()]);
+    check('4b: the constraint accepts the withdrawn shape (the control for the refusals above)', good.ok, good);
+
+    // Invalid RPC input carrying the marker.
+    const invalid = [
+      await w.addObs(P.coach, child1, { body: `${MARK} ${'x'.repeat(170)}` }),
+      await w.addObs(P.coach, child1, { body: `${MARK} one. Two here. Three here. Four.` }),
+      await w.addObs(P.coach, child1, { body: `${MARK}`.slice(0, 5) }),
+      await w.addObs(P.coach, child1, { category: `${MARK}_x` }),
+    ];
+    check('4b: invalid notes through the RPC get EMS05 with nothing echoed', invalid.every((r) => r.code === 'EMS05' && r.message === 'my_season_invalid_input' && !r.detail && !r.hint && !leaksMark(r)), invalid);
+    const fnSrc = (await db.query(`select string_agg(prosrc, ' ') s from pg_proc where pronamespace = 'public'::regnamespace and proname like 'my_season%'`)).rows[0].s;
+    const raises = fnSrc.match(/raise exception[^;]*;/g) ?? [];
+    check('4b: every My Season RAISE is a fixed errcode + message with no parameters, DETAIL or HINT',
+      raises.length > 10 && raises.every((r) => /^raise exception using errcode = 'EMS0\d', message = 'my_season_[a-z_]+';$/.test(r)), raises.filter((r) => !/^raise exception using errcode = 'EMS0\d', message = 'my_season_[a-z_]+';$/.test(r)));
+
+    // Removed with the child; other children untouched.
+    const o2 = (await w.addObs(P.coach, child2, mine)).rows[0].id;
+    await w.withdraw(P.coach, o2);
+    await db.query(`select public.erase_player_and_related_data($1)`, [child2]);
+    check('4b: child deletion removes the withdrawn row and its audit events',
+      await w.n(`select count(*) n from public.my_season_coach_observations where id = $1`, [o2]) === 0 && await w.n(`select count(*) n from public.my_season_audit_events where subject_id = $1`, [o2]) === 0);
+  } catch (e) {
+    check('4b: erasure', false, e.stack);
+  }
+  await db.close();
+}
+{
+  // Coach account deletion after a withdrawal.
+  const w = await world();
+  const { P, child1, db } = w;
+  try {
+    const gone = (await w.addObs(P.coach, child1, { body: MARK_BODY, category: MARK_CATEGORY })).rows[0].id;
+    const kept = (await w.addObs(P.coach, child1)).rows[0].id;
+    await w.withdraw(P.coach, gone);
+    const del = await deleteAccount(w, P.coach);
+    const row = (await db.query(`select * from public.my_season_coach_observations where id = $1`, [gone])).rows[0];
+    check('4b: coach deletion after a withdrawal leaves metadata only (author and withdrawn_by null, marker and withdrawn_at kept)',
+      del.ok && del.result.canDeleteIdentity === true && row.body === null && row.category === null && row.author_id === null && row.author_account_deleted_at !== null && row.withdrawn_by === null && row.withdrawn_at !== null, row);
+    const fam = await w.view(P.g1, child1);
+    check('4b: the withdrawn note stays hidden; the active note survives as a former coach\'s',
+      fam.observations.length === 1 && fam.observations[0].id === kept && fam.observations[0].coachName === null && fam.observations[0].formerCoach === true && typeof fam.observations[0].body === 'string', fam.observations);
+    const post = await w.n(`select count(*) n from public.my_season_coach_observations where id = $1 and body is null and category is null`, [gone]);
+    check('4b: still empty after the FK updates', post === 1 && (await tablesHolding(db, MARK)).length === 0);
+  } catch (e) {
+    check('4b: coach deletion', false, e.stack);
+  }
+  await db.close();
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n=== 4c. Duplicate submissions (sequential; simultaneous ones are in my_season_concurrency_test.mjs) ===');
+{
+  const w = await world();
+  const { P, child1, child2, db } = w;
+  try {
+    const conName = (await db.query(`select conname c from pg_constraint where conrelid = 'public.my_season_coach_observations'::regclass and contype = 'u'`)).rows.map((r) => r.c).join();
+    check('4c: request_id has the named unique constraint', conName === 'my_season_coach_observations_request_id_key', conName);
+    const req = id(), note = { body: 'Stayed late to help the goalkeeper.', category: 'lifted_the_team', requestId: req };
+    const state = async () => `${await w.n(`select count(*) n from public.my_season_coach_observations`)}/${await w.n(`select count(*) n from public.my_season_audit_events`)}`;
+    const first = await w.addObs(P.coach, child1, note);
+    const retry = await w.addObs(P.coach, child1, note);
+    const padded = await w.addObs(P.coach, child1, { ...note, body: `  ${note.body}\n` });
+    check('4c: a retry (also with surrounding spaces) returns the same id', first.ok && retry.rows?.[0].id === first.rows[0].id && padded.rows?.[0].id === first.rows[0].id, [first, retry, padded]);
+    check('4c: one observation, one observation_added, one family entry', await state() === '1/1'
+      && await w.n(`select count(*) n from public.my_season_audit_events where event = 'observation_added'`) === 1 && (await w.view(P.g1, child1)).observations.length === 1);
+    const mismatch = {
+      otherChild: code(await w.addObs(P.coach, child2, note)),
+      otherBody: code(await w.addObs(P.coach, child1, { ...note, body: 'A different note about the same game.' })),
+      otherCategory: code(await w.addObs(P.coach, child1, { ...note, category: 'spoke_up' })),
+      otherCaller: code(await w.addObs(P.parentCoach, child1, note)),
+    };
+    check('4c: same key with another child, other content or another caller: EMS06', Object.values(mismatch).every((c) => c === 'EMS06'), mismatch);
+    check('4c: ...and nothing was written', await state() === '1/1', await state());
+    const gates = {
+      invalidBody: code(await w.addObs(P.coach, child1, { ...note, body: 'short' })),
+      invalidCategory: code(await w.addObs(P.coach, child1, { ...note, category: 'best_player' })),
+      stranger: code(await w.addObs(P.stranger, child1, note)),
+      guardian: code(await w.addObs(P.g1, child1, note)),
+      ownChild: code(await w.addObs(P.parentCoach, child2, note)),
+      review: code(await w.addObs(P.reviewCoach, child1, note)),
+    };
+    check('4c: authorisation and validation run before the idempotent return',
+      JSON.stringify(gates) === JSON.stringify({ invalidBody: 'EMS05', invalidCategory: 'EMS05', stranger: 'EMS03', guardian: 'EMS03', ownChild: 'EMS07', review: 'EMS04' }), gates);
+
+    await w.withdraw(P.coach, first.rows[0].id);
+    const before = await state();
+    const after = await w.addObs(P.coach, child1, note);
+    const afterOther = await w.addObs(P.coach, child1, { ...note, body: 'A different note about the same game.' });
+    check('4c: after withdrawal the same key returns the original id (content can no longer be compared)', after.rows?.[0].id === first.rows[0].id && afterOther.rows?.[0].id === first.rows[0].id, [after, afterOther]);
+    const row = (await db.query(`select body, category from public.my_season_coach_observations where id = $1`, [first.rows[0].id])).rows[0];
+    check('4c: ...the note is not recreated and its text does not come back', await state() === before && row.body === null && row.category === null && !(await w.view(P.g1, child1)).observations.length, { before, now: await state(), row });
+    check('4c: after withdrawal another caller or child still gets EMS06', code(await w.addObs(P.parentCoach, child1, note)) === 'EMS06' && code(await w.addObs(P.coach, child2, note)) === 'EMS06');
+    const fReq = id();
+    const f1 = await w.setFocus(P.g1, child1, { requestId: fReq });
+    check('4c: set focus validates before its idempotent return', f1.ok && code(await w.setFocus(P.g1, child1, { requestId: fReq, title: 'ab' })) === 'EMS05');
+  } catch (e) {
+    check('4c: duplicates', false, e.stack);
   }
   await db.close();
 }
@@ -470,11 +712,12 @@ console.log('\n=== 5. No public path, immutability, append-only audit ===');
       srInsertMarker: code(await sr(`insert into public.my_season_coach_observations (player_id, category, body, author_id, author_account_deleted_at, request_id) values ($1, 'kept_going', 'Inserted with a marker set', $2, now(), $3)`, [child1, P.coach, id()])),
       srInsertWithdrawn: code(await sr(`insert into public.my_season_coach_observations (player_id, category, body, author_id, withdrawn_at, request_id) values ($1, 'kept_going', 'Inserted already withdrawn', $2, now(), $3)`, [child1, P.coach, id()])),
       ownerTitle: await own(`update public.my_season_focuses set title = 'Owner change' where id = $1`, [fid2]),
-      ownerUnwithdraw: await own(`update public.my_season_coach_observations set withdrawn_at = now(), withdrawn_by = $2 where id = $1`, [oid, P.coach]),
+      ownerWithdrawKeepingText: await own(`update public.my_season_coach_observations set withdrawn_at = now(), withdrawn_by = $2 where id = $1`, [oid, P.coach]),
+      ownerWithdraw: await own(`update public.my_season_coach_observations set withdrawn_at = now(), withdrawn_by = $2, body = null, category = null where id = $1`, [oid, P.coach]),
     };
-    imm.ownerUnwithdraw2 = await own(`update public.my_season_coach_observations set withdrawn_at = null where id = $1`, [oid]);
+    imm.ownerUnwithdraw = await own(`update public.my_season_coach_observations set withdrawn_at = null where id = $1`, [oid]);
     check('5: content is immutable apart from end / withdraw / FK set null, for service_role and the owner (EMS09)',
-      JSON.stringify(imm) === JSON.stringify({ srTitle: 'EMS09', srReEnd: 'EMS09', srAuthorNull: 'EMS09', srAuthorSwap: 'EMS09', srMarker: 'EMS09', srBody: 'EMS09', srTeamNull: 'EMS09', srObsAuthorNull: 'EMS09', srInsertMarker: 'EMS09', srInsertWithdrawn: 'EMS09', ownerTitle: 'EMS09', ownerUnwithdraw: 'ok', ownerUnwithdraw2: 'EMS09' }), imm);
+      JSON.stringify(imm) === JSON.stringify({ srTitle: 'EMS09', srReEnd: 'EMS09', srAuthorNull: 'EMS09', srAuthorSwap: 'EMS09', srMarker: 'EMS09', srBody: 'EMS09', srTeamNull: 'EMS09', srObsAuthorNull: 'EMS09', srInsertMarker: 'EMS09', srInsertWithdrawn: 'EMS09', ownerTitle: 'EMS09', ownerWithdrawKeepingText: 'EMS09', ownerWithdraw: 'ok', ownerUnwithdraw: 'EMS09' }), imm);
 
     const audit = {
       authUpd: code(await w.user(P.g1, `update public.my_season_audit_events set event = 'focus_set'`)),

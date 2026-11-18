@@ -64,7 +64,7 @@ export const MY_SEASON_COPY = {
     `${first}'s family will see this with your name. It is never public and never compared with teammates. You can withdraw it later.`,
   sentToast: (first: string) => `Sent. ${first}'s family can see it in My Season.`,
   withdrawnNote: 'Withdrawn. The family no longer sees this.',
-  withdrawConfirm: 'Withdraw this note? The family will no longer see it.',
+  withdrawConfirm: 'Withdraw this note? The family will no longer see it, and the text will be permanently deleted.',
   ownChild: "You can't add notes for your own child. Another coach on the team can.",
   privateCoach: (first: string) =>
     `My Season notes are only for coaches on ${first}'s team. You're connected to ${first} directly, so you can't add notes or change the focus.`,
@@ -158,9 +158,11 @@ export function MySeasonError({ onRetry, busy, signedOut = false }: { onRetry: (
 }
 
 export function NoteRow({ note, children }: { note: MySeasonObservation; children?: ReactNode }) {
+  // A withdrawn note has no content left: only the caller's status line shows.
+  if (note.withdrawn) return <li style={{ listStyle: 'none', opacity: 0.7 }}>{children}</li>;
   const cat = mySeasonCategory(note.category);
   return (
-    <li style={{ display: 'grid', gridTemplateColumns: '44px 1fr', gap: 12, listStyle: 'none', opacity: note.withdrawn ? 0.7 : 1 }}>
+    <li style={{ display: 'grid', gridTemplateColumns: '44px 1fr', gap: 12, listStyle: 'none' }}>
       <span aria-hidden="true" style={{ width: 44, height: 44, borderRadius: 12, display: 'grid', placeItems: 'center', background: 'rgba(233,116,53,.12)', fontSize: 20 }}>
         {cat?.emoji}
       </span>

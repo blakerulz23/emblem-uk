@@ -1,5 +1,5 @@
 import { Fragment, isValidElement, type ReactElement } from 'react';
-import type { MySeasonContent, MySeasonFocus, MySeasonObservation } from '@/lib/my-season';
+import type { MySeasonActiveObservation, MySeasonContent, MySeasonFocus, MySeasonWithdrawnObservation } from '@/lib/my-season';
 import { DEMO_OS_DATA, type OsData } from './osData';
 
 /**
@@ -24,7 +24,7 @@ export const msFocus = (o: Partial<MySeasonFocus> = {}): MySeasonFocus => ({
   ...o,
 });
 
-export const msNote = (o: Partial<MySeasonObservation> = {}): MySeasonObservation => ({
+export const msNote = (o: Partial<MySeasonActiveObservation> = {}): MySeasonActiveObservation => ({
   id: 'o1',
   category: 'spoke_up',
   body: 'Called for the ball twice in the second half and told Sam where the space was.',
@@ -33,6 +33,19 @@ export const msNote = (o: Partial<MySeasonObservation> = {}): MySeasonObservatio
   formerCoach: false,
   mine: false,
   withdrawn: false,
+  ...o,
+});
+
+/** What the author gets back after withdrawing: no text, no category. */
+export const msWithdrawnNote = (o: Partial<MySeasonWithdrawnObservation> = {}): MySeasonWithdrawnObservation => ({
+  id: 'o1',
+  category: null,
+  body: null,
+  createdAt: '2026-11-15T10:00:00Z',
+  coachName: 'Coach Danny',
+  formerCoach: false,
+  mine: true,
+  withdrawn: true,
   ...o,
 });
 

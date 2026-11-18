@@ -47,7 +47,7 @@ import {
 import { FocusEditor, FocusSummary, EarlierFocusList, MySeasonError, NoteComposerView } from './mySeasonUi';
 import { MySeasonScreenView } from './overlays/MySeasonScreen';
 import { CoachMySeasonPanel, COACH_TOAST_MS, INITIAL_COACH_PANEL_UI, scheduleToastClear, startCoachMySeasonLookup } from './screens/CoachMySeasonSection';
-import { MS_PLAYER_ID, MS_TEAM_ID, msContent, msFocus, msNote } from './my-season-test-support';
+import { MS_PLAYER_ID, MS_TEAM_ID, msContent, msFocus, msNote, msWithdrawnNote } from './my-season-test-support';
 
 const REQ_A = '11111111-1111-4111-8111-111111111111';
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -442,7 +442,7 @@ describe('focus after a step unmounts (coach panel and family screen)', () => {
   });
 
   it('the coach panel renders every focus target with its id', () => {
-    const coach = msContent({ access: 'coach', canAddNote: true, observations: [msNote({ id: 'o1', mine: true }), msNote({ id: 'o2', mine: true, withdrawn: true })] });
+    const coach = msContent({ access: 'coach', canAddNote: true, observations: [msNote({ id: 'o1', mine: true }), msWithdrawnNote({ id: 'o2' })] });
     const render = (ui = {}) =>
       renderToStaticMarkup(
         <CoachMySeasonPanel playerId={MS_PLAYER_ID} firstName="Riley" state={{ status: 'ready', view: coach }} ui={{ ...INITIAL_COACH_PANEL_UI, ...ui }} onRetry={noop} onStartEditFocus={noop} onCancelEditFocus={noop} onFocusSaved={noop} onOpenComposer={noop} onCancelComposer={noop} onNoteSent={noop} onAskWithdraw={noop} onCancelWithdraw={noop} onConfirmWithdraw={noop} />

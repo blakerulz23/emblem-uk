@@ -97,12 +97,25 @@ export function checkObservationBody(raw: string): ObservationCheck {
   return { value, length, sentences, tooShort, tooLong, tooManySentences, valid: !tooShort && !tooLong && !tooManySentences };
 }
 
+const LONE_SURROGATE = new RegExp('\\p{Cs}', 'u');
+
+/**
+ * True for text PostgreSQL cannot store (NUL, or a lone surrogate). Refused
+ * before the RPC: casting such JSON fails inside the database, and that
+ * error's context quotes the surrounding JSON, note text included, into the
+ * server log.
+ */
+export function hasUnstorableText(value: string): boolean {
+  return value.includes('\u0000') || LONE_SURROGATE.test(value);
+}
+
 export type ObservationInput = { playerId: string; category: MySeasonCategoryKey; body: string; requestId: string };
 
 export function validateObservationInput(raw: unknown): { ok: true; value: ObservationInput } | { ok: false } {
   if (!raw || typeof raw !== 'object') return { ok: false };
   const r = raw as Record<string, unknown>;
   if (!isUuid(r.playerId) || !isUuid(r.requestId) || !isMySeasonCategory(r.category) || typeof r.body !== 'string') return { ok: false };
+  if (hasUnstorableText(r.body)) return { ok: false };
   const check = checkObservationBody(r.body);
   if (!check.valid) return { ok: false };
   return { ok: true, value: { playerId: r.playerId, category: r.category, body: check.value, requestId: r.requestId } };
@@ -155,6 +168,7 @@ export function validateFocusInput(raw: unknown, now: Date = new Date()): { ok: 
   if (typeof r.title !== 'string' || typeof r.whyItMatters !== 'string' || typeof r.whatItLooksLike !== 'string' || typeof r.startedOn !== 'string') {
     return { ok: false };
   }
+  if ([r.title, r.whyItMatters, r.whatItLooksLike].some(hasUnstorableText)) return { ok: false };
   const draft: FocusDraft = { title: r.title.trim(), whyItMatters: r.whyItMatters.trim(), whatItLooksLike: r.whatItLooksLike.trim(), startedOn: r.startedOn };
   if (focusDraftProblems(draft, now).length) return { ok: false };
   return { ok: true, value: { ...draft, playerId: r.playerId, requestId: r.requestId } };
@@ -176,17 +190,29 @@ export type MySeasonFocus = {
   authorName: string | null;
 };
 
-export type MySeasonObservation = {
+type MySeasonObservationBase = {
   id: string;
-  category: MySeasonCategoryKey;
-  body: string;
   createdAt: string;
   /** Null when the coach's account was deleted ("A former coach"). */
   coachName: string | null;
   formerCoach: boolean;
   mine: boolean;
-  withdrawn: boolean;
 };
+
+export type MySeasonActiveObservation = MySeasonObservationBase & {
+  withdrawn: false;
+  category: MySeasonCategoryKey;
+  body: string;
+};
+
+/** Withdrawing erases the content: only its author gets this row, with no text or category. */
+export type MySeasonWithdrawnObservation = MySeasonObservationBase & {
+  withdrawn: true;
+  category: null;
+  body: null;
+};
+
+export type MySeasonObservation = MySeasonActiveObservation | MySeasonWithdrawnObservation;
 
 export type MySeasonNoAccessReason = 'private_coach' | 'former_coach' | 'account_review';
 
@@ -230,18 +256,22 @@ function parseFocus(raw: unknown): MySeasonFocus | null {
 function parseObservation(raw: unknown): MySeasonObservation | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
-  if (!isStr(o.id) || !isMySeasonCategory(o.category) || !isStr(o.body) || !isStr(o.createdAt)) return null;
+  if (!isStr(o.id) || !isStr(o.createdAt)) return null;
   if (!isStrOrNull(o.coachName ?? null) || !isBool(o.formerCoach) || !isBool(o.mine) || !isBool(o.withdrawn)) return null;
-  return {
+  const base: MySeasonObservationBase = {
     id: o.id,
-    category: o.category,
-    body: o.body,
     createdAt: o.createdAt,
     coachName: (o.coachName ?? null) as string | null,
     formerCoach: o.formerCoach,
     mine: o.mine,
-    withdrawn: o.withdrawn,
   };
+  if (o.withdrawn) {
+    // Exactly null: a withdrawn row that carries any content is refused.
+    if (o.category !== null || o.body !== null) return null;
+    return { ...base, withdrawn: true, category: null, body: null };
+  }
+  if (!isMySeasonCategory(o.category) || !isStr(o.body) || !o.body) return null;
+  return { ...base, withdrawn: false, category: o.category, body: o.body };
 }
 
 /** Strict parse of my_season_for_player's JSON. Null = does not match the contract. */
@@ -361,16 +391,31 @@ export function focusAuthorLine(focus: MySeasonFocus): string {
   return `Agreed with ${focus.authorName ?? 'a former coach'}`;
 }
 
-export function observationAuthor(o: MySeasonObservation): string {
+export function observationAuthor(o: Pick<MySeasonObservation, 'coachName'>): string {
   return o.coachName ?? 'A former coach';
 }
 
 /** Observations created on or after the focus's start date (local day). */
-export function notesSinceFocus(observations: MySeasonObservation[], focus: MySeasonFocus): MySeasonObservation[] {
+export function notesSinceFocus(observations: MySeasonObservation[], focus: MySeasonFocus): MySeasonActiveObservation[] {
   const start = new Date(`${focus.startedOn}T00:00:00`).getTime();
-  return observations.filter((o) => !o.withdrawn && new Date(o.createdAt).getTime() >= start);
+  return observations.filter((o): o is MySeasonActiveObservation => !o.withdrawn && new Date(o.createdAt).getTime() >= start);
 }
 
-export function visibleFamilyObservations(view: MySeasonContent): MySeasonObservation[] {
-  return view.observations.filter((o) => !o.withdrawn);
+export function visibleFamilyObservations(view: MySeasonContent): MySeasonActiveObservation[] {
+  return view.observations.filter((o): o is MySeasonActiveObservation => !o.withdrawn);
+}
+
+/**
+ * The view with one note's content removed, applied as soon as a withdrawal
+ * succeeds so the text does not stay in client state (even if the reload
+ * that follows fails).
+ */
+export function eraseObservationFromView(view: MySeasonView, observationId: string): MySeasonView {
+  if (!hasMySeasonContent(view)) return view;
+  return {
+    ...view,
+    observations: view.observations.map((o): MySeasonObservation =>
+      o.id === observationId ? { id: o.id, createdAt: o.createdAt, coachName: o.coachName, formerCoach: o.formerCoach, mine: o.mine, withdrawn: true, category: null, body: null } : o
+    ),
+  };
 }

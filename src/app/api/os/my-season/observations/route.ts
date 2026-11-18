@@ -10,7 +10,8 @@ export const runtime = 'nodejs';
  * A current team coach's note via my_season_add_observation (refuses
  * private/former coaches, a coach's own child, accounts under review, and
  * anything over two sentences or outside 20-160 characters). Idempotent on
- * requestId so a retry after a lost response never duplicates a note.
+ * requestId (required): a retry, even a simultaneous one, returns the
+ * original note and never duplicates it.
  */
 export async function POST(request: NextRequest) {
   const guard = await guardMySeasonRequest(request);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { formatMySeasonDate, type MySeasonView } from '@/lib/my-season';
+import { eraseObservationFromView, formatMySeasonDate, type MySeasonView } from '@/lib/my-season';
 import { loadMySeasonView, shouldLookUpCoachMySeason, withdrawMySeasonObservation } from '../mySeasonClient';
 import { MS_IDS, usePendingFocus } from '../mySeasonFlows';
 import {
@@ -57,12 +57,16 @@ export function useCoachMySeason({ playerId, isReal, lookup, teamId }: { playerI
   const [state, setState] = useState<CoachMySeasonState>({ status: 'idle', view: null });
   const latestPlayer = useRef(playerId);
   latestPlayer.current = playerId;
+  // Only the newest load may land, so one started before a withdrawal can
+  // never put the erased text back.
+  const loadSeq = useRef(0);
 
   const run = useCallback(async (keepView: boolean) => {
     const forPlayer = playerId;
+    const seq = ++loadSeq.current;
     setState((s) => ({ status: 'loading', view: keepView ? s.view : null }));
     const result = await loadMySeasonView(forPlayer);
-    if (latestPlayer.current !== forPlayer) return;
+    if (latestPlayer.current !== forPlayer || seq !== loadSeq.current) return;
     setState((s) => (result.ok ? { status: 'ready', view: result.view } : { status: 'error', view: keepView ? s.view : null, signedOut: result.signedOut }));
   }, [playerId]);
 
@@ -74,7 +78,12 @@ export function useCoachMySeason({ playerId, isReal, lookup, teamId }: { playerI
     if (allowed) void run(true);
   }, [allowed, run]);
 
-  return { state, reload, enabled: state.view?.enabled === true };
+  const eraseWithdrawn = useCallback((observationId: string) => {
+    loadSeq.current += 1;
+    setState((s) => (s.view ? { ...s, view: eraseObservationFromView(s.view, observationId) } : s));
+  }, []);
+
+  return { state, reload, eraseWithdrawn, enabled: state.view?.enabled === true };
 }
 
 export type CoachPanelUi = {
@@ -97,12 +106,12 @@ export const INITIAL_COACH_PANEL_UI: CoachPanelUi = {
 
 /**
  * The withdraw step as a plain async flow (no React), so tests can drive
- * it: confirm -> busy -> server -> reload, or keep the note and show an
- * error on failure.
+ * it: confirm -> busy -> server -> erase the text from local state ->
+ * reload, or keep the note and show an error on failure.
  */
 export async function withdrawFlow(
   observationId: string,
-  deps: { setUi: (p: Partial<CoachPanelUi>) => void; withdraw: (id: string) => Promise<{ ok: boolean; error?: string }>; reload: () => void }
+  deps: { setUi: (p: Partial<CoachPanelUi>) => void; withdraw: (id: string) => Promise<{ ok: boolean; error?: string }>; erase: (id: string) => void; reload: () => void }
 ): Promise<boolean> {
   deps.setUi({ withdrawBusy: true, withdrawError: null });
   const result = await deps.withdraw(observationId).catch(() => ({ ok: false, error: undefined }));
@@ -110,6 +119,7 @@ export async function withdrawFlow(
     deps.setUi({ withdrawBusy: false, withdrawError: result.error ?? "Couldn't withdraw that note. Try again." });
     return false;
   }
+  deps.erase(observationId);
   deps.setUi({ withdrawBusy: false, confirmingWithdrawId: null, withdrawError: null });
   deps.reload();
   return true;
@@ -120,11 +130,13 @@ export default function CoachMySeasonSection({
   playerName,
   state,
   reload,
+  eraseWithdrawn,
 }: {
   playerId: string;
   playerName: string;
   state: CoachMySeasonState;
   reload: () => void;
+  eraseWithdrawn: (observationId: string) => void;
 }) {
   const [ui, setUiState] = useState<CoachPanelUi>(INITIAL_COACH_PANEL_UI);
   const setUi = useCallback((p: Partial<CoachPanelUi>) => setUiState((s) => ({ ...s, ...p })), []);
@@ -182,7 +194,7 @@ export default function CoachMySeasonSection({
         if (id) focusNext({ ids: [MS_IDS.withdraw(id)] });
       }}
       onConfirmWithdraw={(id) =>
-        void withdrawFlow(id, { setUi, withdraw: (x) => withdrawMySeasonObservation(x), reload }).then((ok) =>
+        void withdrawFlow(id, { setUi, withdraw: (x) => withdrawMySeasonObservation(x), erase: eraseWithdrawn, reload }).then((ok) =>
           // Done: the note's "Withdrawn" line once the reload shows it (its
           // Withdraw button if the reload failed). Failed: back to the confirm.
           focusNext(ok ? { ids: [MS_IDS.withdrawn(id), MS_IDS.withdraw(id)], waitWhileLoading: true } : { ids: [MS_IDS.withdrawConfirm(id)] })

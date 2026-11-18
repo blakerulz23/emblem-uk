@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import type { MySeasonView } from '@/lib/my-season';
+import { MY_SEASON_CATEGORIES, type MySeasonView } from '@/lib/my-season';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({ channel: () => ({ on: () => ({ subscribe: () => ({}) }) }), removeChannel: () => {} }) }));
@@ -25,7 +25,7 @@ import { NoteComposerView } from './mySeasonUi';
 import { OsDataProvider } from './OsDataContext';
 import { DEMO_OS_DATA, type OsData } from './osData';
 import type { OsActions } from './OsApp';
-import { MS_PLAYER_ID, MS_TEAM_ID, buttonByText, expand, findAll, msContent, msNote } from './my-season-test-support';
+import { MS_PLAYER_ID, MS_TEAM_ID, buttonByText, expand, findAll, msContent, msNote, msWithdrawnNote } from './my-season-test-support';
 
 const actions = new Proxy({}, { get: () => vi.fn() }) as unknown as OsActions;
 const squadPlayer = { ...DEMO_OS_DATA.squad[0], id: MS_PLAYER_ID, name: 'Riley Hart', teamId: MS_TEAM_ID, seasonFocus: [] };
@@ -145,10 +145,13 @@ describe('Coach My Season panel', () => {
     expect(html).toContain('No notes yet.');
   });
 
-  it('withdrawn note: marked for the author, no Withdraw button', () => {
-    const html = renderToStaticMarkup(panel(ready(coachView({ observations: [msNote({ mine: true, withdrawn: true })] }))));
+  it('withdrawn note: only the status line for the author, no content, no Withdraw button', () => {
+    const html = renderToStaticMarkup(panel(ready(coachView({ observations: [msWithdrawnNote()] }))));
     expect(html).toContain('Withdrawn. The family no longer sees this.');
     expect(html).not.toContain('>Withdraw<');
+    expect(html).not.toContain('<q');
+    for (const c of MY_SEASON_CATEGORIES) expect(html).not.toContain(c.label);
+    expect(html).not.toContain('Coach Danny ·');
   });
 
   it('withdraw asks inside the UI first (no window.confirm), then confirms or keeps', () => {
@@ -161,7 +164,7 @@ describe('Coach My Season panel', () => {
     expect(onAskWithdraw).toHaveBeenCalledWith('o1');
 
     const html = renderToStaticMarkup(panel(ready(view), { confirmingWithdrawId: 'o1' }));
-    expect(html).toContain('Withdraw this note? The family will no longer see it.');
+    expect(html).toContain('Withdraw this note? The family will no longer see it, and the text will be permanently deleted.');
     tree = expand(panel(ready(view), { confirmingWithdrawId: 'o1' }, { onConfirmWithdraw, onCancelWithdraw }));
     (buttonByText(tree, 'Withdraw note')!.props.onClick as () => void)();
     expect(onConfirmWithdraw).toHaveBeenCalledWith('o1');
@@ -169,19 +172,24 @@ describe('Coach My Season panel', () => {
     expect(onCancelWithdraw).toHaveBeenCalled();
   });
 
-  it('withdrawFlow: success clears the confirm and reloads; failure keeps it with an error', async () => {
+  it('withdrawFlow: success erases the text locally, clears the confirm and reloads; failure keeps it with an error', async () => {
     const ui: Partial<CoachPanelUi>[] = [];
     const reload = vi.fn();
-    expect(await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: async () => ({ ok: true }), reload })).toBe(true);
+    const erase = vi.fn();
+    expect(await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: async () => ({ ok: true }), erase, reload })).toBe(true);
     expect(ui.at(-1)).toMatchObject({ withdrawBusy: false, confirmingWithdrawId: null });
+    expect(erase).toHaveBeenCalledWith('o1');
     expect(reload).toHaveBeenCalledTimes(1);
+    expect(erase.mock.invocationCallOrder[0]).toBeLessThan(reload.mock.invocationCallOrder[0]);
 
     ui.length = 0;
     reload.mockClear();
-    expect(await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: async () => ({ ok: false, error: "You can't make this change for this player." }), reload })).toBe(false);
+    erase.mockClear();
+    expect(await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: async () => ({ ok: false, error: "You can't make this change for this player." }), erase, reload })).toBe(false);
     expect(ui.at(-1)).toEqual({ withdrawBusy: false, withdrawError: "You can't make this change for this player." });
     expect(reload).not.toHaveBeenCalled();
-    expect(await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: () => Promise.reject(new Error('offline')), reload })).toBe(false);
+    expect(await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: () => Promise.reject(new Error('offline')), erase, reload })).toBe(false);
+    expect(erase).not.toHaveBeenCalled();
   });
 
   it('success toast is announced politely', () => {

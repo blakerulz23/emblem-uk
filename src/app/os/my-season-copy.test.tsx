@@ -12,7 +12,7 @@ import { MY_SEASON_FORM_COPY } from './mySeasonFlows';
 import { MySeasonScreenView } from './overlays/MySeasonScreen';
 import MySeasonHomeCard from './screens/MySeasonHomeCard';
 import { CoachMySeasonPanel, INITIAL_COACH_PANEL_UI } from './screens/CoachMySeasonSection';
-import { MS_PLAYER_ID, msContent, msNote } from './my-season-test-support';
+import { MS_PLAYER_ID, msContent, msNote, msWithdrawnNote } from './my-season-test-support';
 
 /**
  * Copy rules for every customer-visible My Season string: no em dashes and
@@ -49,7 +49,7 @@ function allRendered(): string[] {
   add(<MySeasonHomeCard view={msContent({ activeFocus: null, observations: [] })} onOpen={noop} />);
   add(<FocusEditor playerId={MS_PLAYER_ID} firstName="Riley" hasActiveFocus onSaved={noop} onCancel={noop} initialStep="confirm" />);
   const views: MySeasonView[] = [
-    msContent({ access: 'coach', canAddNote: true, observations: [msNote({ mine: true }), msNote({ id: 'o2', mine: true, withdrawn: true })] }),
+    msContent({ access: 'coach', canAddNote: true, observations: [msNote({ mine: true }), msWithdrawnNote({ id: 'o2' })] }),
     msContent({ access: 'guardian', canAddNote: false }),
     { enabled: true, access: 'none', reason: 'private_coach' },
     { enabled: true, access: 'none', reason: 'former_coach' },
@@ -101,6 +101,11 @@ describe('My Season copy', () => {
     expect(joined).toContain("You're looking at Riley's season on your family account. Riley can read it with you.");
   });
 
+  it('the withdraw confirmation says the deletion is permanent', () => {
+    expect(MY_SEASON_COPY.withdrawConfirm).toBe('Withdraw this note? The family will no longer see it, and the text will be permanently deleted.');
+    expect(strings.join('\n')).toContain(MY_SEASON_COPY.withdrawConfirm);
+  });
+
   it('new My Season source files contain no em dashes at all', () => {
     for (const f of [
       'src/lib/my-season.ts',
@@ -116,7 +121,10 @@ describe('My Season copy', () => {
       'src/app/api/os/my-season/observations/route.ts',
       'src/app/api/os/my-season/observations/[id]/withdraw/route.ts',
     ]) {
-      expect(readFileSync(f, 'utf8'), f).not.toContain('—');
+      const source = readFileSync(f, 'utf8');
+      expect(source, f).not.toContain('—');
+      // Request bodies and RPC errors can hold a child's note: nothing here logs.
+      expect(source, f).not.toMatch(/\bconsole\./);
     }
   });
 });
