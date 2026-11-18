@@ -68,18 +68,22 @@ describe('getSeasonFeatureState (Phase 0)', () => {
     expect(await getSeasonFeatureState('00000000-0000-4000-8000-000000000001')).toBe('off');
   });
 
-  it('nothing in the app imports the Season flag yet, so My Season stays switched off', () => {
+  it('only the My Season route guard and os-data import the Season flag', () => {
+    // Phase 1: the deploy kill switch is read by the /api/os/my-season route
+    // guard and by os-data (which then never calls the RPC). No client
+    // component may import it (it reads process.env).
+    const allowed = ['src/lib/my-season-api.ts', 'src/lib/os-data.ts'];
     const hits: string[] = [];
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
         const p = join(dir, name);
         if (statSync(p).isDirectory()) { walk(p); continue; }
         if (!/\.(ts|tsx)$/.test(name) || /\.test\.tsx?$/.test(name) || p.split(sep).join('/').endsWith('src/lib/season-feature.ts')) continue;
-        if (readFileSync(p, 'utf8').includes('season-feature')) hits.push(p);
+        if (readFileSync(p, 'utf8').includes('season-feature')) hits.push(p.split(sep).join('/'));
       }
     };
     walk('src');
-    expect(hits).toEqual([]);
+    expect(hits.sort()).toEqual(allowed);
   });
 
   it('is server-only: it never touches a NEXT_PUBLIC_ variable', () => {

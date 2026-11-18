@@ -13,6 +13,7 @@ import EmptyState from './EmptyState';
 import type { PreferredFoot } from '../coachFields';
 import { AGE_GROUP_OPTIONS, FOOT_OPTIONS, POSITION_OPTIONS, positionLabel, validateHeightCm } from '../coachFields';
 import { positionDisplayLabel } from '@/lib/player-position';
+import CoachMySeasonSection, { useCoachMySeason } from './CoachMySeasonSection';
 
 /** "15 Aug 2026" — matches RealCollection/PlayerHome's date convention. */
 function formatDate(iso: string): string {
@@ -43,9 +44,15 @@ function TargetIcon(c: string) {
 
 export default function CoachPlayerDetail({ playerId, actions }: { playerId: string; actions: OsActions }) {
   const router = useRouter();
-  const { mode, squad, verifyQueue, coachTeamsManaged, viewerId } = useOsData();
+  const { mode, squad, verifyQueue, coachTeamsManaged, viewerId, mySeasonCoachLookup } = useOsData();
   const isReal = mode !== 'demo';
   const player = squad.find((p) => p.id === playerId);
+
+  // My Season (Phase 1): one GET for this player on open, only when the
+  // deploy kill switch is off and the player is on a team. The legacy
+  // Season Focus section below is hidden only once the server says My
+  // Season is enabled for this player; otherwise this screen is unchanged.
+  const mySeason = useCoachMySeason({ playerId, isReal, lookup: mySeasonCoachLookup, teamId: player?.teamId });
 
   // A guardian adding/updating a Season Focus, or a fresh assessment
   // resolved elsewhere, appears here immediately while a coach is already
@@ -612,6 +619,10 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
           as dominant simply because everything above it is quiet. Populated
           rows read focus text as hero → status as a small "progress" pill →
           author/date as the smallest supporting line. */}
+      {mySeason.enabled && (
+        <CoachMySeasonSection playerId={playerId} playerName={player.name} state={mySeason.state} reload={mySeason.reload} />
+      )}
+      {!mySeason.enabled && (
       <div style={sectionCard}>
         <div style={sectionTitle}>Season Focus <span style={{ color: 'var(--os-muted)', fontWeight: 600 }}>({activeFocusCount}/3 active)</span></div>
         {player.seasonFocus.length === 0 ? (
@@ -656,6 +667,7 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
         )}
         {focusError && <p role="alert" style={{ color: '#C0392B', fontSize: 12.5, marginTop: 6 }}>{focusError}</p>}
       </div>
+      )}
 
       {isReal && isDirectAccessOnly && (
         <div style={sectionCard}>

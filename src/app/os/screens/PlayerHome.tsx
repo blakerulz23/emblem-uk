@@ -12,6 +12,10 @@ import { MomentThumbnail } from '../overlays/MomentThumbnail';
 import type { OsActions } from '../OsApp';
 import { positionDisplayLabel } from '@/lib/player-position';
 import { toMomentMediaItem, type RealMoment, type StoryUpdate } from '../osData';
+import { hasMySeasonContent } from '@/lib/my-season';
+import MySeasonHomeCard from './MySeasonHomeCard';
+import MySeasonScreen from '../overlays/MySeasonScreen';
+import { MY_SEASON_COPY } from '../mySeasonUi';
 
 /**
  * Home v1.2 — an orientation glance, not a container for the other three
@@ -84,7 +88,7 @@ function BookIcon(c: string) {
 }
 
 export default function PlayerHome({ actions, storyUpdates }: { actions: OsActions; storyUpdates: StoryUpdate[] }) {
-  const { mode, playerId, playerProfile, moments, currentSeasonStatus, cardPhotoUrl } = useOsData();
+  const { mode, playerId, playerProfile, moments, currentSeasonStatus, cardPhotoUrl, mySeason } = useOsData();
   const isReal = mode !== 'demo';
   // See selectNewestUnreadForPlayer's doc comment — storyUpdates is fetched
   // guardian-wide (correct for the separate, full-history Story Updates
@@ -135,6 +139,13 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
   // (actions.openLatestMoment) — that existing behaviour must survive
   // untouched, so only the photo itself gets its own stopPropagation'd
   // click/keydown to open the viewer instead.
+  // My Season (Phase 1): only present when os-data loaded an enabled view
+  // for this player (feature on for the team). Absent/null means Home
+  // renders exactly as it always has.
+  const mySeasonGuardianView = isReal && playerId && hasMySeasonContent(mySeason) && mySeason.access === 'guardian' ? mySeason : null;
+  const mySeasonPaused = isReal && mySeason?.enabled === true && mySeason.access === 'none' && mySeason.reason === 'account_review';
+  const [mySeasonOpen, setMySeasonOpen] = useState(false);
+
   const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
   const mediaTriggerRef = useRef<HTMLDivElement>(null);
   const openMediaViewer = (e: { stopPropagation: () => void }) => {
@@ -391,6 +402,8 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
         {!isSeasonOpen && currentSeason && momentsThisSeason.length > 0 && (
           <div style={{ fontSize: 12, color: 'var(--os-muted)', marginTop: 8 }}>This season has closed.</div>
         )}
+        {mySeasonGuardianView && <MySeasonHomeCard view={mySeasonGuardianView} onOpen={() => setMySeasonOpen(true)} />}
+        {mySeasonPaused && <div className="os-ms-soft" style={{ fontSize: 13, marginTop: 10 }}>{MY_SEASON_COPY.accountReview}</div>}
       </div>
 
       <div
@@ -408,6 +421,15 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
         </div>
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--os-muted)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M9 5l7 7-7 7" /></svg>
       </div>
+
+      {mySeasonOpen && mySeasonGuardianView && playerId && (
+        <MySeasonScreen
+          playerId={playerId}
+          playerName={playerProfile.name}
+          onClose={() => setMySeasonOpen(false)}
+          onChanged={() => void refreshOsData()}
+        />
+      )}
 
       {mediaViewerOpen && featuredMoment && (
         <MomentMediaViewer
