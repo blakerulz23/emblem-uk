@@ -868,7 +868,15 @@ begin
     returning id into v_withdrawn;
 
     if v_withdrawn is null then
-      return; -- already withdrawn: a silent no-op
+      -- Matching nothing is success only if this author's note really is
+      -- withdrawn. It may instead have lost its author to an account deletion
+      -- the update waited on, with the text still there: never report that
+      -- as done. Every other outcome is the same EMS03 as any other denial.
+      if exists (select 1 from public.my_season_coach_observations o
+                  where o.id = p_observation_id and o.author_id = v_uid and o.withdrawn_at is not null) then
+        return; -- already withdrawn: a silent no-op
+      end if;
+      raise exception using errcode = 'EMS03', message = 'my_season_not_allowed';
     end if;
 
     insert into public.my_season_audit_events (player_id, event, subject_id, actor_profile_id, actor_role)

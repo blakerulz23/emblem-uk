@@ -303,24 +303,94 @@ export function homeCardSignature(view: MySeasonView | null | undefined): string
   ]);
 }
 
+/** Refreshes Home. Resolving false means the refresh failed. */
+export type HomeRefresh = () => void | Promise<boolean>;
+
+export type HomeCardSync = {
+  (home: MySeasonView | null | undefined, fresh: MySeasonView, refresh: HomeRefresh): void;
+  /** The overlay is closing: if the last refresh failed (or fails later), try once more. */
+  retryOnClose: (refresh: HomeRefresh) => void;
+};
+
 /**
  * Returns the function the overlay calls after each load. It refreshes Home
  * when the fresh view differs from what Home shows, once per distinct fresh
  * view: if the refreshed Home still differs (a race, or a failed refresh) it
- * does not ask again, so this can never loop.
+ * does not ask again while the overlay is open, so this can never loop. A
+ * failed refresh gets one more try when the overlay closes.
  */
-export function createHomeCardSync(): (home: MySeasonView | null | undefined, fresh: MySeasonView, refresh: () => void) => void {
+export function createHomeCardSync(): HomeCardSync {
   let requestedFor: string | null = null;
-  return (home, fresh, refresh) => {
+  let latest = 0;
+  let last: 'settled' | 'pending' | 'failed' = 'settled';
+  let retryWhenFailed: HomeRefresh | null = null;
+
+  const retryOnce = (refresh: HomeRefresh) => {
+    last = 'settled';
+    retryWhenFailed = null;
+    try {
+      void Promise.resolve(refresh()).catch(() => {});
+    } catch {
+      // Best effort: Home updates on its next load instead.
+    }
+  };
+
+  const request = (refresh: HomeRefresh) => {
+    const mine = ++latest;
+    last = 'pending';
+    const settle = (ok: unknown) => {
+      if (mine !== latest) return;
+      if (ok !== false) {
+        last = 'settled';
+        retryWhenFailed = null;
+      } else if (retryWhenFailed) {
+        retryOnce(retryWhenFailed);
+      } else {
+        last = 'failed';
+      }
+    };
+    try {
+      void Promise.resolve(refresh()).then(settle, () => settle(false));
+    } catch {
+      settle(false);
+    }
+  };
+
+  const sync = ((home, fresh, refresh) => {
     const signature = homeCardSignature(fresh);
     if (signature === homeCardSignature(home)) {
       requestedFor = null;
+      latest++;
+      last = 'settled';
+      retryWhenFailed = null;
       return;
     }
     if (signature === requestedFor) return;
     requestedFor = signature;
-    refresh();
+    request(refresh);
+  }) as HomeCardSync;
+
+  sync.retryOnClose = (refresh) => {
+    if (last === 'failed') retryOnce(refresh);
+    else if (last === 'pending') retryWhenFailed = refresh;
   };
+  return sync;
+}
+
+/**
+ * Who the open overlay is for. It loads its own data, so it stays open
+ * whatever a Home refresh does to Home's view. Only a switch to a different
+ * child ends it (null), and the caller then closes it properly.
+ */
+export type MySeasonOverlayPlayer = { playerId: string; playerName: string };
+
+export function mySeasonOverlayPlayer(
+  open: boolean,
+  openedFor: MySeasonOverlayPlayer | null,
+  currentPlayerId: string | null | undefined
+): MySeasonOverlayPlayer | null {
+  if (!open || !openedFor) return null;
+  return currentPlayerId && currentPlayerId !== openedFor.playerId ? null : openedFor;
 }
 
 // ---------------------------------------------------------------------------
@@ -390,10 +460,17 @@ export function mySeasonDialogKeyDown(
   target?.focus();
 }
 
-/** Closing the overlay returns focus to the control that opened it. */
-export function closeAndReturnFocus(setOpen: (open: boolean) => void, opener: { current: Focusable | null }): void {
+/**
+ * Closing the overlay returns focus to the control that opened it, or to
+ * `fallback` when a Home refresh has since removed that control.
+ */
+export function closeAndReturnFocus(
+  setOpen: (open: boolean) => void,
+  opener: { current: Focusable | null },
+  fallback?: { current: Focusable | null }
+): void {
   setOpen(false);
-  opener.current?.focus();
+  (opener.current ?? fallback?.current)?.focus();
 }
 
 // ---------------------------------------------------------------------------

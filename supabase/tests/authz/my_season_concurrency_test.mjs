@@ -28,6 +28,8 @@
 //      fixed EMS09: the row is in neither the error object nor the server log.
 //   i. service_role holds SELECT only; child erasure still cascades.
 //   j. A write racing child erasure ends in EMS03, never a raw 23503.
+//   k. A withdrawal racing the coach's own account deletion ends in EMS03 with
+//      no audit event, and the note survives as a former coach's.
 //
 // WHAT THIS DOES NOT PROVE: anything about PostgREST, Supabase's log settings
 // or what remains physically on disk. Erasure here means no SQL query can
@@ -541,6 +543,31 @@ try {
     const f = await race((p) => setFocus(B, guardian, p, id(), 'Racing focus'));
     check('j: set_focus: waits on the deleting transaction, then a fixed EMS03 (no 23503)', f.waited && fixedRefusal(f.r), f);
     check('j: nothing was left behind', await n(`select (select count(*) from public.my_season_focuses where player_id = any($1)) + (select count(*) from public.my_season_coach_observations where player_id = any($1)) + (select count(*) from public.my_season_audit_events where player_id = any($1)) n`, [[a.p, f.p]]) === 0);
+  }
+
+  console.log('\n=== k. A withdrawal racing the coach\'s own account deletion ===');
+  {
+    // The deletion's ON DELETE SET NULL holds the note's row. The withdrawal has
+    // already passed its checks, so its UPDATE waits, then matches nothing.
+    const leaving = await person('Leaving Coach');
+    await mig.query(`insert into public.coach_team (team_id, profile_id) values ($1, $2)`, [team, leaving]);
+    const p = await child();
+    const o = await add(A, leaving, p, id());
+    await O.query('begin');
+    await O.query('delete from public.profiles where id = $1', [leaving]);
+    const attempt = outcome(withdraw(B, leaving, o));
+    const waited = await waitsOnLock(mig, B);
+    await O.query('commit');
+    const r = await attempt;
+    const [row] = await obsRows(p);
+    check('k: the withdrawal waits on the deletion, then gets the fixed EMS03 and does not claim success',
+      waited && !r.id && r.code === 'EMS03' && r.message === 'my_season_not_allowed' && !r.detail && !r.hint, { waited, r });
+    check('k: no observation_withdrawn audit event', await audits(p, 'observation_withdrawn') === 0);
+    check('k: the note is still active with its text, and has no author',
+      row?.id === o && row.body === noteText() && row.category === CATEGORY && row.withdrawn_at === null && row.withdrawn_by === null && row.author_id === null, row);
+    const family = (await rpc(clients[7], guardian, `select public.my_season_for_player($1) as v`, [p])).v.observations;
+    check('k: the family still sees it as a former coach\'s note',
+      family.length === 1 && family[0].id === o && family[0].withdrawn === false && family[0].coachName === null && family[0].formerCoach === true && family[0].body === noteText(), family);
   }
 } catch (e) {
   check('concurrency suite', false, e.stack);

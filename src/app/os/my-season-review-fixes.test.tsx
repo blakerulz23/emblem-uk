@@ -21,9 +21,11 @@ import {
   WITHDRAW_FAILED,
   WITHDRAW_FOCUS,
   createHomeCardSync,
+  closeAndReturnFocus,
   createWriteController,
   decideNoteOutcome,
   homeCardSignature,
+  mySeasonOverlayPlayer,
   noteContentKey,
   noteHint,
   sendNoteFlow,
@@ -200,6 +202,128 @@ describe('A2: Home follows a fresh load', () => {
       expect(html).toContain('No coach notes yet.');
       expect(html).not.toContain('<q');
     }
+  });
+});
+
+describe('F2: a failed Home refresh is retried when the overlay closes', () => {
+  const stale = msContent({ observations: [msNote()] });
+  const fresh = msContent({ observations: [] });
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it('a failed refresh is not retried while open, then exactly once on close', async () => {
+    const sync = createHomeCardSync();
+    const refresh = vi.fn(async () => false);
+    sync(stale, fresh, refresh);
+    await settle();
+    for (let i = 0; i < 3; i++) sync(stale, fresh, refresh);
+    await settle();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    sync.retryOnClose(refresh);
+    await settle();
+    expect(refresh).toHaveBeenCalledTimes(2);
+    sync.retryOnClose(refresh);
+    await settle();
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('a rejected refresh counts as failed', async () => {
+    const sync = createHomeCardSync();
+    const refresh = vi.fn(() => Promise.reject(new Error('offline')));
+    sync(stale, fresh, refresh);
+    await settle();
+    sync.retryOnClose(refresh);
+    await settle();
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('a refresh that succeeded, or was not needed, is not repeated on close', async () => {
+    const worked = createHomeCardSync();
+    const ok = vi.fn(async () => true);
+    worked(stale, fresh, ok);
+    await settle();
+    worked.retryOnClose(ok);
+    await settle();
+    expect(ok).toHaveBeenCalledTimes(1);
+
+    const matched = createHomeCardSync();
+    const unused = vi.fn(async () => true);
+    matched(fresh, fresh, unused);
+    matched.retryOnClose(unused);
+    await settle();
+    expect(unused).not.toHaveBeenCalled();
+  });
+
+  it('Home catching up by another route cancels the retry', async () => {
+    const sync = createHomeCardSync();
+    const refresh = vi.fn(async () => false);
+    sync(stale, fresh, refresh);
+    await settle();
+    sync(fresh, fresh, refresh);
+    sync.retryOnClose(refresh);
+    await settle();
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('closing during the refresh retries once if it then fails, and not if it works', async () => {
+    for (const [answer, calls] of [[false, 2], [true, 1]] as const) {
+      const gate = deferred<boolean>();
+      const sync = createHomeCardSync();
+      const refresh = vi.fn((): Promise<boolean> => (refresh.mock.calls.length === 1 ? gate.promise : Promise.resolve(false)));
+      sync(stale, fresh, refresh);
+      sync.retryOnClose(refresh);
+      expect(refresh).toHaveBeenCalledTimes(1);
+      gate.resolve(answer);
+      await settle();
+      expect(refresh).toHaveBeenCalledTimes(calls);
+    }
+  });
+
+  it('the overlay retries from its close path, and Home passes a refresh that reports failure', () => {
+    const overlay = readFileSync('src/app/os/overlays/MySeasonScreen.tsx', 'utf8');
+    expect(overlay).toMatch(/const close = \(\) => \{\s*syncHomeCard\.current\.retryOnClose\(onChanged\);\s*onClose\(\);\s*\};/);
+    expect(overlay).toMatch(/closeRef=\{closeRef\}\s*onClose=\{close\}/);
+    expect(readFileSync('src/app/os/screens/PlayerHome.tsx', 'utf8')).toContain('onChanged={refreshOsData}');
+  });
+});
+
+describe('F3: the overlay survives a Home refresh', () => {
+  const riley = { playerId: MS_PLAYER_ID, playerName: 'Riley Hart' };
+  const home = () => readFileSync('src/app/os/screens/PlayerHome.tsx', 'utf8');
+
+  it('stays on the child it was opened for, whatever the refresh did to Home', () => {
+    expect(mySeasonOverlayPlayer(true, riley, MS_PLAYER_ID)).toBe(riley);
+    expect(mySeasonOverlayPlayer(true, riley, null)).toBe(riley);
+    expect(mySeasonOverlayPlayer(true, riley, undefined)).toBe(riley);
+  });
+
+  it('is shown only while open, and never for a different child', () => {
+    expect(mySeasonOverlayPlayer(false, riley, MS_PLAYER_ID)).toBeNull();
+    expect(mySeasonOverlayPlayer(true, null, MS_PLAYER_ID)).toBeNull();
+    expect(mySeasonOverlayPlayer(true, riley, '30000000-0000-4000-8000-000000000002')).toBeNull();
+  });
+
+  it('PlayerHome renders it from that player, not from the refreshed view', () => {
+    const src = home();
+    expect(src).toContain('mySeasonOverlayPlayer(mySeasonOpen, mySeasonOpenedFor, playerId)');
+    expect(src).toMatch(/\{mySeasonPlayer && \(\s*<MySeasonScreen\s+playerId=\{mySeasonPlayer\.playerId\}\s+playerName=\{mySeasonPlayer\.playerName\}/);
+    expect(src).not.toMatch(/mySeasonOpen && mySeasonGuardianView/);
+  });
+
+  it('a switch to another child really closes it, so it cannot reappear', () => {
+    expect(home()).toMatch(/const mySeasonEnded = mySeasonOpen && !mySeasonPlayer;\s*useEffect\(\(\) => \{\s*if \(mySeasonEnded\) closeAndReturnFocus\(setMySeasonOpen, mySeasonOpenRef, mySeasonFocusFallbackRef\);/);
+  });
+
+  it('focus returns to the opener, or to the fallback once the opener has gone', () => {
+    const setOpen = vi.fn();
+    const opener = { focus: vi.fn() };
+    const fallback = { focus: vi.fn() };
+    closeAndReturnFocus(setOpen, { current: opener }, { current: fallback });
+    expect(opener.focus).toHaveBeenCalledTimes(1);
+    expect(fallback.focus).not.toHaveBeenCalled();
+    closeAndReturnFocus(setOpen, { current: null }, { current: fallback });
+    expect(fallback.focus).toHaveBeenCalledTimes(1);
+    expect(setOpen.mock.calls).toEqual([[false], [false]]);
+    expect(home()).toMatch(/ref=\{mySeasonFocusFallbackRef\}\s+onClick=\{actions\.goCollection\}/);
   });
 });
 

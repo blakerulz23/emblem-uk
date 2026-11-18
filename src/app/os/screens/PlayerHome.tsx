@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useOsData, useRefreshOsData } from '../OsDataContext';
 import { onActivateKey } from '../a11y';
 import { DEMO_PLAYER_PHOTO, ICN, MOMENT_STATUS_BADGE } from '../data';
@@ -16,7 +16,7 @@ import { hasMySeasonContent } from '@/lib/my-season';
 import MySeasonHomeCard from './MySeasonHomeCard';
 import MySeasonScreen from '../overlays/MySeasonScreen';
 import { MY_SEASON_COPY, MySeasonError } from '../mySeasonUi';
-import { closeAndReturnFocus } from '../mySeasonFlows';
+import { closeAndReturnFocus, mySeasonOverlayPlayer, type MySeasonOverlayPlayer } from '../mySeasonFlows';
 
 /**
  * Home v1.2 — an orientation glance, not a container for the other three
@@ -148,8 +148,25 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
   // Enabled, but the server's view was unusable: say so (the legacy Season Focus stays hidden).
   const mySeasonUnavailable = isReal && mySeason?.enabled === true && mySeason.access === 'none' && mySeason.reason === 'unavailable';
   const [mySeasonOpen, setMySeasonOpen] = useState(false);
-  // Like the media viewer below: closing returns focus to the Open button.
+  // Who it was opened for. The overlay loads its own data, so it stays open
+  // even if a Home refresh removes the card (only that card can open it).
+  const [mySeasonOpenedFor, setMySeasonOpenedFor] = useState<MySeasonOverlayPlayer | null>(null);
+  // Like the media viewer below: closing returns focus to the Open button,
+  // or to the Collection link when a refresh has removed that button.
   const mySeasonOpenRef = useRef<HTMLButtonElement>(null);
+  const mySeasonFocusFallbackRef = useRef<HTMLDivElement>(null);
+  const mySeasonPlayer = mySeasonOverlayPlayer(mySeasonOpen, mySeasonOpenedFor, playerId);
+  const openMySeason = () => {
+    if (!playerId) return;
+    setMySeasonOpenedFor({ playerId, playerName: playerProfile.name });
+    setMySeasonOpen(true);
+  };
+  const closeMySeason = () => closeAndReturnFocus(setMySeasonOpen, mySeasonOpenRef, mySeasonFocusFallbackRef);
+  // Home moved to a different child: end the overlay rather than leave it pending.
+  const mySeasonEnded = mySeasonOpen && !mySeasonPlayer;
+  useEffect(() => {
+    if (mySeasonEnded) closeAndReturnFocus(setMySeasonOpen, mySeasonOpenRef, mySeasonFocusFallbackRef);
+  }, [mySeasonEnded]);
 
   const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
   const mediaTriggerRef = useRef<HTMLDivElement>(null);
@@ -407,12 +424,13 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
         {!isSeasonOpen && currentSeason && momentsThisSeason.length > 0 && (
           <div style={{ fontSize: 12, color: 'var(--os-muted)', marginTop: 8 }}>This season has closed.</div>
         )}
-        {mySeasonGuardianView && <MySeasonHomeCard view={mySeasonGuardianView} openRef={mySeasonOpenRef} onOpen={() => setMySeasonOpen(true)} />}
+        {mySeasonGuardianView && <MySeasonHomeCard view={mySeasonGuardianView} openRef={mySeasonOpenRef} onOpen={openMySeason} />}
         {mySeasonPaused && <div className="os-ms-soft" style={{ fontSize: 13, marginTop: 10 }}>{MY_SEASON_COPY.accountReview}</div>}
         {mySeasonUnavailable && <div style={{ marginTop: 12 }}><MySeasonError onRetry={() => void refreshOsData()} /></div>}
       </div>
 
       <div
+        ref={mySeasonFocusFallbackRef}
         onClick={actions.goCollection}
         role="button"
         tabIndex={0}
@@ -428,13 +446,13 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--os-muted)" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M9 5l7 7-7 7" /></svg>
       </div>
 
-      {mySeasonOpen && mySeasonGuardianView && playerId && (
+      {mySeasonPlayer && (
         <MySeasonScreen
-          playerId={playerId}
-          playerName={playerProfile.name}
+          playerId={mySeasonPlayer.playerId}
+          playerName={mySeasonPlayer.playerName}
           homeView={mySeasonGuardianView}
-          onClose={() => closeAndReturnFocus(setMySeasonOpen, mySeasonOpenRef)}
-          onChanged={() => void refreshOsData()}
+          onClose={closeMySeason}
+          onChanged={refreshOsData}
         />
       )}
 

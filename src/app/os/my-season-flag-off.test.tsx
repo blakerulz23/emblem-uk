@@ -118,7 +118,10 @@ describe('flag off: no client network call', () => {
 
   it('PlayerHome only opens the My Season screen (the one that fetches) from the enabled guardian card', () => {
     const src = readFileSync('src/app/os/screens/PlayerHome.tsx', 'utf8');
-    expect(src).toMatch(/mySeasonOpen && mySeasonGuardianView && playerId && \(/);
+    expect(src).toMatch(/mySeasonGuardianView && <MySeasonHomeCard [^>]*onOpen=\{openMySeason\}/);
+    expect(src.match(/openMySeason/g)).toHaveLength(2);
+    expect(src.match(/setMySeasonOpen\(true\)/g)).toHaveLength(1);
+    expect(src).toMatch(/\{mySeasonPlayer && \(\s*<MySeasonScreen/);
   });
 });
 

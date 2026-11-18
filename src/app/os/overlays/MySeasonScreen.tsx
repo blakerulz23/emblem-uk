@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { notesSinceFocus, visibleFamilyObservations, type MySeasonView } from '@/lib/my-season';
 import { loadMySeasonView } from '../mySeasonClient';
-import { MS_IDS, createHomeCardSync, mySeasonDialogKeyDown, usePendingFocus } from '../mySeasonFlows';
+import { MS_IDS, createHomeCardSync, mySeasonDialogKeyDown, usePendingFocus, type HomeRefresh } from '../mySeasonFlows';
 import {
   EarlierFocusList,
   FocusEditor,
@@ -33,6 +33,7 @@ import {
  * Home's card comes from the page data, which can be older than this load
  * (a coach withdrew a note, say). When the fresh view differs from what Home
  * shows, Home is refreshed, so it stops quoting anything no longer there.
+ * If that refresh fails, it is tried once more when the overlay closes.
  */
 
 export type MySeasonLoadState = { status: 'loading' | 'ready' | 'error'; view: MySeasonView | null; signedOut?: boolean };
@@ -49,8 +50,8 @@ export default function MySeasonScreen({
   /** What Home's card is showing now. */
   homeView: MySeasonView | null;
   onClose: () => void;
-  /** Refreshes Home's data: after a successful write, or when a load shows Home is out of date. */
-  onChanged: () => void;
+  /** Refreshes Home's data: after a successful write, or when a load shows Home is out of date. Resolves false if it failed. */
+  onChanged: HomeRefresh;
 }) {
   const [load, setLoad] = useState<MySeasonLoadState>({ status: 'loading', view: null });
   const [editing, setEditing] = useState(false);
@@ -76,6 +77,11 @@ export default function MySeasonScreen({
     if (load.status === 'ready' && load.view) syncHomeCard.current(homeView, load.view, onChanged);
   }, [load, homeView, onChanged]);
 
+  const close = () => {
+    syncHomeCard.current.retryOnClose(onChanged);
+    onClose();
+  };
+
   return (
     <MySeasonScreenView
       playerId={playerId}
@@ -83,7 +89,7 @@ export default function MySeasonScreen({
       load={load}
       editing={editing}
       closeRef={closeRef}
-      onClose={onClose}
+      onClose={close}
       onRetry={() => void reload()}
       onStartEdit={() => setEditing(true)}
       onCancelEdit={() => {
