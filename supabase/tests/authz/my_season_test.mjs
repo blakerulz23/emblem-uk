@@ -1154,6 +1154,31 @@ async function hitsEverywhere(db, marker) {
     check('7c: the author still sees a plain withdrawal there', av.observations.find((o) => o.id === wd)?.removedByStaff === false);
     const noop = await w.withdraw(P.coach, wd);
     check('7c: the coach\'s own repeat withdrawal stays a silent no-op', noop.ok, noop);
+
+    // A reason that repeats the note. Only pasted text can be caught.
+    const NOTE_TEXT = `ZQPASTE${crypto.randomBytes(4).toString('hex')} Kept going after the second goal went in.`;
+    const pasted = (await w.addObs(P.coach, child1, { body: NOTE_TEXT, category: 'kept_going' })).rows[0].id;
+    const repeatStaffEvents = await w.n(`select count(*) n from ${AUDIT} where event = 'observation_staff_removed'`);
+    const removalsBefore = await w.n(`select count(*) n from ${REMOVALS}`);
+    const spaced = NOTE_TEXT.toUpperCase().replace(/ /g, ' \u00A0\n ');
+    const repeats = {
+      exact: NOTE_TEXT,
+      caseAndSpacing: spaced,
+      wrapped: `The coach wrote: ${NOTE_TEXT} Please remove it.`,
+      partOf: 'KEPT GOING after  the second goal',
+    };
+    const repeatResults = {};
+    for (const [k, v] of Object.entries(repeats)) repeatResults[k] = await staffRemove(w, P.staff, pasted, v);
+    check('7c: a reason repeating the note: the fixed EMS11, echoing neither',
+      Object.values(repeatResults).every((x) => x.code === 'EMS11' && x.message === 'my_season_invalid_reason' && !x.detail && !x.hint && !/ZQPASTE|second goal/i.test(JSON.stringify(x))), repeatResults);
+    const keptRow = await noteRow(w, pasted);
+    check('7c: a refused repeat writes nothing: note intact, no removal row, no audit event',
+      keptRow.body === NOTE_TEXT && keptRow.category === 'kept_going' && keptRow.withdrawn_at === null && !(await removalRow(w, pasted))
+        && await w.n(`select count(*) n from ${REMOVALS}`) === removalsBefore
+        && await w.n(`select count(*) n from ${AUDIT} where event = 'observation_staff_removed'`) === repeatStaffEvents, keptRow);
+    check('7c: a short phrase from the note (under 20 characters) is allowed', status(await staffRemove(w, P.staff, (await w.addObs(P.coach, child1, { body: NOTE_TEXT })).rows[0].id, 'kept going')) === 'removed');
+    check('7c: an unrelated reason of any length still removes the note', status(await staffRemove(w, P.staff, pasted, 'The family asked for this to come down')) === 'removed' && (await noteRow(w, pasted)).body === null);
+    check('7c: once erased there is nothing to repeat: already_removed', status(await staffRemove(w, P.staff, pasted, NOTE_TEXT)) === 'already_removed');
   } catch (e) {
     check('7c: refusals', false, e.stack);
   }

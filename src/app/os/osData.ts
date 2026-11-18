@@ -8,7 +8,7 @@ import type { MomentMediaItem } from './overlays/MomentMediaViewer';
 // src/lib/story-updates.ts's server-only createServiceRoleClient into any
 // client bundle that imports osData.ts (e.g. OsDataContext.tsx).
 import type { StoryUpdateEventType, StoryUpdateCategory } from '@/lib/story-updates';
-import type { MySeasonView } from '@/lib/my-season';
+import type { MySeasonParentState } from '@/lib/my-season';
 
 /** The client-facing shape of one story_updates row — see supabase/migrations/0025_story_updates.sql. */
 export type StoryUpdate = {
@@ -212,9 +212,10 @@ export type OsData = {
    * Parent sessions only: My Season for the active player, loaded server-side
    * by os-data. Present only when the feature is enabled for that player's
    * team (enabled: true); absent/null otherwise, including in every demo
-   * fixture, so the flag-off app renders exactly as before.
+   * fixture, so the flag-off app renders exactly as before. enabled: 'unknown'
+   * means the lookup failed: only the legacy Add waits for a Retry.
    */
-  mySeason?: MySeasonView | null;
+  mySeason?: MySeasonParentState | null;
   /**
    * Coach sessions only: true when the deploy kill switch is off, so
    * CoachPlayerDetail may ask GET /api/os/my-season for a team player on

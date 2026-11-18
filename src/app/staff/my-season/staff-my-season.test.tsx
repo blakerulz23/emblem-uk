@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { checkStaffRemovalReason, parseStaffObservationList, parseStaffRemovalStatus, type MySeasonStaffObservation } from '@/lib/my-season';
-import { StaffMySeasonView } from './StaffMySeasonPanel';
+import { STAFF_MY_SEASON_ERRORS, checkStaffRemovalReason, parseStaffObservationList, parseStaffRemovalStatus, type MySeasonStaffObservation } from '@/lib/my-season';
+import { STAFF_MS_IDS, StaffMySeasonView, staffFocusCandidates } from './StaffMySeasonPanel';
 import {
   INITIAL_STAFF_PAGE,
   STAFF_MY_SEASON_COPY,
@@ -116,6 +116,28 @@ describe('the removal form rules', () => {
     expect(failed).toContain('Retry removal');
   });
 
+  it('Cancel returns focus to that note\'s Remove control, or to the status line if it has gone', () => {
+    const open = staffPageReducer({ ...INITIAL_STAFF_PAGE, ...ready }, { type: 'open-removal', id: OBS });
+    const s = staffPageReducer(open, { type: 'cancel-removal' });
+    expect(s).toMatchObject({ removal: null, focus: 'remove-control', returnFocusNoteId: OBS });
+    expect(staffFocusCandidates('remove-control', OBS)).toEqual([STAFF_MS_IDS.remove(OBS), STAFF_MS_IDS.status]);
+    expect(staffFocusCandidates('remove-control', null)).toEqual([STAFF_MS_IDS.status]);
+    expect(html(s)).toContain(`id="${STAFF_MS_IDS.remove(OBS)}"`);
+    expect(html(s)).toContain(`id="${STAFF_MS_IDS.status}" role="status" aria-live="polite" tabindex="-1"`);
+    expect(staffPageReducer(s, { type: 'focus-done' })).toMatchObject({ focus: null, returnFocusNoteId: null });
+    expect(staffPageReducer({ ...INITIAL_STAFF_PAGE }, { type: 'cancel-removal' }).focus).toBeNull();
+  });
+
+  it('says why submit is disabled while the reason is too short, and stops once it is long enough', () => {
+    for (const reason of ['', ' a ', 'ab']) {
+      const page = html({ ...INITIAL_STAFF_PAGE, ...armed({ reason }) });
+      expect(page).toContain(STAFF_MY_SEASON_COPY.reasonTooShort);
+      expect(page).toMatch(/<button type="submit" disabled=""[^>]*aria-describedby="staff-ms-reason-hint"/);
+      expect(page).toMatch(/<textarea[^>]*aria-describedby="staff-ms-reason-warning staff-ms-reason-hint"/);
+    }
+    expect(html({ ...INITIAL_STAFF_PAGE, ...armed({ reason: 'abc' }) })).not.toContain(STAFF_MY_SEASON_COPY.reasonTooShort);
+  });
+
   it('closed notes show no text and no Remove control', () => {
     const page = html({ ...INITIAL_STAFF_PAGE, ...ready, notes: [closed, { ...closed, id: 'x', state: 'withdrawn' }] });
     expect(page).toContain(STAFF_MY_SEASON_COPY.stateRemoved);
@@ -171,6 +193,47 @@ describe('the flows', () => {
     expect(postRemoval).toHaveBeenCalledTimes(2);
     expect(postRemoval.mock.calls[1]).toEqual([OBS, 'Reported by the family']);
     expect(t.get().removal).toBeNull();
+  });
+
+  it('a reason repeating the note: the refusal is clear, the draft stays, and editing it clears the refusal', async () => {
+    const refusal = STAFF_MY_SEASON_ERRORS.invalid_reason;
+    expect(refusal.message).toContain("Don't repeat the note");
+    expect(refusal.message).not.toContain('—');
+    const t = harness(armed(), { postRemoval: async () => ({ ok: false, message: refusal.message, code: refusal.code }) });
+    await t.controller.remove();
+    expect(t.get().removal).toMatchObject({ reason: 'Reported by the family', confirmed: true, busy: false, error: refusal.message, errorCode: 'invalid_reason' });
+    expect(t.get().focus).toBe('removal-error');
+    const page = html(t.get());
+    expect(page).toContain('Don&#x27;t repeat the note');
+    expect(page).toContain('role="alert"');
+    expect(page).toContain('>Reported by the family</textarea>');
+    expect(page).toContain('aria-invalid="true"');
+    expect(page).not.toContain('Retry removal');
+    t.dispatch({ type: 'reason', value: 'A different reason' });
+    expect(t.get().removal).toMatchObject({ reason: 'A different reason', error: null });
+    expect(t.get().removal?.errorCode).toBeUndefined();
+  });
+
+  it('other failures survive an edit of the reason and still offer Retry', () => {
+    const s = staffPageReducer({ ...INITIAL_STAFF_PAGE, ...armed() }, { type: 'removal-failed', message: 'Something went wrong. Try again.', code: 'failed' });
+    expect(html(s)).toContain('Retry removal');
+    expect(staffPageReducer(s, { type: 'reason', value: 'Changed' }).removal?.error).toBe('Something went wrong. Try again.');
+  });
+
+  it('already_removed never claims staff removed it if the reload fails', async () => {
+    const t = harness(armed(), { postRemoval: async () => ({ ok: true, status: 'already_removed' }), fetchNotes: async () => ({ ok: false, message: 'Something went wrong. Try again.' }) });
+    await t.controller.remove();
+    expect(t.get().notes[0]).toMatchObject({ state: 'closed', body: null, category: null });
+    const page = html(t.get());
+    expect(page).toContain(STAFF_MY_SEASON_COPY.stateClosed);
+    expect(page).not.toContain(STAFF_MY_SEASON_COPY.stateRemoved);
+    expect(page).not.toContain('Remove…');
+  });
+
+  it('a successful removal does say staff removed it, even if the reload fails', async () => {
+    const t = harness(armed(), { postRemoval: async () => ({ ok: true, status: 'removed' }), fetchNotes: async () => ({ ok: false, message: 'x' }) });
+    await t.controller.remove();
+    expect(html(t.get())).toContain(STAFF_MY_SEASON_COPY.stateRemoved);
   });
 
   it('a double click sends once; nothing is sent unconfirmed', async () => {

@@ -252,6 +252,17 @@ export type MySeasonView =
  */
 export const MY_SEASON_UNAVAILABLE_VIEW: MySeasonView = { enabled: true, access: 'none', reason: 'unavailable' };
 
+/**
+ * The parent load's answer when the lookup itself failed: nobody knows whether
+ * the feature is on, so most families (feature off) must see nothing about it.
+ * Never accepted from the wire.
+ */
+export const MY_SEASON_UNKNOWN_STATE = { enabled: 'unknown' } as const;
+export type MySeasonParentState = MySeasonView | typeof MY_SEASON_UNKNOWN_STATE;
+
+/** The legacy POST's refusal once the feature is on for the player. */
+export const LEGACY_FOCUS_REPLACED_MESSAGE = 'This player now uses My Season. Refresh to see it.';
+
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isStrOrNull = (v: unknown): v is string | null => v === null || typeof v === 'string';
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
@@ -332,7 +343,7 @@ export function parseMySeasonView(raw: unknown): MySeasonView | null {
   };
 }
 
-export function hasMySeasonContent(view: MySeasonView | null | undefined): view is MySeasonContent {
+export function hasMySeasonContent(view: MySeasonParentState | null | undefined): view is MySeasonContent {
   return !!view && view.enabled === true && view.access !== 'none';
 }
 
@@ -347,13 +358,15 @@ export function rawViewSaysEnabled(raw: unknown): boolean {
 }
 
 /**
- * The parent load: an enabled view, null only when the server confirmed the
- * feature is off, otherwise the "unavailable" marker. Anything unreadable
- * says nothing about the flag, so the legacy Add must not become actionable.
+ * The parent load: an enabled view, or null when the server confirmed the
+ * feature is off. An unusable answer that claims the feature is on gives the
+ * "unavailable" marker; anything else unreadable says nothing about the flag
+ * and gives the "unknown" state, so the legacy Add must not become actionable.
  */
-export function parentViewFromRaw(raw: unknown): MySeasonView | null {
+export function parentViewFromRaw(raw: unknown): MySeasonParentState | null {
   const view = parseMySeasonView(raw);
-  return view ? enabledViewOrNull(view) : MY_SEASON_UNAVAILABLE_VIEW;
+  if (view) return enabledViewOrNull(view);
+  return rawViewSaysEnabled(raw) ? MY_SEASON_UNAVAILABLE_VIEW : MY_SEASON_UNKNOWN_STATE;
 }
 
 /** The RPC does not exist yet (0108 not applied): PostgREST or Postgres wording. */
@@ -443,7 +456,8 @@ export function validateStaffRemovalBody(raw: unknown): { ok: true; reason: stri
 
 type StaffObservationBase = { id: string; createdAt: string; coachName: string | null; formerCoach: boolean };
 export type MySeasonStaffActiveObservation = StaffObservationBase & { state: 'active'; category: MySeasonCategoryKey; body: string };
-export type MySeasonStaffClosedObservation = StaffObservationBase & { state: 'withdrawn' | 'removed'; category: null; body: null };
+/** 'closed' is local to the staff page: closed, but the server has not said by whom. */
+export type MySeasonStaffClosedObservation = StaffObservationBase & { state: 'withdrawn' | 'removed' | 'closed'; category: null; body: null };
 export type MySeasonStaffObservation = MySeasonStaffActiveObservation | MySeasonStaffClosedObservation;
 
 function parseStaffObservation(raw: unknown): MySeasonStaffObservation | null {
@@ -484,7 +498,8 @@ export const STAFF_MY_SEASON_ERRORS: Record<StaffMySeasonErrorCode, StaffMySeaso
   sign_in_required: { status: 401, code: 'sign_in_required', message: 'Sign in required.' },
   staff_required: { status: 403, code: 'staff_required', message: 'Staff access required.' },
   invalid_input: { status: 400, code: 'invalid_input', message: 'Check the ID and try again.' },
-  invalid_reason: { status: 400, code: 'invalid_reason', message: `Give a reason of ${STAFF_REASON_MIN} to ${STAFF_REASON_MAX} characters.` },
+  // Also the answer when the reason repeats the note (the RPC does not say which).
+  invalid_reason: { status: 400, code: 'invalid_reason', message: `That reason can't be used. Don't repeat the note: say why it is being removed, in ${STAFF_REASON_MIN} to ${STAFF_REASON_MAX} characters.` },
   not_found: { status: 404, code: 'not_found', message: 'Nothing was found for that ID.' },
   conflict: { status: 409, code: 'conflict', message: 'That changed while you were working. Reload and try again.' },
   failed: { status: 500, code: 'failed', message: 'Something went wrong. Try again.' },

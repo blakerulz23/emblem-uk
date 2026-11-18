@@ -138,7 +138,27 @@ await ref.close();
     check('post-check is read-only', catalogDiff(post0108, await snapshotCatalog(db)).length === 0);
 
     // The post-check catches grant regressions (each applied and revoked again).
+    const defOf = async (sig) => (await db.query(`select pg_get_functiondef($1::regprocedure) d`, [sig])).rows[0].d;
+    const swapped = (def, from, to) => {
+      const out = def.replace(from, to);
+      if (out === def) throw new Error(`regression setup did not change the function: ${from}`);
+      return out;
+    };
+    const requireDef = await defOf('public.my_season_require_staff()');
+    const removeDef = await defOf('public.my_season_staff_remove_observation(uuid, text)');
+    const listDef = await defOf('public.my_season_staff_list_observations(uuid)');
+    const REASON_RULE = 'reason = btrim(reason) and char_length(reason) between 3 and 500';
+    const reasonRule = (rule) => `alter table public.my_season_observation_staff_removals drop constraint my_season_staff_removals_reason_shape, add constraint my_season_staff_removals_reason_shape check (${rule})`;
     const regressions = [
+      [swapped(requireDef, /if coalesce\(current_setting\('role', true\), ''\) <> 'authenticated' then[\s\S]*?end if;/, ''), requireDef, 'staff_role_check_intact'],
+      [swapped(requireDef, " or public.profile_has_pending_deletion_review(v_uid)", ''), requireDef, 'staff_role_check_intact'],
+      [swapped(removeDef, 'v_staff uuid := public.my_season_require_staff();', 'v_staff uuid := auth.uid();'), removeDef, 'staff_rpcs_require_staff_first'],
+      [swapped(listDef, 'v_staff uuid := public.my_season_require_staff();', 'v_staff uuid := auth.uid();'), listDef, 'staff_rpcs_require_staff_first'],
+      [swapped(removeDef, 'strpos(v_norm_reason, v_norm_body) > 0', 'false'), removeDef, 'staff_remove_refuses_repeated_note'],
+      [swapped(removeDef, 'for no key update', ''), removeDef, 'staff_remove_refuses_repeated_note'],
+      [reasonRule('char_length(reason) between 1 and 500'), reasonRule(REASON_RULE), 'staff_reason_constraint_definition_ok'],
+      [reasonRule('reason = btrim(reason) and char_length(reason) between 3 and 5000'), reasonRule(REASON_RULE), 'staff_reason_constraint_definition_ok'],
+      ['alter table public.my_season_observation_staff_removals alter column reason drop not null', 'alter table public.my_season_observation_staff_removals alter column reason set not null', 'staff_reason_constraint_definition_ok'],
       ['grant select on public.my_season_focuses to authenticated', 'revoke select on public.my_season_focuses from authenticated', 'authenticated_no_content_table_privileges'],
       ['grant select on public.my_season_coach_observations to public', 'revoke select on public.my_season_coach_observations from public', 'public_no_table_privileges'],
       ['grant execute on function public.my_season_focuses_before_update() to public', 'revoke execute on function public.my_season_focuses_before_update() from public', 'owner_only_functions_locked'],

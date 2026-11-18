@@ -652,8 +652,9 @@ describe('A11: enabled but unusable never falls back to the legacy form', () => 
     expect(parseMySeasonView({ enabled: true, access: 'none', reason: 'unavailable' })).toBeNull();
     expect(parentViewFromRaw({ enabled: false })).toBeNull();
     // Unreadable says nothing about the flag: never "off".
-    expect(parentViewFromRaw({ enabled: 'yes' })).toEqual({ enabled: true, access: 'none', reason: 'unavailable' });
-    expect(parentViewFromRaw(null)).toEqual({ enabled: true, access: 'none', reason: 'unavailable' });
+    expect(parentViewFromRaw({ enabled: 'yes' })).toEqual({ enabled: 'unknown' });
+    expect(parentViewFromRaw(null)).toEqual({ enabled: 'unknown' });
+    expect(parseMySeasonView({ enabled: 'unknown' })).toBeNull();
   });
 });
 

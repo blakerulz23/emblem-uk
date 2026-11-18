@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MY_SEASON_ERRORS, parseMySeasonView, visibleFamilyObservations, type MySeasonView } from '@/lib/my-season';
 import { loadMySeasonView, type LoadResult } from './mySeasonClient';
-import { createHomeCardSync, homeCardSignature } from './mySeasonFlows';
+import { MS_IDS, NOTE_ALREADY_REMOVED, NOTE_ALREADY_WITHDRAWN, WITHDRAW_FOCUS, createHomeCardSync, decideNoteOutcome, homeCardSignature, type PendingFocus } from './mySeasonFlows';
 import MySeasonHomeCard from './screens/MySeasonHomeCard';
 import {
   CoachMySeasonPanel,
@@ -10,6 +10,7 @@ import {
   LEGACY_FOCUS_COPY,
   LegacyFocusNotice,
   coachLookupStatus,
+  createCoachPanelActions,
   coachStateForPlayer,
   createCoachSeasonLoader,
   legacyFocusGate,
@@ -17,6 +18,7 @@ import {
   withdrawFlow,
   type CoachLookupStatus,
   type CoachMySeasonState,
+  type CoachPanelUi,
 } from './screens/CoachMySeasonSection';
 import { MS_PLAYER_ID, buttonByText, expand, msContent, msNote, msWithdrawnNote } from './my-season-test-support';
 
@@ -164,6 +166,101 @@ describe('legacy control gating', () => {
     expect(ended).not.toContain('Retry');
     expect(renderToStaticMarkup(notice('not-needed'))).toBe('');
     expect(renderToStaticMarkup(notice('confirmed-off'))).toBe('');
+  });
+});
+
+describe('the failed-lookup text', () => {
+  it('uses the theme class that meets AA in dark mode, not a fixed colour', () => {
+    for (const s of ['failed', 'session-ended'] as const) {
+      const html = renderToStaticMarkup(<LegacyFocusNotice gate={legacyFocusGate(s)} onRetry={noop} />);
+      expect(html).toContain('class="os-ms-error"');
+      expect(html).not.toContain('#C0392B');
+    }
+  });
+});
+
+describe('a note staff removed, from the author\'s side', () => {
+  const removed = { ...msWithdrawnNote(), removedByStaff: true as const };
+  const render = (view: MySeasonView, ui: Partial<CoachPanelUi>) =>
+    renderToStaticMarkup(
+      <CoachMySeasonPanel
+        playerId={MS_PLAYER_ID} firstName="Riley" state={{ status: 'ready', view }} ui={{ ...INITIAL_COACH_PANEL_UI, ...ui }}
+        onRetry={noop} reloadNotes={async () => null} onStartEditFocus={noop} onCancelEditFocus={noop} onFocusSaved={noop}
+        onOpenComposer={noop} onCancelComposer={noop} onNoteSent={noop} onAskWithdraw={noop} onCancelWithdraw={noop} onConfirmWithdraw={noop}
+      />
+    );
+  const coachView = (observations: MySeasonContentNotes) => msContent({ access: 'coach', canAddNote: true, observations });
+  type MySeasonContentNotes = NonNullable<Parameters<typeof msContent>[0]>['observations'];
+
+  it('a refused withdrawal reloads, then sends focus to the notice', async () => {
+    const order: string[] = [];
+    const focus: PendingFocus[] = [];
+    const reload = deferred<void>();
+    const done = withdrawFlow('o1', {
+      setUi: noop,
+      erase: noop,
+      withdraw: async () => ({ ok: false, error: 'No.', code: 'not_allowed', status: 403 }),
+      reload: () => {
+        order.push('reload');
+        return reload.promise;
+      },
+      focusNext: (p) => {
+        order.push('focus');
+        focus.push(p);
+      },
+    });
+    expect(await done).toBe(false);
+    expect(focus).toEqual([WITHDRAW_FOCUS.failed('o1')]);
+    reload.resolve();
+    await vi.waitFor(() => expect(focus).toHaveLength(2));
+    expect(focus[1]).toEqual({ ids: [MS_IDS.withdrawNotice] });
+    expect(order).toEqual(['focus', 'reload', 'focus']);
+  });
+
+  it('a reload that fails still settles the focus', async () => {
+    const focusNext = vi.fn();
+    await withdrawFlow('o1', { setUi: noop, erase: noop, withdraw: async () => ({ ok: false, error: 'No.', code: 'not_allowed' }), reload: () => Promise.reject(new Error('offline')), focusNext });
+    await vi.waitFor(() => expect(focusNext).toHaveBeenCalledTimes(2));
+  });
+
+  it('after that reload the message stays visible and focusable, next to the removed row', () => {
+    const html = render(coachView([removed]), { confirmingWithdrawId: 'o1', withdrawError: 'You can&apos;t.' });
+    expect(html).toMatch(new RegExp(`<p id="${MS_IDS.withdrawNotice}" role="alert" tabindex="-1"`));
+    expect(html).toContain('Removed by Emblem staff.');
+    expect(html).not.toContain('data-testid="withdraw-confirm"');
+  });
+
+  it('so does a note that has left the list altogether', () => {
+    expect(render(coachView([]), { confirmingWithdrawId: 'o1', withdrawError: 'No.' })).toContain(`id="${MS_IDS.withdrawNotice}"`);
+  });
+
+  it('while the note can still be confirmed the message stays in the confirm step, once', () => {
+    const html = render(coachView([msNote({ mine: true })]), { confirmingWithdrawId: 'o1', withdrawError: 'Refused here.' });
+    expect(html).not.toContain(MS_IDS.withdrawNotice);
+    expect(html.match(/Refused here\./g)).toHaveLength(1);
+    expect(html).toContain('data-testid="withdraw-confirm"');
+  });
+
+  it('no message without a refusal', () => {
+    expect(render(coachView([removed]), { confirmingWithdrawId: 'o1' })).not.toContain(MS_IDS.withdrawNotice);
+  });
+
+  it('a retried send of a removed note says it was removed, not withdrawn', () => {
+    const NOTE = '50000000-0000-4000-8000-000000000009';
+    const decide = (note: typeof removed) => decideNoteOutcome({ result: { ok: true, observationId: NOTE }, view: coachView([{ ...note, id: NOTE }]), category: 'spoke_up', body: 'x', knownIds: [] });
+    expect(decide(removed)).toBe('already_removed');
+    expect(decide(msWithdrawnNote() as typeof removed)).toBe('already_withdrawn');
+
+    let ui: CoachPanelUi = INITIAL_COACH_PANEL_UI;
+    const actions = createCoachPanelActions({
+      getUi: () => ui, firstName: () => 'Riley', setUi: (p) => { ui = { ...ui, ...p }; }, withdraw: async () => ({ ok: true }),
+      erase: noop, reload: noop, focusNext: noop, renewComposer: noop,
+    });
+    actions.noteSent('already_removed');
+    expect(ui.toast).toBe(NOTE_ALREADY_REMOVED);
+    expect(NOTE_ALREADY_REMOVED).toBe("This note was removed by Emblem staff, so it wasn't sent again.");
+    actions.noteSent('already_withdrawn');
+    expect(ui.toast).toBe(NOTE_ALREADY_WITHDRAWN);
   });
 });
 

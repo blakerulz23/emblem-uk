@@ -662,6 +662,28 @@ try {
       check('l: mixed burst x6: exactly one winner, and the row, events and reason agree with it', ok, problems);
     }
 
+    // A reason repeating the note is judged against the note as it is once the row lock is held.
+    {
+      const p = await child(), o = await newNote(p), body = `${NOTE_MARK} kept going after the goal.`;
+      await withdraw(A, coach, o, { hold: true });
+      const s = outcome(remove(B, staff1, o, body));
+      const waited = await waitsOnLock(O, B);
+      await A.query('commit');
+      const r = await s;
+      check('l: repeat, coach withdrew first: staff waits, the text is gone, already_removed and no reason row', waited && r.id === 'already_removed' && await staffEvents(p) === 0 && (await reasons(o)).length === 0, { waited, r });
+    }
+    {
+      const p = await child(), o = await newNote(p), body = `${NOTE_MARK} kept going after the goal.`;
+      await withdraw(A, coach, o, { hold: true });
+      const s = outcome(remove(B, staff1, o, body));
+      const waited = await waitsOnLock(O, B);
+      await A.query('rollback');
+      const r = await s;
+      const [row] = await obsRows(p);
+      check('l: repeat, the withdrawal rolled back: the text is current, so the fixed EMS11 and nothing written',
+        waited && fixed(r, 'EMS11', 'my_season_invalid_reason') && !JSON.stringify(r).includes(NOTE_MARK) && row.body === body && row.withdrawn_at === null && await staffEvents(p) === 0 && (await reasons(o)).length === 0, { waited, r });
+    }
+
     // Staff removal against the coach's account deletion, both orders.
     {
       const leaving = await person('Leaving Coach A');

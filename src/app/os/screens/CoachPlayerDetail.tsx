@@ -14,6 +14,7 @@ import type { PreferredFoot } from '../coachFields';
 import { AGE_GROUP_OPTIONS, FOOT_OPTIONS, POSITION_OPTIONS, positionLabel, validateHeightCm } from '../coachFields';
 import { positionDisplayLabel } from '@/lib/player-position';
 import CoachMySeasonSection, { LegacyFocusNotice, legacyFocusGate, useCoachMySeason } from './CoachMySeasonSection';
+import { MS_IDS, focusElementById } from '../mySeasonFlows';
 
 /** "15 Aug 2026" — matches RealCollection/PlayerHome's date convention. */
 function formatDate(iso: string): string {
@@ -622,6 +623,8 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
           as dominant simply because everything above it is quiet. Populated
           rows read focus text as hero → status as a small "progress" pill →
           author/date as the smallest supporting line. */}
+      {/* Stays mounted whichever section shows, so Retry can leave focus here. */}
+      <div id={MS_IDS.seasonSection} tabIndex={-1} className="os-ms-focus">
       {mySeason.enabled && (
         <CoachMySeasonSection playerId={playerId} playerName={player.name} state={mySeason.state} reload={mySeason.reload} eraseWithdrawn={mySeason.eraseWithdrawn} />
       )}
@@ -669,9 +672,16 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
           </div>
         )}
         {focusError && <p role="alert" style={{ color: '#C0392B', fontSize: 12.5, marginTop: 6 }}>{focusError}</p>}
-        <LegacyFocusNotice gate={legacyGate} onRetry={() => void mySeason.reload()} />
+        <LegacyFocusNotice
+          gate={legacyGate}
+          onRetry={() => {
+            focusElementById(MS_IDS.seasonSection);
+            void mySeason.reload();
+          }}
+        />
       </div>
       )}
+      </div>
 
       {isReal && isDirectAccessOnly && (
         <div style={sectionCard}>

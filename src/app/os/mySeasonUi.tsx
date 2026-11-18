@@ -22,7 +22,7 @@ import {
   type MySeasonObservation,
   type MySeasonView,
 } from '@/lib/my-season';
-import { MY_SEASON_LOAD_ERROR, MY_SEASON_SESSION_ENDED, addMySeasonObservation, saveMySeasonFocus, todayLocalIso } from './mySeasonClient';
+import { MY_SEASON_LOAD_ERROR, MY_SEASON_SESSION_ENDED, SEASON_CHECK_FAILED, addMySeasonObservation, saveMySeasonFocus, todayLocalIso } from './mySeasonClient';
 import {
   MY_SEASON_FORM_COPY,
   NOTE_SENTENCE_HINT,
@@ -159,6 +159,16 @@ export function MySeasonError({ onRetry, busy, signedOut = false }: { onRetry: (
     <div role="alert" style={{ ...msCard, display: 'grid', gap: 12 }}>
       <p style={{ margin: 0, fontSize: 14.5, color: 'var(--os-ink)' }}>{signedOut ? MY_SEASON_COPY.sessionEnded : MY_SEASON_COPY.loadError}</p>
       {!signedOut && <MsButton variant="ghost" onClick={onRetry} disabled={busy} style={{ justifySelf: 'start' }}>Retry</MsButton>}
+    </div>
+  );
+}
+
+/** The legacy Season Focus while the lookup has failed: neutral copy, and a way to ask again. */
+export function SeasonCheckFailed({ onRetry, busy }: { onRetry: () => void; busy?: boolean }) {
+  return (
+    <div role="alert" data-testid="season-check-failed" style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+      <p className="os-ms-error" style={{ margin: 0, fontSize: 12.5 }}>{SEASON_CHECK_FAILED}</p>
+      <MsButton variant="ghost" onClick={onRetry} disabled={busy} style={{ justifySelf: 'start' }}>{busy ? 'Checking…' : 'Retry'}</MsButton>
     </div>
   );
 }

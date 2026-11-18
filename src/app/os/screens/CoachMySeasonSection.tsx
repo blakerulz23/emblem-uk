@@ -5,6 +5,7 @@ import { eraseObservationFromView, formatMySeasonDate, type MySeasonView } from 
 import { MY_SEASON_SESSION_ENDED, loadMySeasonView, shouldLookUpCoachMySeason, withdrawMySeasonObservation, type LoadResult, type WriteResult } from '../mySeasonClient';
 import {
   MS_IDS,
+  NOTE_ALREADY_REMOVED,
   NOTE_ALREADY_WITHDRAWN,
   NOTE_NOT_LISTED,
   WITHDRAW_FAILED,
@@ -113,12 +114,12 @@ export function LegacyFocusNotice({ gate, onRetry }: { gate: LegacyFocusGate; on
     );
   }
   if (gate.notice === 'session-ended') {
-    return <p role="alert" data-testid="legacy-focus-session-ended" style={{ color: '#C0392B', fontSize: 12.5, margin: '10px 0 0' }}>{LEGACY_FOCUS_COPY.sessionEnded}</p>;
+    return <p role="alert" data-testid="legacy-focus-session-ended" className="os-ms-error" style={{ fontSize: 12.5, margin: '10px 0 0' }}>{LEGACY_FOCUS_COPY.sessionEnded}</p>;
   }
   if (gate.notice === 'failed') {
     return (
       <div role="alert" data-testid="legacy-focus-failed" style={{ marginTop: 10, display: 'grid', gap: 8 }}>
-        <p style={{ color: '#C0392B', fontSize: 12.5, margin: 0 }}>{LEGACY_FOCUS_COPY.failed}</p>
+        <p className="os-ms-error" style={{ fontSize: 12.5, margin: 0 }}>{LEGACY_FOCUS_COPY.failed}</p>
         <MsButton variant="ghost" onClick={onRetry} style={{ justifySelf: 'start' }}>Retry</MsButton>
       </div>
     );
@@ -256,8 +257,13 @@ export async function withdrawFlow(observationId: string, deps: WithdrawDeps): P
     deps.setUi({ withdrawBusy: false, withdrawError: result.unknown ? WITHDRAW_FAILED : result.error });
     deps.focusNext(WITHDRAW_FOCUS.failed(observationId));
     // Refused: the note may have changed under us (staff may have removed it),
-    // so show what is true now, which also drops any erased text.
-    if (result.code === 'not_allowed') deps.reload();
+    // so show what is true now, which also drops any erased text. If that
+    // closes the confirm step, its message and focus move to the list's notice.
+    if (result.code === 'not_allowed') {
+      void Promise.resolve(deps.reload())
+        .catch(() => {})
+        .then(() => deps.focusNext(WITHDRAW_FOCUS.refused()));
+    }
     return false;
   }
   deps.erase(observationId);
@@ -296,7 +302,11 @@ export function createCoachPanelActions(deps: WithdrawDeps & { getUi: () => Coac
       }
     },
     noteSent(kind: NoteSentKind) {
-      const toast = kind === 'sent' ? MY_SEASON_COPY.sentToast(deps.firstName()) : kind === 'already_withdrawn' ? NOTE_ALREADY_WITHDRAWN : NOTE_NOT_LISTED;
+      const toast =
+        kind === 'sent' ? MY_SEASON_COPY.sentToast(deps.firstName())
+        : kind === 'already_withdrawn' ? NOTE_ALREADY_WITHDRAWN
+        : kind === 'already_removed' ? NOTE_ALREADY_REMOVED
+        : NOTE_NOT_LISTED;
       deps.renewComposer();
       deps.setUi({ composerOpen: false, toast });
       deps.focusNext({ ids: [MS_IDS.coachAddNote] });
@@ -459,6 +469,10 @@ export function CoachMySeasonPanel({
 
   const focus = view.activeFocus;
   const busyReload = state.status === 'loading';
+  // A refused withdrawal whose note can no longer be confirmed (staff removed
+  // it): the message outlives the confirm step that was showing it.
+  const refusedNote = view.observations.find((n) => n.id === ui.confirmingWithdrawId);
+  const orphanedWithdrawError = ui.confirmingWithdrawId && ui.withdrawError && !(refusedNote && refusedNote.mine && !refusedNote.withdrawn) ? ui.withdrawError : null;
 
   return wrap(
     <>
@@ -510,6 +524,7 @@ export function CoachMySeasonPanel({
 
       <div style={{ display: 'grid', gap: 10 }}>
         <h3 className="os-ms-soft" style={{ ...msEyebrow, fontSize: 12 }}>Notes for {firstName}</h3>
+        {orphanedWithdrawError && <p id={MS_IDS.withdrawNotice} role="alert" tabIndex={-1} className="os-ms-error os-ms-focus" style={{ margin: 0, fontSize: 13 }}>{orphanedWithdrawError}</p>}
         <NoteList
           notes={view.observations}
           empty="No notes yet."

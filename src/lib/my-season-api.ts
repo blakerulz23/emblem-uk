@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireStaff } from '@/lib/require-staff';
 import { isSeasonDeployKillSwitchOn } from '@/lib/season-feature';
-import { MY_SEASON_ERRORS, STAFF_MY_SEASON_ERRORS, mySeasonErrorFor, type MySeasonError, type StaffMySeasonError } from '@/lib/my-season';
+import { MY_SEASON_ERRORS, STAFF_MY_SEASON_ERRORS, mySeasonErrorFor, rawViewSaysEnabled, type MySeasonError, type StaffMySeasonError } from '@/lib/my-season';
 
 /**
  * Shared guard for the /api/os/my-season routes (server-only).
@@ -81,6 +81,22 @@ export async function guardStaffMySeasonRequest(request: NextRequest): Promise<S
     return { ok: false, response: staffMySeasonJsonError(staff.status === 401 ? STAFF_MY_SEASON_ERRORS.sign_in_required : STAFF_MY_SEASON_ERRORS.staff_required) };
   }
   return { ok: true, supabase };
+}
+
+/**
+ * True only when the server definitely says My Season is on for this player,
+ * for the legacy Season Focus route. An RPC error, a missing function (before
+ * 0108), a throw or the deploy kill switch all give false, so that route keeps
+ * working exactly as it always has and can never fail because of My Season.
+ */
+export async function mySeasonDefinitelyEnabled(supabase: Pick<ReturnType<typeof createClient>, 'rpc'>, playerId: string): Promise<boolean> {
+  if (isSeasonDeployKillSwitchOn()) return false;
+  try {
+    const { data, error } = await supabase.rpc('my_season_for_player', { p_player_id: playerId });
+    return !error && rawViewSaysEnabled(data);
+  } catch {
+    return false;
+  }
 }
 
 export async function readJsonBody(request: NextRequest): Promise<unknown> {

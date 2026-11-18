@@ -128,6 +128,7 @@ export const NOTE_TOO_SHORT = 'Add a little more detail (at least 20 characters)
 export const NOTE_PICK_CATEGORY = 'Pick what you noticed above to send this.';
 export const NOTE_UNCONFIRMED = "We couldn't confirm that was sent. Check the notes below before sending again.";
 export const NOTE_ALREADY_WITHDRAWN = "This note was already withdrawn, so it wasn't sent again.";
+export const NOTE_ALREADY_REMOVED = "This note was removed by Emblem staff, so it wasn't sent again.";
 export const NOTE_NOT_LISTED = "This note isn't showing in the list below, so check there before writing it again.";
 export const WITHDRAW_FAILED = "Couldn't withdraw that note. Try again.";
 
@@ -223,12 +224,13 @@ export async function submitWrite(
 // Sending a coach note: "Sent" is only said once the list proves it
 // ---------------------------------------------------------------------------
 
-export type NoteSentKind = 'sent' | 'already_withdrawn' | 'not_listed';
+export type NoteSentKind = 'sent' | 'already_withdrawn' | 'already_removed' | 'not_listed';
 
 /**
  * What a send amounted to, judged from a list loaded after it.
  *  - The server gave an id: active in the list is sent; withdrawn means the
- *    key belonged to a note since withdrawn (nothing new was created).
+ *    key belonged to a note since withdrawn, or removed by staff (nothing new
+ *    was created).
  *  - No usable answer: sent only if a note of mine with this exact content
  *    has appeared since the send started (`knownIds` were there before).
  *  - No list: nothing can be said.
@@ -246,7 +248,8 @@ export function decideNoteOutcome(o: {
     const id = o.result.observationId;
     const note = notes.find((n) => n.id === id);
     if (!note) return 'not_listed';
-    return note.withdrawn ? 'already_withdrawn' : 'sent';
+    if (!note.withdrawn) return 'sent';
+    return note.removedByStaff ? 'already_removed' : 'already_withdrawn';
   }
   const appeared = notes.some((n) => !n.withdrawn && n.mine && !o.knownIds.includes(n.id) && n.category === o.category && n.body === o.body);
   return appeared ? 'sent' : 'unconfirmed';
@@ -485,6 +488,9 @@ export const MS_IDS = {
   withdrawPrompt: (id: string) => `ms-withdraw-prompt-${id}`,
   withdrawConfirm: (id: string) => `ms-withdraw-confirm-${id}`,
   withdrawn: (id: string) => `ms-withdrawn-${id}`,
+  withdrawNotice: 'ms-withdraw-notice',
+  /** Wraps the season section on the Card and coach screens: there whichever section shows. */
+  seasonSection: 'season-section',
 } as const;
 
 /** Where focus should go next: the first of `ids` that exists. */
@@ -505,7 +511,17 @@ export const WITHDRAW_FOCUS = {
   failed: (id: string): PendingFocus => ({ ids: [MS_IDS.withdrawPrompt(id)] }),
   cancel: (id: string): PendingFocus => ({ ids: [MS_IDS.withdraw(id)] }),
   done: (id: string): PendingFocus => ({ ids: [MS_IDS.withdrawn(id)] }),
+  /** After a refusal's reload: only if the note's confirm step has gone. */
+  refused: (): PendingFocus => ({ ids: [MS_IDS.withdrawNotice] }),
 };
+
+/**
+ * Moves focus now, before the control being used unmounts. Used by the legacy
+ * section's Retry, whose button disappears whatever the answer is.
+ */
+export function focusElementById(id: string): void {
+  if (typeof document !== 'undefined') document.getElementById(id)?.focus();
+}
 
 /** Moves focus to the pending target after the render that set it (the target is in that same commit). */
 export function usePendingFocus(): (p: PendingFocus | null) => void {

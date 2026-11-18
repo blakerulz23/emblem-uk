@@ -20,6 +20,8 @@ type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 export const MY_SEASON_LOAD_ERROR = "Couldn't load My Season. Check your connection and try again.";
 export const MY_SEASON_SESSION_ENDED = 'Your session has ended. Sign in again.';
 export const GENERIC_SAVE_ERROR = "Couldn't save that. Check your connection and try again.";
+/** Deliberately names no feature: it is shown to families who may not have My Season. */
+export const SEASON_CHECK_FAILED = "Couldn't check this section. Try again.";
 
 /**
  * `signedOut`: the server answered 401, so retrying will not help.

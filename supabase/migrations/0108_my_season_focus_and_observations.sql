@@ -105,7 +105,8 @@
 --              written) and the section 2 triggers: my_season_immutable /
 --              my_season_insert_shape / my_season_audit_append_only
 --        EMS10 my_season_staff_only (every refusal of a staff RPC's caller)
---        EMS11 my_season_invalid_reason (the staff removal reason)
+--        EMS11 my_season_invalid_reason (the staff removal reason: blank, the
+--              wrong length, or repeating the note)
 --   6. Staff removal: my_season_observation_staff_removals (the one place a
 --      reason is stored), its triggers, my_season_require_staff (owner only),
 --      my_season_staff_remove_observation, my_season_staff_list_observations.
@@ -114,10 +115,25 @@
 -- row now and no pending deletion review, in a request whose database role is
 -- `authenticated`. No argument names the staff member. The role check reads
 -- the `role` setting, which PostgREST sets from the JWT's role claim and which
--- a SECURITY DEFINER call does not change; the owner or a superuser with a
--- forged sub is refused by it, and service_role and anon have no EXECUTE at
--- all. It does not depend on the feature flag or on the note's author (who may
--- have left, be under review or be deleted). One guarded UPDATE erases the
+-- a SECURITY DEFINER call does not change.
+-- What this defends: anon and service_role have no EXECUTE, so the service-role
+-- key cannot act as staff even with a forged sub; a session still running as
+-- the owner or a superuser (no SET ROLE) gets EMS10 even with a staff sub in its
+-- claims; signed-in non-staff, removed staff and staff under review get EMS10.
+-- What it does not defend: the database cannot tell a forged request from a
+-- real one once the role and the claims match. The owner running
+-- `SET ROLE authenticated` with a staff sub is equivalent to a real staff
+-- request and succeeds. Anyone with database owner rights, the JWT secret (who
+-- can mint a staff token) or the authenticator role's credentials (who can set
+-- the role and the claims) is outside this boundary.
+-- It does not depend on the feature flag or on the note's author (who may
+-- have left, be under review or be deleted). The reason may not repeat the
+-- note: with the note's row locked, so the text compared is the current one,
+-- both are lower-cased with whitespace runs collapsed, and a reason containing
+-- the whole note, or one of 20+ characters contained in the note, gets the
+-- fixed EMS11 before anything is erased, echoing neither. This catches pasted
+-- text only. It cannot detect a paraphrase, so the form's warning stays.
+-- One guarded UPDATE erases the
 -- note under the withdrawal rules (withdrawn_by = the staff member); only if
 -- it matched are one content-free audit event and the reason row written, so
 -- retries and races leave one of each and the first reason stands. A note
@@ -1185,6 +1201,9 @@ declare
   v_staff uuid := public.my_season_require_staff();
   v_reason text := public.my_season_trim(p_reason);
   v_player uuid;
+  v_body text;
+  v_norm_body text;
+  v_norm_reason text;
   v_removed uuid;
 begin
   if v_reason is null or char_length(v_reason) not between 3 and 500 then
@@ -1201,6 +1220,22 @@ begin
   perform 1 from public.players p where p.id = v_player for key share;
   if not found then
     raise exception using errcode = 'EMS09', message = 'my_season_conflict';
+  end if;
+
+  -- The same lock the UPDATE below takes, held to the end of the transaction,
+  -- so the comparison sees the note as it is now and it cannot change first.
+  -- A note already closed has no text and falls through to already_removed.
+  select o.body into v_body
+    from public.my_season_coach_observations o
+   where o.id = p_observation_id and o.withdrawn_at is null
+     for no key update;
+  if v_body is not null then
+    v_norm_body := lower(regexp_replace(v_body, '[\s\u00A0\uFEFF]+', ' ', 'g'));
+    v_norm_reason := lower(regexp_replace(v_reason, '[\s\u00A0\uFEFF]+', ' ', 'g'));
+    if strpos(v_norm_reason, v_norm_body) > 0
+       or (char_length(v_norm_reason) >= 20 and strpos(v_norm_body, v_norm_reason) > 0) then
+      raise exception using errcode = 'EMS11', message = 'my_season_invalid_reason';
+    end if;
   end if;
 
   begin

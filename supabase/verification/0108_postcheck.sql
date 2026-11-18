@@ -104,6 +104,18 @@ select
     and not exists (select 1 from staff_rpc s where not has_function_privilege('authenticated', s.sig, 'execute')) as staff_rpcs_authenticated_only,
   not exists (select 1 from staff_rpc s join pg_proc p on p.oid = to_regprocedure(s.sig)
                where not p.prosecdef or not coalesce(p.proconfig::text like '%search_path=public, pg_temp%', false)) as staff_rpcs_definer_safe_path,
+  -- The staff checks themselves, not just the grants: compared with whitespace
+  -- collapsed, so a removed role check or a loosened rule fails here.
+  exists (select 1 from pg_proc p where p.oid = to_regprocedure('public.my_season_require_staff()')
+           and btrim(regexp_replace(p.prosrc, '\s+', ' ', 'g')) = 'declare v_uid uuid; begin if coalesce(current_setting(''role'', true), '''') <> ''authenticated'' then raise exception using errcode = ''EMS10'', message = ''my_season_staff_only''; end if; v_uid := auth.uid(); if v_uid is null then raise exception using errcode = ''EMS10'', message = ''my_season_staff_only''; end if; perform 1 from public.staff_accounts s where s.profile_id = v_uid for key share; if not found or public.profile_has_pending_deletion_review(v_uid) then raise exception using errcode = ''EMS10'', message = ''my_season_staff_only''; end if; return v_uid; end;') as staff_role_check_intact,
+  (select count(*) from staff_rpc s join pg_proc p on p.oid = to_regprocedure(s.sig)
+    where p.prosrc ~ '^\s*declare\s+v_staff uuid := public\.my_season_require_staff\(\);') = 2 as staff_rpcs_require_staff_first,
+  exists (select 1 from pg_proc p where p.oid = to_regprocedure('public.my_season_staff_remove_observation(uuid, text)')
+           and strpos(regexp_replace(p.prosrc, '\s+', ' ', 'g'), 'select o.body into v_body from public.my_season_coach_observations o where o.id = p_observation_id and o.withdrawn_at is null for no key update; if v_body is not null then v_norm_body := lower(regexp_replace(v_body, ''[\s\u00A0\uFEFF]+'', '' '', ''g'')); v_norm_reason := lower(regexp_replace(v_reason, ''[\s\u00A0\uFEFF]+'', '' '', ''g'')); if strpos(v_norm_reason, v_norm_body) > 0 or (char_length(v_norm_reason) >= 20 and strpos(v_norm_body, v_norm_reason) > 0) then raise exception using errcode = ''EMS11'', message = ''my_season_invalid_reason''; end if; end if;') > 0) as staff_remove_refuses_repeated_note,
+  exists (select 1 from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attname = 'reason'
+           where c.conrelid = 'public.my_season_observation_staff_removals'::regclass
+             and c.conname = 'my_season_staff_removals_reason_shape' and c.convalidated and a.attnotnull
+             and regexp_replace(pg_get_constraintdef(c.oid), '\s+', ' ', 'g') = 'CHECK (((reason = btrim(reason)) AND ((char_length(reason) >= 3) AND (char_length(reason) <= 500))))') as staff_reason_constraint_definition_ok,
   exists (select 1 from pg_constraint c where c.conrelid = 'public.my_season_coach_observations'::regclass
            and c.conname = 'my_season_coach_observations_request_id_key' and c.contype = 'u') as observation_request_id_unique_present,
   (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'my_season_coach_observations'

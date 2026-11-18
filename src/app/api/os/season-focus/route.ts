@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { generateStoryUpdate } from '@/lib/story-updates';
 import { getEligibleCoachProfileIds } from '@/lib/player-capabilities';
+import { mySeasonDefinitelyEnabled } from '@/lib/my-season-api';
+import { LEGACY_FOCUS_REPLACED_MESSAGE } from '@/lib/my-season';
 
 export const runtime = 'nodejs';
 
@@ -63,6 +65,10 @@ async function notifyOtherParty(
  * policy` — a self-referencing subquery inside an INSERT policy's WITH
  * CHECK triggers this table's own RLS recursively. This route never
  * inserts into player_season_focus directly, only calls the RPC.
+ *
+ * A player whose team has My Season on no longer takes legacy focuses (a
+ * stale screen or a direct call gets 409, nothing written). Any doubt about
+ * My Season falls through to today's behaviour.
  */
 export async function POST(request: NextRequest) {
   const supabase = createClient();
@@ -77,6 +83,10 @@ export async function POST(request: NextRequest) {
   const { playerId, label } = body as { playerId?: string; label?: string };
   if (!playerId) {
     return NextResponse.json({ error: 'playerId is required' }, { status: 400 });
+  }
+
+  if (await mySeasonDefinitelyEnabled(supabase, playerId)) {
+    return NextResponse.json({ error: LEGACY_FOCUS_REPLACED_MESSAGE, code: 'my_season_enabled' }, { status: 409 });
   }
 
   const { data: focusId, error } = await supabase.rpc('create_season_focus', {

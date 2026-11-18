@@ -1,5 +1,6 @@
 import {
   STAFF_MY_SEASON_ERRORS,
+  STAFF_REASON_MIN,
   checkStaffRemovalReason,
   isUuid,
   parseStaffObservationList,
@@ -24,11 +25,13 @@ export const STAFF_MY_SEASON_COPY = {
   network: "Couldn't reach the server. Check your connection and try again.",
   noNotes: 'No coach notes for this player.',
   reasonWarning: "Don't paste the note or any child's details here. Say only why it is being removed.",
+  reasonTooShort: `Enter a reason of at least ${STAFF_REASON_MIN} characters to remove this note.`,
   confirm: 'I understand this permanently erases the note. It cannot be restored.',
   removed: 'Note removed. Its text has been erased.',
   alreadyRemoved: 'This note had already been withdrawn or removed. Nothing more was changed.',
   stateWithdrawn: 'Withdrawn by the coach. No text is kept.',
   stateRemoved: 'Removed by staff. No text is kept.',
+  stateClosed: 'Already withdrawn or removed. No text is kept.',
 } as const;
 
 export type StaffFailure = { ok: false; message: string; code?: StaffMySeasonErrorCode };
@@ -65,8 +68,8 @@ export async function postStaffRemoval(observationId: string, reason: string, fe
   }
 }
 
-export type StaffRemoval = { id: string; reason: string; confirmed: boolean; busy: boolean; error: string | null };
-export type StaffFocusTarget = 'player' | 'reason' | 'removal-error' | 'status' | 'list-error';
+export type StaffRemoval = { id: string; reason: string; confirmed: boolean; busy: boolean; error: string | null; errorCode?: StaffMySeasonErrorCode };
+export type StaffFocusTarget = 'player' | 'reason' | 'removal-error' | 'status' | 'list-error' | 'remove-control';
 
 export type StaffPageState = {
   playerIdDraft: string;
@@ -77,6 +80,8 @@ export type StaffPageState = {
   removal: StaffRemoval | null;
   announcement: string;
   focus: StaffFocusTarget | null;
+  /** The note whose Remove control takes focus back after Cancel. */
+  returnFocusNoteId: string | null;
 };
 
 export const INITIAL_STAFF_PAGE: StaffPageState = {
@@ -88,6 +93,7 @@ export const INITIAL_STAFF_PAGE: StaffPageState = {
   removal: null,
   announcement: '',
   focus: null,
+  returnFocusNoteId: null,
 };
 
 export type StaffAction =
@@ -101,13 +107,13 @@ export type StaffAction =
   | { type: 'confirmed'; value: boolean }
   | { type: 'cancel-removal' }
   | { type: 'removal-start' }
-  | { type: 'removal-failed'; message: string }
+  | { type: 'removal-failed'; message: string; code?: StaffMySeasonErrorCode }
   | { type: 'removal-done'; id: string; status: StaffRemovalStatus }
   | { type: 'focus-done' };
 
 /** No text survives on the page for a note that has been removed. */
-export function eraseStaffNote(notes: MySeasonStaffObservation[], id: string): MySeasonStaffObservation[] {
-  return notes.map((n): MySeasonStaffObservation => (n.id === id ? { id: n.id, createdAt: n.createdAt, coachName: n.coachName, formerCoach: n.formerCoach, state: 'removed', category: null, body: null } : n));
+export function eraseStaffNote(notes: MySeasonStaffObservation[], id: string, state: 'removed' | 'closed' = 'removed'): MySeasonStaffObservation[] {
+  return notes.map((n): MySeasonStaffObservation => (n.id === id ? { id: n.id, createdAt: n.createdAt, coachName: n.coachName, formerCoach: n.formerCoach, state, category: null, body: null } : n));
 }
 
 export function staffPageReducer(s: StaffPageState, a: StaffAction): StaffPageState {
@@ -124,26 +130,32 @@ export function staffPageReducer(s: StaffPageState, a: StaffAction): StaffPageSt
       return { ...s, list: 'error', listError: a.message, focus: s.removal ? s.focus : 'list-error' };
     case 'open-removal':
       return { ...s, removal: { id: a.id, reason: '', confirmed: false, busy: false, error: null }, announcement: '', focus: 'reason' };
-    case 'reason':
-      return s.removal && !s.removal.busy ? { ...s, removal: { ...s.removal, reason: stripUnstorableText(a.value) } } : s;
+    case 'reason': {
+      if (!s.removal || s.removal.busy) return s;
+      // A refusal of the reason no longer applies once the reason changes.
+      const refusalCleared = s.removal.errorCode === 'invalid_reason' ? { error: null, errorCode: undefined } : {};
+      return { ...s, removal: { ...s.removal, ...refusalCleared, reason: stripUnstorableText(a.value) } };
+    }
     case 'confirmed':
       return s.removal && !s.removal.busy ? { ...s, removal: { ...s.removal, confirmed: a.value } } : s;
     case 'cancel-removal':
-      return s.removal?.busy ? s : { ...s, removal: null };
+      if (!s.removal || s.removal.busy) return s;
+      return { ...s, removal: null, focus: 'remove-control', returnFocusNoteId: s.removal.id };
     case 'removal-start':
-      return s.removal ? { ...s, removal: { ...s.removal, busy: true, error: null } } : s;
+      return s.removal ? { ...s, removal: { ...s.removal, busy: true, error: null, errorCode: undefined } } : s;
     case 'removal-failed':
-      return s.removal ? { ...s, removal: { ...s.removal, busy: false, error: a.message }, focus: 'removal-error' } : s;
+      return s.removal ? { ...s, removal: { ...s.removal, busy: false, error: a.message, errorCode: a.code }, focus: 'removal-error' } : s;
     case 'removal-done':
       return {
         ...s,
         removal: null,
-        notes: eraseStaffNote(s.notes, a.id),
+        // already_removed does not say whether a coach or staff closed it.
+        notes: eraseStaffNote(s.notes, a.id, a.status === 'removed' ? 'removed' : 'closed'),
         announcement: a.status === 'removed' ? STAFF_MY_SEASON_COPY.removed : STAFF_MY_SEASON_COPY.alreadyRemoved,
         focus: 'status',
       };
     case 'focus-done':
-      return { ...s, focus: null };
+      return { ...s, focus: null, returnFocusNoteId: null };
   }
 }
 
@@ -203,7 +215,7 @@ export function createStaffController(deps: {
       const result = await postRemoval(removal.id, removal.reason).catch((): StaffFailure => ({ ok: false, message: STAFF_MY_SEASON_COPY.network }));
       removing = false;
       if (!result.ok) {
-        deps.dispatch({ type: 'removal-failed', message: result.message });
+        deps.dispatch({ type: 'removal-failed', message: result.message, code: result.code });
         return;
       }
       deps.dispatch({ type: 'removal-done', id: removal.id, status: result.status });

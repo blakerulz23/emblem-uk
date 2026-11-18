@@ -153,10 +153,35 @@ describe('os-data parent load', () => {
     }
   });
 
-  it('an unexpected RPC failure, a throw or an unreadable answer gives the unavailable marker, never "off"', async () => {
+  it('an unexpected RPC failure, a throw or an unreadable answer is "unknown": neither off nor enabled', async () => {
     for (const r of [{ data: null, error: { code: '57014', message: 'timeout' } }, { data: null, error: { code: 'XX000', message: 'boom' } }, { data: { enabled: 'yes' }, error: null }, { data: null, error: null }, new Error('network')]) {
-      expect(await loadParentMySeason(rpcClient(r).client, MS_PLAYER_ID)).toEqual({ enabled: true, access: 'none', reason: 'unavailable' });
+      expect(await loadParentMySeason(rpcClient(r).client, MS_PLAYER_ID)).toEqual({ enabled: 'unknown' });
     }
+  });
+
+  describe('a family when the lookup failed (most have the feature off)', () => {
+    const unknown = { ...REAL_PARENT, mySeason: { enabled: 'unknown' } } as OsData;
+    const withFocus = { ...unknown, seasonFocus: [{ id: 'lf1', label: 'First touch', status: 'active', authorRole: 'guardian', authorName: 'Pat', createdAt: '2026-09-01T10:00:00Z' }] } as OsData;
+
+    it('Home is exactly the flag-off Home', () => {
+      expect(home(unknown)).toBe(home(withoutKeys(REAL_PARENT)));
+    });
+
+    it('Card back: legacy focuses readable, no Add, neutral copy with Retry, no My Season wording', () => {
+      const html = cardBack(withFocus);
+      expect(html).toContain('SEASON FOCUS');
+      expect(html).toContain('First touch');
+      expect(html).not.toContain('Add a Season Focus');
+      expect(html).toContain('data-testid="season-check-failed"');
+      expect(html).toContain('Couldn&#x27;t check this section. Try again.');
+      expect(html).toContain('>Retry<');
+      expect(html).not.toMatch(/my.?season/i);
+      expect(html).not.toContain('season-focus-unavailable');
+    });
+
+    it('demo mode never shows it', () => {
+      expect(cardBack({ ...PUBLIC_DEMO_OS_DATA, mySeason: { enabled: 'unknown' } })).toBe(cardBack(PUBLIC_DEMO_OS_DATA));
+    });
   });
 
   it('with the marker the Card back has no legacy Add, and offers Retry', () => {
