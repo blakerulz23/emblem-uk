@@ -44,7 +44,7 @@ describe('migration number uniqueness', () => {
     expect(error?.stderr.toString()).toContain('Duplicate migration number 0088: 0088_relationship_authorization_foundation.sql, 0088_test_card_archive.sql');
   });
 
-  it('reserves 0088–0091 for the security release, 0092 for test-card archive, 0093 for achievement reveals, 0097–0098 for the deletion fixes, 0099 for Season feature states, 0100 for acquisition samples, 0101 for the R5 checkout gate, 0102 for held orders, 0103 for the Squad Invite audit restore and 0104–0107 for Photo Day', () => {
+  it('reserves 0088–0091 for the security release, 0092 for test-card archive, 0093 for achievement reveals, 0097–0098 for the deletion fixes, 0099 for Season feature states, 0100 for acquisition samples, 0101 for the R5 checkout gate, 0102 for held orders, 0103 for the Squad Invite audit restore, 0104–0107 for Photo Day and 0108 for My Season', () => {
     expect(RESERVED_NUMBERS).toEqual({
       '0088': 'relationship_authorization_foundation',
       '0089': 'relationship_authorization_lockdown',
@@ -63,6 +63,7 @@ describe('migration number uniqueness', () => {
       '0105': 'squad_invite_photo_day_staff_controls',
       '0106': 'squad_invite_photo_day_parent_consent',
       '0107': 'squad_invite_photo_day_retention',
+      '0108': 'my_season_focus_and_observations',
     });
     expect(findReservedNumberProblems(fs.readdirSync('supabase/migrations'))).toEqual([]);
   });
@@ -74,7 +75,7 @@ describe('migration number uniqueness', () => {
   });
 
   it('reports a reserved number used by a different migration, and accepts the reserved ones', () => {
-    expect(findReservedNumberProblems(['0088_test_card_archive.sql', '0091_achievement_card_reveals.sql', '0092_test_card_archive.sql', '0099_season_feature_states.sql', '0099_my_season.sql', '0108_anything.sql'])).toEqual([
+    expect(findReservedNumberProblems(['0088_test_card_archive.sql', '0091_achievement_card_reveals.sql', '0092_test_card_archive.sql', '0099_season_feature_states.sql', '0099_my_season.sql', '0109_anything.sql'])).toEqual([
       { number: '0088', file: '0088_test_card_archive.sql', reservedFor: '0088_relationship_authorization_foundation.sql' },
       { number: '0091', file: '0091_achievement_card_reveals.sql', reservedFor: '0091_guardian_invite_code_confidentiality.sql' },
       { number: '0099', file: '0099_my_season.sql', reservedFor: '0099_season_feature_states.sql' },
@@ -118,15 +119,21 @@ describe('migration number uniqueness', () => {
   });
 
   it('rejects acquisition samples at its old number 0098; accepts it at 0100', () => {
-    expect(findReservedNumberProblems(['0098_acquisition_samples.sql', '0100_acquisition_samples.sql', '0108_anything.sql'])).toEqual([
+    expect(findReservedNumberProblems(['0098_acquisition_samples.sql', '0100_acquisition_samples.sql', '0109_anything.sql'])).toEqual([
       { number: '0098', file: '0098_acquisition_samples.sql', reservedFor: '0098_deletion_review_suspension_and_verifier_identity.sql' },
     ]);
   });
 
   it('rejects the R5 checkout gate at its draft number 0099 or any other file at 0101; accepts it at 0101', () => {
-    expect(findReservedNumberProblems(['0099_gift_checkout_requires_guardian_approval.sql', '0099_season_feature_states.sql', '0101_gift_checkout_requires_guardian_approval.sql', '0101_anything.sql', '0108_anything.sql'])).toEqual([
+    expect(findReservedNumberProblems(['0099_gift_checkout_requires_guardian_approval.sql', '0099_season_feature_states.sql', '0101_gift_checkout_requires_guardian_approval.sql', '0101_anything.sql', '0109_anything.sql'])).toEqual([
       { number: '0099', file: '0099_gift_checkout_requires_guardian_approval.sql', reservedFor: '0099_season_feature_states.sql' },
       { number: '0101', file: '0101_anything.sql', reservedFor: '0101_gift_checkout_requires_guardian_approval.sql' },
+    ]);
+  });
+
+  it('reserves 0108 for My Season focus and observations; new work starts at 0109', () => {
+    expect(findReservedNumberProblems(['0108_my_season_focus_and_observations.sql', '0108_anything.sql', '0109_anything.sql'])).toEqual([
+      { number: '0108', file: '0108_anything.sql', reservedFor: '0108_my_season_focus_and_observations.sql' },
     ]);
   });
 
