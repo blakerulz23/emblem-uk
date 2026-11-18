@@ -98,6 +98,7 @@ export function checkObservationBody(raw: string): ObservationCheck {
 }
 
 const LONE_SURROGATE = new RegExp('\\p{Cs}', 'u');
+const UNSTORABLE_TEXT = new RegExp('\\u0000|\\p{Cs}', 'gu');
 
 /**
  * True for text PostgreSQL cannot store (NUL, or a lone surrogate). Refused
@@ -107,6 +108,14 @@ const LONE_SURROGATE = new RegExp('\\p{Cs}', 'u');
  */
 export function hasUnstorableText(value: string): boolean {
   return value.includes('\u0000') || LONE_SURROGATE.test(value);
+}
+
+/**
+ * The text without those characters. The forms apply it as the user types or
+ * pastes, so nobody is left with a refusal they cannot see the reason for.
+ */
+export function stripUnstorableText(value: string): string {
+  return value.replace(UNSTORABLE_TEXT, '');
 }
 
 export type ObservationInput = { playerId: string; category: MySeasonCategoryKey; body: string; requestId: string };
@@ -228,8 +237,15 @@ export type MySeasonContent = {
 
 export type MySeasonView =
   | { enabled: false }
-  | { enabled: true; access: 'none'; reason: MySeasonNoAccessReason }
+  | { enabled: true; access: 'none'; reason: MySeasonNoAccessReason | 'unavailable' }
   | MySeasonContent;
+
+/**
+ * The parent load's answer when the server says the feature is on but its
+ * view breaks the contract. Never accepted from the wire: parseMySeasonView
+ * does not know this reason. It keeps the legacy Season Focus hidden.
+ */
+export const MY_SEASON_UNAVAILABLE_VIEW: MySeasonView = { enabled: true, access: 'none', reason: 'unavailable' };
 
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isStrOrNull = (v: unknown): v is string | null => v === null || typeof v === 'string';
@@ -316,6 +332,21 @@ export function enabledViewOrNull(view: MySeasonView | null): MySeasonView | nul
   return view && view.enabled ? view : null;
 }
 
+/** True when a raw answer claims the feature is on, whatever else it holds. */
+export function rawViewSaysEnabled(raw: unknown): boolean {
+  return !!raw && typeof raw === 'object' && (raw as { enabled?: unknown }).enabled === true;
+}
+
+/**
+ * The parent load: an enabled view, the "unavailable" marker when the server
+ * said enabled but the view is malformed, otherwise null (off, or unknown).
+ */
+export function parentViewFromRaw(raw: unknown): MySeasonView | null {
+  const view = parseMySeasonView(raw);
+  if (view) return enabledViewOrNull(view);
+  return rawViewSaysEnabled(raw) ? MY_SEASON_UNAVAILABLE_VIEW : null;
+}
+
 // ---------------------------------------------------------------------------
 // SQLSTATE EMS01..EMS09 -> safe JSON errors (no data, fixed copy)
 // ---------------------------------------------------------------------------
@@ -328,6 +359,7 @@ export type MySeasonErrorCode =
   | 'invalid_input'
   | 'request_conflict'
   | 'own_child'
+  | 'view_invalid'
   | 'failed';
 
 export type MySeasonError = { status: number; code: MySeasonErrorCode; message: string };
@@ -338,8 +370,10 @@ export const MY_SEASON_ERRORS: Record<MySeasonErrorCode, MySeasonError> = {
   not_allowed: { status: 403, code: 'not_allowed', message: "You can't make this change for this player." },
   account_review: { status: 403, code: 'account_review', message: 'My Season is paused while your account is being reviewed.' },
   invalid_input: { status: 400, code: 'invalid_input', message: "Check what you've written and try again." },
-  request_conflict: { status: 409, code: 'request_conflict', message: 'This was already saved. Close and reopen My Season to see it.' },
+  request_conflict: { status: 409, code: 'request_conflict', message: "This couldn't be saved because it clashes with an earlier attempt. Please try again." },
   own_child: { status: 403, code: 'own_child', message: "You can't add notes for your own child. Another coach on the team can." },
+  // The RPC said the feature is on but its view broke the contract.
+  view_invalid: { status: 500, code: 'view_invalid', message: 'Something went wrong. Try again.' },
   failed: { status: 500, code: 'failed', message: 'Something went wrong. Try again.' },
 };
 

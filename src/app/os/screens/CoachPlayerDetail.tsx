@@ -51,7 +51,8 @@ export default function CoachPlayerDetail({ playerId, actions }: { playerId: str
   // My Season (Phase 1): one GET for this player on open, only when the
   // deploy kill switch is off and the player is on a team. The legacy
   // Season Focus section below is hidden only once the server says My
-  // Season is enabled for this player; otherwise this screen is unchanged.
+  // Season is enabled for this player (including "enabled, but its view
+  // could not be used"); otherwise this screen is unchanged.
   const mySeason = useCoachMySeason({ playerId, isReal, lookup: mySeasonCoachLookup, teamId: player?.teamId });
 
   // A guardian adding/updating a Season Focus, or a fresh assessment

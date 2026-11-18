@@ -36,7 +36,12 @@ with
   -- Owner-only: nobody but the owner may execute (service_role included).
   owner_only(sig) as (select sig from trig
                       union all values ('public.my_season_is_guardian(uuid, uuid)'), ('public.my_season_is_team_coach(uuid, uuid)'),
-                                       ('public.my_season_trim(text)'))
+                                       ('public.my_season_trim(text)')),
+  content_table(name) as (values ('my_season_focuses'), ('my_season_coach_observations')),
+  -- Free text and the category: never in planner statistics or an index.
+  content_column(tbl, col) as (values ('my_season_coach_observations', 'body'), ('my_season_coach_observations', 'category'),
+                                      ('my_season_focuses', 'title'), ('my_season_focuses', 'why_it_matters'),
+                                      ('my_season_focuses', 'what_it_looks_like'))
 select
   (select count(*) from t where to_regclass('public.' || name) is not null) = 5 as tables_present,
   (select count(*) from rpc where to_regprocedure(sig) is not null) = 5
@@ -49,9 +54,24 @@ select
     and (select count(*) from pg_policies where schemaname = 'public' and tablename like 'season_feature%') = 0 as policies_expected,
   (select count(*) from pg_trigger tg join pg_class c on c.oid = tg.tgrelid
     where c.relnamespace = 'public'::regnamespace and c.relname like 'my_season%' and not tg.tgisinternal) = 7 as triggers_present,
+  -- 'O' = fires in normal operation; a disabled trigger would lift the immutability rules.
+  not exists (select 1 from pg_trigger tg join pg_class c on c.oid = tg.tgrelid
+    where c.relnamespace = 'public'::regnamespace and c.relname like 'my_season%' and not tg.tgisinternal
+      and tg.tgenabled <> 'O') as triggers_enabled,
   -- Withdrawal erases content; request_id is the idempotency key.
   exists (select 1 from pg_constraint c where c.conrelid = 'public.my_season_coach_observations'::regclass
            and c.conname = 'my_season_coach_observations_content_state' and c.contype = 'c' and c.convalidated) as observation_content_constraint_present,
+  -- The definition itself, not just the name: a weakened rule fails here.
+  exists (select 1 from pg_constraint c where c.conrelid = 'public.my_season_coach_observations'::regclass
+           and c.conname = 'my_season_coach_observations_content_state'
+           and regexp_replace(pg_get_constraintdef(c.oid), '\s+', ' ', 'g') = 'CHECK ((((withdrawn_at IS NULL) AND (category IS NOT NULL) AND (category = ANY (ARRAY[''lifted_the_team''::text, ''kept_going''::text, ''tried_something_new''::text, ''helped_someone_belong''::text, ''spoke_up''::text, ''came_back_stronger''::text])) AND (body IS NOT NULL) AND (body = btrim(body)) AND ((char_length(body) >= 20) AND (char_length(body) <= 160))) OR ((withdrawn_at IS NOT NULL) AND (body IS NULL) AND (category IS NULL))))') as observation_content_constraint_definition_ok,
+  -- Withdrawn text must not survive in planner statistics or an index.
+  (select count(*) from content_column cc join pg_attribute a
+      on a.attrelid = ('public.' || cc.tbl)::regclass and a.attname = cc.col and a.attstattarget = 0) = 5 as content_statistics_off,
+  not exists (select 1 from pg_stats s join content_column cc on s.tablename = cc.tbl and s.attname = cc.col
+               where s.schemaname = 'public') as content_absent_from_pg_stats,
+  not exists (select 1 from pg_index i where i.indrelid in ('public.my_season_focuses'::regclass, 'public.my_season_coach_observations'::regclass)
+               and pg_get_indexdef(i.indexrelid) ~ '\m(body|category|title|why_it_matters|what_it_looks_like)\M') as content_not_indexed,
   exists (select 1 from pg_constraint c where c.conrelid = 'public.my_season_coach_observations'::regclass
            and c.conname = 'my_season_coach_observations_request_id_key' and c.contype = 'u') as observation_request_id_unique_present,
   (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'my_season_coach_observations'
@@ -78,6 +98,14 @@ select
     and not exists (select 1 from internal where has_function_privilege('authenticated', sig, 'execute')) as authenticated_rpcs_only,
   has_table_privilege('service_role', 'public.my_season_audit_events', 'select')
     and not has_table_privilege('service_role', 'public.my_season_audit_events', 'insert,update,delete,truncate') as service_role_audit_select_only,
+  -- SELECT and nothing else, read from the ACL too so MAINTAIN (PostgreSQL 17) is covered on any version.
+  (select count(*) from content_table ct
+    where has_table_privilege('service_role', 'public.' || ct.name, 'select')
+      and not has_table_privilege('service_role', 'public.' || ct.name, 'insert,update,delete,truncate,references,trigger')
+      and not has_any_column_privilege('service_role', 'public.' || ct.name, 'insert,update,references')
+      and not exists (select 1 from pg_class c cross join lateral aclexplode(c.relacl) acl
+                       where c.oid = ('public.' || ct.name)::regclass and acl.grantee = 'service_role'::regrole
+                         and acl.privilege_type <> 'SELECT')) = 2 as service_role_content_select_only,
   has_table_privilege('service_role', 'public.season_feature_team_states', 'select,insert,update')
     and not has_table_privilege('service_role', 'public.season_feature_team_states', 'delete,truncate') as service_role_flag_tooling,
   -- Flag state.

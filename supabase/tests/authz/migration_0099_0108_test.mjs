@@ -145,6 +145,26 @@ await ref.close();
       ['grant execute on function public.my_season_trim(text) to service_role', 'revoke execute on function public.my_season_trim(text) from service_role', 'owner_only_functions_locked'],
       ['grant execute on function public.my_season_is_guardian(uuid, uuid) to anon', 'revoke execute on function public.my_season_is_guardian(uuid, uuid) from anon', 'owner_only_functions_locked'],
       ['grant execute on function public.my_season_for_player(uuid) to public', 'revoke execute on function public.my_season_for_player(uuid) from public', 'public_no_execute'],
+      ['grant insert on public.my_season_coach_observations to service_role', 'revoke insert on public.my_season_coach_observations from service_role', 'service_role_content_select_only'],
+      ['grant update on public.my_season_focuses to service_role', 'revoke update on public.my_season_focuses from service_role', 'service_role_content_select_only'],
+      ['grant maintain on public.my_season_focuses to service_role', 'revoke maintain on public.my_season_focuses from service_role', 'service_role_content_select_only'],
+      ['revoke select on public.my_season_focuses from service_role', 'grant select on public.my_season_focuses to service_role', 'service_role_content_select_only'],
+      ['alter table public.my_season_coach_observations disable trigger my_season_observations_before_update', 'alter table public.my_season_coach_observations enable trigger my_season_observations_before_update', 'triggers_enabled'],
+      ['alter table public.my_season_audit_events disable trigger my_season_audit_before_delete', 'alter table public.my_season_audit_events enable trigger my_season_audit_before_delete', 'triggers_enabled'],
+      ['alter table public.my_season_coach_observations alter column body set statistics 100', 'alter table public.my_season_coach_observations alter column body set statistics 0', 'content_statistics_off'],
+      ['alter table public.my_season_focuses alter column title set statistics -1', 'alter table public.my_season_focuses alter column title set statistics 0', 'content_statistics_off'],
+      ['create index zz_body on public.my_season_coach_observations (body)', 'drop index public.zz_body', 'content_not_indexed'],
+      ['create index zz_cat on public.my_season_coach_observations (player_id) where category is not null', 'drop index public.zz_cat', 'content_not_indexed'],
+      [`alter table public.my_season_coach_observations drop constraint my_season_coach_observations_content_state, add constraint my_season_coach_observations_content_state check (
+         (withdrawn_at is null and category is not null
+          and category in ('lifted_the_team', 'kept_going', 'tried_something_new', 'helped_someone_belong', 'spoke_up', 'came_back_stronger')
+          and body is not null and body = btrim(body) and char_length(body) between 20 and 500)
+         or (withdrawn_at is not null and body is null and category is null))`,
+       `alter table public.my_season_coach_observations drop constraint my_season_coach_observations_content_state, add constraint my_season_coach_observations_content_state check (
+         (withdrawn_at is null and category is not null
+          and category in ('lifted_the_team', 'kept_going', 'tried_something_new', 'helped_someone_belong', 'spoke_up', 'came_back_stronger')
+          and body is not null and body = btrim(body) and char_length(body) between 20 and 160)
+         or (withdrawn_at is not null and body is null and category is null))`, 'observation_content_constraint_definition_ok'],
     ];
     const caught = [];
     for (const [grant, revoke, column] of regressions) {
@@ -153,7 +173,7 @@ await ref.close();
       await db.exec(revoke);
       caught.push(r[column] === false ? 'caught' : `missed ${column} after: ${grant}`);
     }
-    check('post-check flags a SELECT grant on content tables and EXECUTE on trigger functions / owner-only helpers', caught.every((c) => c === 'caught'), caught);
+    check('post-check flags grant, trigger, statistics, index and constraint-definition regressions', caught.every((c) => c === 'caught'), caught);
     check('…and is clean again once each grant is revoked', catalogDiff(post0108, await snapshotCatalog(db)).length === 0
       && Object.entries(await verification(db, POST)).filter(([k, v]) => v === false && k !== 'kill_switch_on').length === 0);
 

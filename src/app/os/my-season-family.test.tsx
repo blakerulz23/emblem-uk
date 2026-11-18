@@ -76,6 +76,15 @@ describe('Home: My Season card (guardian, enabled)', () => {
     expect(card({ ...REAL_PARENT, mySeason: null })).toContain('SEASON FOCUS');
     expect(card({ ...REAL_PARENT, mySeason: msContent() })).not.toContain('SEASON FOCUS');
   });
+
+  it('enabled but unusable: Home offers Retry and the Card back keeps the legacy section hidden', () => {
+    const mySeason = { enabled: true, access: 'none', reason: 'unavailable' } as const;
+    const html = home({ ...REAL_PARENT, mySeason });
+    expect(html).toContain('Couldn&#x27;t load My Season');
+    expect(html).toContain('>Retry<');
+    expect(html).not.toContain('my-season-home-card');
+    expect(card({ ...REAL_PARENT, mySeason })).not.toContain('SEASON FOCUS');
+  });
 });
 
 describe('MySeasonScreen (family overlay)', () => {
@@ -146,7 +155,7 @@ describe('MySeasonScreen (family overlay)', () => {
 
   it('the container opens in the loading state and fetches nothing during server render', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    const html = renderToStaticMarkup(<MySeasonScreen playerId={MS_PLAYER_ID} playerName="Riley Hart" onClose={() => {}} onChanged={() => {}} />);
+    const html = renderToStaticMarkup(<MySeasonScreen playerId={MS_PLAYER_ID} playerName="Riley Hart" homeView={msContent()} onClose={() => {}} onChanged={() => {}} />);
     expect(html).toContain('data-testid="my-season-skeleton"');
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();

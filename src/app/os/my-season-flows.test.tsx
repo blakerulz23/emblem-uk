@@ -111,16 +111,16 @@ describe('client calls (mocked fetch)', () => {
   it('writes: 409 shows the route copy (no Refresh button promised); 401 the session copy; 5xx without JSON and a throw the generic copy', async () => {
     const conflict = MY_SEASON_ERRORS.request_conflict;
     expect(conflict.status).toBe(409);
-    expect(conflict.message).toBe('This was already saved. Close and reopen My Season to see it.');
+    expect(conflict.message).toBe("This couldn't be saved because it clashes with an earlier attempt. Please try again.");
     expect(conflict.message).not.toMatch(/refresh/i);
     expect(await saveMySeasonFocus(MS_PLAYER_ID, draft(), REQ_A, fetchQueue(json(409, { error: conflict.message, code: 'request_conflict' })).fn))
-      .toEqual({ ok: false, error: conflict.message, status: 409 });
+      .toEqual({ ok: false, error: conflict.message, status: 409, code: 'request_conflict' });
     expect(await saveMySeasonFocus(MS_PLAYER_ID, draft(), REQ_A, fetchQueue(json(401, { error: 'Sign in required.' })).fn))
       .toEqual({ ok: false, error: MY_SEASON_SESSION_ENDED, status: 401 });
     expect(await saveMySeasonFocus(MS_PLAYER_ID, draft(), REQ_A, fetchQueue(new Response('<html>', { status: 502 })).fn))
-      .toEqual({ ok: false, error: GENERIC_SAVE_ERROR, status: 502 });
+      .toEqual({ ok: false, error: GENERIC_SAVE_ERROR, status: 502, unknown: true });
     expect(await addMySeasonObservation(MS_PLAYER_ID, 'kept_going', 'Kept going all game long today.', REQ_A, fetchQueue(new Error('offline')).fn))
-      .toEqual({ ok: false, error: GENERIC_SAVE_ERROR });
+      .toEqual({ ok: false, error: GENERIC_SAVE_ERROR, unknown: true });
     expect(await withdrawMySeasonObservation('o1', fetchQueue(json(403, { error: MY_SEASON_ERRORS.not_allowed.message })).fn))
       .toEqual({ ok: false, error: MY_SEASON_ERRORS.not_allowed.message, status: 403 });
   });
@@ -323,7 +323,7 @@ describe('note composer', () => {
     let n = 0;
     const ctl = createWriteController(() => `note-${++n}`);
     const ui = { setBusy: vi.fn(), setError: vi.fn(), onDone: vi.fn() };
-    const { fn, calls } = fetchQueue(json(500, {}), json(500, {}), json(500, {}), json(200, { ok: true }));
+    const { fn, calls } = fetchQueue(json(500, {}), json(500, {}), json(500, {}), json(200, { ok: true, observationId: REQ_A }));
     const send = (cat: 'kept_going' | 'spoke_up', body: string) =>
       submitWrite(ctl, noteContentKey(cat, body), (rid) => addMySeasonObservation(MS_PLAYER_ID, cat, body, rid, fn), ui);
     const body = 'Kept going after the second goal went in.';
@@ -430,22 +430,18 @@ describe('overlay keyboard: Escape, Tab trap, focus return', () => {
 
 // ---------------------------------------------------------------------------
 describe('focus after a step unmounts (coach panel and family screen)', () => {
-  it('goes to the first target that exists; waits for a reload when asked', () => {
+  it('goes to the first target that exists', () => {
     const has = (...ids: string[]) => (id: string) => ids.includes(id);
-    expect(resolvePendingFocus({ ids: [MS_IDS.coachAddNote] }, false, has(MS_IDS.coachAddNote))).toEqual({ focusId: MS_IDS.coachAddNote, done: true });
-    const afterWithdraw = { ids: [MS_IDS.withdrawn('o1'), MS_IDS.withdraw('o1')], waitWhileLoading: true };
-    expect(resolvePendingFocus(afterWithdraw, true, has(MS_IDS.withdraw('o1')))).toEqual({ focusId: null, done: false });
-    expect(resolvePendingFocus(afterWithdraw, false, has(MS_IDS.withdrawn('o1'), MS_IDS.withdraw('o1')))).toEqual({ focusId: MS_IDS.withdrawn('o1'), done: true });
-    // Reload failed: the note is still there with its Withdraw button.
-    expect(resolvePendingFocus(afterWithdraw, false, has(MS_IDS.withdraw('o1')))).toEqual({ focusId: MS_IDS.withdraw('o1'), done: true });
-    expect(resolvePendingFocus({ ids: ['gone'] }, false, has())).toEqual({ focusId: null, done: true });
+    expect(resolvePendingFocus({ ids: [MS_IDS.coachAddNote] }, has(MS_IDS.coachAddNote))).toBe(MS_IDS.coachAddNote);
+    expect(resolvePendingFocus({ ids: ['first', 'second'] }, has('second'))).toBe('second');
+    expect(resolvePendingFocus({ ids: ['gone'] }, has())).toBeNull();
   });
 
   it('the coach panel renders every focus target with its id', () => {
     const coach = msContent({ access: 'coach', canAddNote: true, observations: [msNote({ id: 'o1', mine: true }), msWithdrawnNote({ id: 'o2' })] });
     const render = (ui = {}) =>
       renderToStaticMarkup(
-        <CoachMySeasonPanel playerId={MS_PLAYER_ID} firstName="Riley" state={{ status: 'ready', view: coach }} ui={{ ...INITIAL_COACH_PANEL_UI, ...ui }} onRetry={noop} onStartEditFocus={noop} onCancelEditFocus={noop} onFocusSaved={noop} onOpenComposer={noop} onCancelComposer={noop} onNoteSent={noop} onAskWithdraw={noop} onCancelWithdraw={noop} onConfirmWithdraw={noop} />
+        <CoachMySeasonPanel playerId={MS_PLAYER_ID} firstName="Riley" state={{ status: 'ready', view: coach }} ui={{ ...INITIAL_COACH_PANEL_UI, ...ui }} onRetry={noop} reloadNotes={async () => null} onStartEditFocus={noop} onCancelEditFocus={noop} onFocusSaved={noop} onOpenComposer={noop} onCancelComposer={noop} onNoteSent={noop} onAskWithdraw={noop} onCancelWithdraw={noop} onConfirmWithdraw={noop} />
       );
     const html = render();
     expect(html).toMatch(new RegExp(`<button id="${MS_IDS.coachChangeFocus}"[^>]*>Change focus</button>`));
@@ -458,7 +454,7 @@ describe('focus after a step unmounts (coach panel and family screen)', () => {
   it('the toast uses theme tokens (dark mode) and clears itself after 5 seconds; the timer is dropped on unmount', () => {
     const coach = msContent({ access: 'coach', canAddNote: true });
     const html = renderToStaticMarkup(
-      <CoachMySeasonPanel playerId={MS_PLAYER_ID} firstName="Riley" state={{ status: 'ready', view: coach }} ui={{ ...INITIAL_COACH_PANEL_UI, toast: 'Sent.' }} onRetry={noop} onStartEditFocus={noop} onCancelEditFocus={noop} onFocusSaved={noop} onOpenComposer={noop} onCancelComposer={noop} onNoteSent={noop} onAskWithdraw={noop} onCancelWithdraw={noop} onConfirmWithdraw={noop} />
+      <CoachMySeasonPanel playerId={MS_PLAYER_ID} firstName="Riley" state={{ status: 'ready', view: coach }} ui={{ ...INITIAL_COACH_PANEL_UI, toast: 'Sent.' }} onRetry={noop} reloadNotes={async () => null} onStartEditFocus={noop} onCancelEditFocus={noop} onFocusSaved={noop} onOpenComposer={noop} onCancelComposer={noop} onNoteSent={noop} onAskWithdraw={noop} onCancelWithdraw={noop} onConfirmWithdraw={noop} />
     );
     expect(html).toMatch(/background:var\(--os-ink\);color:var\(--os-screen\)[^"]*">Sent\./);
     expect(html).not.toMatch(/#15130F|#F4F1EC/i);
@@ -489,7 +485,7 @@ describe('long unbroken text wraps', () => {
     expect(summary.match(/overflow-wrap:anywhere/g)).toHaveLength(3);
     expect(renderToStaticMarkup(<EarlierFocusList focuses={[f]} />)).toMatch(/<span style="overflow-wrap:anywhere;min-width:0">x{60}<\/span>/);
     const coach = renderToStaticMarkup(
-      <CoachMySeasonPanel playerId={MS_PLAYER_ID} firstName="Riley" state={{ status: 'ready', view: msContent({ access: 'coach', activeFocus: f }) }} ui={INITIAL_COACH_PANEL_UI} onRetry={noop} onStartEditFocus={noop} onCancelEditFocus={noop} onFocusSaved={noop} onOpenComposer={noop} onCancelComposer={noop} onNoteSent={noop} onAskWithdraw={noop} onCancelWithdraw={noop} onConfirmWithdraw={noop} />
+      <CoachMySeasonPanel playerId={MS_PLAYER_ID} firstName="Riley" state={{ status: 'ready', view: msContent({ access: 'coach', activeFocus: f }) }} ui={INITIAL_COACH_PANEL_UI} onRetry={noop} reloadNotes={async () => null} onStartEditFocus={noop} onCancelEditFocus={noop} onFocusSaved={noop} onOpenComposer={noop} onCancelComposer={noop} onNoteSent={noop} onAskWithdraw={noop} onCancelWithdraw={noop} onConfirmWithdraw={noop} />
     );
     expect(coach).toMatch(/overflow-wrap:anywhere[^>]*>x{60}</);
   });

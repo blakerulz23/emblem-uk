@@ -14,7 +14,7 @@ import { parseOsView, resolveOsView } from '@/lib/os-view';
 import type { OsView, TeamRequestSummary } from '@/lib/os-view';
 import { readDeletionReview, type DeletionReviewState } from '@/lib/coach-review-status';
 import { isSeasonDeployKillSwitchOn } from '@/lib/season-feature';
-import { enabledViewOrNull, parseMySeasonView, type MySeasonView } from '@/lib/my-season';
+import { parentViewFromRaw, type MySeasonView } from '@/lib/my-season';
 
 type CardDefinitionDbRow = {
   id: string;
@@ -829,8 +829,10 @@ async function getParentOsData(
 /**
  * The parent view's My Season for the active player, or null when the
  * feature is off for the player's team, the deploy kill switch is on, the
- * RPC is missing (app deployed before 0108) or returns anything outside the
- * contract. Never throws: My Season must not be able to break Home.
+ * RPC is missing (app deployed before 0108) or the answer says nothing
+ * usable. A view that claims the feature is on but breaks the contract gives
+ * the "unavailable" marker, so the legacy Season Focus stays hidden for that
+ * team. Never throws: My Season must not be able to break Home.
  */
 export async function loadParentMySeason(
   supabase: Pick<ReturnType<typeof createClient>, 'rpc'>,
@@ -840,7 +842,7 @@ export async function loadParentMySeason(
   try {
     const { data, error } = await supabase.rpc('my_season_for_player', { p_player_id: playerId });
     if (error) return null;
-    return enabledViewOrNull(parseMySeasonView(data));
+    return parentViewFromRaw(data);
   } catch {
     return null;
   }

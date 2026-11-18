@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { MY_SEASON_ERRORS, isUuid, parseMySeasonView } from '@/lib/my-season';
+import { MY_SEASON_ERRORS, isUuid, parseMySeasonView, rawViewSaysEnabled } from '@/lib/my-season';
 import { guardMySeasonRequest, mySeasonJsonError, mySeasonRpcError } from '@/lib/my-season-api';
 
 export const runtime = 'nodejs';
@@ -13,7 +13,9 @@ export const dynamic = 'force-dynamic';
  * private or former coach, pending deletion review) and never reveals that
  * content exists to someone without a relationship ({ enabled: false }).
  * The response is passed through the strict contract parser, so nothing
- * outside the agreed JSON shape ever reaches the client.
+ * outside the agreed JSON shape ever reaches the client. A view that claims
+ * the feature is on but breaks the contract gets its own fixed code, so the
+ * client keeps the legacy Season Focus hidden for that team.
  */
 export async function GET(request: NextRequest) {
   const guard = await guardMySeasonRequest(request);
@@ -32,6 +34,6 @@ export async function GET(request: NextRequest) {
   if (error) return mySeasonRpcError(error);
 
   const view = parseMySeasonView(data);
-  if (!view) return mySeasonJsonError(MY_SEASON_ERRORS.failed);
+  if (!view) return mySeasonJsonError(rawViewSaysEnabled(data) ? MY_SEASON_ERRORS.view_invalid : MY_SEASON_ERRORS.failed);
   return NextResponse.json(view, { headers: { 'Cache-Control': 'no-store' } });
 }

@@ -1,4 +1,12 @@
-import { parseMySeasonView, type FocusDraft, type MySeasonCategoryKey, type MySeasonView } from '@/lib/my-season';
+import {
+  isUuid,
+  parseMySeasonView,
+  rawViewSaysEnabled,
+  stripUnstorableText,
+  type FocusDraft,
+  type MySeasonCategoryKey,
+  type MySeasonView,
+} from '@/lib/my-season';
 
 /**
  * Client-side calls for My Season. Plain async functions (fetch injected)
@@ -13,9 +21,19 @@ export const MY_SEASON_LOAD_ERROR = "Couldn't load My Season. Check your connect
 export const MY_SEASON_SESSION_ENDED = 'Your session has ended. Sign in again.';
 export const GENERIC_SAVE_ERROR = "Couldn't save that. Check your connection and try again.";
 
-/** `signedOut`: the server answered 401, so retrying will not help. */
-export type LoadResult = { ok: true; view: MySeasonView } | { ok: false; signedOut: boolean };
-export type WriteResult = { ok: true } | { ok: false; error: string; status?: number };
+/**
+ * `signedOut`: the server answered 401, so retrying will not help.
+ * `enabledInvalid`: the feature is on for this player but the view was
+ * unusable. Any other failure says nothing about whether it is on.
+ */
+export type LoadResult = { ok: true; view: MySeasonView } | { ok: false; signedOut: boolean; enabledInvalid?: true };
+/**
+ * `unknown`: no usable answer (network failure, lost response, 5xx), so the
+ * write may or may not have happened. `code`: the route's fixed error code.
+ */
+export type WriteFailure = { ok: false; error: string; status?: number; code?: string; unknown?: true };
+export type WriteResult = { ok: true } | WriteFailure;
+export type AddNoteResult = { ok: true; observationId: string } | WriteFailure;
 
 /** The fixed copy for a failed load. */
 export function loadErrorMessage(signedOut: boolean): string {
@@ -25,57 +43,74 @@ export function loadErrorMessage(signedOut: boolean): string {
 export async function loadMySeasonView(playerId: string, fetchImpl: FetchLike = fetch): Promise<LoadResult> {
   try {
     const res = await fetchImpl(`/api/os/my-season?playerId=${encodeURIComponent(playerId)}`, { cache: 'no-store' });
-    if (!res.ok) return { ok: false, signedOut: res.status === 401 };
-    const view = parseMySeasonView(await res.json());
-    return view ? { ok: true, view } : { ok: false, signedOut: false };
+    if (!res.ok) {
+      if (res.status === 401) return { ok: false, signedOut: true };
+      const data = (await res.json().catch(() => null)) as { code?: unknown } | null;
+      return data?.code === 'view_invalid' ? { ok: false, signedOut: false, enabledInvalid: true } : { ok: false, signedOut: false };
+    }
+    const raw: unknown = await res.json();
+    const view = parseMySeasonView(raw);
+    if (view) return { ok: true, view };
+    return rawViewSaysEnabled(raw) ? { ok: false, signedOut: false, enabledInvalid: true } : { ok: false, signedOut: false };
   } catch {
     return { ok: false, signedOut: false };
   }
 }
 
-async function postJson(url: string, body: unknown, fetchImpl: FetchLike): Promise<WriteResult> {
+async function postJson(url: string, body: unknown, fetchImpl: FetchLike): Promise<{ ok: true; data: unknown } | WriteFailure> {
   try {
     const res = await fetchImpl(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    if (res.ok) return { ok: true };
+    if (res.ok) return { ok: true, data: await res.json().catch(() => null) };
     if (res.status === 401) return { ok: false, error: MY_SEASON_SESSION_ENDED, status: 401 };
-    const data = (await res.json().catch(() => null)) as { error?: unknown } | null;
-    return { ok: false, error: typeof data?.error === 'string' && data.error ? data.error : GENERIC_SAVE_ERROR, status: res.status };
+    const data = (await res.json().catch(() => null)) as { error?: unknown; code?: unknown } | null;
+    const failure: WriteFailure = { ok: false, error: typeof data?.error === 'string' && data.error ? data.error : GENERIC_SAVE_ERROR, status: res.status };
+    if (typeof data?.code === 'string') failure.code = data.code;
+    if (res.status >= 500) failure.unknown = true;
+    return failure;
   } catch {
-    return { ok: false, error: GENERIC_SAVE_ERROR };
+    return { ok: false, error: GENERIC_SAVE_ERROR, unknown: true };
   }
 }
 
-export function saveMySeasonFocus(playerId: string, draft: FocusDraft, requestId: string, fetchImpl: FetchLike = fetch) {
-  return postJson(
-    '/api/os/my-season/focus',
-    {
-      playerId,
-      title: draft.title.trim(),
-      whyItMatters: draft.whyItMatters.trim(),
-      whatItLooksLike: draft.whatItLooksLike.trim(),
-      startedOn: draft.startedOn,
-      requestId,
-    },
-    fetchImpl
+const plainResult = (r: { ok: true; data: unknown } | WriteFailure): WriteResult => (r.ok ? { ok: true } : r);
+
+export async function saveMySeasonFocus(playerId: string, draft: FocusDraft, requestId: string, fetchImpl: FetchLike = fetch): Promise<WriteResult> {
+  return plainResult(
+    await postJson(
+      '/api/os/my-season/focus',
+      {
+        playerId,
+        title: stripUnstorableText(draft.title).trim(),
+        whyItMatters: stripUnstorableText(draft.whyItMatters).trim(),
+        whatItLooksLike: stripUnstorableText(draft.whatItLooksLike).trim(),
+        startedOn: draft.startedOn,
+        requestId,
+      },
+      fetchImpl
+    )
   );
 }
 
-export function addMySeasonObservation(
+/** A success without a usable note id says nothing certain, so it counts as unknown. */
+export async function addMySeasonObservation(
   playerId: string,
   category: MySeasonCategoryKey,
   body: string,
   requestId: string,
   fetchImpl: FetchLike = fetch
-) {
-  return postJson('/api/os/my-season/observations', { playerId, category, body: body.trim(), requestId }, fetchImpl);
+): Promise<AddNoteResult> {
+  const r = await postJson('/api/os/my-season/observations', { playerId, category, body: stripUnstorableText(body).trim(), requestId }, fetchImpl);
+  if (!r.ok) return r;
+  const observationId = (r.data as { observationId?: unknown } | null)?.observationId;
+  return isUuid(observationId) ? { ok: true, observationId } : { ok: false, error: GENERIC_SAVE_ERROR, unknown: true };
 }
 
-export function withdrawMySeasonObservation(observationId: string, fetchImpl: FetchLike = fetch) {
-  return postJson(`/api/os/my-season/observations/${encodeURIComponent(observationId)}/withdraw`, undefined, fetchImpl);
+export async function withdrawMySeasonObservation(observationId: string, fetchImpl: FetchLike = fetch): Promise<WriteResult> {
+  return plainResult(await postJson(`/api/os/my-season/observations/${encodeURIComponent(observationId)}/withdraw`, undefined, fetchImpl));
 }
 
 /** A fresh idempotency key. See createWriteController for when one is reused. */

@@ -93,6 +93,17 @@ describe('GET /api/os/my-season', () => {
     }
   });
 
+  it('enabled but malformed: the fixed view_invalid code; anything else malformed stays "failed"', async () => {
+    h.rpc.mockResolvedValue({ data: { enabled: true, access: 'guardian', observations: [{ body: note.body }] }, error: null });
+    const res = await get();
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.code).toBe('view_invalid');
+    expect(JSON.stringify(body)).not.toContain('Called for the ball');
+    h.rpc.mockResolvedValue({ data: { enabled: 'yes' }, error: null });
+    expect((await (await get()).json()).code).toBe('failed');
+  });
+
   it('former coach and private coach: access none with a reason and no content', async () => {
     for (const reason of ['former_coach', 'private_coach']) {
       h.rpc.mockResolvedValue({ data: { enabled: true, access: 'none', reason }, error: null });

@@ -13,12 +13,14 @@ import {
   focusAuthorLine,
   mySeasonCategory,
   observationAuthor,
+  stripUnstorableText,
   MY_SEASON_CATEGORIES,
   type FocusDraft,
   type FocusField,
   type MySeasonCategoryKey,
   type MySeasonFocus,
   type MySeasonObservation,
+  type MySeasonView,
 } from '@/lib/my-season';
 import { MY_SEASON_LOAD_ERROR, MY_SEASON_SESSION_ENDED, addMySeasonObservation, saveMySeasonFocus, todayLocalIso } from './mySeasonClient';
 import {
@@ -37,7 +39,9 @@ import {
   noteDirty,
   noteHint,
   noteLimitAnnouncement,
+  sendNoteFlow,
   submitWrite,
+  type NoteSentKind,
   type WriteController,
 } from './mySeasonFlows';
 
@@ -105,9 +109,9 @@ const inputStyle: CSSProperties = {
 // ---------------------------------------------------------------------------
 
 export function MsButton({
-  children, onClick, variant = 'primary', disabled, ariaLabel, type = 'button', style, id, buttonRef,
+  children, onClick, variant = 'primary', disabled, ariaLabel, ariaDescribedBy, type = 'button', style, id, buttonRef,
 }: {
-  children: ReactNode; onClick?: () => void; variant?: 'primary' | 'ghost'; disabled?: boolean; ariaLabel?: string; type?: 'button' | 'submit'; style?: CSSProperties;
+  children: ReactNode; onClick?: () => void; variant?: 'primary' | 'ghost'; disabled?: boolean; ariaLabel?: string; ariaDescribedBy?: string; type?: 'button' | 'submit'; style?: CSSProperties;
   id?: string; buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
@@ -118,6 +122,7 @@ export function MsButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       className={`os-ms-focus ${variant === 'primary' ? 'os-ms-primary' : 'os-ms-ghost'}`}
       style={{ ...msButton, ...style }}
     >
@@ -159,7 +164,8 @@ export function MySeasonError({ onRetry, busy, signedOut = false }: { onRetry: (
 
 export function NoteRow({ note, children }: { note: MySeasonObservation; children?: ReactNode }) {
   // A withdrawn note has no content left: only the caller's status line shows.
-  if (note.withdrawn) return <li style={{ listStyle: 'none', opacity: 0.7 }}>{children}</li>;
+  // No opacity here: the line's own colour is what meets AA contrast.
+  if (note.withdrawn) return <li style={{ listStyle: 'none' }}>{children}</li>;
   const cat = mySeasonCategory(note.category);
   return (
     <li style={{ display: 'grid', gridTemplateColumns: '44px 1fr', gap: 12, listStyle: 'none' }}>
@@ -284,7 +290,8 @@ export function FocusEditor({
   const valid = problems.length === 0;
   const dirty = focusDraftDirty(initial, draft);
   const set = (k: keyof FocusDraft) => (e: { target: { value: string } }) => {
-    setDraft((d) => ({ ...d, [k]: e.target.value }));
+    const value = k === 'startedOn' ? e.target.value : stripUnstorableText(e.target.value);
+    setDraft((d) => ({ ...d, [k]: value }));
     setError(null);
     setEscapeHeld(false);
   };
@@ -388,13 +395,19 @@ export function NoteComposer({
   firstName,
   onSent,
   onCancel,
+  reloadNotes,
+  knownNoteIds,
   initialCategory = null,
   initialBody = '',
 }: {
   playerId: string;
   firstName: string;
-  onSent: () => void;
+  onSent: (kind: NoteSentKind) => void;
   onCancel: () => void;
+  /** Loads the list again; the send is only believed once this shows it. */
+  reloadNotes: () => Promise<MySeasonView | null>;
+  /** The notes already listed when Send is pressed. */
+  knownNoteIds: readonly string[];
   initialCategory?: MySeasonCategoryKey | null;
   initialBody?: string;
 }) {
@@ -407,18 +420,27 @@ export function NoteComposer({
   const controller = useRef<WriteController | null>(null);
   if (!controller.current) controller.current = createWriteController();
   const firstCategoryRef = useRef<HTMLButtonElement>(null);
+  const sendRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     firstCategoryRef.current?.focus();
   }, []);
 
   const send = async () => {
-    if (!category || !checkObservationBody(body).valid) return;
-    await submitWrite(controller.current!, noteContentKey(category, body), (requestId) => addMySeasonObservation(playerId, category, body, requestId), {
-      setBusy,
-      setError,
-      onDone: onSent,
-    });
+    const check = checkObservationBody(body);
+    if (!category || !check.valid) return;
+    await sendNoteFlow(
+      controller.current!,
+      noteContentKey(category, body),
+      { post: (requestId) => addMySeasonObservation(playerId, category, body, requestId), reloadNotes, category, body: check.value, knownIds: knownNoteIds },
+      {
+        setBusy,
+        setError,
+        onSent,
+        // The busy button was disabled; put focus back on the control to retry.
+        onFailed: () => setTimeout(() => sendRef.current?.focus(), 0),
+      }
+    );
   };
   const dirty = noteDirty({ category: initialCategory, body: initialBody }, { category, body });
 
@@ -436,7 +458,7 @@ export function NoteComposer({
         setEscapeHeld(false);
       }}
       onBody={(v) => {
-        setBody(v);
+        setBody(stripUnstorableText(v));
         setError(null);
         setEscapeHeld(false);
       }}
@@ -447,23 +469,25 @@ export function NoteComposer({
         if (holdEscapeIfDirty(e, dirty && !busy)) setEscapeHeld(true);
       }}
       firstCategoryRef={firstCategoryRef}
+      sendRef={sendRef}
     />
   );
 }
 
 export function NoteComposerView({
-  playerId, firstName, category, body, busy, error, onCategory, onBody, onSend, onCancel, escapeHeld = false, onKeyDown, firstCategoryRef,
+  playerId, firstName, category, body, busy, error, onCategory, onBody, onSend, onCancel, escapeHeld = false, onKeyDown, firstCategoryRef, sendRef,
 }: {
   playerId: string; firstName: string; category: MySeasonCategoryKey | null; body: string; busy: boolean; error: string | null;
   onCategory: (c: MySeasonCategoryKey) => void; onBody: (v: string) => void; onSend: () => void; onCancel: () => void;
   escapeHeld?: boolean;
   onKeyDown?: (e: { key: string; preventDefault: () => void; stopPropagation: () => void }) => void;
   firstCategoryRef?: Ref<HTMLButtonElement>;
+  sendRef?: Ref<HTMLButtonElement>;
 }) {
   const check = checkObservationBody(body);
   const canSend = !!category && check.valid && !busy;
   const id = `ms-note-${playerId.slice(0, 8)}`;
-  const hint = noteHint(check);
+  const hint = noteHint(check, category);
   const hintIsError = check.tooLong || check.tooManySentences;
   return (
     <section aria-labelledby={`${id}-h`} style={{ display: 'grid', gap: 10 }} onKeyDown={onKeyDown}>
@@ -523,7 +547,7 @@ export function NoteComposerView({
       <PrivacyLine text={MY_SEASON_COPY.coachPrivacy(firstName)} />
       {error && <p role="alert" className="os-ms-error" style={{ margin: 0, fontSize: 13.5 }}>{error}</p>}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <MsButton onClick={onSend} disabled={!canSend}>{busy ? 'Sending…' : `Send to ${firstName}'s family`}</MsButton>
+        <MsButton buttonRef={sendRef} onClick={onSend} disabled={!canSend}>{busy ? 'Sending…' : `Send to ${firstName}'s family`}</MsButton>
         <MsButton variant="ghost" onClick={onCancel} disabled={busy}>Cancel</MsButton>
       </div>
     </section>

@@ -7,14 +7,14 @@ vi.mock('@/lib/supabase/client', () => ({ createClient: () => ({ channel: () => 
 
 // CoachPlayerDetail's hook is replaced so a test can say what the server
 // answered; everything else in the module is the real code.
-const hook = vi.hoisted(() => ({ state: { status: 'idle', view: null } as { status: 'idle' | 'loading' | 'ready' | 'error'; view: MySeasonView | null }, args: [] as unknown[] }));
+const hook = vi.hoisted(() => ({ state: { status: 'idle', view: null } as { status: 'idle' | 'loading' | 'ready' | 'error'; view: MySeasonView | null; knownEnabled?: boolean }, args: [] as unknown[] }));
 vi.mock('@/app/os/screens/CoachMySeasonSection', async (importOriginal) => {
   const real = await importOriginal<typeof import('./screens/CoachMySeasonSection')>();
   return {
     ...real,
     useCoachMySeason: (a: unknown) => {
       hook.args.push(a);
-      return { state: hook.state, reload: () => {}, enabled: hook.state.view?.enabled === true };
+      return { state: hook.state, reload: async () => null, eraseWithdrawn: () => {}, enabled: real.coachMySeasonEnabled(hook.state) };
     },
   };
 });
@@ -48,6 +48,7 @@ function panel(state: CoachMySeasonState, ui: Partial<CoachPanelUi> = {}, handle
       state={state}
       ui={{ ...INITIAL_COACH_PANEL_UI, ...ui }}
       onRetry={noop}
+      reloadNotes={async () => null}
       onStartEditFocus={noop}
       onCancelEditFocus={noop}
       onFocusSaved={noop}
@@ -82,6 +83,14 @@ describe('CoachPlayerDetail with My Season', () => {
       expect(html).toContain('Season Focus');
       expect(html).not.toContain('data-testid="coach-my-season"');
     }
+  });
+
+  it('enabled but unusable: the error with Retry, and the legacy section stays hidden', () => {
+    hook.state = { status: 'error', view: null, knownEnabled: true };
+    const html = detail();
+    expect(html).toContain('data-testid="coach-my-season"');
+    expect(html).toContain('>Retry<');
+    expect(html).not.toContain('Season Focus <span');
   });
 
   it('hides the legacy section and shows My Season once enabled', () => {
@@ -176,7 +185,8 @@ describe('Coach My Season panel', () => {
     const ui: Partial<CoachPanelUi>[] = [];
     const reload = vi.fn();
     const erase = vi.fn();
-    expect(await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: async () => ({ ok: true }), erase, reload })).toBe(true);
+    const focusNext = vi.fn();
+    expect(await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: async () => ({ ok: true }), erase, reload, focusNext })).toBe(true);
     expect(ui.at(-1)).toMatchObject({ withdrawBusy: false, confirmingWithdrawId: null });
     expect(erase).toHaveBeenCalledWith('o1');
     expect(reload).toHaveBeenCalledTimes(1);
@@ -185,10 +195,10 @@ describe('Coach My Season panel', () => {
     ui.length = 0;
     reload.mockClear();
     erase.mockClear();
-    expect(await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: async () => ({ ok: false, error: "You can't make this change for this player." }), erase, reload })).toBe(false);
+    expect(await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: async () => ({ ok: false, error: "You can't make this change for this player." }), erase, reload, focusNext })).toBe(false);
     expect(ui.at(-1)).toEqual({ withdrawBusy: false, withdrawError: "You can't make this change for this player." });
     expect(reload).not.toHaveBeenCalled();
-    expect(await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: () => Promise.reject(new Error('offline')), erase, reload })).toBe(false);
+    expect(await withdrawFlow('o1', { setUi: (p) => ui.push(p), withdraw: () => Promise.reject(new Error('offline')), erase, reload, focusNext })).toBe(false);
     expect(erase).not.toHaveBeenCalled();
   });
 

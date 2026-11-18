@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { notesSinceFocus, visibleFamilyObservations, type MySeasonView } from '@/lib/my-season';
 import { loadMySeasonView } from '../mySeasonClient';
-import { MS_IDS, mySeasonDialogKeyDown, usePendingFocus } from '../mySeasonFlows';
+import { MS_IDS, createHomeCardSync, mySeasonDialogKeyDown, usePendingFocus } from '../mySeasonFlows';
 import {
   EarlierFocusList,
   FocusEditor,
@@ -29,6 +29,10 @@ import {
  * Escape closes it (an editor with unsaved changes holds Escape back), and
  * the opener (PlayerHome) puts focus back on the card's Open button. When
  * the focus editor closes, focus moves to the Change focus button.
+ *
+ * Home's card comes from the page data, which can be older than this load
+ * (a coach withdrew a note, say). When the fresh view differs from what Home
+ * shows, Home is refreshed, so it stops quoting anything no longer there.
  */
 
 export type MySeasonLoadState = { status: 'loading' | 'ready' | 'error'; view: MySeasonView | null; signedOut?: boolean };
@@ -36,19 +40,23 @@ export type MySeasonLoadState = { status: 'loading' | 'ready' | 'error'; view: M
 export default function MySeasonScreen({
   playerId,
   playerName,
+  homeView,
   onClose,
   onChanged,
 }: {
   playerId: string;
   playerName: string;
+  /** What Home's card is showing now. */
+  homeView: MySeasonView | null;
   onClose: () => void;
-  /** Called after a successful write so Home's card refreshes too. */
+  /** Refreshes Home's data: after a successful write, or when a load shows Home is out of date. */
   onChanged: () => void;
 }) {
   const [load, setLoad] = useState<MySeasonLoadState>({ status: 'loading', view: null });
   const [editing, setEditing] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const focusNext = usePendingFocus(load.status === 'loading');
+  const focusNext = usePendingFocus();
+  const syncHomeCard = useRef(createHomeCardSync());
 
   const reload = useCallback(async () => {
     setLoad((s) => ({ status: 'loading', view: s.view }));
@@ -63,6 +71,10 @@ export default function MySeasonScreen({
   useEffect(() => {
     closeRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (load.status === 'ready' && load.view) syncHomeCard.current(homeView, load.view, onChanged);
+  }, [load, homeView, onChanged]);
 
   return (
     <MySeasonScreenView

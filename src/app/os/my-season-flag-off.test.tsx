@@ -141,6 +141,10 @@ describe('os-data parent load', () => {
     }
   });
 
+  it('a malformed view that claims the feature is on keeps the legacy section hidden', async () => {
+    expect(await loadParentMySeason(rpcClient({ data: { enabled: true, access: 'guardian' }, error: null }).client, MS_PLAYER_ID)).toEqual({ enabled: true, access: 'none', reason: 'unavailable' });
+  });
+
   it('the enabled view when the feature is on', async () => {
     const { client, rpc } = rpcClient({ data: msContent(), error: null });
     expect(await loadParentMySeason(client, MS_PLAYER_ID)).toEqual(msContent());

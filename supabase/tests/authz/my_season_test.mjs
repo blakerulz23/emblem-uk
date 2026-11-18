@@ -321,6 +321,20 @@ console.log('\n=== 3. Focus history, idempotency and validation ===');
       && await w.n(`select count(*) n from public.my_season_focuses`) === before && (await w.view(P.g1, child1)).activeFocus.id === a.rows[0].id);
     check('3: set focus: same request_id from another caller EMS06; for another player EMS06',
       code(await w.setFocus(P.g2, child1, { requestId: req })) === 'EMS06' && code(await w.setFocus(P.coach, child2, { requestId: req })) === 'EMS06');
+    const retryContent = { requestId: req, title: 'Retry me' };
+    const padded = await w.setFocus(P.g1, child1, { ...retryContent, title: '  Retry me \n' });
+    check('3: set focus: a retry differing only in surrounding spaces is the same request', padded.ok && padded.rows[0].id === a.rows[0].id, padded);
+    const focusAudit = () => w.n(`select count(*) n from public.my_season_audit_events where player_id = $1 and event like 'focus%'`, [child1]);
+    const auditBefore = await focusAudit();
+    const otherContent = {
+      title: code(await w.setFocus(P.g1, child1, { ...retryContent, title: 'A different title' })),
+      why: code(await w.setFocus(P.g1, child1, { ...retryContent, why: 'A different reason' })),
+      looks: code(await w.setFocus(P.g1, child1, { ...retryContent, looks: 'A different picture' })),
+      date: code(await w.setFocus(P.g1, child1, { ...retryContent, startedOn: '2024-01-01' })),
+    };
+    check('3: set focus: same key with different content is EMS06 for every field', Object.values(otherContent).every((c) => c === 'EMS06'), otherContent);
+    check('3: ...and nothing was written', await w.n(`select count(*) n from public.my_season_focuses`) === before && await focusAudit() === auditBefore
+      && (await w.view(P.g1, child1)).activeFocus.title === 'Retry me');
     // A unique violation on the one-active index (not the request_id) is EMS09
     // my_season_conflict. Provoked by a temporary trigger that skips the
     // "end the old focus" update, inside a rolled-back transaction.
@@ -527,6 +541,7 @@ async function pastTriggers(db, sql, params) {
     const restore = {};
     const srUpd = (sql, params) => w.as('service_role', null, sql, params).then(code);
     const own = (sql, params) => db.query(sql, params).then(() => 'ok', (e) => e.code);
+    restore.srDelete = await w.as('service_role', null, `delete from public.my_season_coach_observations where id = $1`, [o]).then(code);
     restore.srBody = await srUpd(`update public.my_season_coach_observations set body = 'Text put back by a support tool.' where id = $1`, [o]);
     restore.srCategory = await srUpd(`update public.my_season_coach_observations set category = 'spoke_up' where id = $1`, [o]);
     restore.srBoth = await srUpd(`update public.my_season_coach_observations set body = 'Text put back by a support tool.', category = 'spoke_up' where id = $1`, [o]);
@@ -534,7 +549,8 @@ async function pastTriggers(db, sql, params) {
     restore.ownerBody = await own(`update public.my_season_coach_observations set body = 'Text put back by the owner role.' where id = $1`, [o]);
     restore.ownerReopen = await own(`update public.my_season_coach_observations set withdrawn_at = null, withdrawn_by = null, body = 'Text put back by the owner role.', category = 'spoke_up' where id = $1`, [o]);
     restore.ownerMoveDate = await own(`update public.my_season_coach_observations set withdrawn_at = now() - interval '1 day' where id = $1`, [o]);
-    check('4b: service_role and the owner cannot restore content or reopen a withdrawn note (EMS09)', Object.values(restore).every((c) => c === 'EMS09'), restore);
+    check('4b: service_role has no write privilege at all (42501); the owner is stopped by the trigger (EMS09)',
+      Object.entries(restore).every(([k, c]) => c === (k.startsWith('sr') ? '42501' : 'EMS09')), restore);
     check('4b: ...and the row is still empty', await w.n(`select count(*) n from public.my_season_coach_observations where id = $1 and body is null and category is null and withdrawn_at is not null`, [o]) === 1);
 
     // Partial withdrawals through normal SQL.
@@ -557,10 +573,46 @@ async function pastTriggers(db, sql, params) {
       badCategory: await ins('category, body', `'best_player', 'A perfectly valid note body.'`, []),
       shortBody: await ins('category, body', `'kept_going', 'Too short'`, []),
       padded: await ins('category, body', `'kept_going', '  A perfectly valid note body.'`, []),
+      nullId: await ins('id, category, body', `null, 'kept_going', 'A perfectly valid note body.'`, []),
+      nullCreatedAt: await ins('created_at, category, body', `null, 'kept_going', 'A perfectly valid note body.'`, []),
     };
     check('4b: inserts cannot create withdrawn rows or rows without valid content (fixed EMS09)', Object.values(inserts).every((c) => c === 'EMS09'), inserts);
     const direct = await db.query(`insert into public.my_season_coach_observations (player_id, author_id, request_id, category, body) values ($1, $2, $3, 'kept_going', $4)`, [child1, P.coach, id(), `${MARK} `]).then(() => null, (e) => e);
     check('4b: a refused direct insert does not echo its text (no "Failing row contains")', direct?.code === 'EMS09' && !leaksMark(direct) && !/Failing row/.test(`${direct.detail}`), direct && { code: direct.code, detail: direct.detail });
+
+    // NOT NULL / CHECK paths reachable by a direct write: fixed error, nothing echoed.
+    const refused = async (sql, params) => db.query(sql, params).then(() => ({ code: 'ok' }), (e) => e);
+    const echoed = {};
+    const noteCols = 'player_id, author_id, category, body';
+    const focusCols = 'player_id, created_by, author_role, started_on, title, why_it_matters, what_it_looks_like';
+    const focusText = `${MARK} focus`;
+    const shapes = {
+      noteNullId: [`insert into public.my_season_coach_observations (id, request_id, ${noteCols}) values (null, $1, $2, $3, 'kept_going', $4)`, [id(), child1, P.coach, MARK_BODY]],
+      noteNullCreated: [`insert into public.my_season_coach_observations (created_at, request_id, ${noteCols}) values (null, $1, $2, $3, 'kept_going', $4)`, [id(), child1, P.coach, MARK_BODY]],
+      noteNullRequest: [`insert into public.my_season_coach_observations (request_id, ${noteCols}) values (null, $1, $2, 'kept_going', $3)`, [child1, P.coach, MARK_BODY]],
+      noteNullPlayer: [`insert into public.my_season_coach_observations (request_id, ${noteCols}) values ($1, null, $2, 'kept_going', $3)`, [id(), P.coach, MARK_BODY]],
+      focusNullId: [`insert into public.my_season_focuses (id, request_id, ${focusCols}) values (null, $1, $2, $3, 'guardian', current_date, $4, $4, $4)`, [id(), child1, P.g1, focusText]],
+      focusNullCreated: [`insert into public.my_season_focuses (created_at, request_id, ${focusCols}) values (null, $1, $2, $3, 'guardian', current_date, $4, $4, $4)`, [id(), child1, P.g1, focusText]],
+      focusNullRequest: [`insert into public.my_season_focuses (request_id, ${focusCols}) values (null, $1, $2, 'guardian', current_date, $3, $3, $3)`, [child1, P.g1, focusText]],
+      focusNullPlayer: [`insert into public.my_season_focuses (request_id, ${focusCols}) values ($1, null, $2, 'guardian', current_date, $3, $3, $3)`, [id(), P.g1, focusText]],
+      focusNullDate: [`insert into public.my_season_focuses (request_id, ${focusCols}) values ($1, $2, $3, 'guardian', null, $4, $4, $4)`, [id(), child1, P.g1, focusText]],
+      focusNullRole: [`insert into public.my_season_focuses (request_id, ${focusCols}) values ($1, $2, $3, null, current_date, $4, $4, $4)`, [id(), child1, P.g1, focusText]],
+      focusBadRole: [`insert into public.my_season_focuses (request_id, ${focusCols}) values ($1, $2, $3, 'staff', current_date, $4, $4, $4)`, [id(), child1, P.g1, focusText]],
+      focusNullTitle: [`insert into public.my_season_focuses (request_id, ${focusCols}) values ($1, $2, $3, 'guardian', current_date, null, $4, $4)`, [id(), child1, P.g1, focusText]],
+      focusLongTitle: [`insert into public.my_season_focuses (request_id, ${focusCols}) values ($1, $2, $3, 'guardian', current_date, $4 || repeat('x', 70), $4, $4)`, [id(), child1, P.g1, focusText]],
+      focusPaddedTitle: [`insert into public.my_season_focuses (request_id, ${focusCols}) values ($1, $2, $3, 'guardian', current_date, ' ' || $4, $4, $4)`, [id(), child1, P.g1, focusText]],
+      focusShortWhy: [`insert into public.my_season_focuses (request_id, ${focusCols}) values ($1, $2, $3, 'guardian', current_date, $4, 'x', $4)`, [id(), child1, P.g1, focusText]],
+      focusNullLooks: [`insert into public.my_season_focuses (request_id, ${focusCols}) values ($1, $2, $3, 'guardian', current_date, $4, $4, null)`, [id(), child1, P.g1, focusText]],
+      updNoteNullId: [`update public.my_season_coach_observations set id = null where id = $1`, [other]],
+      updNoteNullCreated: [`update public.my_season_coach_observations set created_at = null where id = $1`, [other]],
+      updNoteNullRequest: [`update public.my_season_coach_observations set request_id = null where id = $1`, [other]],
+      updNoteBody: [`update public.my_season_coach_observations set body = $2 where id = $1`, [other, 'x']],
+    };
+    for (const [k, [sql, params]] of Object.entries(shapes)) {
+      const e = await refused(sql, params);
+      echoed[k] = e.code === 'EMS09' && !e.detail && !leaksMark(e) && !/Failing row/.test(`${e.detail}`) ? 'fixed' : { code: e.code, detail: e.detail };
+    }
+    check('4b: every NOT NULL / CHECK path a direct insert or update can reach gets EMS09 with no DETAIL and no text', Object.values(echoed).every((v) => v === 'fixed'), echoed);
 
     // The constraint itself, reached with the triggers off (superuser).
     const G = `'kept_going'`, B = `'A perfectly valid note body.'`;
@@ -606,6 +658,14 @@ async function pastTriggers(db, sql, params) {
     await db.query(`select public.erase_player_and_related_data($1)`, [child2]);
     check('4b: child deletion removes the withdrawn row and its audit events',
       await w.n(`select count(*) n from public.my_season_coach_observations where id = $1`, [o2]) === 0 && await w.n(`select count(*) n from public.my_season_audit_events where subject_id = $1`, [o2]) === 0);
+    // service_role now holds SELECT only: the cascade must not depend on its grants.
+    const lastFocus = (await w.setFocus(P.g3, w.child3)).rows[0].id;
+    const lastNote = (await w.addObs(P.coach2, w.child3, mine)).rows[0].id;
+    const srErase = await db.query(`select public.erase_player_and_related_data($1)`, [w.child3]).then(() => ({ ok: true }), (e) => ({ ok: false, message: e.message }));
+    check('4b: with service_role read-only, erase_player_and_related_data still cascades through both content tables and the audit', srErase.ok
+      && await w.n(`select count(*) n from public.my_season_focuses where id = $1`, [lastFocus]) === 0
+      && await w.n(`select count(*) n from public.my_season_coach_observations where id = $1`, [lastNote]) === 0
+      && await w.n(`select count(*) n from public.my_season_audit_events where player_id = $1`, [w.child3]) === 0, srErase);
   } catch (e) {
     check('4b: erasure', false, e.stack);
   }
@@ -700,24 +760,50 @@ console.log('\n=== 5. No public path, immutability, append-only audit ===');
     const oid = (await w.addObs(P.coach, child1)).rows[0].id;
     const sr = (sql, params) => w.as('service_role', null, sql, params);
     const own = (sql, params) => db.query(sql, params).then(() => 'ok', (e) => e.code);
+    const stmts = {
+      Title: [`update public.my_season_focuses set title = 'Changed title' where id = $1`, [fid2]],
+      ReEnd: [`update public.my_season_focuses set ended_at = now() where id = $1`, [fid]],
+      AuthorNull: [`update public.my_season_focuses set created_by = null where id = $1`, [fid2]],
+      AuthorSwap: [`update public.my_season_focuses set created_by = $2 where id = $1`, [fid2, P.g2]],
+      Marker: [`update public.my_season_focuses set author_account_deleted_at = now() where id = $1`, [fid2]],
+      Body: [`update public.my_season_coach_observations set body = 'A completely different note body' where id = $1`, [oid]],
+      TeamNull: [`update public.my_season_coach_observations set team_id = null where id = $1`, [oid]],
+      ObsAuthorNull: [`update public.my_season_coach_observations set author_id = null where id = $1`, [oid]],
+      InsertMarker: [`insert into public.my_season_coach_observations (player_id, category, body, author_id, author_account_deleted_at, request_id) values ($1, 'kept_going', 'Inserted with a marker set', $2, now(), $3)`, [child1, P.coach, id()]],
+      InsertWithdrawn: [`insert into public.my_season_coach_observations (player_id, category, body, author_id, withdrawn_at, request_id) values ($1, 'kept_going', 'Inserted already withdrawn', $2, now(), $3)`, [child1, P.coach, id()]],
+    };
+    const srCodes = {}, ownerCodes = {};
+    for (const [k, [sql, params]] of Object.entries(stmts)) {
+      srCodes[k] = code(await sr(sql, params));
+      ownerCodes[k] = await own(sql, params);
+    }
+    check('5: service_role cannot write the content tables at all (42501)', Object.values(srCodes).every((c) => c === '42501'), srCodes);
+    check('5: the triggers bind even the owner (EMS09)', Object.values(ownerCodes).every((c) => c === 'EMS09'), ownerCodes);
+    const srRest = {
+      delFocus: code(await sr(`delete from public.my_season_focuses where id = $1`, [fid])),
+      delNote: code(await sr(`delete from public.my_season_coach_observations where id = $1`, [oid])),
+      truncFocus: code(await sr(`truncate public.my_season_focuses`)),
+      truncNote: code(await sr(`truncate public.my_season_coach_observations`)),
+      selFocus: code(await sr(`select count(*) from public.my_season_focuses`)),
+      selNote: code(await sr(`select count(*) from public.my_season_coach_observations`)),
+    };
+    check('5: service_role: no delete or truncate, SELECT still works', JSON.stringify(srRest) === JSON.stringify({ delFocus: '42501', delNote: '42501', truncFocus: '42501', truncNote: '42501', selFocus: 'ok', selNote: 'ok' }), srRest);
+    const srPrivs = (await db.query(`select c.relname t, string_agg(a.privilege_type, ',' order by a.privilege_type) p
+       from pg_class c cross join lateral aclexplode(c.relacl) a
+      where c.oid in ('public.my_season_focuses'::regclass, 'public.my_season_coach_observations'::regclass, 'public.my_season_audit_events'::regclass)
+        and a.grantee = 'service_role'::regrole group by 1`)).rows;
+    check('5: the ACL gives service_role exactly SELECT on all three tables', srPrivs.length === 3 && srPrivs.every((r) => r.p === 'SELECT'), srPrivs);
+    const statTargets = (await db.query(`select attname a, attstattarget t from pg_attribute where attnum > 0 and attrelid in ('public.my_season_focuses'::regclass, 'public.my_season_coach_observations'::regclass)
+       and attname in ('body', 'category', 'title', 'why_it_matters', 'what_it_looks_like')`)).rows;
+    check('5: planner statistics are off for every content column', statTargets.length === 5 && statTargets.every((r) => r.t === 0), statTargets);
     const imm = {
-      srTitle: code(await sr(`update public.my_season_focuses set title = 'Changed title' where id = $1`, [fid2])),
-      srReEnd: code(await sr(`update public.my_season_focuses set ended_at = now() where id = $1`, [fid])),
-      srAuthorNull: code(await sr(`update public.my_season_focuses set created_by = null where id = $1`, [fid2])),
-      srAuthorSwap: code(await sr(`update public.my_season_focuses set created_by = $2 where id = $1`, [fid2, P.g2])),
-      srMarker: code(await sr(`update public.my_season_focuses set author_account_deleted_at = now() where id = $1`, [fid2])),
-      srBody: code(await sr(`update public.my_season_coach_observations set body = 'A completely different note body' where id = $1`, [oid])),
-      srTeamNull: code(await sr(`update public.my_season_coach_observations set team_id = null where id = $1`, [oid])),
-      srObsAuthorNull: code(await sr(`update public.my_season_coach_observations set author_id = null where id = $1`, [oid])),
-      srInsertMarker: code(await sr(`insert into public.my_season_coach_observations (player_id, category, body, author_id, author_account_deleted_at, request_id) values ($1, 'kept_going', 'Inserted with a marker set', $2, now(), $3)`, [child1, P.coach, id()])),
-      srInsertWithdrawn: code(await sr(`insert into public.my_season_coach_observations (player_id, category, body, author_id, withdrawn_at, request_id) values ($1, 'kept_going', 'Inserted already withdrawn', $2, now(), $3)`, [child1, P.coach, id()])),
       ownerTitle: await own(`update public.my_season_focuses set title = 'Owner change' where id = $1`, [fid2]),
       ownerWithdrawKeepingText: await own(`update public.my_season_coach_observations set withdrawn_at = now(), withdrawn_by = $2 where id = $1`, [oid, P.coach]),
       ownerWithdraw: await own(`update public.my_season_coach_observations set withdrawn_at = now(), withdrawn_by = $2, body = null, category = null where id = $1`, [oid, P.coach]),
     };
     imm.ownerUnwithdraw = await own(`update public.my_season_coach_observations set withdrawn_at = null where id = $1`, [oid]);
-    check('5: content is immutable apart from end / withdraw / FK set null, for service_role and the owner (EMS09)',
-      JSON.stringify(imm) === JSON.stringify({ srTitle: 'EMS09', srReEnd: 'EMS09', srAuthorNull: 'EMS09', srAuthorSwap: 'EMS09', srMarker: 'EMS09', srBody: 'EMS09', srTeamNull: 'EMS09', srObsAuthorNull: 'EMS09', srInsertMarker: 'EMS09', srInsertWithdrawn: 'EMS09', ownerTitle: 'EMS09', ownerWithdrawKeepingText: 'EMS09', ownerWithdraw: 'ok', ownerUnwithdraw: 'EMS09' }), imm);
+    check('5: content is immutable apart from end / withdraw / FK set null, for the owner too (EMS09)',
+      JSON.stringify(imm) === JSON.stringify({ ownerTitle: 'EMS09', ownerWithdrawKeepingText: 'EMS09', ownerWithdraw: 'ok', ownerUnwithdraw: 'EMS09' }), imm);
 
     const audit = {
       authUpd: code(await w.user(P.g1, `update public.my_season_audit_events set event = 'focus_set'`)),

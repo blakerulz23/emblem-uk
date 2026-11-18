@@ -59,7 +59,7 @@ function allRendered(): string[] {
     for (const ui of [INITIAL_COACH_PANEL_UI, { ...INITIAL_COACH_PANEL_UI, confirmingWithdrawId: 'o1', toast: MY_SEASON_COPY.sentToast('Riley') }]) {
       for (const status of ['ready', 'error'] as const) {
         add(
-          <CoachMySeasonPanel playerId={MS_PLAYER_ID} firstName="Riley" state={{ status, view }} ui={ui} onRetry={noop} onStartEditFocus={noop} onCancelEditFocus={noop} onFocusSaved={noop} onOpenComposer={noop} onCancelComposer={noop} onNoteSent={noop} onAskWithdraw={noop} onCancelWithdraw={noop} onConfirmWithdraw={noop} />
+          <CoachMySeasonPanel playerId={MS_PLAYER_ID} firstName="Riley" state={{ status, view }} ui={ui} onRetry={noop} reloadNotes={async () => null} onStartEditFocus={noop} onCancelEditFocus={noop} onFocusSaved={noop} onOpenComposer={noop} onCancelComposer={noop} onNoteSent={noop} onAskWithdraw={noop} onCancelWithdraw={noop} onConfirmWithdraw={noop} />
         );
       }
     }

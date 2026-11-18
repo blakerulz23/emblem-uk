@@ -537,12 +537,15 @@ body.emblem-os-active {
 
 /* My Season (Phase 1). Only rendered when the feature is enabled for the
    player's team. Text colours meet WCAG AA on --os-card / --os-screen in
-   both themes; every control gets a visible keyboard focus ring. */
+   both themes; every control gets a visible keyboard focus ring. Do not put
+   .os-ms-soft inside an element with its own opacity: the two multiply and
+   the text drops below AA. */
 .emblem-os .os-ms-accent { color: #B34715; }
 .emblem-os.os-dark .os-ms-accent { color: #F08A4B; }
 .emblem-os .os-ms-soft { color: var(--os-ink); opacity: .74; }
 .emblem-os .os-ms-error { color: #B3261E; }
 .emblem-os.os-dark .os-ms-error { color: #F2A099; }
+.emblem-os button.os-ms-accent:disabled { opacity: .45; cursor: default; }
 .emblem-os .os-ms-focus:focus-visible {
   outline: 2px solid #B34715;
   outline-offset: 2px;

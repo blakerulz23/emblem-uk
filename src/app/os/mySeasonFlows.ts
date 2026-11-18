@@ -9,13 +9,17 @@ import {
   FOCUS_TITLE_MIN,
   OBSERVATION_MAX,
   charLength,
+  hasMySeasonContent,
   isIsoDate,
   isoDateUtc,
+  visibleFamilyObservations,
   type FocusDraft,
   type FocusField,
+  type MySeasonCategoryKey,
+  type MySeasonView,
   type ObservationCheck,
 } from '@/lib/my-season';
-import { newRequestId, todayLocalIso, type WriteResult } from './mySeasonClient';
+import { GENERIC_SAVE_ERROR, newRequestId, todayLocalIso, type AddNoteResult, type WriteResult } from './mySeasonClient';
 
 /**
  * The stateful parts of the My Season editors, overlay and coach panel as
@@ -121,11 +125,18 @@ export function noteDirty(initial: { category: string | null; body: string }, cu
 export const NOTE_SENTENCE_HINT = 'One or two sentences about what you saw.';
 export const NOTE_TOO_MANY_SENTENCES = 'Keep it to one or two sentences.';
 export const NOTE_TOO_SHORT = 'Add a little more detail (at least 20 characters).';
+export const NOTE_PICK_CATEGORY = 'Pick what you noticed above to send this.';
+export const NOTE_UNCONFIRMED = "We couldn't confirm that was sent. Check the notes below before sending again.";
+export const NOTE_ALREADY_WITHDRAWN = "This note was already withdrawn, so it wasn't sent again.";
+export const NOTE_NOT_LISTED = "This note isn't showing in the list below, so check there before writing it again.";
+export const WITHDRAW_FAILED = "Couldn't withdraw that note. Try again.";
 
-export function noteHint(check: ObservationCheck): string {
+/** `category` undefined: not known here, so nothing is said about it. */
+export function noteHint(check: ObservationCheck, category?: MySeasonCategoryKey | null): string {
   if (check.tooLong) return MY_SEASON_FORM_COPY.noteTooLong;
   if (check.tooManySentences) return NOTE_TOO_MANY_SENTENCES;
   if (check.length > 0 && check.tooShort) return NOTE_TOO_SHORT;
+  if (check.valid && category === null) return NOTE_PICK_CATEGORY;
   return NOTE_SENTENCE_HINT;
 }
 
@@ -154,7 +165,8 @@ export type WriteController = {
    * Sends once. A call while one is in flight is ignored (resolves null).
    * A retry of the same content reuses the request id, so a lost response
    * never creates the row twice; changed content gets a new id. Success
-   * forgets the id.
+   * forgets the id, and so does a request conflict: that id can never
+   * succeed, so the next submit needs a new one.
    */
   submit: (key: string, send: (requestId: string) => Promise<WriteResult>) => Promise<WriteResult | null>;
 };
@@ -173,8 +185,8 @@ export function createWriteController(makeId: () => string = newRequestId): Writ
       const id = last && last.key === key ? last.id : makeId();
       last = { key, id };
       try {
-        const result = await send(id).catch((): WriteResult => ({ ok: false, error: "Couldn't save that. Check your connection and try again." }));
-        if (result.ok) last = null;
+        const result = await send(id).catch((): WriteResult => ({ ok: false, error: GENERIC_SAVE_ERROR, unknown: true }));
+        if (result.ok || result.code === 'request_conflict') last = null;
         return result;
       } finally {
         inFlight = false;
@@ -205,6 +217,110 @@ export async function submitWrite(
   ui.setError(result.error);
   ui.onFailed?.();
   return 'failed';
+}
+
+// ---------------------------------------------------------------------------
+// Sending a coach note: "Sent" is only said once the list proves it
+// ---------------------------------------------------------------------------
+
+export type NoteSentKind = 'sent' | 'already_withdrawn' | 'not_listed';
+
+/**
+ * What a send amounted to, judged from a list loaded after it.
+ *  - The server gave an id: active in the list is sent; withdrawn means the
+ *    key belonged to a note since withdrawn (nothing new was created).
+ *  - No usable answer: sent only if a note of mine with this exact content
+ *    has appeared since the send started (`knownIds` were there before).
+ *  - No list: nothing can be said.
+ */
+export function decideNoteOutcome(o: {
+  result: AddNoteResult;
+  view: MySeasonView | null;
+  category: MySeasonCategoryKey;
+  body: string;
+  knownIds: readonly string[];
+}): NoteSentKind | 'unconfirmed' {
+  if (!o.view || !hasMySeasonContent(o.view)) return 'unconfirmed';
+  const notes = o.view.observations;
+  if (o.result.ok) {
+    const id = o.result.observationId;
+    const note = notes.find((n) => n.id === id);
+    if (!note) return 'not_listed';
+    return note.withdrawn ? 'already_withdrawn' : 'sent';
+  }
+  const appeared = notes.some((n) => !n.withdrawn && n.mine && !o.knownIds.includes(n.id) && n.category === o.category && n.body === o.body);
+  return appeared ? 'sent' : 'unconfirmed';
+}
+
+/**
+ * One send from the composer, including the reload that verifies it. The
+ * whole thing runs inside the write controller, so a second click is ignored
+ * until it finishes and the request id survives every unconfirmed outcome:
+ * sending again cannot create a second note.
+ */
+export function sendNoteFlow(
+  controller: WriteController,
+  key: string,
+  o: {
+    post: (requestId: string) => Promise<AddNoteResult>;
+    reloadNotes: () => Promise<MySeasonView | null>;
+    category: MySeasonCategoryKey;
+    body: string;
+    knownIds: readonly string[];
+  },
+  ui: Omit<WriteUi, 'onDone'> & { onSent: (kind: NoteSentKind) => void }
+): Promise<'ignored' | 'ok' | 'failed'> {
+  let kind: NoteSentKind = 'sent';
+  return submitWrite(
+    controller,
+    key,
+    async (requestId) => {
+      const result = await o.post(requestId);
+      if (!result.ok && !result.unknown) return result;
+      const view = await o.reloadNotes().catch(() => null);
+      const outcome = decideNoteOutcome({ result, view, category: o.category, body: o.body, knownIds: o.knownIds });
+      if (outcome === 'unconfirmed') return { ok: false, error: NOTE_UNCONFIRMED, unknown: true };
+      kind = outcome;
+      return { ok: true };
+    },
+    { setBusy: ui.setBusy, setError: ui.setError, onFailed: ui.onFailed, onDone: () => ui.onSent(kind) }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Family Home card: refresh it when a fresh load shows it is out of date
+// ---------------------------------------------------------------------------
+
+/** Everything Home's My Season card shows, as one comparable string. */
+export function homeCardSignature(view: MySeasonView | null | undefined): string {
+  if (!view) return 'none';
+  if (!hasMySeasonContent(view)) return JSON.stringify(view);
+  const latest = visibleFamilyObservations(view)[0] ?? null;
+  return JSON.stringify([
+    view.activeFocus?.id ?? null,
+    view.activeFocus?.title ?? null,
+    latest && [latest.id, latest.category, latest.body, latest.coachName, latest.createdAt],
+  ]);
+}
+
+/**
+ * Returns the function the overlay calls after each load. It refreshes Home
+ * when the fresh view differs from what Home shows, once per distinct fresh
+ * view: if the refreshed Home still differs (a race, or a failed refresh) it
+ * does not ask again, so this can never loop.
+ */
+export function createHomeCardSync(): (home: MySeasonView | null | undefined, fresh: MySeasonView, refresh: () => void) => void {
+  let requestedFor: string | null = null;
+  return (home, fresh, refresh) => {
+    const signature = homeCardSignature(fresh);
+    if (signature === homeCardSignature(home)) {
+      requestedFor = null;
+      return;
+    }
+    if (signature === requestedFor) return;
+    requestedFor = signature;
+    refresh();
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -289,34 +405,39 @@ export const MS_IDS = {
   coachChangeFocus: 'ms-coach-change-focus',
   coachAddNote: 'ms-coach-add-note',
   withdraw: (id: string) => `ms-withdraw-${id}`,
+  withdrawPrompt: (id: string) => `ms-withdraw-prompt-${id}`,
   withdrawConfirm: (id: string) => `ms-withdraw-confirm-${id}`,
   withdrawn: (id: string) => `ms-withdrawn-${id}`,
 } as const;
 
 /** Where focus should go next: the first of `ids` that exists. */
-export type PendingFocus = { ids: string[]; waitWhileLoading?: boolean };
+export type PendingFocus = { ids: string[] };
 
-export function resolvePendingFocus(
-  pending: PendingFocus,
-  loading: boolean,
-  exists: (id: string) => boolean
-): { focusId: string | null; done: boolean } {
-  if (pending.waitWhileLoading && loading) return { focusId: null, done: false };
-  return { focusId: pending.ids.find(exists) ?? null, done: true };
+export function resolvePendingFocus(pending: PendingFocus, exists: (id: string) => boolean): string | null {
+  return pending.ids.find(exists) ?? null;
 }
 
 /**
- * Moves focus to the pending target after the render that set it (the
- * target is in that same commit), or, for waitWhileLoading, after the
- * render where loading ends.
+ * Focus through the withdraw steps. The warning, never the destructive
+ * button, takes focus when the confirm step opens or a withdrawal fails, so
+ * a repeated or held Enter cannot erase a note. After success focus goes to
+ * the erased row, which exists as soon as the local erase has rendered.
  */
-export function usePendingFocus(loading: boolean): (p: PendingFocus | null) => void {
+export const WITHDRAW_FOCUS = {
+  ask: (id: string): PendingFocus => ({ ids: [MS_IDS.withdrawPrompt(id)] }),
+  failed: (id: string): PendingFocus => ({ ids: [MS_IDS.withdrawPrompt(id)] }),
+  cancel: (id: string): PendingFocus => ({ ids: [MS_IDS.withdraw(id)] }),
+  done: (id: string): PendingFocus => ({ ids: [MS_IDS.withdrawn(id)] }),
+};
+
+/** Moves focus to the pending target after the render that set it (the target is in that same commit). */
+export function usePendingFocus(): (p: PendingFocus | null) => void {
   const [pending, setPending] = useState<PendingFocus | null>(null);
   useEffect(() => {
     if (!pending) return;
-    const r = resolvePendingFocus(pending, loading, (id) => !!document.getElementById(id));
-    if (r.focusId) document.getElementById(r.focusId)?.focus();
-    if (r.done) setPending(null);
-  }, [pending, loading]);
+    const focusId = resolvePendingFocus(pending, (id) => !!document.getElementById(id));
+    if (focusId) document.getElementById(focusId)?.focus();
+    setPending(null);
+  }, [pending]);
   return setPending;
 }

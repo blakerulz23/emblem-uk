@@ -22,6 +22,12 @@
 //      audit event; nothing but fixed EMS codes ever reaches a caller.
 //   f. With PostgreSQL's default logging, none of these calls (including ones
 //      refused for invalid input) puts a note's text in the server log.
+//   g. ANALYZE before and after a withdrawal never puts a note's text or
+//      category into pg_statistic / pg_stats (superuser and service_role).
+//   h. A direct insert or update that breaks a NOT NULL or CHECK rule gets the
+//      fixed EMS09: the row is in neither the error object nor the server log.
+//   i. service_role holds SELECT only; child erasure still cascades.
+//   j. A write racing child erasure ends in EMS03, never a raw 23503.
 //
 // WHAT THIS DOES NOT PROVE: anything about PostgREST, Supabase's log settings
 // or what remains physically on disk. Erasure here means no SQL query can
@@ -380,6 +386,161 @@ try {
     const log = serverLog.join('');
     check('f: control: the captured server log does record failing statements', log.includes('my_season_log_canary'));
     check('f: default logging: the marker is nowhere in the server log (parameterised calls, including refused ones)', !log.includes(MARK));
+  }
+
+  console.log('\n=== g. Planner statistics never hold note text ===');
+  {
+    const STAT = `ZQSTAT${crypto.randomBytes(6).toString('hex')}`;
+    const STAT_CATEGORY = 'came_back_stronger';
+    const T = 'public.my_season_coach_observations';
+    const p = await child(), notes = [];
+    for (let i = 0; i < 40; i++) notes.push(await add(A, coach, p, id(), { body: `${STAT} note number ${i} kept going.`, category: STAT_CATEGORY }));
+
+    const statsViewText = `select coalesce(string_agg(concat_ws('|', tablename, attname, most_common_vals::text, histogram_bounds::text, most_common_elems::text), chr(10)), '') t from pg_stats where schemaname = 'public'`;
+    const statsColumns = `select count(*)::int n from pg_stats where schemaname = 'public' and tablename = 'my_season_coach_observations' and attname in ('body', 'category')`;
+    const rawText = `select coalesce(string_agg(concat_ws('|', stavalues1::text, stavalues2::text, stavalues3::text, stavalues4::text, stavalues5::text), chr(10)), '') t from pg_statistic`;
+    const rawForTable = `select coalesce(string_agg(concat_ws('|', stavalues1::text, stavalues2::text, stavalues3::text, stavalues4::text, stavalues5::text), chr(10)), '') t from pg_statistic where starelid = '${T}'::regclass`;
+    const rawColumns = `select count(*)::int n from pg_statistic s join pg_attribute a on a.attrelid = s.starelid and a.attnum = s.staattnum where s.starelid = '${T}'::regclass and a.attname in ('body', 'category')`;
+    const asServiceRole = async (sql) => {
+      await mig.query('begin');
+      await mig.query('set local role service_role');
+      try { return (await mig.query(sql)).rows[0]; } catch (e) { return { code: e.code }; } finally { await mig.query('rollback'); }
+    };
+    const inspect = async (label) => {
+      const su = {
+        columns: (await mig.query(statsColumns)).rows[0].n,
+        rawColumns: (await mig.query(rawColumns)).rows[0].n,
+        view: (await mig.query(statsViewText)).rows[0].t,
+        raw: (await mig.query(rawText)).rows[0].t,
+        rawTable: (await mig.query(rawForTable)).rows[0].t,
+      };
+      check(`g: ${label}: superuser: no pg_stats or pg_statistic row for body or category`, su.columns === 0 && su.rawColumns === 0, su);
+      check(`g: ${label}: superuser: the marker is nowhere in pg_stats or pg_statistic, the category nowhere in this table's statistics`,
+        !su.view.includes(STAT) && !su.raw.includes(STAT) && !su.rawTable.includes(STAT_CATEGORY));
+      const sr = await asServiceRole(statsViewText), srColumns = await asServiceRole(statsColumns), srRaw = await asServiceRole(rawText);
+      check(`g: ${label}: service_role: no such row, no marker in pg_stats, pg_statistic refused`,
+        srColumns.n === 0 && typeof sr.t === 'string' && !sr.t.includes(STAT) && !sr.t.includes(STAT_CATEGORY) && srRaw.code === '42501', { srColumns, srRaw });
+    };
+    const targets = (await mig.query(`select attname a, attstattarget t from pg_attribute where attrelid = '${T}'::regclass and attname in ('body', 'category')`)).rows;
+    check('g: attstattarget is 0 for body and category', targets.length === 2 && targets.every((r) => r.t === 0), targets);
+    await mig.query('analyze');
+    const otherColumns = (await mig.query(`select count(*)::int n from pg_stats where schemaname = 'public' and tablename = 'my_season_coach_observations'`)).rows[0].n;
+    check('g: ANALYZE did run on the table (its other columns have statistics)', otherColumns > 0, otherColumns);
+    await inspect('before withdrawal');
+    for (const o of notes) await withdraw(A, coach, o);
+    await mig.query('analyze');
+    await inspect('after withdrawal');
+
+    // Control: the same queries do find text in an ordinary analysed column.
+    await mig.query(`create table public.zz_stats_control as select $1::text || ' row ' || g as t from generate_series(1, 200) g`, [STAT]);
+    await mig.query('analyze public.zz_stats_control');
+    const control = (await mig.query(statsViewText)).rows[0].t.includes(STAT) && (await mig.query(rawText)).rows[0].t.includes(STAT);
+    await mig.query('drop table public.zz_stats_control');
+    check('g: control: an ordinary text column does expose its values, so these checks can fail', control);
+  }
+
+  console.log('\n=== h. Direct writes never echo a row ===');
+  {
+    const SECRET = `ZQECHO${crypto.randomBytes(6).toString('hex')}`;
+    const note = `${SECRET} direct insert note text here.`;
+    const p = await child();
+    const live = await add(A, coach, p, id());
+    const focusLive = await setFocus(A, guardian, p, id(), 'Focus to update');
+    const nc = 'player_id, author_id, request_id, category, body';
+    const fc = 'player_id, created_by, request_id, author_role, started_on, title, why_it_matters, what_it_looks_like';
+    const today = new Date().toISOString().slice(0, 10);
+    const noteRow = (extraCols, extraVals, vals = [p, coach, id(), 'kept_going', note]) =>
+      [`insert into public.my_season_coach_observations (${nc}${extraCols}) values ($1, $2, $3, $4, $5${extraVals})`, vals];
+    const focusRow = (extraCols, extraVals, vals = [p, guardian, id(), 'guardian', today, SECRET, SECRET, SECRET]) =>
+      [`insert into public.my_season_focuses (${fc}${extraCols}) values ($1, $2, $3, $4, $5::date, $6, $7, $8${extraVals})`, vals];
+    const fixed = {
+      noteNullId: noteRow(', id', ', null'),
+      noteNullCreatedAt: noteRow(', created_at', ', null'),
+      noteNullPlayer: noteRow('', '', [null, coach, id(), 'kept_going', note]),
+      noteNullRequest: noteRow('', '', [p, coach, null, 'kept_going', note]),
+      noteBadCategory: noteRow('', '', [p, coach, id(), 'nope', note]),
+      noteTooLong: noteRow('', '', [p, coach, id(), 'kept_going', note.repeat(10)]),
+      notePadded: noteRow('', '', [p, coach, id(), 'kept_going', ` ${note}`]),
+      focusNullId: focusRow(', id', ', null'),
+      focusNullCreatedAt: focusRow(', created_at', ', null'),
+      focusNullPlayer: focusRow('', '', [null, guardian, id(), 'guardian', today, SECRET, SECRET, SECRET]),
+      focusNullRequest: focusRow('', '', [p, guardian, null, 'guardian', today, SECRET, SECRET, SECRET]),
+      focusNullDate: focusRow('', '', [p, guardian, id(), 'guardian', null, SECRET, SECRET, SECRET]),
+      focusBadRole: focusRow('', '', [p, guardian, id(), 'staff', today, SECRET, SECRET, SECRET]),
+      focusLongTitle: focusRow('', '', [p, guardian, id(), 'guardian', today, SECRET.repeat(9), SECRET, SECRET]),
+      focusPaddedTitle: focusRow('', '', [p, guardian, id(), 'guardian', today, ` ${SECRET}`, SECRET, SECRET]),
+      focusShortLooks: focusRow('', '', [p, guardian, id(), 'guardian', today, SECRET, SECRET, 'x']),
+      updNoteBody: [`update public.my_season_coach_observations set body = $2 where id = $1`, [live, note]],
+      updNoteNullId: [`update public.my_season_coach_observations set id = null, body = $2 where id = $1`, [live, note]],
+      updNoteNullCreated: [`update public.my_season_coach_observations set created_at = null, body = $2 where id = $1`, [live, note]],
+      updNoteNullRequest: [`update public.my_season_coach_observations set request_id = null, body = $2 where id = $1`, [live, note]],
+      updFocusTitle: [`update public.my_season_focuses set title = $2 where id = $1`, [focusLive, SECRET]],
+      updFocusNullStart: [`update public.my_season_focuses set started_on = null, title = $2 where id = $1`, [focusLive, SECRET]],
+    };
+    const keyOnly = {
+      noteBadPlayerFk: noteRow('', '', [id(), coach, id(), 'kept_going', note]),
+      noteBadAuthorFk: noteRow('', '', [p, id(), id(), 'kept_going', note]),
+      noteBadTeamFk: noteRow(', team_id', `, '${id()}'`),
+      focusBadPlayerFk: focusRow('', '', [id(), guardian, id(), 'guardian', today, SECRET, SECRET, SECRET]),
+    };
+    const attempt = ([sql, params]) => mig.query(sql, params).then(() => ({ code: 'ok' }), (e) => e);
+    const shown = (e) => JSON.stringify({ ...e, message: e.message });
+    const bad = {};
+    for (const [k, c] of Object.entries(fixed)) {
+      const e = await attempt(c);
+      if (!(e.code === 'EMS09' && !e.detail && !e.hint && !shown(e).includes(SECRET))) bad[k] = { code: e.code, detail: e.detail };
+    }
+    check('h: every NOT NULL / CHECK path (insert and update, both tables) gets EMS09 and the error object holds no text', Object.keys(bad).length === 0, bad);
+    const badKeys = {};
+    for (const [k, c] of Object.entries(keyOnly)) {
+      const e = await attempt(c);
+      if (!(e.code === '23503' && !shown(e).includes(SECRET))) badKeys[k] = { code: e.code, detail: e.detail };
+    }
+    check('h: foreign-key failures name only the key', Object.keys(badKeys).length === 0, badKeys);
+    const stored = (await mig.query(`select count(*)::int n from public.my_season_coach_observations where body like $1`, [`%${SECRET}%`])).rows[0].n
+      + (await mig.query(`select count(*)::int n from public.my_season_focuses where title like $1 or why_it_matters like $1 or what_it_looks_like like $1`, [`%${SECRET}%`])).rows[0].n;
+    check('h: nothing was stored', stored === 0, stored);
+    await new Promise((res) => setTimeout(res, 300));
+    const log = serverLog.join('');
+    check('h: the server log recorded these refusals (control)', log.includes('my_season_insert_shape'));
+    check('h: the text is nowhere in the server log, and no "Failing row" line exists', !log.includes(SECRET) && !log.includes('Failing row contains'));
+  }
+
+  console.log('\n=== i. service_role reads only; erasure still works ===');
+  {
+    const tables = ['my_season_focuses', 'my_season_coach_observations'];
+    const privs = {};
+    for (const t of tables) {
+      privs[t] = (await mig.query(`select p from unnest(array['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER','MAINTAIN']) p where has_table_privilege('service_role', $1, p)`, [`public.${t}`])).rows.map((r) => r.p).join();
+    }
+    check('i: service_role holds exactly SELECT on both content tables (MAINTAIN included in the check)', tables.every((t) => privs[t] === 'SELECT'), privs);
+    const p = await child();
+    const o = await add(A, coach, p, id()); await withdraw(A, coach, o);
+    await add(A, coach, p, id());
+    await setFocus(A, guardian, p, id(), 'Focus to erase');
+    // Called as the existing suites call it (the owner); service_role has no EXECUTE on it.
+    const erased = await mig.query(`select public.erase_player_and_related_data($1)`, [p]).then(() => 'ok', (e) => e.message);
+    const left = await n(`select (select count(*) from public.my_season_focuses where player_id = $1) + (select count(*) from public.my_season_coach_observations where player_id = $1) + (select count(*) from public.my_season_audit_events where player_id = $1) n`, [p]);
+    check('i: with service_role read-only, erase_player_and_related_data still removes the focus, notes and audit rows', erased === 'ok' && left === 0, { erased, left });
+  }
+
+  console.log('\n=== j. A write racing child erasure ===');
+  {
+    const race = async (start) => {
+      const p = await child();
+      await O.query('begin');
+      await O.query('delete from public.players where id = $1', [p]);
+      const write = outcome(start(p));
+      const waited = await waitsOnLock(mig, B);
+      await O.query('commit');
+      return { waited, r: await write, p };
+    };
+    const fixedRefusal = (r) => r.code === 'EMS03' && r.message === 'my_season_not_allowed' && !r.detail && !r.hint;
+    const a = await race((p) => add(B, coach, p, id()));
+    check('j: add_observation: waits on the deleting transaction, then a fixed EMS03 (no 23503)', a.waited && fixedRefusal(a.r), a);
+    const f = await race((p) => setFocus(B, guardian, p, id(), 'Racing focus'));
+    check('j: set_focus: waits on the deleting transaction, then a fixed EMS03 (no 23503)', f.waited && fixedRefusal(f.r), f);
+    check('j: nothing was left behind', await n(`select (select count(*) from public.my_season_focuses where player_id = any($1)) + (select count(*) from public.my_season_coach_observations where player_id = any($1)) + (select count(*) from public.my_season_audit_events where player_id = any($1)) n`, [[a.p, f.p]]) === 0);
   }
 } catch (e) {
   check('concurrency suite', false, e.stack);
