@@ -16,6 +16,7 @@ import { hasMySeasonContent } from '@/lib/my-season';
 import MySeasonHomeCard from './MySeasonHomeCard';
 import MySeasonScreen from '../overlays/MySeasonScreen';
 import { MY_SEASON_COPY } from '../mySeasonUi';
+import { closeAndReturnFocus } from '../mySeasonFlows';
 
 /**
  * Home v1.2 — an orientation glance, not a container for the other three
@@ -145,6 +146,8 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
   const mySeasonGuardianView = isReal && playerId && hasMySeasonContent(mySeason) && mySeason.access === 'guardian' ? mySeason : null;
   const mySeasonPaused = isReal && mySeason?.enabled === true && mySeason.access === 'none' && mySeason.reason === 'account_review';
   const [mySeasonOpen, setMySeasonOpen] = useState(false);
+  // Like the media viewer below: closing returns focus to the Open button.
+  const mySeasonOpenRef = useRef<HTMLButtonElement>(null);
 
   const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
   const mediaTriggerRef = useRef<HTMLDivElement>(null);
@@ -402,7 +405,7 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
         {!isSeasonOpen && currentSeason && momentsThisSeason.length > 0 && (
           <div style={{ fontSize: 12, color: 'var(--os-muted)', marginTop: 8 }}>This season has closed.</div>
         )}
-        {mySeasonGuardianView && <MySeasonHomeCard view={mySeasonGuardianView} onOpen={() => setMySeasonOpen(true)} />}
+        {mySeasonGuardianView && <MySeasonHomeCard view={mySeasonGuardianView} openRef={mySeasonOpenRef} onOpen={() => setMySeasonOpen(true)} />}
         {mySeasonPaused && <div className="os-ms-soft" style={{ fontSize: 13, marginTop: 10 }}>{MY_SEASON_COPY.accountReview}</div>}
       </div>
 
@@ -426,7 +429,7 @@ export default function PlayerHome({ actions, storyUpdates }: { actions: OsActio
         <MySeasonScreen
           playerId={playerId}
           playerName={playerProfile.name}
-          onClose={() => setMySeasonOpen(false)}
+          onClose={() => closeAndReturnFocus(setMySeasonOpen, mySeasonOpenRef)}
           onChanged={() => void refreshOsData()}
         />
       )}

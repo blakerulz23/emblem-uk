@@ -150,7 +150,7 @@ describe('EMS error mapping', () => {
   it('maps every EMS code to a fixed status and never passes the DB message through', () => {
     const cases: [string, number, string][] = [
       ['EMS01', 401, 'sign_in_required'], ['EMS02', 404, 'not_available'], ['EMS03', 403, 'not_allowed'], ['EMS04', 403, 'account_review'],
-      ['EMS05', 400, 'invalid_input'], ['EMS06', 409, 'request_conflict'], ['EMS07', 403, 'own_child'], ['EMS08', 404, 'not_found'],
+      ['EMS05', 400, 'invalid_input'], ['EMS06', 409, 'request_conflict'], ['EMS07', 403, 'own_child'], ['EMS08', 500, 'failed'],
       ['EMS09', 500, 'failed'], ['42883', 500, 'failed'], ['PGRST202', 500, 'failed'],
     ];
     for (const [sqlstate, status, code] of cases) {

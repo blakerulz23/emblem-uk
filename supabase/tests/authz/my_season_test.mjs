@@ -78,6 +78,23 @@ async function world({ enable = true } = {}) {
     }
   }
   const user = (uid, sql, params) => as('authenticated', uid, sql, params);
+  // Defence in depth: authenticated holds no SELECT on the content tables.
+  // To prove the RLS policies still limit rows if a grant were ever added
+  // back, grant it inside a transaction that is always rolled back.
+  async function withSelectGrant(uid, sql, params) {
+    await db.exec('begin;');
+    try {
+      await db.exec('grant select on public.my_season_focuses, public.my_season_coach_observations to authenticated;');
+      await db.exec('set local role authenticated;');
+      await db.query(`select set_config('request.jwt.claim.sub', $1, true);`, [uid ?? '']);
+      const r = await db.query(sql, params);
+      return { ok: true, rows: r.rows };
+    } catch (e) {
+      return { ok: false, code: e.code, message: e.message };
+    } finally {
+      await db.exec('rollback;');
+    }
+  }
   const view = async (uid, player) => { const r = await user(uid, `select public.my_season_for_player($1) v`, [player]); return r.ok ? r.rows[0].v : r; };
   const setFocus = (uid, player, o = {}) => user(uid, `select public.my_season_set_focus($1, $2, $3, $4, $5::date, $6) id`,
     [player, ('title' in o ? o.title : 'Be brave on the ball'), ('why' in o ? o.why : 'It helps the team play forward'), ('looks' in o ? o.looks : 'Asking for the ball under pressure'), ('startedOn' in o ? o.startedOn : new Date().toISOString().slice(0, 10)), o.requestId ?? id()]);
@@ -85,7 +102,7 @@ async function world({ enable = true } = {}) {
     [player, ('category' in o ? o.category : 'kept_going'), ('body' in o ? o.body : 'Kept going after the second goal went in.'), o.requestId ?? id()]);
   const withdraw = (uid, obs) => user(uid, `select public.my_season_withdraw_observation($1)`, [obs]);
   const n = async (sql, params) => Number((await db.query(sql, params)).rows[0].n);
-  return { db, P, T, T2, child1, child2, child3, as, user, view, setFocus, addObs, withdraw, n };
+  return { db, P, T, T2, child1, child2, child3, as, user, withSelectGrant, view, setFocus, addObs, withdraw, n };
 }
 const code = (r) => (r.ok ? 'ok' : r.code);
 const deleteAccount = async (w, uid) => {
@@ -138,14 +155,35 @@ console.log('\n=== 1. Authorization matrix ===');
     const signedOut = await w.user(null, `select public.my_season_for_player($1)`, [child1]);
     check('1: authenticated without a uid: EMS01', code(signedOut) === 'EMS01', signedOut);
 
-    // Direct RLS reads.
+    // Direct table reads: refused for every role (no SELECT grant). The app
+    // reads only through my_season_for_player.
+    const everyone = ['g1', 'g2', 'coach', 'parentCoach', 'ended', 'expired', 'direct', 'stranger', 'staff', 'review', 'reviewCoach', 'coach2'];
+    const direct = {};
+    for (const k of everyone) {
+      direct[k] = [
+        code(await w.user(P[k], `select count(*) from public.my_season_focuses`)),
+        code(await w.user(P[k], `select count(*) from public.my_season_coach_observations`)),
+        code(await w.user(P[k], `select created_by, ended_by, request_id from public.my_season_focuses`)),
+        code(await w.user(P[k], `select author_id, withdrawn_by, request_id, team_id from public.my_season_coach_observations`)),
+      ].join();
+    }
+    direct.signedOut = [code(await w.user(null, `select count(*) from public.my_season_focuses`)), code(await w.user(null, `select count(*) from public.my_season_coach_observations`))].join();
+    check('1: direct SELECT on my_season_focuses / my_season_coach_observations is refused (42501) for every authenticated account',
+      Object.values(direct).every((x) => x.split(',').every((c) => c === '42501')), direct);
+    const authSelect = (await w.db.query(`select bool_or(has_table_privilege('authenticated', c.oid, 'select')) x from pg_class c
+       where c.relnamespace = 'public'::regnamespace and c.relname like 'my_season%' and c.relkind = 'r'`)).rows[0].x;
+    const rlsOn = (await w.db.query(`select bool_and(relrowsecurity) x from pg_class where relnamespace = 'public'::regnamespace and relname like 'my_season%' and relkind = 'r'`)).rows[0].x;
+    check('1: authenticated holds no SELECT on any My Season table; RLS stays enabled', authSelect === false && rlsOn === true, { authSelect, rlsOn });
+
+    // Defence in depth: with SELECT granted back (rolled back afterwards), the policies still limit rows.
     const rls = async (uid) => {
-      const a = await w.user(uid, `select (select count(*) from public.my_season_focuses)::int f, (select count(*) from public.my_season_coach_observations)::int o`);
+      const a = await w.withSelectGrant(uid, `select (select count(*) from public.my_season_focuses)::int f, (select count(*) from public.my_season_coach_observations)::int o`);
       return a.ok ? `${a.rows[0].f}/${a.rows[0].o}` : a.code;
     };
-    check('1: RLS: guardian and active coach see 1 focus / 1 note', (await rls(P.g1)) === '1/1' && (await rls(P.coach)) === '1/1' && (await rls(P.parentCoach)) === '1/1');
+    check('1: policies (if SELECT were granted): guardian and active coach see 1 focus / 1 note', (await rls(P.g1)) === '1/1' && (await rls(P.coach)) === '1/1' && (await rls(P.parentCoach)) === '1/1');
     const rlsNone = { ended: await rls(P.ended), expired: await rls(P.expired), direct: await rls(P.direct), stranger: await rls(P.stranger), staff: await rls(P.staff), review: await rls(P.review), reviewCoach: await rls(P.reviewCoach), coach2: await rls(P.coach2) };
-    check('1: RLS: ended, expired, direct, unrelated, staff, under-review and other-team accounts see nothing', Object.values(rlsNone).every((x) => x === '0/0'), rlsNone);
+    check('1: policies (if SELECT were granted): ended, expired, direct, unrelated, staff, under-review and other-team accounts see nothing', Object.values(rlsNone).every((x) => x === '0/0'), rlsNone);
+    check('1: the temporary grant was rolled back', code(await w.user(P.g1, `select count(*) from public.my_season_focuses`)) === '42501');
     const audit = await w.user(P.g1, `select count(*) from public.my_season_audit_events`);
     check('1: authenticated cannot read the audit table', code(audit) === '42501', audit);
     const flagRead = await w.user(P.g1, `select count(*) from public.season_feature_global`);
@@ -177,9 +215,12 @@ console.log('\n=== 1. Authorization matrix ===');
 
     // Withdraw.
     const wCodes = { g1: code(await w.withdraw(P.g1, obsId)), parentCoach: code(await w.withdraw(P.parentCoach, obsId)), stranger: code(await w.withdraw(P.stranger, obsId)),
-      unknown: code(await w.withdraw(P.coach, id())), reviewCoach: code(await w.withdraw(P.reviewCoach, obsId)) };
-    check('1: withdraw by anyone but the author refused (EMS03), unknown id EMS08, under review EMS04',
-      JSON.stringify(wCodes) === JSON.stringify({ g1: 'EMS03', parentCoach: 'EMS03', stranger: 'EMS03', unknown: 'EMS08', reviewCoach: 'EMS04' }), wCodes);
+      unknown: code(await w.withdraw(P.coach, id())), strangerUnknown: code(await w.withdraw(P.stranger, id())),
+      reviewCoach: code(await w.withdraw(P.reviewCoach, obsId)), reviewCoachUnknown: code(await w.withdraw(P.reviewCoach, id())) };
+    check('1: withdraw by anyone but the author refused (EMS03); an unknown id is EMS03 too (no existence oracle); under review EMS04 for any id',
+      JSON.stringify(wCodes) === JSON.stringify({ g1: 'EMS03', parentCoach: 'EMS03', stranger: 'EMS03', unknown: 'EMS03', strangerUnknown: 'EMS03', reviewCoach: 'EMS04', reviewCoachUnknown: 'EMS04' }), wCodes);
+    const ems08 = (await w.db.query(`select count(*)::int n from pg_proc p where p.pronamespace = 'public'::regnamespace and p.proname like 'my_season%' and p.prosrc like '%EMS08%'`)).rows[0].n;
+    check('1: no My Season function raises EMS08 any more', ems08 === 0, ems08);
 
     // anon: no grants at all.
     const anonExec = (await w.db.query(`select bool_or(has_function_privilege('anon', p.oid, 'execute')) x from pg_proc p join pg_namespace s on s.oid = p.pronamespace
@@ -223,7 +264,7 @@ console.log('\n=== 2. Feature flag ===');
     await db.query(`update public.season_feature_team_states set state = 'on'`);
     check('2: team on: works', (await w.view(P.g1, child1)).activeFocus?.id === f.rows[0].id && code(await w.setFocus(P.g1, child1)) === 'ok');
     await db.query(`update public.season_feature_team_states set state = 'off'`);
-    const rls = await w.user(P.g1, `select (select count(*) from public.my_season_focuses)::int + (select count(*) from public.my_season_coach_observations)::int n`);
+    const rls = await w.withSelectGrant(P.g1, `select (select count(*) from public.my_season_focuses)::int + (select count(*) from public.my_season_coach_observations)::int n`);
     check('2: switched back off: read hidden, RLS hides rows, withdraw EMS02, rows still stored',
       (await w.view(P.coach, child1)).enabled === false && rls.rows[0].n === 0 && code(await w.withdraw(P.coach, o.rows[0].id)) === 'EMS02'
         && await w.n(`select (select count(*) from public.my_season_focuses) + (select count(*) from public.my_season_coach_observations) n`) === 3);
@@ -280,6 +321,28 @@ console.log('\n=== 3. Focus history, idempotency and validation ===');
       && await w.n(`select count(*) n from public.my_season_focuses`) === before && (await w.view(P.g1, child1)).activeFocus.id === a.rows[0].id);
     check('3: set focus: same request_id from another caller EMS06; for another player EMS06',
       code(await w.setFocus(P.g2, child1, { requestId: req })) === 'EMS06' && code(await w.setFocus(P.coach, child2, { requestId: req })) === 'EMS06');
+    // A unique violation on the one-active index (not the request_id) is EMS09
+    // my_season_conflict. Provoked by a temporary trigger that skips the
+    // "end the old focus" update, inside a rolled-back transaction.
+    const conflict = await (async () => {
+      await db.exec('begin;');
+      try {
+        await db.exec(`create function pg_temp.skip_end() returns trigger language plpgsql as $f$ begin return null; end; $f$;
+          create trigger zz_skip_end before update on public.my_season_focuses for each row execute function pg_temp.skip_end();
+          set local role authenticated;`);
+        await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [P.g1]);
+        await db.query(`select public.my_season_set_focus($1, 'Race me', 'Why it matters', 'Looks like it', current_date, $2)`, [child1, id()]);
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, code: e.code, message: e.message };
+      } finally {
+        await db.exec('rollback;');
+      }
+    })();
+    check('3: set focus: a one-active index violation is EMS09 my_season_conflict (not EMS06)', conflict.code === 'EMS09' && conflict.message === 'my_season_conflict', conflict);
+    check('3: ...and nothing was written', await w.n(`select count(*) n from public.my_season_focuses where title = 'Race me'`) === 0
+      && await w.n(`select count(*) n from pg_trigger where tgname = 'zz_skip_end'`) === 0);
+
     const oreq = id();
     const o1 = await w.addObs(P.coach, child1, { requestId: oreq }), o2 = await w.addObs(P.coach, child1, { requestId: oreq });
     check('3: add note: same request_id, same caller returns the same id', o1.ok && o2.ok && o1.rows[0].id === o2.rows[0].id
@@ -363,9 +426,11 @@ console.log('\n=== 4. Withdraw ===');
     check('4: hidden from the guardian and other coaches', g.observations.map((x) => x.id).join() === keep && other.observations.map((x) => x.id).join() === keep, [g.observations, other.observations]);
     const m = mine.observations.find((x) => x.id === o);
     check('4: visible to its author as withdrawn:true, mine:true', m?.withdrawn === true && m?.mine === true && mine.observations.length === 2, mine.observations);
-    const rlsG = await w.user(P.g1, `select count(*)::int n from public.my_season_coach_observations where id = $1`, [o]);
-    const rlsC = await w.user(P.coach, `select count(*)::int n from public.my_season_coach_observations where id = $1`, [o]);
-    check('4: RLS: the guardian cannot select a withdrawn note; the author can', rlsG.rows[0].n === 0 && rlsC.rows[0].n === 1);
+    const rlsG = await w.withSelectGrant(P.g1, `select count(*)::int n from public.my_season_coach_observations where id = $1`, [o]);
+    const rlsC = await w.withSelectGrant(P.coach, `select count(*)::int n from public.my_season_coach_observations where id = $1`, [o]);
+    check('4: policies (if SELECT were granted): the guardian cannot select a withdrawn note; the author can', rlsG.rows?.[0].n === 0 && rlsC.rows?.[0].n === 1, [rlsG, rlsC]);
+    const directW = [code(await w.user(P.coach, `select withdrawn_by from public.my_season_coach_observations where id = $1`, [o])), code(await w.user(P.g1, `select withdrawn_by from public.my_season_coach_observations where id = $1`, [o]))];
+    check('4: neither the author nor the guardian can select the withdrawn row directly (42501)', directW.every((c) => c === '42501'), directW);
     // Author no longer a team coach.
     const o2 = (await w.addObs(P.coach, child1)).rows[0].id;
     await db.query(`update public.coach_team set ended_at = now(), ended_by = $2, end_reason = 'Left' where team_id = $1 and profile_id = $3`, [w.T, P.staff, P.coach]);

@@ -1,12 +1,14 @@
+import type { Ref } from 'react';
 import { formatMySeasonDate, mySeasonCategory, observationAuthor, visibleFamilyObservations, type MySeasonContent } from '@/lib/my-season';
-import { MY_SEASON_COPY, MsButton, msEyebrow } from '../mySeasonUi';
+import { MY_SEASON_COPY, MsButton, msEyebrow, msWrap } from '../mySeasonUi';
 
 /**
  * Home's "This Season" My Season card (guardian view, feature enabled
  * only). Not itself a button: the one control is the real "Open" button,
- * so there is no nested interactive element.
+ * so there is no nested interactive element. `openRef` lets Home put focus
+ * back on Open when the My Season screen closes.
  */
-export default function MySeasonHomeCard({ view, onOpen }: { view: MySeasonContent; onOpen: () => void }) {
+export default function MySeasonHomeCard({ view, onOpen, openRef }: { view: MySeasonContent; onOpen: () => void; openRef?: Ref<HTMLButtonElement> }) {
   const latest = visibleFamilyObservations(view)[0] ?? null;
   const cat = latest ? mySeasonCategory(latest.category) : null;
   return (
@@ -19,7 +21,7 @@ export default function MySeasonHomeCard({ view, onOpen }: { view: MySeasonConte
         <h3 id="ms-home-h" style={{ margin: 0, fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, color: 'var(--os-ink)' }}>My Season</h3>
         <span className="os-ms-accent" style={{ ...msEyebrow, fontSize: 11.5 }}>My Focus</span>
       </div>
-      <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 18, lineHeight: 1.2, color: 'var(--os-ink)' }}>
+      <div style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 18, lineHeight: 1.2, color: 'var(--os-ink)', ...msWrap }}>
         {view.activeFocus ? view.activeFocus.title : MY_SEASON_COPY.noFocus}
       </div>
       {latest && cat ? (
@@ -37,7 +39,7 @@ export default function MySeasonHomeCard({ view, onOpen }: { view: MySeasonConte
       ) : (
         <div className="os-ms-soft" style={{ fontSize: 13.5 }}>No coach notes yet.</div>
       )}
-      <MsButton onClick={onOpen} ariaLabel="Open My Season" style={{ justifySelf: 'start' }}>Open</MsButton>
+      <MsButton buttonRef={openRef} onClick={onOpen} ariaLabel="Open My Season" style={{ justifySelf: 'start' }}>Open</MsButton>
     </section>
   );
 }

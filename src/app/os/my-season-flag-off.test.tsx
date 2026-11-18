@@ -29,7 +29,8 @@ import { DEMO_OS_DATA, PUBLIC_DEMO_OS_DATA, type OsData } from './osData';
 import { initialOsState } from './types';
 import type { OsActions } from './OsApp';
 import { PLAYER_NAV_ITEMS, COACH_NAV_ITEMS } from './navigation/navItems';
-import { shouldLookUpCoachMySeason } from './mySeasonClient';
+import { loadMySeasonView, shouldLookUpCoachMySeason } from './mySeasonClient';
+import { startCoachMySeasonLookup } from './screens/CoachMySeasonSection';
 import { loadParentMySeason } from '@/lib/os-data';
 import { MS_PLAYER_ID, MS_TEAM_ID, REAL_PARENT, msContent } from './my-season-test-support';
 
@@ -91,12 +92,28 @@ describe('flag off: no client network call', () => {
     expect(shouldLookUpCoachMySeason({ isReal: true, lookup: true, teamId: null })).toBe(false);
   });
 
-  it('rendering Home, Card and the coach screen with My Season off never calls fetch', () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    home(REAL_PARENT);
-    cardBack(REAL_PARENT);
-    coachDetail(REAL_COACH);
-    expect(fetchSpy.mock.calls.filter((c) => String(c[0]).includes('my-season'))).toEqual([]);
+  it('the coach hook effect with My Season off resets and never fetches; allowed, it fetches once (the gate can fail)', async () => {
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ enabled: false }), { status: 200 }));
+    const off = [
+      { isReal: false, lookup: true, teamId: MS_TEAM_ID },
+      { isReal: true, lookup: false, teamId: MS_TEAM_ID },
+      { isReal: true, lookup: undefined, teamId: MS_TEAM_ID },
+      { isReal: true, lookup: true, teamId: null },
+    ];
+    for (const c of off) {
+      const reset = vi.fn();
+      startCoachMySeasonLookup(shouldLookUpCoachMySeason(c), { reset, run: () => loadMySeasonView(MS_PLAYER_ID, fetchSpy) });
+      expect(reset).toHaveBeenCalledTimes(1);
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+    startCoachMySeasonLookup(shouldLookUpCoachMySeason({ isReal: true, lookup: true, teamId: MS_TEAM_ID }), { reset: () => {}, run: () => loadMySeasonView(MS_PLAYER_ID, fetchSpy) });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('the coach hook runs its effect through that gate', () => {
+    const src = readFileSync('src/app/os/screens/CoachMySeasonSection.tsx', 'utf8');
+    expect(src).toMatch(/const allowed = shouldLookUpCoachMySeason\(\{ isReal, lookup, teamId \}\);/);
+    expect(src).toMatch(/useEffect\(\(\) => \{\s*startCoachMySeasonLookup\(allowed, /);
   });
 
   it('PlayerHome only opens the My Season screen (the one that fetches) from the enabled guardian card', () => {

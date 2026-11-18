@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatMySeasonDate, type MySeasonView } from '@/lib/my-season';
 import { loadMySeasonView, shouldLookUpCoachMySeason, withdrawMySeasonObservation } from '../mySeasonClient';
+import { MS_IDS, usePendingFocus } from '../mySeasonFlows';
 import {
   FocusEditor,
   MY_SEASON_COPY,
@@ -11,6 +12,7 @@ import {
   NoteComposer,
   NoteList,
   msEyebrow,
+  msWrap,
 } from '../mySeasonUi';
 
 /**
@@ -25,7 +27,30 @@ import {
  * failures show the error state with Retry.
  */
 
-export type CoachMySeasonState = { status: 'idle' | 'loading' | 'ready' | 'error'; view: MySeasonView | null };
+export type CoachMySeasonState = { status: 'idle' | 'loading' | 'ready' | 'error'; view: MySeasonView | null; signedOut?: boolean };
+
+/**
+ * The hook's effect, as a plain function so the flag-off gate is tested
+ * directly: when the lookup is not allowed it only resets (no request);
+ * otherwise it starts exactly one load.
+ */
+export function startCoachMySeasonLookup(allowed: boolean, deps: { reset: () => void; run: (keepView: boolean) => unknown }): void {
+  if (!allowed) {
+    deps.reset();
+    return;
+  }
+  void deps.run(false);
+}
+
+/** How long the "Sent" toast stays before clearing itself. */
+export const COACH_TOAST_MS = 5000;
+
+/** Starts the toast's auto-clear timer; returns the cleanup (unmount / new toast). */
+export function scheduleToastClear(toast: string | null, clear: () => void, ms: number = COACH_TOAST_MS): (() => void) | undefined {
+  if (!toast) return undefined;
+  const t = setTimeout(clear, ms);
+  return () => clearTimeout(t);
+}
 
 export function useCoachMySeason({ playerId, isReal, lookup, teamId }: { playerId: string; isReal: boolean; lookup: boolean | undefined; teamId: string | null | undefined }) {
   const allowed = shouldLookUpCoachMySeason({ isReal, lookup, teamId });
@@ -38,15 +63,11 @@ export function useCoachMySeason({ playerId, isReal, lookup, teamId }: { playerI
     setState((s) => ({ status: 'loading', view: keepView ? s.view : null }));
     const result = await loadMySeasonView(forPlayer);
     if (latestPlayer.current !== forPlayer) return;
-    setState((s) => (result.ok ? { status: 'ready', view: result.view } : { status: 'error', view: keepView ? s.view : null }));
+    setState((s) => (result.ok ? { status: 'ready', view: result.view } : { status: 'error', view: keepView ? s.view : null, signedOut: result.signedOut }));
   }, [playerId]);
 
   useEffect(() => {
-    if (!allowed) {
-      setState({ status: 'idle', view: null });
-      return;
-    }
-    void run(false);
+    startCoachMySeasonLookup(allowed, { reset: () => setState({ status: 'idle', view: null }), run });
   }, [allowed, run]);
 
   const reload = useCallback(() => {
@@ -109,10 +130,16 @@ export default function CoachMySeasonSection({
   const setUi = useCallback((p: Partial<CoachPanelUi>) => setUiState((s) => ({ ...s, ...p })), []);
   // A new composer (fresh idempotency key) for each note.
   const [composerKey, setComposerKey] = useState(0);
+  // Where keyboard focus goes after a step unmounts (editor, composer,
+  // withdraw confirm), once the target exists.
+  const focusNext = usePendingFocus(state.status === 'loading');
 
   useEffect(() => {
     setUiState(INITIAL_COACH_PANEL_UI);
   }, [playerId]);
+
+  // The "Sent" toast clears itself; the timer is dropped on unmount or a new toast.
+  useEffect(() => scheduleToastClear(ui.toast, () => setUi({ toast: null })), [ui.toast, setUi]);
 
   const first = (playerName ?? '').trim().split(/\s+/)[0] || 'this player';
 
@@ -125,21 +152,42 @@ export default function CoachMySeasonSection({
       composerKey={composerKey}
       onRetry={reload}
       onStartEditFocus={() => setUi({ editingFocus: true, composerOpen: false, toast: null })}
-      onCancelEditFocus={() => setUi({ editingFocus: false })}
+      onCancelEditFocus={() => {
+        setUi({ editingFocus: false });
+        focusNext({ ids: [MS_IDS.coachChangeFocus] });
+      }}
       onFocusSaved={() => {
         setUi({ editingFocus: false });
+        focusNext({ ids: [MS_IDS.coachChangeFocus] });
         reload();
       }}
       onOpenComposer={() => setUi({ composerOpen: true, editingFocus: false, toast: null })}
-      onCancelComposer={() => setUi({ composerOpen: false })}
+      onCancelComposer={() => {
+        setUi({ composerOpen: false });
+        focusNext({ ids: [MS_IDS.coachAddNote] });
+      }}
       onNoteSent={() => {
         setComposerKey((k) => k + 1);
         setUi({ composerOpen: false, toast: MY_SEASON_COPY.sentToast(first) });
+        focusNext({ ids: [MS_IDS.coachAddNote] });
         reload();
       }}
-      onAskWithdraw={(id) => setUi({ confirmingWithdrawId: id, withdrawError: null, toast: null })}
-      onCancelWithdraw={() => setUi({ confirmingWithdrawId: null, withdrawError: null })}
-      onConfirmWithdraw={(id) => void withdrawFlow(id, { setUi, withdraw: (x) => withdrawMySeasonObservation(x), reload })}
+      onAskWithdraw={(id) => {
+        setUi({ confirmingWithdrawId: id, withdrawError: null, toast: null });
+        focusNext({ ids: [MS_IDS.withdrawConfirm(id)] });
+      }}
+      onCancelWithdraw={() => {
+        const id = ui.confirmingWithdrawId;
+        setUi({ confirmingWithdrawId: null, withdrawError: null });
+        if (id) focusNext({ ids: [MS_IDS.withdraw(id)] });
+      }}
+      onConfirmWithdraw={(id) =>
+        void withdrawFlow(id, { setUi, withdraw: (x) => withdrawMySeasonObservation(x), reload }).then((ok) =>
+          // Done: the note's "Withdrawn" line once the reload shows it (its
+          // Withdraw button if the reload failed). Failed: back to the confirm.
+          focusNext(ok ? { ids: [MS_IDS.withdrawn(id), MS_IDS.withdraw(id)], waitWhileLoading: true } : { ids: [MS_IDS.withdrawConfirm(id)] })
+        )
+      }
     />
   );
 }
@@ -211,14 +259,14 @@ export function CoachMySeasonPanel({
 
   return wrap(
     <>
-      {state.status === 'error' && <MySeasonError onRetry={onRetry} />}
+      {state.status === 'error' && <MySeasonError onRetry={onRetry} signedOut={state.signedOut} />}
       {busyReload && <span role="status" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Updating My Season</span>}
 
       <div style={{ background: 'var(--os-screen)', borderRadius: 12, padding: '12px 14px', display: 'grid', gap: 4 }}>
         <span className="os-ms-soft" style={{ ...msEyebrow, fontSize: 12 }}>{firstName}&apos;s focus</span>
         {focus ? (
           <>
-            <span style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)' }}>{focus.title}</span>
+            <span style={{ fontFamily: 'Roboto', fontWeight: 800, fontSize: 16, color: 'var(--os-ink)', ...msWrap }}>{focus.title}</span>
             <span className="os-ms-soft" style={{ fontSize: 12.5 }}>Since {formatMySeasonDate(focus.startedOn)}</span>
           </>
         ) : (
@@ -232,8 +280,8 @@ export function CoachMySeasonPanel({
         <NoteComposer key={composerKey} playerId={playerId} firstName={firstName} onSent={onNoteSent} onCancel={onCancelComposer} />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: view.canEditFocus && view.canAddNote ? '1fr 1fr' : '1fr', gap: 10 }}>
-          {view.canEditFocus && <MsButton variant="ghost" onClick={onStartEditFocus}>{focus ? 'Change focus' : 'Set a focus'}</MsButton>}
-          {view.canAddNote && <MsButton onClick={onOpenComposer}>Add a note</MsButton>}
+          {view.canEditFocus && <MsButton id={MS_IDS.coachChangeFocus} variant="ghost" onClick={onStartEditFocus}>{focus ? 'Change focus' : 'Set a focus'}</MsButton>}
+          {view.canAddNote && <MsButton id={MS_IDS.coachAddNote} onClick={onOpenComposer}>Add a note</MsButton>}
         </div>
       )}
 
@@ -245,7 +293,7 @@ export function CoachMySeasonPanel({
 
       <div role="status" aria-live="polite">
         {ui.toast && (
-          <p style={{ margin: 0, fontSize: 14, background: '#15130F', color: '#F4F1EC', borderRadius: 12, padding: '10px 12px' }}>{ui.toast}</p>
+          <p style={{ margin: 0, fontSize: 14, background: 'var(--os-ink)', color: 'var(--os-screen)', borderRadius: 12, padding: '10px 12px' }}>{ui.toast}</p>
         )}
       </div>
 
@@ -256,7 +304,7 @@ export function CoachMySeasonPanel({
           empty="No notes yet."
           renderExtra={(n) => {
             if (n.withdrawn) {
-              return <p className="os-ms-soft" style={{ margin: '6px 0 0', fontSize: 13, fontStyle: 'italic' }}>{MY_SEASON_COPY.withdrawnNote}</p>;
+              return <p id={MS_IDS.withdrawn(n.id)} tabIndex={-1} className="os-ms-soft" style={{ margin: '6px 0 0', fontSize: 13, fontStyle: 'italic' }}>{MY_SEASON_COPY.withdrawnNote}</p>;
             }
             if (!n.mine) return null;
             if (ui.confirmingWithdrawId === n.id) {
@@ -265,7 +313,7 @@ export function CoachMySeasonPanel({
                   <p style={{ margin: 0, fontSize: 13.5, color: 'var(--os-ink)' }}>{MY_SEASON_COPY.withdrawConfirm}</p>
                   {ui.withdrawError && <p role="alert" className="os-ms-error" style={{ margin: 0, fontSize: 13 }}>{ui.withdrawError}</p>}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <MsButton onClick={() => onConfirmWithdraw(n.id)} disabled={ui.withdrawBusy}>{ui.withdrawBusy ? 'Withdrawing…' : 'Withdraw note'}</MsButton>
+                    <MsButton id={MS_IDS.withdrawConfirm(n.id)} onClick={() => onConfirmWithdraw(n.id)} disabled={ui.withdrawBusy}>{ui.withdrawBusy ? 'Withdrawing…' : 'Withdraw note'}</MsButton>
                     <MsButton variant="ghost" onClick={onCancelWithdraw} disabled={ui.withdrawBusy}>Keep it</MsButton>
                   </div>
                 </div>
@@ -273,6 +321,7 @@ export function CoachMySeasonPanel({
             }
             return (
               <button
+                id={MS_IDS.withdraw(n.id)}
                 type="button"
                 onClick={() => onAskWithdraw(n.id)}
                 className="os-ms-focus os-ms-accent"

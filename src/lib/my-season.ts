@@ -298,7 +298,6 @@ export type MySeasonErrorCode =
   | 'invalid_input'
   | 'request_conflict'
   | 'own_child'
-  | 'not_found'
   | 'failed';
 
 export type MySeasonError = { status: number; code: MySeasonErrorCode; message: string };
@@ -309,9 +308,8 @@ export const MY_SEASON_ERRORS: Record<MySeasonErrorCode, MySeasonError> = {
   not_allowed: { status: 403, code: 'not_allowed', message: "You can't make this change for this player." },
   account_review: { status: 403, code: 'account_review', message: 'My Season is paused while your account is being reviewed.' },
   invalid_input: { status: 400, code: 'invalid_input', message: "Check what you've written and try again." },
-  request_conflict: { status: 409, code: 'request_conflict', message: 'Something changed. Refresh and try again.' },
+  request_conflict: { status: 409, code: 'request_conflict', message: 'This was already saved. Close and reopen My Season to see it.' },
   own_child: { status: 403, code: 'own_child', message: "You can't add notes for your own child. Another coach on the team can." },
-  not_found: { status: 404, code: 'not_found', message: "We couldn't find that note." },
   failed: { status: 500, code: 'failed', message: 'Something went wrong. Try again.' },
 };
 
@@ -323,9 +321,10 @@ const SQLSTATE_TO_CODE: Record<string, MySeasonErrorCode> = {
   EMS05: 'invalid_input',
   EMS06: 'request_conflict',
   EMS07: 'own_child',
-  EMS08: 'not_found',
-  // EMS09 is reserved by the design for a future refusal; anything not
-  // listed falls through to the generic failure.
+  // EMS08 is no longer raised (withdrawing an unknown note is EMS03, so the
+  // route is not an existence oracle). EMS09 (my_season_conflict, or a
+  // trigger refusal the RPCs never reach) and anything else not listed fall
+  // through to the generic failure: nothing was written and a retry works.
 };
 
 /** Maps a Postgres/PostgREST error to a fixed, data-free error. The DB message is never passed through. */

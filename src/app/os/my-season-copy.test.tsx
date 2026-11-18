@@ -7,7 +7,8 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: 
 
 import { MY_SEASON_CATEGORIES, MY_SEASON_ERRORS, type MySeasonView } from '@/lib/my-season';
 import { MY_SEASON_COPY, NoteComposerView, FocusEditor } from './mySeasonUi';
-import { MY_SEASON_LOAD_ERROR } from './mySeasonClient';
+import { MY_SEASON_LOAD_ERROR, MY_SEASON_SESSION_ENDED, GENERIC_SAVE_ERROR } from './mySeasonClient';
+import { MY_SEASON_FORM_COPY } from './mySeasonFlows';
 import { MySeasonScreenView } from './overlays/MySeasonScreen';
 import MySeasonHomeCard from './screens/MySeasonHomeCard';
 import { CoachMySeasonPanel, INITIAL_COACH_PANEL_UI } from './screens/CoachMySeasonSection';
@@ -76,6 +77,9 @@ function allConstants(): string[] {
     ...Object.values(MY_SEASON_ERRORS).map((e) => e.message),
     ...MY_SEASON_CATEGORIES.flatMap((c) => [c.label, c.hint]),
     MY_SEASON_LOAD_ERROR,
+    MY_SEASON_SESSION_ENDED,
+    GENERIC_SAVE_ERROR,
+    ...Object.values(MY_SEASON_FORM_COPY).map((v) => (typeof v === 'function' ? (v as (n: number) => string)(3) : v)),
   ];
 }
 
@@ -103,6 +107,7 @@ describe('My Season copy', () => {
       'src/lib/my-season-api.ts',
       'src/app/os/mySeasonUi.tsx',
       'src/app/os/mySeasonClient.ts',
+      'src/app/os/mySeasonFlows.ts',
       'src/app/os/overlays/MySeasonScreen.tsx',
       'src/app/os/screens/MySeasonHomeCard.tsx',
       'src/app/os/screens/CoachMySeasonSection.tsx',

@@ -136,6 +136,27 @@ await ref.close();
       && Number(post.team_states_count) === 0 && Number(post.team_states_enabled) === 0 && Number(post.focus_rows) === 0 && Number(post.observation_rows) === 0 && Number(post.audit_rows) === 0, post);
     check('post-check is read-only', catalogDiff(post0108, await snapshotCatalog(db)).length === 0);
 
+    // The post-check catches grant regressions (each applied and revoked again).
+    const regressions = [
+      ['grant select on public.my_season_focuses to authenticated', 'revoke select on public.my_season_focuses from authenticated', 'authenticated_no_content_table_privileges'],
+      ['grant select on public.my_season_coach_observations to public', 'revoke select on public.my_season_coach_observations from public', 'public_no_table_privileges'],
+      ['grant execute on function public.my_season_focuses_before_update() to public', 'revoke execute on function public.my_season_focuses_before_update() from public', 'owner_only_functions_locked'],
+      ['grant execute on function public.my_season_audit_refuse_truncate() to authenticated', 'revoke execute on function public.my_season_audit_refuse_truncate() from authenticated', 'owner_only_functions_locked'],
+      ['grant execute on function public.my_season_trim(text) to service_role', 'revoke execute on function public.my_season_trim(text) from service_role', 'owner_only_functions_locked'],
+      ['grant execute on function public.my_season_is_guardian(uuid, uuid) to anon', 'revoke execute on function public.my_season_is_guardian(uuid, uuid) from anon', 'owner_only_functions_locked'],
+      ['grant execute on function public.my_season_for_player(uuid) to public', 'revoke execute on function public.my_season_for_player(uuid) from public', 'public_no_execute'],
+    ];
+    const caught = [];
+    for (const [grant, revoke, column] of regressions) {
+      await db.exec(grant);
+      const r = await verification(db, POST);
+      await db.exec(revoke);
+      caught.push(r[column] === false ? 'caught' : `missed ${column} after: ${grant}`);
+    }
+    check('post-check flags a SELECT grant on content tables and EXECUTE on trigger functions / owner-only helpers', caught.every((c) => c === 'caught'), caught);
+    check('…and is clean again once each grant is revoked', catalogDiff(post0108, await snapshotCatalog(db)).length === 0
+      && Object.entries(await verification(db, POST)).filter(([k, v]) => v === false && k !== 'kill_switch_on').length === 0);
+
     // Data in, so the post-check counts and the rollback with data are exercised.
     await db.query(`update season_feature_global set kill_switch = false`);
     await db.query(`insert into season_feature_team_states (team_id, state) values ($1, 'pilot')`, [fx.team]);

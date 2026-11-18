@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react';
 import {
+  FOCUS_EARLIEST_START,
   FOCUS_TEXT_MAX,
   FOCUS_TITLE_MAX,
   OBSERVATION_MAX,
@@ -14,11 +15,31 @@ import {
   observationAuthor,
   MY_SEASON_CATEGORIES,
   type FocusDraft,
+  type FocusField,
   type MySeasonCategoryKey,
   type MySeasonFocus,
   type MySeasonObservation,
 } from '@/lib/my-season';
-import { MY_SEASON_LOAD_ERROR, addMySeasonObservation, newRequestId, saveMySeasonFocus, todayLocalIso } from './mySeasonClient';
+import { MY_SEASON_LOAD_ERROR, MY_SEASON_SESSION_ENDED, addMySeasonObservation, saveMySeasonFocus, todayLocalIso } from './mySeasonClient';
+import {
+  MY_SEASON_FORM_COPY,
+  NOTE_SENTENCE_HINT,
+  NOTE_TOO_MANY_SENTENCES,
+  NOTE_TOO_SHORT,
+  createWriteController,
+  focusContentKey,
+  focusDraftDirty,
+  focusFieldMessages,
+  focusStartMax,
+  focusSubmitAction,
+  holdEscapeIfDirty,
+  noteContentKey,
+  noteDirty,
+  noteHint,
+  noteLimitAnnouncement,
+  submitWrite,
+  type WriteController,
+} from './mySeasonFlows';
 
 /**
  * Shared My Season building blocks for the family overlay and the coach
@@ -50,10 +71,11 @@ export const MY_SEASON_COPY = {
   formerCoach: (first: string) =>
     `You can't add notes for ${first} any more. Only coaches currently on ${first}'s team can add notes or change the focus.`,
   accountReview: 'My Season is paused while your account is being reviewed.',
-  sentenceHint: 'One or two sentences about what you saw.',
-  tooManySentences: 'Keep it to one or two sentences.',
-  tooShort: 'Add a little more detail (at least 20 characters).',
+  sentenceHint: NOTE_SENTENCE_HINT,
+  tooManySentences: NOTE_TOO_MANY_SENTENCES,
+  tooShort: NOTE_TOO_SHORT,
   loadError: MY_SEASON_LOAD_ERROR,
+  sessionEnded: MY_SEASON_SESSION_ENDED,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -69,6 +91,9 @@ export const msCard: CSSProperties = {
 export const msButton: CSSProperties = {
   minHeight: 44, borderRadius: 999, padding: '10px 18px', fontFamily: 'Roboto', fontWeight: 700, fontSize: 14.5, cursor: 'pointer',
 };
+/** Long unbroken words (or pasted links) wrap instead of overflowing the card. */
+export const msWrap: CSSProperties = { overflowWrap: 'anywhere', minWidth: 0 };
+const srOnly: CSSProperties = { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' };
 const fieldLabelStyle: CSSProperties = { ...msEyebrow, fontSize: 12, display: 'block', marginBottom: 6 };
 const inputStyle: CSSProperties = {
   width: '100%', boxSizing: 'border-box', padding: '11px 13px', borderRadius: 12, border: '1.5px solid var(--os-border)',
@@ -80,12 +105,15 @@ const inputStyle: CSSProperties = {
 // ---------------------------------------------------------------------------
 
 export function MsButton({
-  children, onClick, variant = 'primary', disabled, ariaLabel, type = 'button', style,
+  children, onClick, variant = 'primary', disabled, ariaLabel, type = 'button', style, id, buttonRef,
 }: {
   children: ReactNode; onClick?: () => void; variant?: 'primary' | 'ghost'; disabled?: boolean; ariaLabel?: string; type?: 'button' | 'submit'; style?: CSSProperties;
+  id?: string; buttonRef?: Ref<HTMLButtonElement>;
 }) {
   return (
     <button
+      ref={buttonRef}
+      id={id}
       type={type}
       onClick={onClick}
       disabled={disabled}
@@ -119,11 +147,12 @@ export function MySeasonSkeleton() {
   );
 }
 
-export function MySeasonError({ onRetry, busy }: { onRetry: () => void; busy?: boolean }) {
+/** A failed load. `signedOut` (a 401): the session ended, so no Retry. */
+export function MySeasonError({ onRetry, busy, signedOut = false }: { onRetry: () => void; busy?: boolean; signedOut?: boolean }) {
   return (
     <div role="alert" style={{ ...msCard, display: 'grid', gap: 12 }}>
-      <p style={{ margin: 0, fontSize: 14.5, color: 'var(--os-ink)' }}>{MY_SEASON_COPY.loadError}</p>
-      <MsButton variant="ghost" onClick={onRetry} disabled={busy} style={{ justifySelf: 'start' }}>Retry</MsButton>
+      <p style={{ margin: 0, fontSize: 14.5, color: 'var(--os-ink)' }}>{signedOut ? MY_SEASON_COPY.sessionEnded : MY_SEASON_COPY.loadError}</p>
+      {!signedOut && <MsButton variant="ghost" onClick={onRetry} disabled={busy} style={{ justifySelf: 'start' }}>Retry</MsButton>}
     </div>
   );
 }
@@ -137,7 +166,7 @@ export function NoteRow({ note, children }: { note: MySeasonObservation; childre
       </span>
       <div style={{ minWidth: 0 }}>
         <div style={{ fontFamily: 'Roboto', fontWeight: 700, fontSize: 15, color: 'var(--os-ink)' }}>{cat?.label}</div>
-        <q style={{ display: 'block', margin: '2px 0 6px', fontSize: 15, lineHeight: 1.45, color: 'var(--os-ink)', wordBreak: 'break-word' }}>{note.body}</q>
+        <q style={{ display: 'block', margin: '2px 0 6px', fontSize: 15, lineHeight: 1.45, color: 'var(--os-ink)', ...msWrap }}>{note.body}</q>
         <div className="os-ms-soft" style={{ fontSize: 13 }}>
           {observationAuthor(note)} · {formatMySeasonDate(note.createdAt)}
         </div>
@@ -162,18 +191,18 @@ export function FocusSummary({ focus }: { focus: MySeasonFocus }) {
   return (
     <div style={{ display: 'grid', gap: 10 }}>
       <div>
-        <h3 style={{ margin: 0, fontFamily: 'Roboto', fontWeight: 800, fontSize: 19, lineHeight: 1.2, color: 'var(--os-ink)' }}>{focus.title}</h3>
+        <h3 style={{ margin: 0, fontFamily: 'Roboto', fontWeight: 800, fontSize: 19, lineHeight: 1.2, color: 'var(--os-ink)', ...msWrap }}>{focus.title}</h3>
         <div className="os-ms-soft" style={{ fontSize: 13, marginTop: 3 }}>
           Since {formatMySeasonDate(focus.startedOn)} · {focusAuthorLine(focus)}
         </div>
       </div>
       <div>
         <h4 className="os-ms-soft" style={{ ...msEyebrow, fontSize: 12 }}>Why it matters</h4>
-        <p style={{ margin: '3px 0 0', fontSize: 15, lineHeight: 1.45, color: 'var(--os-ink)' }}>{focus.whyItMatters}</p>
+        <p style={{ margin: '3px 0 0', fontSize: 15, lineHeight: 1.45, color: 'var(--os-ink)', ...msWrap }}>{focus.whyItMatters}</p>
       </div>
       <div>
         <h4 className="os-ms-soft" style={{ ...msEyebrow, fontSize: 12 }}>What it looks like</h4>
-        <p style={{ margin: '3px 0 0', fontSize: 15, lineHeight: 1.45, color: 'var(--os-ink)' }}>{focus.whatItLooksLike}</p>
+        <p style={{ margin: '3px 0 0', fontSize: 15, lineHeight: 1.45, color: 'var(--os-ink)', ...msWrap }}>{focus.whatItLooksLike}</p>
       </div>
     </div>
   );
@@ -185,7 +214,7 @@ export function EarlierFocusList({ focuses }: { focuses: MySeasonFocus[] }) {
     <ul style={{ margin: 0, padding: 0, display: 'grid', gap: 8 }}>
       {focuses.map((f) => (
         <li key={f.id} style={{ listStyle: 'none', display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: 'var(--os-ink)' }}>
-          <span>{f.title}</span>
+          <span style={msWrap}>{f.title}</span>
           <span className="os-ms-soft" style={{ whiteSpace: 'nowrap' }}>
             {formatMySeasonMonth(f.startedOn)}{f.endedAt ? ` to ${formatMySeasonMonth(f.endedAt)}` : ''}
           </span>
@@ -222,50 +251,90 @@ export function FocusEditor({
   initialDraft?: FocusDraft;
   initialStep?: FocusEditorStep;
 }) {
-  const [draft, setDraft] = useState<FocusDraft>(() => initialDraft ?? emptyFocusDraft());
+  const [initial] = useState<FocusDraft>(() => initialDraft ?? emptyFocusDraft());
+  const [draft, setDraft] = useState<FocusDraft>(initial);
   const [step, setStep] = useState<FocusEditorStep>(initialStep);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // One idempotency key per submission: a retry after a lost response
-  // reuses it, so the server never creates the focus twice.
-  const [requestId] = useState(() => newRequestId());
+  const [escapeHeld, setEscapeHeld] = useState(false);
+  // Idempotency: a retry of the same content reuses the request id (the
+  // server never creates the focus twice); edited content gets a new one.
+  // The controller also drops a second submit while one is in flight.
+  const controller = useRef<WriteController | null>(null);
+  if (!controller.current) controller.current = createWriteController();
+  const titleRef = useRef<HTMLInputElement>(null);
+  const promptRef = useRef<HTMLParagraphElement>(null);
+  const saveRef = useRef<HTMLButtonElement>(null);
+  const replaceRef = useRef<HTMLButtonElement>(null);
+  const prevStep = useRef<FocusEditorStep | null>(null);
+
+  // Focus follows the step: the first field on open, the confirm prompt
+  // when it replaces the form, the Save button after Go back.
+  useEffect(() => {
+    const prev = prevStep.current;
+    prevStep.current = step;
+    if (prev === step) return;
+    if (step === 'confirm') promptRef.current?.focus();
+    else (prev === null ? titleRef : saveRef).current?.focus();
+  }, [step]);
+
   const problems = focusDraftProblems(draft);
   const valid = problems.length === 0;
+  const dirty = focusDraftDirty(initial, draft);
   const set = (k: keyof FocusDraft) => (e: { target: { value: string } }) => {
     setDraft((d) => ({ ...d, [k]: e.target.value }));
     setError(null);
+    setEscapeHeld(false);
   };
 
-  const save = async () => {
-    if (!valid || busy) return;
-    setBusy(true);
-    setError(null);
-    const result = await saveMySeasonFocus(playerId, draft, requestId);
-    setBusy(false);
-    if (result.ok) onSaved();
-    else setError(result.error);
-  };
+  const save = () =>
+    submitWrite(controller.current!, focusContentKey(draft), (requestId) => saveMySeasonFocus(playerId, draft, requestId), {
+      setBusy,
+      setError,
+      onDone: onSaved,
+      // The busy button was disabled; put focus back on the control to retry.
+      onFailed: () => setTimeout(() => (step === 'confirm' ? replaceRef : saveRef).current?.focus(), 0),
+    });
 
   const submit = () => {
-    if (!valid) return;
-    if (hasActiveFocus && step === 'edit') setStep('confirm');
-    else void save();
+    const action = focusSubmitAction({ valid, busy, hasActiveFocus, step });
+    if (action === 'confirm') setStep('confirm');
+    else if (action === 'save') void save();
   };
+
+  const onKeyDown = (e: { key: string; preventDefault: () => void; stopPropagation: () => void }) => {
+    if (holdEscapeIfDirty(e, dirty && !busy)) setEscapeHeld(true);
+  };
+  const escapeNotice = (
+    <p role="status" className="os-ms-soft" style={{ margin: 0, fontSize: 13.5 }}>{escapeHeld ? MY_SEASON_FORM_COPY.unsavedEscape : ''}</p>
+  );
 
   const id = `ms-focus-${playerId.slice(0, 8)}`;
 
   if (step === 'confirm') {
     return (
-      <div style={{ display: 'grid', gap: 12 }} data-testid="focus-replace-confirm">
-        <p role="alert" style={{ margin: 0, fontSize: 14.5, lineHeight: 1.45, color: 'var(--os-ink)' }}>{MY_SEASON_COPY.replaceConfirm}</p>
+      <div style={{ display: 'grid', gap: 12 }} data-testid="focus-replace-confirm" onKeyDown={onKeyDown}>
+        <p ref={promptRef} tabIndex={-1} id={`${id}-confirm`} style={{ margin: 0, fontSize: 14.5, lineHeight: 1.45, color: 'var(--os-ink)' }}>{MY_SEASON_COPY.replaceConfirm}</p>
         {error && <p role="alert" className="os-ms-error" style={{ margin: 0, fontSize: 13.5 }}>{error}</p>}
+        {escapeNotice}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <MsButton onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Replace focus'}</MsButton>
+          <MsButton buttonRef={replaceRef} onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Replace focus'}</MsButton>
           <MsButton variant="ghost" onClick={() => setStep('edit')} disabled={busy}>Go back</MsButton>
         </div>
       </div>
     );
   }
+
+  const messages = focusFieldMessages(draft);
+  const field = (k: FocusField) => ({
+    'aria-describedby': `${id}-${k}-msg`,
+    'aria-invalid': messages[k].invalid,
+  });
+  const message = (k: FocusField) => (
+    <p id={`${id}-${k}-msg`} className={messages[k].invalid ? 'os-ms-error' : 'os-ms-soft'} style={{ margin: '4px 0 0', fontSize: 12.5 }}>
+      {messages[k].text}
+    </p>
+  );
 
   return (
     <form
@@ -273,29 +342,35 @@ export function FocusEditor({
         e.preventDefault();
         submit();
       }}
+      onKeyDown={onKeyDown}
       style={{ display: 'grid', gap: 12 }}
       aria-label="Change focus"
     >
       <p className="os-ms-soft" style={{ margin: 0, fontSize: 13.5 }}>Write it the way {firstName} would say it.</p>
       <div>
         <label htmlFor={`${id}-title`} className="os-ms-soft" style={fieldLabelStyle}>My focus</label>
-        <input id={`${id}-title`} className="os-ms-focus" value={draft.title} onChange={set('title')} maxLength={FOCUS_TITLE_MAX} placeholder="e.g. Talk more on the pitch" style={inputStyle} />
+        <input ref={titleRef} id={`${id}-title`} className="os-ms-focus" value={draft.title} onChange={set('title')} maxLength={FOCUS_TITLE_MAX} placeholder="e.g. Talk more on the pitch" style={inputStyle} {...field('title')} />
+        {message('title')}
       </div>
       <div>
         <label htmlFor={`${id}-why`} className="os-ms-soft" style={fieldLabelStyle}>Why it matters</label>
-        <textarea id={`${id}-why`} className="os-ms-focus" value={draft.whyItMatters} onChange={set('whyItMatters')} maxLength={FOCUS_TEXT_MAX} rows={2} placeholder="e.g. So my teammates know where I am." style={{ ...inputStyle, resize: 'vertical' }} />
+        <textarea id={`${id}-why`} className="os-ms-focus" value={draft.whyItMatters} onChange={set('whyItMatters')} maxLength={FOCUS_TEXT_MAX} rows={2} placeholder="e.g. So my teammates know where I am." style={{ ...inputStyle, resize: 'vertical' }} {...field('whyItMatters')} />
+        {message('whyItMatters')}
       </div>
       <div>
         <label htmlFor={`${id}-looks`} className="os-ms-soft" style={fieldLabelStyle}>What it looks like</label>
-        <textarea id={`${id}-looks`} className="os-ms-focus" value={draft.whatItLooksLike} onChange={set('whatItLooksLike')} maxLength={FOCUS_TEXT_MAX} rows={2} placeholder="e.g. Calling for the ball in every game." style={{ ...inputStyle, resize: 'vertical' }} />
+        <textarea id={`${id}-looks`} className="os-ms-focus" value={draft.whatItLooksLike} onChange={set('whatItLooksLike')} maxLength={FOCUS_TEXT_MAX} rows={2} placeholder="e.g. Calling for the ball in every game." style={{ ...inputStyle, resize: 'vertical' }} {...field('whatItLooksLike')} />
+        {message('whatItLooksLike')}
       </div>
       <div>
         <label htmlFor={`${id}-start`} className="os-ms-soft" style={fieldLabelStyle}>Start date</label>
-        <input id={`${id}-start`} className="os-ms-focus" type="date" value={draft.startedOn} onChange={set('startedOn')} min="2000-01-01" style={inputStyle} aria-invalid={problems.includes('startedOn') && draft.startedOn !== ''} />
+        <input id={`${id}-start`} className="os-ms-focus" type="date" value={draft.startedOn} onChange={set('startedOn')} min={FOCUS_EARLIEST_START} max={focusStartMax()} style={inputStyle} {...field('startedOn')} />
+        {message('startedOn')}
       </div>
       {error && <p role="alert" className="os-ms-error" style={{ margin: 0, fontSize: 13.5 }}>{error}</p>}
+      {escapeNotice}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-        <MsButton type="submit" disabled={!valid || busy}>{busy ? 'Saving…' : 'Save focus'}</MsButton>
+        <MsButton buttonRef={saveRef} type="submit" disabled={!valid || busy}>{busy ? 'Saving…' : 'Save focus'}</MsButton>
         <MsButton variant="ghost" onClick={onCancel} disabled={busy}>Cancel</MsButton>
       </div>
     </form>
@@ -325,17 +400,25 @@ export function NoteComposer({
   const [body, setBody] = useState(initialBody);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [requestId] = useState(() => newRequestId());
+  const [escapeHeld, setEscapeHeld] = useState(false);
+  // Same request id for a retry of the same note; a new one once edited.
+  const controller = useRef<WriteController | null>(null);
+  if (!controller.current) controller.current = createWriteController();
+  const firstCategoryRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    firstCategoryRef.current?.focus();
+  }, []);
 
   const send = async () => {
-    if (!category || busy || !checkObservationBody(body).valid) return;
-    setBusy(true);
-    setError(null);
-    const result = await addMySeasonObservation(playerId, category, body, requestId);
-    setBusy(false);
-    if (result.ok) onSent();
-    else setError(result.error);
+    if (!category || !checkObservationBody(body).valid) return;
+    await submitWrite(controller.current!, noteContentKey(category, body), (requestId) => addMySeasonObservation(playerId, category, body, requestId), {
+      setBusy,
+      setError,
+      onDone: onSent,
+    });
   };
+  const dirty = noteDirty({ category: initialCategory, body: initialBody }, { category, body });
 
   return (
     <NoteComposerView
@@ -348,36 +431,48 @@ export function NoteComposer({
       onCategory={(c) => {
         setCategory(c);
         setError(null);
+        setEscapeHeld(false);
       }}
       onBody={(v) => {
         setBody(v);
         setError(null);
+        setEscapeHeld(false);
       }}
       onSend={() => void send()}
       onCancel={onCancel}
+      escapeHeld={escapeHeld}
+      onKeyDown={(e) => {
+        if (holdEscapeIfDirty(e, dirty && !busy)) setEscapeHeld(true);
+      }}
+      firstCategoryRef={firstCategoryRef}
     />
   );
 }
 
 export function NoteComposerView({
-  playerId, firstName, category, body, busy, error, onCategory, onBody, onSend, onCancel,
+  playerId, firstName, category, body, busy, error, onCategory, onBody, onSend, onCancel, escapeHeld = false, onKeyDown, firstCategoryRef,
 }: {
   playerId: string; firstName: string; category: MySeasonCategoryKey | null; body: string; busy: boolean; error: string | null;
   onCategory: (c: MySeasonCategoryKey) => void; onBody: (v: string) => void; onSend: () => void; onCancel: () => void;
+  escapeHeld?: boolean;
+  onKeyDown?: (e: { key: string; preventDefault: () => void; stopPropagation: () => void }) => void;
+  firstCategoryRef?: Ref<HTMLButtonElement>;
 }) {
   const check = checkObservationBody(body);
   const canSend = !!category && check.valid && !busy;
   const id = `ms-note-${playerId.slice(0, 8)}`;
-  const hint = check.tooManySentences ? MY_SEASON_COPY.tooManySentences : check.length > 0 && check.tooShort ? MY_SEASON_COPY.tooShort : MY_SEASON_COPY.sentenceHint;
+  const hint = noteHint(check);
+  const hintIsError = check.tooLong || check.tooManySentences;
   return (
-    <section aria-labelledby={`${id}-h`} style={{ display: 'grid', gap: 10 }}>
+    <section aria-labelledby={`${id}-h`} style={{ display: 'grid', gap: 10 }} onKeyDown={onKeyDown}>
       <h4 id={`${id}-h`} className="os-ms-soft" style={{ ...msEyebrow, fontSize: 12.5 }}>What did you notice?</h4>
       <div role="group" aria-label="Pick what you noticed" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        {MY_SEASON_CATEGORIES.map((c) => {
+        {MY_SEASON_CATEGORIES.map((c, i) => {
           const on = category === c.key;
           return (
             <button
               key={c.key}
+              ref={i === 0 ? firstCategoryRef : undefined}
               type="button"
               aria-pressed={on}
               onClick={() => onCategory(c.key)}
@@ -410,16 +505,19 @@ export function NoteComposerView({
         style={{ ...inputStyle, minHeight: 96, resize: 'vertical' }}
       />
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 13 }}>
-        <span id={`${id}-hint`} className={check.tooManySentences ? 'os-ms-error' : 'os-ms-soft'}>{hint}</span>
+        <span id={`${id}-hint`} className={hintIsError ? 'os-ms-error' : 'os-ms-soft'}>{hint}</span>
+        {/* Visual counter only: not live, so typing is not read out. */}
         <span
           id={`${id}-count`}
-          aria-live="polite"
           className={check.tooLong ? 'os-ms-error' : 'os-ms-soft'}
           style={{ fontVariantNumeric: 'tabular-nums', fontWeight: check.tooLong ? 700 : 400, whiteSpace: 'nowrap' }}
         >
           {check.length} / {OBSERVATION_MAX}
         </span>
       </div>
+      {/* Announces only when the note goes over (or back under) the limit. */}
+      <span role="status" aria-live="polite" data-testid="note-limit-live" style={srOnly}>{noteLimitAnnouncement(check)}</span>
+      <p role="status" className="os-ms-soft" style={{ margin: 0, fontSize: 13.5 }}>{escapeHeld ? MY_SEASON_FORM_COPY.unsavedEscape : ''}</p>
       <PrivacyLine text={MY_SEASON_COPY.coachPrivacy(firstName)} />
       {error && <p role="alert" className="os-ms-error" style={{ margin: 0, fontSize: 13.5 }}>{error}</p>}
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>

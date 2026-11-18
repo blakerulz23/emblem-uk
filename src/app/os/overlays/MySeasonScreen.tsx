@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { notesSinceFocus, visibleFamilyObservations, type MySeasonView } from '@/lib/my-season';
 import { loadMySeasonView } from '../mySeasonClient';
+import { MS_IDS, mySeasonDialogKeyDown, usePendingFocus } from '../mySeasonFlows';
 import {
   EarlierFocusList,
   FocusEditor,
@@ -23,9 +24,14 @@ import {
  * loads a fresh view on open so a coach's newest note is always there,
  * and reloads after the guardian changes the focus. Only ever mounted when
  * os-data said My Season is enabled for this player.
+ *
+ * Keyboard: focus starts on Back, Tab / Shift+Tab stay inside the dialog,
+ * Escape closes it (an editor with unsaved changes holds Escape back), and
+ * the opener (PlayerHome) puts focus back on the card's Open button. When
+ * the focus editor closes, focus moves to the Change focus button.
  */
 
-export type MySeasonLoadState = { status: 'loading' | 'ready' | 'error'; view: MySeasonView | null };
+export type MySeasonLoadState = { status: 'loading' | 'ready' | 'error'; view: MySeasonView | null; signedOut?: boolean };
 
 export default function MySeasonScreen({
   playerId,
@@ -42,11 +48,12 @@ export default function MySeasonScreen({
   const [load, setLoad] = useState<MySeasonLoadState>({ status: 'loading', view: null });
   const [editing, setEditing] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const focusNext = usePendingFocus(load.status === 'loading');
 
   const reload = useCallback(async () => {
     setLoad((s) => ({ status: 'loading', view: s.view }));
     const result = await loadMySeasonView(playerId);
-    setLoad((s) => (result.ok ? { status: 'ready', view: result.view } : { status: 'error', view: s.view }));
+    setLoad((s) => (result.ok ? { status: 'ready', view: result.view } : { status: 'error', view: s.view, signedOut: result.signedOut }));
   }, [playerId]);
 
   useEffect(() => {
@@ -67,9 +74,13 @@ export default function MySeasonScreen({
       onClose={onClose}
       onRetry={() => void reload()}
       onStartEdit={() => setEditing(true)}
-      onCancelEdit={() => setEditing(false)}
+      onCancelEdit={() => {
+        setEditing(false);
+        focusNext({ ids: [MS_IDS.familyChangeFocus] });
+      }}
       onSaved={() => {
         setEditing(false);
+        focusNext({ ids: [MS_IDS.familyChangeFocus] });
         void reload();
         onChanged();
       }}
@@ -106,7 +117,7 @@ export function MySeasonScreenView({
 
   let body: ReactNode;
   if (!content && load.status === 'loading') body = <MySeasonSkeleton />;
-  else if (!content && load.status === 'error') body = <MySeasonError onRetry={onRetry} />;
+  else if (!content && load.status === 'error') body = <MySeasonError onRetry={onRetry} signedOut={load.signedOut} />;
   else if (!content) {
     body = view && view.enabled && view.access === 'none' && view.reason === 'account_review'
       ? <p style={{ margin: 0, fontSize: 15, color: 'var(--os-ink)' }}>{MY_SEASON_COPY.accountReview}</p>
@@ -117,7 +128,7 @@ export function MySeasonScreenView({
     const since = focus ? notesSinceFocus(notes, focus) : [];
     body = (
       <>
-        {load.status === 'error' && <MySeasonError onRetry={onRetry} />}
+        {load.status === 'error' && <MySeasonError onRetry={onRetry} signedOut={load.signedOut} />}
         <section aria-labelledby="ms-focus-h" style={{ display: 'grid', gap: 10 }}>
           <h2 id="ms-focus-h" className="os-ms-accent" style={msEyebrow}>My Focus</h2>
           <div style={{ ...msCard, display: 'grid', gap: 14 }}>
@@ -138,7 +149,7 @@ export function MySeasonScreenView({
               </div>
             )}
             {!editing && content.canEditFocus && (
-              <MsButton variant="ghost" onClick={onStartEdit} style={{ justifySelf: 'start' }}>{focus ? 'Change focus' : 'Set a focus'}</MsButton>
+              <MsButton id={MS_IDS.familyChangeFocus} variant="ghost" onClick={onStartEdit} style={{ justifySelf: 'start' }}>{focus ? 'Change focus' : 'Set a focus'}</MsButton>
             )}
           </div>
         </section>
@@ -169,9 +180,7 @@ export function MySeasonScreenView({
       role="dialog"
       aria-modal="true"
       aria-label="My Season"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
+      onKeyDown={(e) => mySeasonDialogKeyDown(e, e.currentTarget, onClose)}
       style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'var(--os-screen)', display: 'flex', flexDirection: 'column', fontFamily: 'Roboto' }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'calc(12px + env(safe-area-inset-top, 0px)) 14px 8px', flex: '0 0 auto' }}>

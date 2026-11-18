@@ -10,19 +10,26 @@ import { parseMySeasonView, type FocusDraft, type MySeasonCategoryKey, type MySe
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 export const MY_SEASON_LOAD_ERROR = "Couldn't load My Season. Check your connection and try again.";
-const GENERIC_SAVE_ERROR = "Couldn't save that. Check your connection and try again.";
+export const MY_SEASON_SESSION_ENDED = 'Your session has ended. Sign in again.';
+export const GENERIC_SAVE_ERROR = "Couldn't save that. Check your connection and try again.";
 
-export type LoadResult = { ok: true; view: MySeasonView } | { ok: false };
-export type WriteResult = { ok: true } | { ok: false; error: string };
+/** `signedOut`: the server answered 401, so retrying will not help. */
+export type LoadResult = { ok: true; view: MySeasonView } | { ok: false; signedOut: boolean };
+export type WriteResult = { ok: true } | { ok: false; error: string; status?: number };
+
+/** The fixed copy for a failed load. */
+export function loadErrorMessage(signedOut: boolean): string {
+  return signedOut ? MY_SEASON_SESSION_ENDED : MY_SEASON_LOAD_ERROR;
+}
 
 export async function loadMySeasonView(playerId: string, fetchImpl: FetchLike = fetch): Promise<LoadResult> {
   try {
     const res = await fetchImpl(`/api/os/my-season?playerId=${encodeURIComponent(playerId)}`, { cache: 'no-store' });
-    if (!res.ok) return { ok: false };
+    if (!res.ok) return { ok: false, signedOut: res.status === 401 };
     const view = parseMySeasonView(await res.json());
-    return view ? { ok: true, view } : { ok: false };
+    return view ? { ok: true, view } : { ok: false, signedOut: false };
   } catch {
-    return { ok: false };
+    return { ok: false, signedOut: false };
   }
 }
 
@@ -34,8 +41,9 @@ async function postJson(url: string, body: unknown, fetchImpl: FetchLike): Promi
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (res.ok) return { ok: true };
+    if (res.status === 401) return { ok: false, error: MY_SEASON_SESSION_ENDED, status: 401 };
     const data = (await res.json().catch(() => null)) as { error?: unknown } | null;
-    return { ok: false, error: typeof data?.error === 'string' && data.error ? data.error : GENERIC_SAVE_ERROR };
+    return { ok: false, error: typeof data?.error === 'string' && data.error ? data.error : GENERIC_SAVE_ERROR, status: res.status };
   } catch {
     return { ok: false, error: GENERIC_SAVE_ERROR };
   }
@@ -70,7 +78,7 @@ export function withdrawMySeasonObservation(observationId: string, fetchImpl: Fe
   return postJson(`/api/os/my-season/observations/${encodeURIComponent(observationId)}/withdraw`, undefined, fetchImpl);
 }
 
-/** A fresh idempotency key. Kept across retries of the same submission; replaced after success. */
+/** A fresh idempotency key. See createWriteController for when one is reused. */
 export function newRequestId(): string {
   return crypto.randomUUID();
 }

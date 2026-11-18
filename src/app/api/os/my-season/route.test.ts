@@ -256,8 +256,8 @@ describe('POST /api/os/my-season/observations/[id]/withdraw', () => {
     expect(h.rpc).toHaveBeenCalledWith('my_season_withdraw_observation', { p_observation_id: OBS });
   });
 
-  it('not the author / no longer on the team (EMS03) 403; not found (EMS08) 404; feature off (EMS02) 404', async () => {
-    for (const [code, status] of [['EMS03', 403], ['EMS08', 404], ['EMS02', 404], ['EMS04', 403]] as const) {
+  it('not the author, unknown id or no longer on the team (EMS03) 403; feature off (EMS02) 404; review (EMS04) 403', async () => {
+    for (const [code, status] of [['EMS03', 403], ['EMS02', 404], ['EMS04', 403]] as const) {
       h.rpc.mockResolvedValue({ data: null, error: { ...LEAKY, code } });
       const res = await withdraw(OBS);
       expect(res.status).toBe(status);

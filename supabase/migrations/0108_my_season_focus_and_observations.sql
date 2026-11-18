@@ -50,13 +50,23 @@
 --   3. Helpers (SECURITY DEFINER, STABLE, search_path pinned):
 --      my_season_is_guardian, my_season_is_team_coach (owner only),
 --      my_season_can_read (authenticated, needed by the policies).
---   4. RLS + grants: authenticated may SELECT the two content tables
---      through policies (my_season_can_read; withdrawn observations only
---      for their author). No INSERT/UPDATE/DELETE for authenticated: every
---      write goes through the RPCs. Audit: no authenticated grant;
---      service_role SELECT only. anon: nothing. service_role keeps its
---      default privileges on the two content tables (staff tooling); the
---      section 2 triggers still bind it.
+--   4. RLS + grants: NO table privilege for authenticated on any of the
+--      three tables. The app reads only through my_season_for_player, which
+--      returns exactly the contract fields; a direct SELECT would also expose
+--      created_by / ended_by / author_id / withdrawn_by / request_id /
+--      team_id. RLS stays enabled and the two SELECT policies (with
+--      my_season_can_read) are kept as defence in depth: if a SELECT grant
+--      were ever added back by mistake, rows would still be limited to
+--      guardians and active team coaches (withdrawn notes to their author).
+--      No INSERT/UPDATE/DELETE for authenticated: every write goes through
+--      the RPCs. Audit: service_role SELECT only. anon: nothing.
+--      service_role keeps its default privileges on the two content tables
+--      for staff tooling (support lookups, exports, erasure checks). The
+--      section 2 triggers still bind it (content stays immutable apart from
+--      end / withdraw), but service_role bypasses RLS and can read every
+--      row, including withdrawn notes and author ids. RESIDUAL RISK: anyone
+--      holding the service-role key can read all My Season content; that key
+--      is server-only and never shipped to a browser.
 --   5. RPCs (authenticated only): my_season_set_focus,
 --      my_season_add_observation, my_season_withdraw_observation,
 --      my_season_for_player, plus the owner-only my_season_trim. Errors use
@@ -64,14 +74,35 @@
 --      messages that carry no data:
 --        EMS01 my_season_not_signed_in
 --        EMS02 my_season_not_enabled
---        EMS03 my_season_not_allowed
+--        EMS03 my_season_not_allowed (also an unknown observation id on
+--              withdraw, so withdraw is not an existence oracle)
 --        EMS04 my_season_account_under_review
 --        EMS05 my_season_invalid_input
---        EMS06 my_season_request_conflict
+--        EMS06 my_season_request_conflict (request_id already used)
 --        EMS07 my_season_own_child
---        EMS08 my_season_not_found
---        EMS09 my_season_immutable / my_season_insert_shape /
---              my_season_audit_append_only (the section 2 triggers)
+--        EMS08 not raised (reserved; formerly "not found" on withdraw)
+--        EMS09 my_season_conflict (set_focus lost a race for the one-active
+--              index; nothing was written, a retry works) and the section 2
+--              triggers: my_season_immutable / my_season_insert_shape /
+--              my_season_audit_append_only
+--
+-- Withdrawn notes are RETAINED (withdrawn_at / withdrawn_by set, row kept)
+-- so the audit trail of what a family was shown stays complete. They are
+-- removed only with the child (erasure cascade). How long withdrawn notes
+-- are kept before purge is an OPEN DECISION for Blake (retention policy);
+-- nothing in this migration purges them.
+--
+-- Trim: my_season_trim strips leading/trailing characters in the regex
+-- class [\s U+00A0 U+FEFF]. PostgreSQL's \s follows the database's ctype
+-- (locale) rules, not JavaScript's: it always covers ASCII whitespace
+-- (space, \t, \n, \v, \f, \r), which is everything a form normally sends,
+-- but NBSP is not \s (hence listed explicitly) and other Unicode spaces
+-- (U+2003, U+3000, ...) depend on the locale (C.UTF-8 in PGlite matches
+-- U+2003). So it equals String.prototype.trim for ordinary input and may
+-- differ on exotic spaces. The app trims with JS trim before sending; the
+-- RPC's trim is the boundary, and the length checks always run on the
+-- SQL-trimmed value, so a difference can only leave a stored value a
+-- character or two longer, never bypass a limit.
 --
 -- Deletion (no change to account_deletion_blocking_reason or any 0097/0098
 -- function): child erasure (erase_player_and_related_data deletes players)
@@ -137,7 +168,7 @@ create table public.my_season_focuses (
   author_account_deleted_at timestamptz,
   ended_at timestamptz,
   ended_by uuid references public.profiles (id) on delete set null,
-  request_id uuid not null unique,
+  request_id uuid not null constraint my_season_focuses_request_id_key unique,
   created_at timestamptz not null default now(),
   constraint my_season_focuses_author_or_marker check ((created_by is null) = (author_account_deleted_at is not null))
 );
@@ -457,12 +488,20 @@ alter table public.my_season_focuses enable row level security;
 alter table public.my_season_coach_observations enable row level security;
 alter table public.my_season_audit_events enable row level security;
 
+-- No table privilege for authenticated (or anon): the app reads only through
+-- my_season_for_player, which returns the contract fields and never the
+-- profile ids, request ids or team ids stored here.
 revoke all on public.my_season_focuses from public, anon, authenticated;
 revoke all on public.my_season_coach_observations from public, anon, authenticated;
 revoke all on public.my_season_audit_events from public, anon, authenticated, service_role;
-grant select on public.my_season_focuses to authenticated;
-grant select on public.my_season_coach_observations to authenticated;
 grant select on public.my_season_audit_events to service_role;
+
+-- Defence in depth: authenticated holds no SELECT grant, so these policies
+-- are not reachable today. They stay so that a SELECT grant added back by
+-- mistake (or a future grant) still exposes rows only to guardians and
+-- active team coaches of a team with the feature on, and withdrawn notes
+-- only to their author. They are proven in my_season_test.mjs by granting
+-- SELECT temporarily inside a rolled-back transaction.
 
 create policy "my_season_focuses: guardians and active team coaches read"
   on public.my_season_focuses for select to authenticated
@@ -515,6 +554,7 @@ declare
   v_looks text := public.my_season_trim(p_looks_like);
   v_old uuid;
   v_new uuid;
+  v_constraint text;
 begin
   if v_uid is null then
     raise exception using errcode = 'EMS01', message = 'my_season_not_signed_in';
@@ -568,8 +608,15 @@ begin
     values (p_player_id, v_title, v_why, v_looks, p_started_on, v_uid, v_role, p_request_id)
     returning id into v_new;
   exception when unique_violation then
-    -- The same request_id used concurrently for another player.
-    raise exception using errcode = 'EMS06', message = 'my_season_request_conflict';
+    get stacked diagnostics v_constraint = constraint_name;
+    if v_constraint = 'my_season_focuses_request_id_key' then
+      -- The same request_id used concurrently (another player or caller).
+      raise exception using errcode = 'EMS06', message = 'my_season_request_conflict';
+    end if;
+    -- my_season_focuses_one_active: another active focus appeared despite
+    -- the advisory lock (a writer that bypassed it). Nothing is written; the
+    -- whole call rolls back and a retry works.
+    raise exception using errcode = 'EMS09', message = 'my_season_conflict';
   end;
 
   insert into public.my_season_audit_events (player_id, event, subject_id, actor_profile_id, actor_role)
@@ -663,15 +710,17 @@ begin
     raise exception using errcode = 'EMS01', message = 'my_season_not_signed_in';
   end if;
 
-  select o.id, o.player_id, o.author_id, o.withdrawn_at into v_obs
-    from public.my_season_coach_observations o where o.id = p_observation_id for update;
-  if v_obs.id is null then
-    raise exception using errcode = 'EMS08', message = 'my_season_not_found';
-  end if;
+  -- Review first, so the answer for an account under review never depends
+  -- on whether the id exists.
   if public.profile_has_pending_deletion_review(v_uid) then
     raise exception using errcode = 'EMS04', message = 'my_season_account_under_review';
   end if;
-  if v_obs.author_id is distinct from v_uid or not public.my_season_is_team_coach(v_obs.player_id, v_uid) then
+
+  select o.id, o.player_id, o.author_id, o.withdrawn_at into v_obs
+    from public.my_season_coach_observations o where o.id = p_observation_id for update;
+  -- An unknown id is refused exactly like someone else's note (EMS03), so
+  -- withdraw is not an existence oracle for observation ids.
+  if v_obs.id is null or v_obs.author_id is distinct from v_uid or not public.my_season_is_team_coach(v_obs.player_id, v_uid) then
     raise exception using errcode = 'EMS03', message = 'my_season_not_allowed';
   end if;
   select p.team_id into v_team from public.players p where p.id = v_obs.player_id;
