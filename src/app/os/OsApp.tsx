@@ -775,8 +775,9 @@ export default function OsApp({
               is exactly one viewport. Now that .emblem-os-shell can grow
               taller than one viewport (see os.css), that assumption only
               holds if the containing block is this new `position: fixed`
-              wrapper instead of the shell itself — the wrapper is the only
-              thing that changed; ActivationGate's own file is untouched. */}
+              wrapper instead of the shell itself. data-os-gate marks this
+              wrapper so setBehindGateInert (activation-gate-focus.ts) skips
+              it while making the rest of the shell inert. */}
           {!state.activated && (
             <div data-os-gate="" style={{ position: 'fixed', inset: 0, zIndex: 80 }}>
               <ActivationGate
