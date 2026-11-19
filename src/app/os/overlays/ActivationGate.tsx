@@ -445,10 +445,12 @@ export default function ActivationGate({ onActivate, hasSession, profileRole, vi
       <div style={{ fontFamily: 'Barlow Condensed', fontWeight: 700, letterSpacing: '.18em', fontSize: 12, color: '#E97435', marginBottom: 12 }}>WELCOME TO EMBLEM</div>
       <div style={{ fontFamily: 'Roboto', fontWeight: 900, fontSize: 27, lineHeight: 1.08, color: '#F4F1EC', marginBottom: 12 }}>Every football story<br />starts somewhere.</div>
       <p style={{ fontSize: 14, lineHeight: 1.55, color: '#B8AE9F', maxWidth: 280, margin: '0 0 32px' }}>Tap your Emblem card to the back of your phone to unlock their living football journey.</p>
-      <div onClick={onActivate} style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: '#E97435', color: '#0B0A09', fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, padding: '15px 30px', borderRadius: 14, cursor: 'pointer', boxShadow: '0 16px 34px -16px rgba(233,116,53,.8)' }}>
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0B0A09" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M6 8.5a8 8 0 0 1 0 7M10 6a13 13 0 0 1 0 12M14 4a17 17 0 0 1 0 16" /></svg>
+      {/* A real button (keyboard, VoiceOver, TalkBack), focused when this screen opens.
+          The resets keep the look of the original div; the browser focus ring is kept. */}
+      <button type="button" onClick={onActivate} autoFocus style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: '#E97435', color: '#0B0A09', fontFamily: 'Roboto', fontWeight: 800, fontSize: 15, lineHeight: 'inherit', letterSpacing: 'inherit', padding: '15px 30px', margin: 0, border: 0, borderRadius: 14, cursor: 'pointer', boxShadow: '0 16px 34px -16px rgba(233,116,53,.8)', WebkitAppearance: 'none', appearance: 'none' }}>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#0B0A09" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 8.5a8 8 0 0 1 0 7M10 6a13 13 0 0 1 0 12M14 4a17 17 0 0 1 0 16" /></svg>
         Tap to activate
-      </div>
+      </button>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 20, color: 'var(--os-muted)', fontSize: 12 }}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8B8478" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z" /></svg>
         Private &amp; secure

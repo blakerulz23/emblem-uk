@@ -5,6 +5,7 @@ import type { ChangeEvent, DragEvent, MouseEvent as ReactMouseEvent, SyntheticEv
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ADD_ACH, MOMENT_ORDER, fmtFileSize, osAssetPath } from './data';
 import { onActivateKey } from './a11y';
+import { focusFirstInApp, setBehindGateInert } from './activation-gate-focus';
 import { initialOsState } from './types';
 import type { OsState, Tab } from './types';
 import { OsDataProvider, DEMO_OS_DATA } from './OsDataContext';
@@ -745,11 +746,28 @@ export default function OsApp({
     };
   }, []);
 
+  // While the activation gate covers the app, keep keyboard and screen-reader
+  // focus out of the app rendered underneath it (activation-gate-focus.ts).
+  // No dependency list on purpose: re-applies after every render, so a child
+  // rendered while the gate is up is made inert too. Idempotent.
+  const shellRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (shellRef.current) setBehindGateInert(shellRef.current, !state.activated);
+  });
+  // When the gate is dismissed its button unmounts; move focus to the app's
+  // first control instead of letting it fall back to the page body.
+  const wasActivatedRef = useRef(state.activated);
+  useEffect(() => {
+    const was = wasActivatedRef.current;
+    wasActivatedRef.current = state.activated;
+    if (!was && state.activated && shellRef.current) focusFirstInApp(shellRef.current);
+  }, [state.activated]);
+
   return (
     <OsDataProvider value={initialData ?? fallbackData}>
     <OsRefreshBridge scrollRef={scrollRef} disabled={osRefreshDisabled} onChange={setOsRefresh} onStoryUpdatesChange={handleStoryUpdatesChange} />
     <div className={`emblem-os${state.dark ? ' os-dark' : ''}`}>
-      <div className="emblem-os-shell">
+      <div className="emblem-os-shell" ref={shellRef}>
 
           {/* ActivationGate (and everything it renders internally — SignIn,
               RoleFork, ClaimCodeEntry, etc.) still styles its own root as
@@ -757,10 +775,11 @@ export default function OsApp({
               is exactly one viewport. Now that .emblem-os-shell can grow
               taller than one viewport (see os.css), that assumption only
               holds if the containing block is this new `position: fixed`
-              wrapper instead of the shell itself — the wrapper is the only
-              thing that changed; ActivationGate's own file is untouched. */}
+              wrapper instead of the shell itself. data-os-gate marks this
+              wrapper so setBehindGateInert (activation-gate-focus.ts) skips
+              it while making the rest of the shell inert. */}
           {!state.activated && (
-            <div style={{ position: 'fixed', inset: 0, zIndex: 80 }}>
+            <div data-os-gate="" style={{ position: 'fixed', inset: 0, zIndex: 80 }}>
               <ActivationGate
                 onActivate={actions.activate}
                 hasSession={hasSession}
